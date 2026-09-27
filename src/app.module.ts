@@ -7,6 +7,7 @@ import { ClientModule } from './modules/client/client.module.js';
 import { ClientsModule } from './modules/clients/clients.module.js';
 import { JournalModule } from './modules/journal/journal.module.js';
 import { HealthController } from './modules/health/health.controller.js';
+import { LoyaltyModule } from './modules/loyalty/loyalty.module.js';
 import { OnlineModule } from './modules/online/online.module.js';
 import { ScheduleModule } from './modules/schedule/schedule.module.js';
 import { ResourcesModule } from './modules/resources/resources.module.js';
@@ -15,7 +16,7 @@ import { NotifyModule } from './modules/notify/notify.module.js';
 
 /** Корневой модуль API. Разделы (PLAN.md §6) добавляются сюда по этапам. */
 @Module({
-  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule, ClientsModule, ScheduleModule, JournalModule, OnlineModule, ClientModule, NotifyModule],
+  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule, ClientsModule, ScheduleModule, JournalModule, OnlineModule, ClientModule, NotifyModule, LoyaltyModule],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {

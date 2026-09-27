@@ -101,6 +101,12 @@ export const ERROR_STATUS = {
   internal: HttpStatus.INTERNAL_SERVER_ERROR,
   // уведомления (этап 10) — как в моке фронта (src/api/notify.ts: 'notify/weekly-push-limit')
   weekly_push_limit: HttpStatus.CONFLICT,
+  // лояльность (этап 11) — как в моке фронта (src/api/loyalty.ts)
+  has_issued_cards: HttpStatus.CONFLICT,
+  insufficient_balance: HttpStatus.PAYMENT_REQUIRED,
+  membership_frozen: HttpStatus.CONFLICT,
+  already_confirmed: HttpStatus.CONFLICT,
+  duplicate_number: HttpStatus.CONFLICT,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

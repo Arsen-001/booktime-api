@@ -809,6 +809,84 @@ await prisma.client.createMany({
   console.log(`seed: журнал — записей ${rows.length} (участников групповых ${participants.length}), групповых событий ${eventsRaw.length}, лист ожидания ${waitlist}`);
 }
 
+// ─────────── этап 11: лояльность — по одному образцу на бизнес, чтобы экраны не были пустыми ───────────
+// Мока для этого раздела нет (domain/loyalty.ts не резервирует id — см. docs/backend/07-mock-only.md), поэтому
+// строки не «из мока», а придуманы: тип карты + карта, тип сертификата + сертификат, тип абонемента + абонемент,
+// тип счёта + счёт — каждому бизнесу, у которого уже есть хоть один клиент (CRM, этап 5).
+{
+  const clientsAll2 = (core.clients ?? []) as Rec[];
+  let cardTypes = 0;
+  let certs = 0;
+  let memberships = 0;
+  let accounts = 0;
+  let seq = 0;
+  for (const b of core.businesses) {
+    const client = clientsAll2.find((c) => c.businessId === b.id);
+    if (!client) continue;
+    const clientId = String(client.id);
+    const ownerId = String((b as Rec).networkId ?? b.id);
+    const shortId = String(b.id).slice(0, 12);
+    const n = String(++seq).padStart(8, '0');
+
+    const cardTypeId = `lct_${shortId}`.slice(0, 32);
+    await prisma.loyaltyCardType.upsert({
+      where: { id: cardTypeId },
+      create: { id: cardTypeId, ownerId, businessId: b.id, name: 'Бонусная карта', paymentLimitPercent: 30, createdBy: 'seed', updatedBy: 'seed' },
+      update: {},
+    });
+    const cardId = `lc_${shortId}`.slice(0, 32);
+    await prisma.loyaltyCard.upsert({
+      where: { id: cardId },
+      create: { id: cardId, cardTypeId, businessId: b.id, clientId, number: `9${n}`, balance: 1_500n, createdBy: 'seed' },
+      update: {},
+    });
+    cardTypes++;
+
+    const certTypeId = `lctt_${shortId}`.slice(0, 32);
+    await prisma.certificateType.upsert({
+      where: { id: certTypeId },
+      create: { id: certTypeId, ownerId, businessId: b.id, name: 'Подарочный сертификат 10 000 ֏', faceValue: 10_000n, validDays: 180, createdBy: 'seed', updatedBy: 'seed' },
+      update: {},
+    });
+    const certId = `lcert_${shortId}`.slice(0, 32);
+    await prisma.certificate.upsert({
+      where: { id: certId },
+      create: { id: certId, typeId: certTypeId, businessId: b.id, clientId, code: `SC${n}`, total: 10_000n, balance: 10_000n, status: 'active', soldAt: now, expiresAt: new Date(now.getTime() + 180 * 86_400_000), createdBy: 'seed' },
+      update: {},
+    });
+    certs++;
+
+    const membershipTypeId = `lmt_${shortId}`.slice(0, 32);
+    await prisma.membershipType.upsert({
+      where: { id: membershipTypeId },
+      create: { id: membershipTypeId, ownerId, businessId: b.id, name: 'Абонемент на 10 визитов', totalVisits: 10, price: 45_000n, validDays: 365, serviceIds: [], createdBy: 'seed', updatedBy: 'seed' },
+      update: {},
+    });
+    const membershipId = `lm_${shortId}`.slice(0, 32);
+    await prisma.membershipSale.upsert({
+      where: { id: membershipId },
+      create: { id: membershipId, typeId: membershipTypeId, businessId: b.id, clientId, code: `SM${n}`, totalVisits: 10, remainingVisits: 7, status: 'active', soldAt: now, expiresAt: new Date(now.getTime() + 365 * 86_400_000), createdBy: 'seed' },
+      update: {},
+    });
+    memberships++;
+
+    const accountTypeId = `lat_${shortId}`.slice(0, 32);
+    await prisma.clientAccountType.upsert({
+      where: { id: accountTypeId },
+      create: { id: accountTypeId, ownerId, businessId: b.id, name: 'Личный счёт', createdBy: 'seed', updatedBy: 'seed' },
+      update: {},
+    });
+    const accountId = `la_${shortId}`.slice(0, 32);
+    await prisma.clientAccount.upsert({
+      where: { id: accountId },
+      create: { id: accountId, typeId: accountTypeId, businessId: b.id, clientId, balance: 5_000n, createdBy: 'seed' },
+      update: {},
+    });
+    accounts++;
+  }
+  console.log(`seed: лояльность — типов карт ${cardTypes}, сертификатов ${certs}, абонементов ${memberships}, счетов ${accounts}`);
+}
+
 console.log(
   `seed: людей ${users.length} (клиентов ${core.appUsers.length}), логинов администраторов ${admins.length}, команда платформы 1; ` +
     `сетей ${networks.length}, бизнесов ${businesses.length}, филиалов ${locations.length}, сотрудников ${core.staff.length}, ` +

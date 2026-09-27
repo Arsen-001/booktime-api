@@ -71,3 +71,7 @@ export const supportBody = z.object({
   message: z.string().min(1).max(4000),
   phone: z.string().max(24).optional(),
 });
+
+// ─────────────────────────── лояльность (В-17, этап 11) ───────────────────────────
+
+export const buyRequestBody = z.object({ businessId: id32, typeId: id32 });

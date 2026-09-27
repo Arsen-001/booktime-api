@@ -1698,3 +1698,306 @@ model BizInboxRead {
   @@id([businessId, eventId])
   @@map("biz_inbox_read")
 }
+
+// ═══════════════════════════ Этап 11 — Лояльность (02-api.md §11, F-06-*) ═══════════════════════════
+// Владелец программы — сеть (F-06-002); у одиночного бизнеса owner_id = business_id. `ownerId` — то, что
+// PLAN §2 называет /v1/org/{orgId}: сеть, если у создавшего бизнеса есть networkId, иначе сам бизнес
+// (см. loyalty.owner.ts). Маршруты всё равно висят на /v1/biz/:businessId (PLAN §2 резервирует /v1/net
+// отдельно, но не просит для этого раздела) — видимость между филиалами сети даёт общий ownerId, не путь.
+// Программа скидок/классов/категорий локации (F-04-114…122) — старый, отдельный движок, живёт в
+// business_settings area='loyalty-program' (F4-приём, как resources/notify-types) — не здесь.
+
+/// Типы карт (F-06-020…030)
+model LoyaltyCardType {
+  id                   String    @id @db.VarChar(32)
+  ownerId              String    @map("owner_id") @db.VarChar(32)
+  businessId           String    @map("business_id") @db.VarChar(32)
+  name                 String    @db.VarChar(160)
+  /// Работает во всех бизнесах сети, не только там, где выдана (В-09, по отметке владельца)
+  networkWide          Boolean   @default(false) @map("network_wide")
+  /// Автосписание бонусов ограничено % от чека при оплате; 0 = без ограничения (F-06-027)
+  paymentLimitPercent  Int       @default(0) @map("payment_limit_percent")
+  paymentLimitFixed    BigInt    @default(0) @map("payment_limit_fixed")
+  /// Кэшбэк виден клиенту в приложении (F-06-028)
+  cashbackVisibleInApp Boolean   @default(true) @map("cashback_visible_in_app")
+  /// Сгорание баланса без визита N дней; null — не применяется (F-06-025)
+  burnDays             Int?      @map("burn_days")
+  /// В-40: «В архив» вместо удаления — не выдаётся/не продаётся, выданные карты продолжают работать;
+  /// жёсткое удаление (delete()) отказывает, если есть хоть одна выданная карта (has_issued_cards)
+  archived             Boolean   @default(false)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy            String?   @map("created_by") @db.VarChar(32)
+  updatedBy            String?   @map("updated_by") @db.VarChar(32)
+  version              Int       @default(1)
+
+  cards LoyaltyCard[]
+
+  @@index([ownerId])
+  @@map("loyalty_card_types")
+}
+
+/// Карта клиента (F-06-051…060): бонусный баланс
+model LoyaltyCard {
+  id         String   @id @db.VarChar(32)
+  cardTypeId String   @map("card_type_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  clientId   String?  @map("client_id") @db.VarChar(32)
+  /// Заведена клиентом через приложение (В-06: своя видимость) — как и без CRM-карточки
+  appUserId  String?  @map("app_user_id") @db.VarChar(32)
+  number     String   @unique @db.VarChar(40)
+  balance    BigInt   @default(0)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  cardType LoyaltyCardType @relation(fields: [cardTypeId], references: [id])
+
+  @@index([businessId, clientId])
+  @@index([appUserId])
+  @@index([cardTypeId])
+  @@map("loyalty_cards")
+}
+
+/// Акции (F-06-031…050): правило на типе(ах) карты — скидка/кэшбэк, разовый или накопительный размер.
+/// Мастер из 5 шагов фронта — один POST (02-api.md §11): шаги свёрнуты в поля одной формы, не в 5 запросов.
+model Promotion {
+  id           String   @id @db.VarChar(32)
+  ownerId      String   @map("owner_id") @db.VarChar(32)
+  businessId   String   @map("business_id") @db.VarChar(32)
+  name         String   @db.VarChar(160)
+  /// discountFixed | discountAccumVisits | discountAccumSum | discountConditional | cashbackFixed |
+  /// cashbackAccumVisits | cashbackAccumSum | cashbackVisit (PromotionKind фронта, domain/loyalty.ts)
+  kind         String   @db.VarChar(24)
+  cardTypeIds  Json     @map("card_type_ids")
+  /// percent | fixed
+  valueType    String   @map("value_type") @db.VarChar(8)
+  value        Int      @default(0)
+  /// PromotionThreshold[] { from, value } — таблица порогов накопительных видов (F-06-038…044)
+  thresholds   Json?
+  serviceScope Json?    @map("service_scope")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy    String?  @map("created_by") @db.VarChar(32)
+  updatedBy    String?  @map("updated_by") @db.VarChar(32)
+  version      Int      @default(1)
+
+  @@index([ownerId])
+  @@map("promotions")
+}
+
+/// Журнал движений лояльности (F-06-076/077): начисление/списание/выпуск по карте/сертификату/абонементу/счёту
+model LoyaltyTx {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  clientId   String?  @map("client_id") @db.VarChar(32)
+  /// card | certificate | membership | account
+  source     String   @db.VarChar(12)
+  refId      String   @map("ref_id") @db.VarChar(32)
+  /// issue | accrual | charge | apply | topup | refund | freeze | unfreeze | confirm | reject
+  kind       String   @db.VarChar(12)
+  amount     BigInt   @default(0)
+  bookingId  String?  @map("booking_id") @db.VarChar(32)
+  note       String?  @db.VarChar(400)
+  staffId    String?  @map("staff_id") @db.VarChar(32)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId, createdAt])
+  @@index([clientId])
+  @@index([source, refId])
+  @@map("loyalty_tx")
+}
+
+/// Реферальная программа (F-06-081…085) — одна строка на владельца (сеть/бизнес); у рефералки нет типа
+/// карты (F-06-082) — награда начисляется прямым бонусом на счёт лояльности приглашённого/пригласившего.
+model ReferralProgram {
+  ownerId        String   @id @map("owner_id") @db.VarChar(32)
+  enabled        Boolean  @default(false)
+  giverReward    BigInt   @default(0) @map("giver_reward")
+  receiverReward BigInt   @default(0) @map("receiver_reward")
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy      String?  @map("updated_by") @db.VarChar(32)
+  version        Int      @default(1)
+
+  @@map("referral_programs")
+}
+
+/// Типы сертификатов (F-06-086…104)
+model CertificateType {
+  id          String   @id @db.VarChar(32)
+  ownerId     String   @map("owner_id") @db.VarChar(32)
+  businessId  String   @map("business_id") @db.VarChar(32)
+  name        String   @db.VarChar(160)
+  faceValue   BigInt   @map("face_value")
+  validDays   Int      @map("valid_days")
+  networkWide Boolean  @default(false) @map("network_wide")
+  archived    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy   String?  @map("created_by") @db.VarChar(32)
+  updatedBy   String?  @map("updated_by") @db.VarChar(32)
+  version     Int      @default(1)
+
+  certificates Certificate[]
+
+  @@index([ownerId])
+  @@map("certificate_types")
+}
+
+/// Проданный/выданный сертификат — продажа, баланс, срок, возврат (F-06-086…104). В-17: заявка клиента из
+/// приложения рождается статусом pending_confirmation (без clientId — привязывается при подтверждении).
+model Certificate {
+  id         String   @id @db.VarChar(32)
+  typeId     String   @map("type_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  clientId   String?  @map("client_id") @db.VarChar(32)
+  appUserId  String?  @map("app_user_id") @db.VarChar(32)
+  code       String   @unique @db.VarChar(40)
+  total      BigInt
+  balance    BigInt
+  /// active | pending_confirmation | rejected | refunded
+  status     String   @default("active") @db.VarChar(20)
+  soldAt     DateTime @map("sold_at") @db.DateTime(3)
+  expiresAt  DateTime @map("expires_at") @db.DateTime(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  type CertificateType @relation(fields: [typeId], references: [id])
+
+  @@index([businessId, clientId])
+  @@index([appUserId])
+  @@map("certificates")
+}
+
+/// Типы абонементов (F-06-105…134)
+model MembershipType {
+  id          String   @id @db.VarChar(32)
+  ownerId     String   @map("owner_id") @db.VarChar(32)
+  businessId  String   @map("business_id") @db.VarChar(32)
+  name        String   @db.VarChar(160)
+  /// null — безлимитный на срок, а не по визитам
+  totalVisits Int?     @map("total_visits")
+  price       BigInt
+  validDays   Int      @map("valid_days")
+  serviceIds  Json     @map("service_ids")
+  networkWide Boolean  @default(false) @map("network_wide")
+  archived    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy   String?  @map("created_by") @db.VarChar(32)
+  updatedBy   String?  @map("updated_by") @db.VarChar(32)
+  version     Int      @default(1)
+
+  sales MembershipSale[]
+
+  @@index([ownerId])
+  @@map("membership_types")
+}
+
+/// Проданный абонемент — продажа, заморозка, автосписание визита, возврат (F-06-105…134); В-17 как Certificate.
+model MembershipSale {
+  id              String    @id @db.VarChar(32)
+  typeId          String    @map("type_id") @db.VarChar(32)
+  businessId      String    @map("business_id") @db.VarChar(32)
+  clientId        String?   @map("client_id") @db.VarChar(32)
+  appUserId       String?   @map("app_user_id") @db.VarChar(32)
+  code            String    @unique @db.VarChar(40)
+  totalVisits     Int?      @map("total_visits")
+  remainingVisits Int?      @map("remaining_visits")
+  /// active | pending_confirmation | rejected | frozen | expired | refunded
+  status          String    @default("active") @db.VarChar(20)
+  soldAt          DateTime  @map("sold_at") @db.DateTime(3)
+  expiresAt       DateTime  @map("expires_at") @db.DateTime(3)
+  frozenUntil     DateTime? @map("frozen_until") @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy       String?   @map("created_by") @db.VarChar(32)
+  updatedBy       String?   @map("updated_by") @db.VarChar(32)
+  version         Int       @default(1)
+
+  type    MembershipType     @relation(fields: [typeId], references: [id])
+  freezes MembershipFreeze[]
+
+  @@index([businessId, clientId])
+  @@index([appUserId])
+  @@map("membership_sales")
+}
+
+/// Журнал заморозок абонемента (F-06-* заморозка/автосписание)
+model MembershipFreeze {
+  id           String   @id @db.VarChar(32)
+  membershipId String   @map("membership_id") @db.VarChar(32)
+  fromAt       DateTime @map("from_at") @db.DateTime(3)
+  toAt         DateTime @map("to_at") @db.DateTime(3)
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy    String?  @map("created_by") @db.VarChar(32)
+
+  membership MembershipSale @relation(fields: [membershipId], references: [id])
+
+  @@index([membershipId])
+  @@map("membership_freezes")
+}
+
+/// Типы счетов клиентов (F-06-135…146)
+model ClientAccountType {
+  id          String   @id @db.VarChar(32)
+  ownerId     String   @map("owner_id") @db.VarChar(32)
+  businessId  String   @map("business_id") @db.VarChar(32)
+  name        String   @db.VarChar(160)
+  networkWide Boolean  @default(false) @map("network_wide")
+  archived    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy   String?  @map("created_by") @db.VarChar(32)
+  updatedBy   String?  @map("updated_by") @db.VarChar(32)
+  version     Int      @default(1)
+
+  accounts ClientAccount[]
+
+  @@index([ownerId])
+  @@map("client_account_types")
+}
+
+/// Личный счёт клиента — пополнение/списание в долг (F-06-135…146)
+model ClientAccount {
+  id         String   @id @db.VarChar(32)
+  typeId     String   @map("type_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  clientId   String   @map("client_id") @db.VarChar(32)
+  balance    BigInt   @default(0)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  type ClientAccountType @relation(fields: [typeId], references: [id])
+  ops  ClientAccountOp[]
+
+  @@index([businessId, clientId])
+  @@map("client_accounts")
+}
+
+/// Операция по счёту (F-06-135…146): пополнение / списание / возврат
+model ClientAccountOp {
+  id        String   @id @db.VarChar(32)
+  accountId String   @map("account_id") @db.VarChar(32)
+  /// topup | charge | refund
+  kind      String   @db.VarChar(8)
+  amount    BigInt
+  bookingId String?  @map("booking_id") @db.VarChar(32)
+  note      String?  @db.VarChar(400)
+  staffId   String?  @map("staff_id") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  account ClientAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@map("client_account_ops")
+}

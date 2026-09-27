@@ -18,6 +18,7 @@ import { customTemplateOf } from '../notify/notify-types.service.js';
 import { notifyKindOf } from '../notify/kinds.js';
 import { isStaffEventEnabled } from '../notify/notify-staff-prefs.service.js';
 import { enqueueClientNotification, enqueueOutbox } from '../notify/outbox.js';
+import { LoyaltyProgramService } from '../loyalty/loyalty-program.service.js';
 import { JournalSettingsService } from './journal-settings.js';
 import { bookingView, eventView, extrasView, type BookingView } from './journal.views.js';
 import {
@@ -251,6 +252,7 @@ export class BookingsService {
     private readonly audit: AuditService,
     private readonly live: LiveService,
     readonly settings: JournalSettingsService,
+    private readonly loyaltyProgram: LoyaltyProgramService,
   ) {}
 
   // ─────────── пояса ───────────
@@ -1207,6 +1209,12 @@ export class BookingsService {
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
     await this.publish(t, [row.id]);
+    // F-04-121: два из трёх автоматических моментов пересчёта программы лояльности локации (третий —
+    // сохранение самой программы, LoyaltyProgramService.save). Best-effort — сам метод честно возвращает
+    // null, если правила выключены (по умолчанию), поэтому обычный визит не платит лишним запросом впустую.
+    if ((status === 'arrived' || status === 'no_show') && row.clientId) {
+      await this.loyaltyProgram.recalcOne(actor.ctx ?? null, row.businessId, row.clientId, status === 'arrived' ? 'statusArrived' : 'statusNoShow').catch(() => undefined);
+    }
     return this.view(this.prisma, row);
   }
 

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { LoyaltyModule } from '../loyalty/loyalty.module.js';
 import { ScheduleModule } from '../schedule/schedule.module.js';
 import { JournalAccess } from './access.js';
 import { BookingsController } from './bookings.controller.js';
@@ -9,9 +10,11 @@ import { ClaimsController, JournalController, MeBookingsController, PublicClaims
 import { JournalService } from './journal.service.js';
 import { SeriesService } from './series.service.js';
 
-/** Этап 7: журнал и записи (PLAN §6 №7) — записи, статусы, удержание окна, серии, групповые, лист ожидания, F-00-107 */
+/** Этап 7: журнал и записи (PLAN §6 №7) — записи, статусы, удержание окна, серии, групповые, лист ожидания, F-00-107.
+ * `LoyaltyModule` — этап 11: «Клиент пришёл» / «Не пришёл» пересчитывают программу лояльности локации
+ * (F-04-121, см. `BookingsService.changeStatus`), поэтому журналу нужен `LoyaltyProgramService`. */
 @Module({
-  imports: [ScheduleModule],
+  imports: [ScheduleModule, LoyaltyModule],
   controllers: [BookingsController, JournalController, ClaimsController, MeBookingsController, PublicClaimsController],
   providers: [BookingsService, JournalService, GroupEventsService, SeriesService, JournalSettingsService, JournalAccess],
   exports: [BookingsService, JournalService, JournalSettingsService],

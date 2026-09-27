@@ -5,7 +5,7 @@ import type { RequestContext } from '../../common/http/context.js';
 import { Authed, Ctx } from '../../common/http/guards.js';
 import { ZodBody } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
-import { createMyBookingBody, diaryEntryBody, favoriteBody, favoriteMuteBody, myWaitlistBody, rateStaffBody, supportBody } from './client.schemas.js';
+import { buyRequestBody, createMyBookingBody, diaryEntryBody, favoriteBody, favoriteMuteBody, myWaitlistBody, rateStaffBody, supportBody } from './client.schemas.js';
 import { MeService } from './me.service.js';
 
 /**
@@ -169,6 +169,34 @@ export class MeController {
   @ApiOperation({ summary: 'Сторис на главной — заводит нашa панель (этап 19), пока честно пусто' })
   listStories() {
     return this.svc.listStories();
+  }
+
+  // ─────────────────────────── лояльность (F-06-156…163, В-17) ───────────────────────────
+
+  @Get('loyalty')
+  @ApiOperation({ summary: 'Мои карты/сертификаты/абонементы/счета в этом бизнесе (В-06/В-09)' })
+  myLoyalty(@Ctx() ctx: RequestContext, @Query('businessId') businessId: string) {
+    return this.svc.myLoyalty(ctx.session!.userId, businessId);
+  }
+
+  @Get('loyalty/buyable')
+  @ApiOperation({ summary: 'Что можно купить в приложении (типы сертификатов/абонементов, В-17)' })
+  myLoyaltyBuyable(@Query('businessId') businessId: string) {
+    return this.svc.myLoyaltyBuyable(businessId);
+  }
+
+  @Post('loyalty/certificates')
+  @ApiOperation({ summary: 'В-17: заявка на сертификат — «ждёт подтверждения»' })
+  @ZodBody(buyRequestBody)
+  requestCertificate(@Ctx() ctx: RequestContext, @Body(new Zod(buyRequestBody)) body: z.infer<typeof buyRequestBody>) {
+    return this.svc.requestCertificate(ctx.session!.userId, body.businessId, body.typeId);
+  }
+
+  @Post('loyalty/memberships')
+  @ApiOperation({ summary: 'В-17: заявка на абонемент — «ждёт подтверждения»' })
+  @ZodBody(buyRequestBody)
+  requestMembership(@Ctx() ctx: RequestContext, @Body(new Zod(buyRequestBody)) body: z.infer<typeof buyRequestBody>) {
+    return this.svc.requestMembership(ctx.session!.userId, body.businessId, body.typeId);
   }
 
   // ─────────────────────────── обращение к нам (F-00-182) ───────────────────────────

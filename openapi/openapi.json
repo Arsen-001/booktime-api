@@ -29365,6 +29365,2742 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/loyalty/program": {
+      "get": {
+        "operationId": "LoyaltyController_getProgram",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "discountTiers": {
+                      "maxItems": 20,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "basis": {
+                            "type": "string",
+                            "enum": [
+                              "sold",
+                              "paid",
+                              "visits"
+                            ]
+                          },
+                          "from": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "percent": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "basis",
+                          "from",
+                          "percent"
+                        ]
+                      }
+                    },
+                    "classRules": {
+                      "type": "object",
+                      "properties": {
+                        "bronze": {
+                          "type": "object",
+                          "properties": {
+                            "minSold": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "minPaid": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "minVisits": {
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          }
+                        },
+                        "silver": {
+                          "type": "object",
+                          "properties": {
+                            "minSold": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "minPaid": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "minVisits": {
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          }
+                        },
+                        "gold": {
+                          "type": "object",
+                          "properties": {
+                            "minSold": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "minPaid": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "minVisits": {
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "bronze",
+                        "silver",
+                        "gold"
+                      ]
+                    },
+                    "addRules": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "trigger": {
+                            "type": "string",
+                            "enum": [
+                              "sold",
+                              "paid",
+                              "visits",
+                              "inactiveDays",
+                              "statusArrived",
+                              "statusNoShow"
+                            ]
+                          },
+                          "threshold": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "category": {
+                            "type": "string",
+                            "maxLength": 80
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "trigger",
+                          "category"
+                        ]
+                      }
+                    },
+                    "removeRules": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "trigger": {
+                            "type": "string",
+                            "enum": [
+                              "sold",
+                              "paid",
+                              "visits",
+                              "inactiveDays",
+                              "statusArrived",
+                              "statusNoShow"
+                            ]
+                          },
+                          "threshold": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "category": {
+                            "type": "string",
+                            "maxLength": 80
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "trigger",
+                          "category"
+                        ]
+                      }
+                    },
+                    "settings": {
+                      "type": "object",
+                      "properties": {
+                        "cancelDiscountAfterDays": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 3650
+                        },
+                        "cancelClassAfterDays": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 3650
+                        },
+                        "discountEndWarnDays": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 15
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "cancelDiscountAfterDays",
+                        "cancelClassAfterDays",
+                        "discountEndWarnDays"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "discountTiers",
+                    "classRules",
+                    "addRules",
+                    "removeRules",
+                    "settings"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "put": {
+        "operationId": "LoyaltyController_saveProgram",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "discountTiers": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "basis": {
+                          "type": "string",
+                          "enum": [
+                            "sold",
+                            "paid",
+                            "visits"
+                          ]
+                        },
+                        "from": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "percent": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "basis",
+                        "from",
+                        "percent"
+                      ]
+                    }
+                  },
+                  "classRules": {
+                    "type": "object",
+                    "properties": {
+                      "bronze": {
+                        "type": "object",
+                        "properties": {
+                          "minSold": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "minPaid": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "minVisits": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        }
+                      },
+                      "silver": {
+                        "type": "object",
+                        "properties": {
+                          "minSold": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "minPaid": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "minVisits": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        }
+                      },
+                      "gold": {
+                        "type": "object",
+                        "properties": {
+                          "minSold": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "minPaid": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "minVisits": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "bronze",
+                      "silver",
+                      "gold"
+                    ]
+                  },
+                  "addRules": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "trigger": {
+                          "type": "string",
+                          "enum": [
+                            "sold",
+                            "paid",
+                            "visits",
+                            "inactiveDays",
+                            "statusArrived",
+                            "statusNoShow"
+                          ]
+                        },
+                        "threshold": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "category": {
+                          "type": "string",
+                          "maxLength": 80
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "trigger",
+                        "category"
+                      ]
+                    }
+                  },
+                  "removeRules": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "trigger": {
+                          "type": "string",
+                          "enum": [
+                            "sold",
+                            "paid",
+                            "visits",
+                            "inactiveDays",
+                            "statusArrived",
+                            "statusNoShow"
+                          ]
+                        },
+                        "threshold": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "category": {
+                          "type": "string",
+                          "maxLength": 80
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "trigger",
+                        "category"
+                      ]
+                    }
+                  },
+                  "settings": {
+                    "type": "object",
+                    "properties": {
+                      "cancelDiscountAfterDays": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 3650
+                      },
+                      "cancelClassAfterDays": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 3650
+                      },
+                      "discountEndWarnDays": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 15
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "cancelDiscountAfterDays",
+                      "cancelClassAfterDays",
+                      "discountEndWarnDays"
+                    ]
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "discountTiers",
+                  "classRules",
+                  "addRules",
+                  "removeRules",
+                  "settings"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сохранить программу и пересчитать всех клиентов (F-04-121)",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/program/recalculate": {
+      "post": {
+        "operationId": "LoyaltyController_recalculate",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Ручной пересчёт правил (F-04-073)",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/clients/{clientId}/program/recalculate": {
+      "post": {
+        "operationId": "LoyaltyController_recalculateOne",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Пересчёт одного клиента (F-04-073)",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/client-visibility": {
+      "get": {
+        "operationId": "LoyaltyController_getClientVisibility",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "put": {
+        "operationId": "LoyaltyController_setClientVisibility",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "showToClient": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "showToClient"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/card-types": {
+      "get": {
+        "operationId": "LoyaltyController_listCardTypes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "post": {
+        "operationId": "LoyaltyController_createCardType",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "networkWide": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "paymentLimitPercent": {
+                    "default": 0,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "paymentLimitFixed": {
+                    "default": 0,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "cashbackVisibleInApp": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "burnDays": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 3650
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/card-types/{id}": {
+      "patch": {
+        "operationId": "LoyaltyController_updateCardType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "networkWide": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "paymentLimitPercent": {
+                    "default": 0,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "paymentLimitFixed": {
+                    "default": 0,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "cashbackVisibleInApp": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "burnDays": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 3650
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "delete": {
+        "operationId": "LoyaltyController_deleteCardType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "В-40: отказывает (has_issued_cards), если есть выданные карты",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/card-types/{id}/archive": {
+      "put": {
+        "operationId": "LoyaltyController_archiveCardType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "archived": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "archived"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "В-40: «В архив» вместо удаления",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/clients/{clientId}/cards": {
+      "get": {
+        "operationId": "LoyaltyController_listClientCards",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "post": {
+        "operationId": "LoyaltyController_issueCard",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cardTypeId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "appUserId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "number": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "cardTypeId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Выдать карту (F-14-102) — номер генерируется, если не введён",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/cards/{cardId}/bonuses": {
+      "post": {
+        "operationId": "LoyaltyController_adjustBonus",
+        "parameters": [
+          {
+            "name": "cardId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "accrual",
+                      "charge"
+                    ]
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000000000
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 400
+                  }
+                },
+                "required": [
+                  "kind",
+                  "amount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Ручное начисление/списание бонусов — loyalty.manage либо в окне записи journal.edit",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/promotions": {
+      "get": {
+        "operationId": "LoyaltyController_listPromotions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "post": {
+        "operationId": "LoyaltyController_createPromotion",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "discountFixed",
+                      "discountAccumVisits",
+                      "discountAccumSum",
+                      "discountConditional",
+                      "cashbackFixed",
+                      "cashbackAccumVisits",
+                      "cashbackAccumSum",
+                      "cashbackVisit"
+                    ]
+                  },
+                  "cardTypeIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "valueType": {
+                    "type": "string",
+                    "enum": [
+                      "percent",
+                      "fixed"
+                    ]
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  },
+                  "thresholds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "value": {
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "value"
+                      ]
+                    }
+                  },
+                  "serviceScope": {
+                    "type": "object",
+                    "properties": {
+                      "categoryIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        }
+                      },
+                      "serviceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        }
+                      }
+                    },
+                    "required": [
+                      "categoryIds",
+                      "serviceIds"
+                    ]
+                  },
+                  "active": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "cardTypeIds",
+                  "valueType",
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Мастер из 5 шагов фронта — одна форма, один POST",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/promotions/{id}": {
+      "patch": {
+        "operationId": "LoyaltyController_updatePromotion",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "discountFixed",
+                      "discountAccumVisits",
+                      "discountAccumSum",
+                      "discountConditional",
+                      "cashbackFixed",
+                      "cashbackAccumVisits",
+                      "cashbackAccumSum",
+                      "cashbackVisit"
+                    ]
+                  },
+                  "cardTypeIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "valueType": {
+                    "type": "string",
+                    "enum": [
+                      "percent",
+                      "fixed"
+                    ]
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  },
+                  "thresholds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "value": {
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "value"
+                      ]
+                    }
+                  },
+                  "serviceScope": {
+                    "type": "object",
+                    "properties": {
+                      "categoryIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        }
+                      },
+                      "serviceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        }
+                      }
+                    },
+                    "required": [
+                      "categoryIds",
+                      "serviceIds"
+                    ]
+                  },
+                  "active": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "delete": {
+        "operationId": "LoyaltyController_deletePromotion",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/bookings/{bookingId}/apply": {
+      "post": {
+        "operationId": "LoyaltyController_applyToBooking",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "lines": {
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": [
+                            "card_bonus",
+                            "certificate",
+                            "membership",
+                            "personal_account"
+                          ]
+                        },
+                        "refId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000000000000
+                        }
+                      },
+                      "required": [
+                        "method",
+                        "refId",
+                        "amount"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "lines"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Строки оплаты «лояльностью» — списывает бонусы/сертификат/абонемент/счёт",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/transactions": {
+      "get": {
+        "operationId": "LoyaltyController_listTx",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/referral": {
+      "get": {
+        "operationId": "LoyaltyController_getReferral",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "put": {
+        "operationId": "LoyaltyController_setReferral",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "giverReward": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "receiverReward": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "giverReward",
+                  "receiverReward"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/certificate-types": {
+      "get": {
+        "operationId": "LoyaltyController_listCertTypes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "post": {
+        "operationId": "LoyaltyController_createCertType",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "faceValue": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000000000
+                  },
+                  "validDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3650
+                  },
+                  "networkWide": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "faceValue",
+                  "validDays"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/certificate-types/{id}": {
+      "patch": {
+        "operationId": "LoyaltyController_updateCertType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "faceValue": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000000000
+                  },
+                  "validDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3650
+                  },
+                  "networkWide": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "delete": {
+        "operationId": "LoyaltyController_deleteCertType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/certificate-types/{id}/archive": {
+      "put": {
+        "operationId": "LoyaltyController_archiveCertType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "archived": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "archived"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/certificates": {
+      "post": {
+        "operationId": "LoyaltyController_sellCertificate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "typeId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "appUserId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "total": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  }
+                },
+                "required": [
+                  "typeId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/certificate-requests": {
+      "get": {
+        "operationId": "LoyaltyController_listCertificateRequests",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "В-17: заявки клиентов «ждут подтверждения»",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/certificates/{id}/confirm": {
+      "post": {
+        "operationId": "LoyaltyController_confirmCertificate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "В-17: «Подтвердить оплату» заявки из приложения",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/certificates/{id}/reject": {
+      "post": {
+        "operationId": "LoyaltyController_rejectCertificate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/certificates/{id}/refund": {
+      "post": {
+        "operationId": "LoyaltyController_refundCertificate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/membership-types": {
+      "get": {
+        "operationId": "LoyaltyController_listMembershipTypes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "post": {
+        "operationId": "LoyaltyController_createMembershipType",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "totalVisits": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "price": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000000000
+                  },
+                  "validDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3650
+                  },
+                  "serviceIds": {
+                    "default": [],
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "networkWide": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "price",
+                  "validDays"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/membership-types/{id}": {
+      "patch": {
+        "operationId": "LoyaltyController_updateMembershipType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "totalVisits": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "price": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000000000
+                  },
+                  "validDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3650
+                  },
+                  "serviceIds": {
+                    "default": [],
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "networkWide": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "delete": {
+        "operationId": "LoyaltyController_deleteMembershipType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/membership-types/{id}/archive": {
+      "put": {
+        "operationId": "LoyaltyController_archiveMembershipType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "archived": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "archived"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/membership-requests": {
+      "get": {
+        "operationId": "LoyaltyController_listMembershipRequests",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "В-17: заявки клиентов «ждут подтверждения»",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/memberships": {
+      "post": {
+        "operationId": "LoyaltyController_sellMembership",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "typeId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "appUserId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "typeId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/memberships/{id}/confirm": {
+      "post": {
+        "operationId": "LoyaltyController_confirmMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/memberships/{id}/reject": {
+      "post": {
+        "operationId": "LoyaltyController_rejectMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/memberships/{id}/freeze": {
+      "post": {
+        "operationId": "LoyaltyController_freezeMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "toAt": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "toAt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/memberships/{id}/unfreeze": {
+      "post": {
+        "operationId": "LoyaltyController_unfreezeMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/memberships/{id}/refund": {
+      "post": {
+        "operationId": "LoyaltyController_refundMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/account-types": {
+      "get": {
+        "operationId": "LoyaltyController_listAccountTypes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "post": {
+        "operationId": "LoyaltyController_createAccountType",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "networkWide": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/account-types/{id}": {
+      "patch": {
+        "operationId": "LoyaltyController_updateAccountType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "networkWide": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "delete": {
+        "operationId": "LoyaltyController_deleteAccountType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/account-types/{id}/archive": {
+      "put": {
+        "operationId": "LoyaltyController_archiveAccountType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "archived": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "archived"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/clients/{clientId}/accounts": {
+      "get": {
+        "operationId": "LoyaltyController_listClientAccounts",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      },
+      "post": {
+        "operationId": "LoyaltyController_openAccount",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/accounts/{id}/topup": {
+      "post": {
+        "operationId": "LoyaltyController_topupAccount",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000000000
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 400
+                  },
+                  "bookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "amount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/accounts/{id}/refund": {
+      "post": {
+        "operationId": "LoyaltyController_refundAccount",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000000000
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 400
+                  },
+                  "bookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "amount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
     "/v1/public/b/{slug}": {
       "get": {
         "operationId": "PublicOnlineController_business",
@@ -34066,6 +36802,156 @@
           }
         ],
         "summary": "Сторис на главной — заводит нашa панель (этап 19), пока честно пусто",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/loyalty": {
+      "get": {
+        "operationId": "MeController_myLoyalty",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Мои карты/сертификаты/абонементы/счета в этом бизнесе (В-06/В-09)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/loyalty/buyable": {
+      "get": {
+        "operationId": "MeController_myLoyaltyBuyable",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Что можно купить в приложении (типы сертификатов/абонементов, В-17)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/loyalty/certificates": {
+      "post": {
+        "operationId": "MeController_requestCertificate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "businessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "typeId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "businessId",
+                  "typeId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "В-17: заявка на сертификат — «ждёт подтверждения»",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/loyalty/memberships": {
+      "post": {
+        "operationId": "MeController_requestMembership",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "businessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "typeId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "businessId",
+                  "typeId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "В-17: заявка на абонемент — «ждёт подтверждения»",
         "tags": [
           "client"
         ]

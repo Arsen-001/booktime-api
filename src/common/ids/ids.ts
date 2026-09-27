@@ -83,6 +83,21 @@ export const ID_PREFIX = {
   // этап 10 — уведомления: очередь/журнал отправок, новости
   notifyOutbox: 'nto',
   newsPost: 'nws',
+  // этап 11 — лояльность: только на сервере (как этапы 5/9) — мок фронта не резервирует префиксы для
+  // loyalty в core.ts (id там произвольные строки), поэтому префиксы свои: тип карты lct, карта lc,
+  // акция lp, движение ltx, тип/сертификат lctt/lcert, тип/абонемент lmt/lm(+freeze lmf), тип/счёт lat/la(+lao)
+  loyaltyCardType: 'lct',
+  loyaltyCard: 'lc',
+  promotion: 'lp',
+  loyaltyTx: 'ltx',
+  certificateType: 'lctt',
+  certificate: 'lcert',
+  membershipType: 'lmt',
+  membershipSale: 'lm',
+  membershipFreeze: 'lmf',
+  clientAccountType: 'lat',
+  clientAccount: 'la',
+  clientAccountOp: 'lao',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

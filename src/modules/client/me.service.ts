@@ -8,6 +8,7 @@ import { Prisma, type Booking as BookingRow } from '../../generated/prisma/clien
 import { businessView, locationView } from '../businesses/views.js';
 import { BookingsService, clientActor, type PlaceInput } from '../journal/bookings.service.js';
 import { canReschedule, clientCancelOutcome, effectiveBookingRules, isCancelled, type BookingRules } from '../journal/rules.js';
+import { MeLoyaltyService } from '../loyalty/me-loyalty.service.js';
 import { sanitizePublicStaff } from '../online/online.service.js';
 import { serviceView } from '../services/services.views.js';
 
@@ -38,7 +39,26 @@ export class MeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly bookings: BookingsService,
+    private readonly loyalty: MeLoyaltyService,
   ) {}
+
+  // ─────────────────────────── лояльность (F-06-156…163, В-17, этап 11) ───────────────────────────
+
+  myLoyalty(userId: string, businessId: string) {
+    return this.loyalty.getMine(userId, businessId);
+  }
+
+  myLoyaltyBuyable(businessId: string) {
+    return this.loyalty.listBuyable(businessId);
+  }
+
+  requestCertificate(userId: string, businessId: string, typeId: string) {
+    return this.loyalty.requestCertificate(userId, businessId, typeId);
+  }
+
+  requestMembership(userId: string, businessId: string, typeId: string) {
+    return this.loyalty.requestMembership(userId, businessId, typeId);
+  }
 
   // ─────────────────────────── запись из приложения (F-00-031, F-00-092/093/097) ───────────────────────────
 

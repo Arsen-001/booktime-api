@@ -7,6 +7,7 @@ import { OccupyService } from '../modules/availability/occupy.js';
 import { BookingsService, SYSTEM_ACTOR } from '../modules/journal/bookings.service.js';
 import { JournalSettingsService } from '../modules/journal/journal-settings.js';
 import { SeriesService } from '../modules/journal/series.service.js';
+import { LoyaltyProgramService } from '../modules/loyalty/loyalty-program.service.js';
 
 /**
  * Фоновые задачи журнала (PLAN §6 №7, Р10) в воркере — те же сервисы, что у API, собранные без Nest:
@@ -17,7 +18,7 @@ import { SeriesService } from '../modules/journal/series.service.js';
 export function journalServices(prisma: PrismaService, redis: Redis) {
   const live = new LiveService(redis);
   const availability = new AvailabilityService(prisma, redis, live);
-  const bookings = new BookingsService(prisma, new OccupyService(), availability, new AuditService(), live, new JournalSettingsService(prisma));
+  const bookings = new BookingsService(prisma, new OccupyService(), availability, new AuditService(), live, new JournalSettingsService(prisma), new LoyaltyProgramService(prisma, new AuditService()));
   const series = new SeriesService(bookings, availability);
   return { bookings, series, live };
 }
