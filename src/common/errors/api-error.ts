@@ -107,6 +107,11 @@ export const ERROR_STATUS = {
   membership_frozen: HttpStatus.CONFLICT,
   already_confirmed: HttpStatus.CONFLICT,
   duplicate_number: HttpStatus.CONFLICT,
+  // финансы и касса (этап 12) — как в моке фронта (src/api/finance.ts)
+  invalid_amount: HttpStatus.UNPROCESSABLE_ENTITY,
+  system_item: HttpStatus.CONFLICT,
+  already_cancelled: HttpStatus.CONFLICT,
+  over_refund: HttpStatus.UNPROCESSABLE_ENTITY,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

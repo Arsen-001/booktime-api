@@ -2001,3 +2001,201 @@ model ClientAccountOp {
   @@index([accountId])
   @@map("client_account_ops")
 }
+
+// ─────────────────────────── Этап 12 — финансы и касса (docs/backend/02-api.md §12) ───────────────────────────
+
+/// Касса/счёт бизнеса (F-07-001…006, 01 §12 cash_registers)
+model CashRegister {
+  id              String    @id @db.VarChar(32)
+  businessId      String    @map("business_id") @db.VarChar(32)
+  locationId      String    @map("location_id") @db.VarChar(32)
+  name            String    @db.VarChar(120)
+  /// cash | card | other
+  kind            String    @default("cash") @db.VarChar(8)
+  openingBalance  BigInt    @default(0) @map("opening_balance")
+  note            String?   @db.VarChar(400)
+  order           Int       @default(0)
+  /// Заведена автосидом филиала (F-07-002) — экран не предлагает «Удалить»
+  systemGenerated Boolean   @default(false) @map("system_generated")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy       String?   @map("created_by") @db.VarChar(32)
+  updatedBy       String?   @map("updated_by") @db.VarChar(32)
+  version         Int       @default(1)
+
+  @@index([businessId, order])
+  @@index([locationId])
+  @@map("cash_registers")
+}
+
+/// Статья прихода/расхода (F-07-007…009) — 13 системных заведены сидом (SYSTEM_ITEM_KEYS фронта), остальные свои
+model PaymentItem {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  name       String   @db.VarChar(120)
+  /// income | expense
+  kind       String   @db.VarChar(8)
+  comment    String?  @db.VarChar(400)
+  /// Системный ключ — не даёт удалить (только переименовать); null у своих статей бизнеса
+  systemKey  String?  @map("system_key") @db.VarChar(24)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  @@unique([businessId, systemKey])
+  @@index([businessId])
+  @@map("payment_items")
+}
+
+/// Способ оплаты визита (F-07-025…035 упрощённо — без брендов карты/рассрочки/долевой комиссии, см. PROGRESS.md
+/// этапа 12): плитка окна оплаты, привязана к кассе. 'cash'/'card' сидуются автоматически, остальное — свои методы
+model PaymentMethod {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// Ключ плитки (BookingPayment.methodKey): 'cash' | 'card' | id своего метода
+  key        String   @db.VarChar(32)
+  label      String   @db.VarChar(80)
+  /// cash | card | custom
+  kind       String   @default("custom") @db.VarChar(8)
+  feePercent Int      @default(0) @map("fee_percent")
+  accountId  String?  @map("account_id") @db.VarChar(32)
+  active     Boolean  @default(true)
+  order      Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  @@unique([businessId, key])
+  @@index([businessId, order])
+  @@map("payment_methods")
+}
+
+/// Контрагент (F-07-019…023)
+model FinCounterparty {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// supplier | company | person | other
+  type       String   @db.VarChar(10)
+  name       String   @db.VarChar(160)
+  inn        String?  @db.VarChar(32)
+  phone      String?  @db.VarChar(16)
+  email      String?  @db.VarChar(160)
+  contact    String?  @db.VarChar(160)
+  note       String?  @db.VarChar(400)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  @@index([businessId])
+  @@map("fin_counterparties")
+}
+
+/// Финансовая операция — движение по кассе (F-07-010…018, 01 §12 fin_ops)
+model FinOp {
+  id               String    @id @db.VarChar(32)
+  businessId       String    @map("business_id") @db.VarChar(32)
+  locationId       String    @map("location_id") @db.VarChar(32)
+  accountId        String    @map("account_id") @db.VarChar(32)
+  itemId           String    @map("item_id") @db.VarChar(32)
+  /// income | expense | transfer_out | transfer_in
+  kind             String    @db.VarChar(12)
+  amount           BigInt
+  /// Момент операции (может отличаться от createdAt при ручном вводе задним числом)
+  date             DateTime  @db.DateTime(3)
+  /// cash | card | transfer | other
+  method           String    @db.VarChar(8)
+  /// counterparty | client | staff | none
+  partyType        String    @default("none") @map("party_type") @db.VarChar(12)
+  partyId          String?   @map("party_id") @db.VarChar(32)
+  /// Имя стороны на момент операции — переживает удаление контрагента/клиента
+  partyName        String?   @map("party_name") @db.VarChar(160)
+  comment          String?   @db.VarChar(400)
+  /// manual | booking | transfer | import | sale | payroll | account
+  source           String    @default("manual") @db.VarChar(10)
+  /// bookingId для операций из журнала
+  refId            String?   @map("ref_id") @db.VarChar(32)
+  docNumber        String?   @map("doc_number") @db.VarChar(20)
+  /// Что оплачено — денормализовано на момент операции (услуга визита, товар…)
+  lineLabel        String?   @map("line_label") @db.VarChar(160)
+  /// Пара операции перевода между кассами — у обеих одинаковый id
+  transferGroupId  String?   @map("transfer_group_id") @db.VarChar(32)
+  /// Комиссия эквайринга, привязанная к этой операции
+  feeOperationId   String?   @map("fee_operation_id") @db.VarChar(32)
+  /// Эта операция — комиссия другой
+  feeOfOperationId String?   @map("fee_of_operation_id") @db.VarChar(32)
+  /// Исходная операция возврата (частичный возврат без отмены продажи, F-07-072)
+  refundOfId       String?   @map("refund_of_id") @db.VarChar(32)
+  refundedAmount   BigInt    @default(0) @map("refunded_amount")
+  cancelled        Boolean   @default(false)
+  cancelledAt      DateTime? @map("cancelled_at") @db.DateTime(3)
+  cancelledBy      String?   @map("cancelled_by") @db.VarChar(32)
+  /// OperationHistoryEntry[] фронта — {at, by, action, field?, from?, to?}
+  history          Json
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy        String?   @map("created_by") @db.VarChar(32)
+  updatedBy        String?   @map("updated_by") @db.VarChar(32)
+  version          Int       @default(1)
+
+  @@index([businessId, date])
+  @@index([accountId, date])
+  @@index([itemId])
+  @@index([refId])
+  @@index([transferGroupId])
+  @@index([partyType, partyId])
+  @@map("fin_ops")
+}
+
+/// Документ (F-07-024) — рождается вместе с операцией продажи/оплаты визита/возврата; ручного создания нет
+model FinanceDocument {
+  id             String   @id @db.VarChar(32)
+  businessId     String   @map("business_id") @db.VarChar(32)
+  number         String   @db.VarChar(20)
+  date           DateTime @db.DateTime(3)
+  /// sale | refund | supply | payment | visit | other
+  type           String   @db.VarChar(10)
+  /// services | goods | consumables
+  contentKind    String?  @map("content_kind") @db.VarChar(12)
+  amount         BigInt
+  refOperationId String?  @map("ref_operation_id") @db.VarChar(32)
+  refBookingId   String?  @map("ref_booking_id") @db.VarChar(32)
+  note           String?  @db.VarChar(400)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy      String?  @map("created_by") @db.VarChar(32)
+  updatedBy      String?  @map("updated_by") @db.VarChar(32)
+  version        Int      @default(1)
+
+  @@index([businessId, date])
+  @@index([refBookingId])
+  @@map("finance_documents")
+}
+
+/// Строка оплаты визита по услуге (F-07-036…050/181/184) — привязана к booking.services[serviceIndex]
+model BookingPayment {
+  id           String    @id @db.VarChar(32)
+  businessId   String    @map("business_id") @db.VarChar(32)
+  bookingId    String    @map("booking_id") @db.VarChar(32)
+  serviceIndex Int?      @map("service_index")
+  /// money | discount | account — этот этап пишет только money; discount/account — раздел «лояльность» (этап 11)
+  kind         String    @default("money") @db.VarChar(10)
+  methodKey    String    @map("method_key") @db.VarChar(32)
+  methodLabel  String    @map("method_label") @db.VarChar(80)
+  accountId    String?   @map("account_id") @db.VarChar(32)
+  amount       BigInt
+  finOpId      String?   @map("fin_op_id") @db.VarChar(32)
+  cancelled    Boolean   @default(false)
+  cancelledAt  DateTime? @map("cancelled_at") @db.DateTime(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy    String?   @map("created_by") @db.VarChar(32)
+
+  @@index([businessId, bookingId])
+  @@index([finOpId])
+  @@map("booking_payments")
+}

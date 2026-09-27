@@ -5,6 +5,7 @@ import { PrismaService } from '../src/common/prisma.service.js';
 import { norm } from '../src/common/text.js';
 import { localToUtc, utcToLocalDate } from '../src/common/time/time.js';
 import { hashPassword } from '../src/modules/auth/passwords.js';
+import { SYSTEM_ITEMS } from '../src/modules/finance/finance-catalog.service.js';
 import { loadMockCore } from './seed/mock-core.js';
 
 /**
@@ -885,6 +886,79 @@ await prisma.client.createMany({
     accounts++;
   }
   console.log(`seed: лояльность — типов карт ${cardTypes}, сертификатов ${certs}, абонементов ${memberships}, счетов ${accounts}`);
+}
+
+// ─────────── этап 12: финансы и касса — 15 системных статей, кассы «Наличные»/«Карта» на филиал, методы
+// оплаты cash/card, и одна реальная оплата визита на бизнес (чтобы касса дня/отчёты не были пустыми). Идемпотентно
+// через проверку «уже есть» — как ensureDefaults самого раздела (FinanceCatalogService), не через upsert-по-id,
+// потому что у cash_registers/payment_methods естественный ключ — (businessId/locationId), а не выдуманный id. ───
+{
+  let itemsCreated = 0;
+  let registersCreated = 0;
+  let methodsCreated = 0;
+  let paymentsCreated = 0;
+  for (const b of core.businesses) {
+    const bizLocations = locations.filter((l) => String(l.businessId) === b.id);
+    const hasItems = (await prisma.paymentItem.count({ where: { businessId: b.id } })) > 0;
+    if (!hasItems) {
+      await prisma.paymentItem.createMany({
+        data: Object.entries(SYSTEM_ITEMS).map(([systemKey, v]) => ({ id: `fitem_${b.id}_${systemKey}`.slice(0, 32), businessId: b.id, name: v.name, kind: v.kind, systemKey, createdBy: 'seed', updatedBy: 'seed' })),
+      });
+      itemsCreated += Object.keys(SYSTEM_ITEMS).length;
+    }
+    let order = 0;
+    for (const loc of bizLocations) {
+      const hasRegister = (await prisma.cashRegister.count({ where: { locationId: String(loc.id) } })) > 0;
+      if (hasRegister) continue;
+      const cashId = `fr_${String(loc.id)}_cash`.slice(0, 32);
+      const cardId = `fr_${String(loc.id)}_card`.slice(0, 32);
+      await prisma.cashRegister.createMany({
+        data: [
+          { id: cashId, businessId: b.id, locationId: String(loc.id), name: 'Основная касса', kind: 'cash', order: order++, systemGenerated: true, createdBy: 'seed', updatedBy: 'seed' },
+          { id: cardId, businessId: b.id, locationId: String(loc.id), name: 'Расчётный счёт', kind: 'card', order: order++, systemGenerated: true, createdBy: 'seed', updatedBy: 'seed' },
+        ],
+      });
+      registersCreated += 2;
+    }
+    const hasMethods = (await prisma.paymentMethod.count({ where: { businessId: b.id } })) > 0;
+    if (!hasMethods) {
+      const firstCash = await prisma.cashRegister.findFirst({ where: { businessId: b.id, kind: 'cash' }, orderBy: { order: 'asc' } });
+      const firstCard = await prisma.cashRegister.findFirst({ where: { businessId: b.id, kind: 'card' }, orderBy: { order: 'asc' } });
+      await prisma.paymentMethod.createMany({
+        data: [
+          { id: `fpm_${b.id}_cash`.slice(0, 32), businessId: b.id, key: 'cash', label: 'Наличные', kind: 'cash', accountId: firstCash?.id ?? null, order: 0, createdBy: 'seed', updatedBy: 'seed' },
+          { id: `fpm_${b.id}_card`.slice(0, 32), businessId: b.id, key: 'card', label: 'Банковская карта', kind: 'card', accountId: firstCard?.id ?? null, order: 1, createdBy: 'seed', updatedBy: 'seed' },
+        ],
+      });
+      methodsCreated += 2;
+    }
+    // Одна реальная оплата — первый «пришедший» визит этого бизнеса с суммой и без оплаты ещё
+    const candidate = (core.bookings ?? []).find((bk) => String(bk.businessId) === b.id && String(bk.status) === 'arrived' && Number(bk.total ?? 0) > 0);
+    if (candidate) {
+      const bookingRow = await prisma.booking.findUnique({ where: { id: String(candidate.id) } });
+      if (bookingRow && bookingRow.paidAmount === 0n) {
+        const already = (await prisma.bookingPayment.count({ where: { bookingId: bookingRow.id } })) > 0;
+        if (!already) {
+          const cash = await prisma.cashRegister.findFirst({ where: { businessId: b.id, kind: 'cash' } });
+          const item = await prisma.paymentItem.findFirst({ where: { businessId: b.id, systemKey: 'servicePayment' } });
+          if (cash && item) {
+            const opId = `fop_${bookingRow.id}`.slice(0, 32);
+            const payId = `pay_${bookingRow.id}`.slice(0, 32);
+            const at = now;
+            await prisma.finOp.create({
+              data: { id: opId, businessId: b.id, locationId: bookingRow.locationId, accountId: cash.id, itemId: item.id, kind: 'income', amount: bookingRow.total, date: at, method: 'cash', partyType: bookingRow.clientId ? 'client' : 'none', partyId: bookingRow.clientId, source: 'booking', refId: bookingRow.id, docNumber: String(700_000_000 + Math.floor(Math.random() * 99_999_999)), lineLabel: 'Оплата визита', history: [{ at: at.toISOString(), by: 'seed', action: 'created' }] as Prisma.InputJsonValue, createdBy: 'seed', updatedBy: 'seed' },
+            });
+            await prisma.bookingPayment.create({ data: { id: payId, businessId: b.id, bookingId: bookingRow.id, serviceIndex: 0, kind: 'money', methodKey: 'cash', methodLabel: 'Наличные', accountId: cash.id, amount: bookingRow.total, finOpId: opId, createdBy: 'seed' } });
+            const extras = (bookingRow.extras && typeof bookingRow.extras === 'object' ? bookingRow.extras : {}) as Record<string, unknown>;
+            const payments = [...((extras.payments as unknown[]) ?? []), { id: payId, method: 'cash', amount: Number(bookingRow.total), label: 'Наличные', at: utcToLocalDate(at) }];
+            await prisma.booking.update({ where: { id: bookingRow.id }, data: { extras: { ...extras, payments, paidAmount: Number(bookingRow.total) } as Prisma.InputJsonValue, paidAmount: bookingRow.total } });
+            paymentsCreated++;
+          }
+        }
+      }
+    }
+  }
+  console.log(`seed: финансы — статей ${itemsCreated}, касс ${registersCreated}, методов оплаты ${methodsCreated}, оплат визита ${paymentsCreated}`);
 }
 
 console.log(

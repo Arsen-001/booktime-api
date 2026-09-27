@@ -98,6 +98,15 @@ export const ID_PREFIX = {
   clientAccountType: 'lat',
   clientAccount: 'la',
   clientAccountOp: 'lao',
+  // этап 12 — финансы и касса: только на сервере (как этапы 5/9/11) — мок фронта хранит id операций
+  // произвольными строками, поэтому префиксы свои: касса fr, статья fitem, операция fop, контрагент fcp,
+  // документ fdoc, метод оплаты fpm, строка оплаты визита — уже 'pay' (этап 7)
+  cashRegister: 'fr',
+  paymentItem: 'fitem',
+  finOp: 'fop',
+  finCounterparty: 'fcp',
+  financeDocument: 'fdoc',
+  paymentMethod: 'fpm',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;
