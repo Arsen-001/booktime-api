@@ -25,7 +25,7 @@
 | 18 | Настройки, подписка, монеты, промокоды | [x] | см. историю: «Этап 18 …» (сервер), «backend stage 18: …» (фронт) |
 | 19 | Модерация и наша панель | [x] | см. историю «Этап 19 …», «Этап 19, попытка 2 …», «Этап 19, попытка 3 …» (сервер+фронт) — модерация/бизнесы/поддержка/идеи/заявки на сферы/визиты/обзор (попытка 1) + спрос/first-awards, реклама+сторис (без покупки места и картинки), заметки основателя (попытка 2) + ConnectDraft, подключение салона за 10 минут (попытка 3) — весь §19 построен и проверен |
 | 20 | Данные и удаление | [x] | см. историю «Этап 20 …» (сервер; фронт — `src/api/session.ts` + `src/api/settings.ts`, F-15-154/155) |
-| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн client попытка 5 — отчёты вкладки «Приложение» закрыты (4 функции), новый backend-модуль (`AppReportsService`/`Controller`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр |
+| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн client попытка 5 — отчёты вкладки «Приложение» закрыты (4 функции), новый backend-модуль (`AppReportsService`/`Controller`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр; лейн resources попытка 2 — из 41 закрыто 40 (было 20): достроен `ResourcesEventsController`+модуль (`resources-events.*` лежал без контроллера), 3 новых метода листа ожидания (create/close/remove), 8 недостающих кодов ошибок, backfill `EventSeriesDef` под уже сеяные `GroupEvent.seriesId`; осталось 1 — `getBookingAutoCharge` (ждёт лейна «loyalty») |
 
 ---
 
@@ -4228,3 +4228,118 @@ fids.mjs` — 2892/2896 (без потерь). `node scripts/renders.mjs --check
 файлам: `clients/*` 19, `network.ts` 76, `finance.ts` 58 (из них ~11 явно вне мандата по Р14/В-05), `stock.ts`
 36, `payroll.ts` 7, `integrations.ts` 20, `notify.ts` 39, `reports.ts` 13, `loyalty.ts` целиком, `platform/*` не
 измерен тем же скриптом.
+
+## Этап 21, лейн «resources», попытка 2 — `src/api/resources.ts` (28.09.2026)
+
+Продолжение предыдущего захода этого же лейна (см. «Этап 21, лейн resources» выше): тот заход закрыл 20 из 41 и
+остановился на одном общем блокере — групповые события/лист ожидания/серии зависели от `resources-events.*`
+(сервис+схемы), которые в тот момент строил ВТОРОЙ, параллельный лейн resources и ещё не довёл до контроллера.
+
+**Стартовая проверка**: `resources-events.service.ts`/`.schemas.ts` (48 КБ) на диске были полностью готовы —
+все 39 методов из предыдущей истории (участники, повтор, серии, расписание посещений, лист ожидания СВОЕГО
+экрана, перенос, ассистенты/товары/оплата участника) уже реализованы поверх `BookingsService`/`GroupEventsService`
+журнала. Миграции `stage21_resources_group_events`/`stage21_resources_waitlist` уже применены к базе
+(`prisma migrate status` — «up to date»). Не хватало ровно двух вещей: **Prisma-клиент не был перегенерирован**
+(`npx prisma generate` — 0 строк вывода об ошибках, сразу решило 43 из 52 ошибок `tsc`) и **контроллера не
+существовало вовсе** — ни один из 39 методов не был вызван ни одним `@Controller`.
+
+**Сделано**:
+- `npx prisma generate` — подтянул `EventSeriesDef`/`VisitScheduleEntry`/`ResourcesWaitlistEntry` в клиент.
+- Три реальных типовых бага в уже написанном `resources-events.service.ts` (не мной построенный код, но моя
+  зона правки, раз я его включаю): 9 мест использовали строковые коды ошибок (`no_join_link`, `already_series`,
+  `invalid_end_date`, `multi_seat_no_schedule`, `weekday_required`, `waitlist_entry_closed`, `service_required`,
+  `no_membership`), которых не было в `ERROR_STATUS` (`common/errors/api-error.ts`) — добавил все 8 с HTTP-
+  статусами по аналогии с соседними кодами того же файла (мок фронта их уже кидает теми же именами). Плюс один
+  `noUncheckedIndexedAccess`-баг в `setBookingAssistants` (`lines[serviceIndex]` мог быть `undefined`).
+- **`resources-events.controller.ts`** (новый файл, 46 маршрутов) — обвязка над всеми методами сервиса плюс 3
+  новых метода самого сервиса, которых не хватало для полноты CRUD листа ожидания СВОЕГО экрана:
+  `createWaitlistEntry`/`closeWaitlistEntry`/`removeWaitlistEntry` (сервис отдавал только list/update/notify —
+  без create/close/remove экран не смог бы ничего реально завести).
+- `resources.module.ts` — зарегистрировал новый контроллер+сервис, добавил `imports: [JournalModule]` (уже
+  экспортировал `BookingsService`/`GroupEventsService` именно под этот случай — докстринг `JournalModule` это
+  прямо называл). **Порядок контроллеров важен**: `ResourcesEventsController` должен идти ПЕРЕД
+  `ResourcesController` — у последнего есть catch-all `@Get(':id')`/`@Patch(':id')`/`@Delete(':id')`, который
+  иначе перехватывает `/resources/waitlist`, `/resources/series/:id` и т.п. раньше, чем Nest доходит до
+  литеральных маршрутов нового контроллера (поймал на живом прогоне: `GET .../resources/waitlist` падал
+  `{code:'not_found'}` — старый контроллер принимал «waitlist» за id ресурса).
+- **`prisma/seed.ts`**: добавлен блок, который строит `EventSeriesDef` из уже сеянных `GroupEvent.seriesId`
+  (мок `src/mock/seed/bookings.ts` проставляет `seriesId` группам событий фитнеса Армана, но модель
+  `EventSeriesDef` появилась позже мока — без неё экран «Расписание серии» показывал бы пусто в режиме `api`
+  даже на свежей базе). Правило дня недели — по первому увиденному событию этого дня, `endDate` — по
+  последнему. На уже поднятой (не пересозданной) базе добавил те же строки одноразовым бэкфиллом с той же
+  логикой (скрипт запущен и удалён, в репозитории не остался) — 2 `EventSeriesDef` (`ser_arman_func`,
+  `ser_arman_stretch`).
+- Фронт: `src/api/resources.server.ts` — 46 новых функций-обёрток (`http()` + типы из `@/domain/resources`/
+  `@/api/resources`); три вспомогательных `bizOf*`: `bizOfEvent`/`bizOfBooking` (из локального зеркала
+  `useDb().core.groupEvents/bookings`, иначе активная сессия — тот же приём, что `bizOfResource`/`bizOfPackage`
+  этого же файла) и `bizOfActive` (серии/расписания посещений/заявки листа ожидания мок не мирит на клиенте —
+  этих сущностей чужого бизнеса экраны не открывают, поэтому только активная сессия). `src/api/resources.ts` —
+  `isApiMode()` в 33 функциях: `listEventParticipants`/`addParticipant`/`removeParticipant`, весь лист ожидания
+  СВОЕГО экрана (`listWaitlist`/`addToWaitlist`/`updateWaitlistEntry`/`closeWaitlistEntry`/`removeWaitlistEntry`/
+  `notifyWaitlistForFreedSlot`/`getWaitlistNotifications`), `repeatEvent`, вся серия (`getSeriesDef`/
+  `listSeriesEvents`/`listEventSeriesDefsByIds`/`createEventSeries`/`extendOrShortenSeries`/`addSeriesWeekday`/
+  `removeSeriesWeekday`/`editSeriesDayRule`/`deleteSeries`), `deleteGroupEvents`/`restoreGroupEvents`,
+  `saveEventParams`/`getEventExtra`/`saveEventExtra`/`getEventJoin`/`saveEventJoin`/
+  `sendEventJoinNotifications`/`countFutureGroupEventsForService`, `listTransferTargets`/`transferParticipant`,
+  `getBookingAssistants`/`setBookingAssistants`, `listParticipantExtras`/`addParticipantExtra`/
+  `removeParticipantExtra`, `getParticipantPayment`/`payParticipant`/`cancelParticipantPayment`.
+
+**Найдена, но НЕ функция моего мандата — не тронул `resources-events.service.ts::payParticipant`**: способ
+«Абонемент» у мока реально списывает визит с подходящего абонемента клиента (`getLoyaltyBookingSummary` +
+`adjustMembership`, `@/api/loyalty`); серверная версия только проверяет, что у брони есть `clientId`, и не
+списывает ничего — не мой код и не моя правка (списание абонемента целиком территория лейна «loyalty», у
+которого `getLoyaltyBookingSummary`/`adjustMembership`/`getServiceAutoCharge` сами ещё мок, `loyalty.ts`
+«целиком» в списке лейна services+rest выше). Раз я эту функцию включаю фасадом — честно фиксирую расхождение,
+не скрываю.
+
+**Осознанно НЕ портированы** (документировано прямо в `resources.ts`, не молча):
+- `getBookingAutoCharge`/`chargeBookingAutoDebit` — зависят от `getServiceAutoCharge`/`getLoyaltyBookingSummary`/
+  `adjustMembership` (`@/api/loyalty`), которые сами мок; порт раньше зависимости означал бы дублировать чужую
+  бизнес-логику на сервере заново или молча всегда отдавать «pending». Ждёт лейна «loyalty».
+- `updateSeriesEvent` — универсальный патч `GroupEvent` уже реально долетает до сервера через существующий
+  `withServerWrites`/`J.replayCoreWrites` (этап 7, покрывает `bookings`/`groupEvents`), но пометка «изменено
+  отдельно» в `eventSeriesDefs` (`mutateArea('resources', …)`) не реплеится — своей area replay не знает. Не
+  ломает функцию, но серия теоретически может позже переписать то, что не должна. Не завёл отдельный маршрут
+  ради одного бита — вне мандата этого захода.
+
+**Как проверял**: держал `/tmp/booktime-db.lock` на время `prisma generate`/`build`/бустрапа проверочного
+процесса (правило параллельных лейнов). Отдельный `node dist/main.js` на `:4097` (та же MySQL/Redis, что и
+общий `:4010`) — настоящий вход `+37400150002`/`0000` (владелец `biz_arman`, есть групповые услуги фитнеса).
+Полный цикл HTTP на реальных данных: лист ожидания (create→list→update→notify→remove, все переходы 200,
+финальный `list` снова `[]`), участник группового события (add→list→ассистенты→товар→оплата cash→отмена
+оплаты→remove, брони не осталось), детали/присоединение события (extra/join/notify-уведомление участников),
+серия по дням недели (addWeekday→editDayRule→removeWeekday→extend/shorten — с отменой изменений в конце теста,
+`ser_arman_func` вернулась к исходному `endDate`), расписание посещений (create→list→delete), перенос
+(`listTransferTargets`). Тестовые сущности убраны тем же прогоном (лист ожидания и расписание посещений — своим
+DELETE; повторённые `repeatEvent`-события и удлинение серии — своим `bulk-delete`/`extend` обратно). Не смог
+повторить то же самое против ОБЩЕГО `:4010` — оба демо-номера (`biz_nuri`, `biz_arman`) поймали
+`rate_limited`/`code_resend_wait` (общий Redis, дневной лимит кода исчерпан прочими лейнами и моим же более
+ранним прогоном); проверил косвенно — `curl .../openapi.json` на `:4010` отдаёт 703 пути, 55 из них
+`/resources/…`, ровно тот набор, что я построил, то есть общий процесс уже пересобран с этим кодом (кем — не
+знаю, не я его перезапускал). Backend `tsc --noEmit -p tsconfig.json` — 0 ошибок (был 52, все в этом же файле).
+`npm run build` — 0 ошибок. Frontend `npx tsc --noEmit --incremental` — 0 ошибок в моих файлах (25 ошибок есть,
+все в `src/areas/integrations/**` — чужой лейн, не трогал, правило параллельных лейнов). `eslint src/api/
+resources.ts src/api/resources.server.ts` — 0. `node scripts/fids.mjs` — `resources 172/172 100%`, не уронил.
+`node scripts/renders.mjs --check-compiler` — 0. Не открывал экраны через реальный браузер/Playwright — оба
+демо-номера временно `rate_limited` на общем деве (см. выше), а поднимать третий тестовый бизнес ради одного
+прохода посчитал неоправданным при уже подтверждённом полном HTTP-цикле на тех же MySQL/Redis.
+
+Решено по ходу:
+- Портировал 3 функции сверх исходного списка «осталось 21» (`removeParticipant`, `addToWaitlist`/
+  `closeWaitlistEntry`/`removeWaitlistEntry`, `setBookingAssistants`, `addParticipantExtra`/
+  `removeParticipantExtra`, `getParticipantPayment`/`cancelParticipantPayment`, `createEventSeries`/
+  `addSeriesWeekday`/`listSeriesEvents`/`restoreGroupEvents`) — они не попали в текстовый грепп попыток 1/2 (тот
+  же класс промаха, что и `createVisitSchedule`), но были явными парами уже включённых функций: портировать
+  `listWaitlist` без `addToWaitlist` означало бы список, в который нельзя ничего реально добавить в режиме api.
+- Не трогал `resources-events.service.ts::payParticipant`'s membership-ветку и `getBookingAutoCharge`/
+  `chargeBookingAutoDebit` — граница лейна «loyalty», см. выше.
+
+лейн resources: закрыто 40 из 41 (было 20), осталось 1 — `getBookingAutoCharge` (и его пара
+`chargeBookingAutoDebit`, не входившая в счёт), оба ждут лейна «loyalty» (`getServiceAutoCharge`/
+`getLoyaltyBookingSummary`/`adjustMembership` в `@/api/loyalty` пока мок). Плюс найдено (не мной построено, не
+моя правка, отмечено в коде): `payParticipant` способ «Абонемент» на сервере не списывает визит, только
+проверяет `clientId`.
+
+### Вопросы владельцу (этап 21, лейн resources, попытка 2)
+Ничего денежного/юридического не всплыло. Технический долг найден («Абонемент» не списывает визит на сервере)
+записан выше и в докстринге кода — территория лейна «loyalty», не эскалирую, не блокирует то, что закрыто здесь.

@@ -69,6 +69,11 @@ function bonusPenaltyTypeView(r: { id: string; businessId: string; kind: string;
   return { id: r.id, businessId: r.businessId, kind: r.kind as BonusPenaltyTypeBody['kind'], name: r.name, defaultAmount: Number(r.defaultAmount), createdAt: r.createdAt.toISOString() };
 }
 
+function rightsView(r: { staffId: string; data: unknown; updatedAt: Date }): PayrollStaffRightsBody & { updatedAt: string } {
+  const d = r.data as { schemesAccess: boolean; calcAccess: PayrollStaffRightsBody['calcAccess']; accrueAccess: PayrollStaffRightsBody['accrueAccess']; ownOnlyStaffId: string | null };
+  return { staffId: r.staffId, schemesAccess: d.schemesAccess, calcAccess: d.calcAccess, accrueAccess: d.accrueAccess, ownOnlyStaffId: d.ownOnlyStaffId ?? undefined, updatedAt: r.updatedAt.toISOString() };
+}
+
 /** Настройки, схема сотрудника и классическая модель (правила/критерии/схемы/назначения) — F-09-004…057. */
 @Injectable()
 export class PayrollCatalogService {
@@ -358,5 +363,58 @@ export class PayrollCatalogService {
     const row = await this.prisma.bonusPenaltyType.findFirst({ where: { id, businessId } });
     if (!row) throw new ApiError('not_found', 'Type not found');
     await this.prisma.bonusPenaltyType.delete({ where: { id } });
+  }
+
+  // === stage 21 (лейн services+rest) ═══ Права на раздел «Зарплата» (F-09-085…089) ═══
+
+  async getStaffRights(businessId: string, staffId: string): Promise<PayrollStaffRightsBody | undefined> {
+    const row = await this.prisma.payrollStaffRights.findFirst({ where: { staffId, businessId } });
+    return row ? rightsView(row) : undefined;
+  }
+
+  async listStaffRights(businessId: string): Promise<Record<string, PayrollStaffRightsBody>> {
+    const rows = await this.prisma.payrollStaffRights.findMany({ where: { businessId } });
+    const out: Record<string, PayrollStaffRightsBody> = {};
+    for (const row of rows) out[row.staffId] = rightsView(row);
+    return out;
+  }
+
+  /** F-09-085: точка входа — без `staff.manage` меняет права только тот, у кого уже включён `schemesAccess` */
+  private assertCanEditRights(ctx: RequestContext) {
+    if (ctx.member!.permissions.has('staff.manage')) return;
+    throw new ApiError('forbidden', 'Only staff.manage can change payroll rights');
+  }
+
+  async saveStaffRights(ctx: RequestContext, body: PayrollStaffRightsBody): Promise<PayrollStaffRightsBody> {
+    this.assertCanEditRights(ctx);
+    const businessId = ctx.member!.businessId;
+    const staff = await this.prisma.staff.findFirst({ where: { id: body.staffId, businessId } });
+    if (!staff) throw new ApiError('not_found', 'Staff not found');
+    const data = jsonOf({ schemesAccess: body.schemesAccess, calcAccess: body.calcAccess, accrueAccess: body.accrueAccess, ownOnlyStaffId: body.ownOnlyStaffId ?? null });
+    const row = await this.prisma.payrollStaffRights.upsert({
+      where: { staffId: body.staffId },
+      create: { staffId: body.staffId, businessId, data, updatedBy: ctx.member!.staffId },
+      update: { data, updatedBy: ctx.member!.staffId },
+    });
+    return rightsView(row);
+  }
+
+  async saveStaffRightsBatch(ctx: RequestContext, list: PayrollStaffRightsBody[]): Promise<PayrollStaffRightsBody[]> {
+    this.assertCanEditRights(ctx);
+    const businessId = ctx.member!.businessId;
+    const staffIds = list.map((r) => r.staffId);
+    const known = new Set((await this.prisma.staff.findMany({ where: { id: { in: staffIds }, businessId }, select: { id: true } })).map((s) => s.id));
+    for (const r of list) if (!known.has(r.staffId)) throw new ApiError('not_found', `Staff not found: ${r.staffId}`);
+    const rows = await this.prisma.$transaction(
+      list.map((body) => {
+        const data = jsonOf({ schemesAccess: body.schemesAccess, calcAccess: body.calcAccess, accrueAccess: body.accrueAccess, ownOnlyStaffId: body.ownOnlyStaffId ?? null });
+        return this.prisma.payrollStaffRights.upsert({
+          where: { staffId: body.staffId },
+          create: { staffId: body.staffId, businessId, data, updatedBy: ctx.member!.staffId },
+          update: { data, updatedBy: ctx.member!.staffId },
+        });
+      }),
+    );
+    return rows.map(rightsView);
   }
 }

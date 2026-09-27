@@ -152,3 +152,16 @@ export type PayoutBody = z.infer<typeof payoutBody>;
 
 export const bulkApplySchemeBody = z.object({ staffIds: z.array(z.string().min(1)).min(1), defaultPercent: z.number().min(0).max(100) });
 export type BulkApplySchemeBody = z.infer<typeof bulkApplySchemeBody>;
+
+/** F-09-085…089: права на раздел «Зарплата» одного сотрудника (этап 21, лейн services+rest) */
+export const payrollStaffRightsBody = z.object({
+  staffId: z.string().min(1),
+  schemesAccess: z.boolean(),
+  calcAccess: z.enum(['none', 'today', 'all']),
+  accrueAccess: z.enum(['none', 'today', 'all']),
+  ownOnlyStaffId: z.string().min(1).optional(),
+});
+export type PayrollStaffRightsBody = z.infer<typeof payrollStaffRightsBody>;
+
+export const payrollStaffRightsBatchBody = z.object({ list: z.array(payrollStaffRightsBody).min(1) });
+export type PayrollStaffRightsBatchBody = z.infer<typeof payrollStaffRightsBatchBody>;
