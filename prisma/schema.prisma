@@ -2875,3 +2875,405 @@ model ReportExport {
   @@index([status])
   @@map("report_exports")
 }
+
+// === stage 17 ===
+// ───────────────────────── Этап 17: интеграции (docs/backend/02 §17, 01-data-model.md §13, PLAN §6 №17) ─────────────────────────
+// Р19: своё — настоящее (api_keys, webhooks+доставки), чужие — только «подключено/нет» + настройки без
+// настоящего обмена. Каталог сторонних приложений (имя/описание/цена/FAQ, ~40 карточек в 3 языках,
+// кабинет разработчика — В-28 «позже») НЕ переносится на сервер: это витринный контент, а не данные бизнеса,
+// и остаётся в src/mock/slices/integrations.ts фронта даже в режиме api (см. PROGRESS.md, «Не строил»).
+
+/// Своё — настоящее: API-ключи/токены для внешних систем (F-13-052 партнёрский Bearer, F-13-053 User token,
+/// F-13-071/072 ИИ-ассистент/MCP). Секрет живёт только в момент выпуска (arch-a1) — в базе sha256-хеш и
+/// превью последних 4 символов для списка (экран сам маскирует `token` через `maskToken()`, поэтому список
+/// отдаёт превью в том же поле — не различить от полноценного секрета на экране, см. PROGRESS.md).
+model ApiKey {
+  id           String    @id @db.VarChar(32)
+  businessId   String    @map("business_id") @db.VarChar(32)
+  /// partner | userToken | aiAssistant
+  kind         String    @db.VarChar(12)
+  label        String?   @db.VarChar(120)
+  /// aiAssistant: read | readWrite (F-13-072)
+  scope        String?   @db.VarChar(10)
+  tokenHash    String    @map("token_hash") @db.VarChar(64)
+  tokenPreview String    @map("token_preview") @db.VarChar(8)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy    String?   @map("created_by") @db.VarChar(32)
+  revokedAt    DateTime? @map("revoked_at") @db.DateTime(3)
+
+  @@index([businessId, kind])
+  @@map("api_keys")
+}
+
+/// Своё — настоящее: настройки вебхука бизнеса (F-13-062…070) — включено, какие из 16 сущностей, секрет
+/// подписи (HMAC-SHA256, заголовок X-BookTime-Signature). Один на бизнес.
+model Webhook {
+  businessId String   @id @map("business_id") @db.VarChar(32)
+  enabled    Boolean  @default(false)
+  /// WebhookEntity[] — 16 значений домена фронта (WEBHOOK_ENTITIES)
+  entities   Json
+  secret     String   @db.VarChar(64)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+
+  @@map("webhooks")
+}
+
+/// F-13-065: адреса, заданные до блокировки новых, продолжают работать («legacy»); экран не предлагает
+/// добавить новый (WEBHOOK_NEW_ADDRESS_BLOCKED фронта) — сервер тоже не создаёт их вне сида демо-бизнеса.
+model WebhookAddress {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  url        String   @db.VarChar(500)
+  legacy     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("webhook_addresses")
+}
+
+/// Журнал доставки — по-настоящему подписывается и отправляется `jobs/webhooks-dispatch.ts` (до 5 попыток,
+/// растущий отступ), но заполняется НЕ отдельной кнопкой экрана, а fan-out'ом прямо из AuditService.record
+/// (common/audit/webhook-fanout.ts) на события, которые уже пишут аудит (booking/client/staff/…). Экран
+/// показывает только `delivered`/`failed` — `pending` не выводится, чтобы не заводить третье состояние
+/// значка/i18n, которого нет в моке (см. PROGRESS.md).
+model WebhookDelivery {
+  id            String    @id @db.VarChar(32)
+  businessId    String    @map("business_id") @db.VarChar(32)
+  addressId     String    @map("address_id") @db.VarChar(32)
+  url           String    @db.VarChar(500)
+  entity        String    @db.VarChar(20)
+  action        String    @db.VarChar(8)
+  objectLabel   String    @map("object_label") @db.VarChar(200)
+  payload       Json
+  /// pending | delivered | failed
+  status        String    @default("pending") @db.VarChar(10)
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime? @map("next_attempt_at") @db.DateTime(3)
+  lastError     String?   @map("last_error") @db.VarChar(300)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  deliveredAt   DateTime? @map("delivered_at") @db.DateTime(3)
+
+  @@index([businessId, createdAt])
+  @@index([status, nextAttemptAt])
+  @@map("webhook_deliveries")
+}
+
+/// Чужие — статус и настройки БЕЗ настоящего обмена (Р19): подключение каталожного приложения к филиалу.
+/// `appId` — строковый код из каталога фронта (каталог остаётся там, см. заголовок блока) — 'ia_builtin_client'
+/// и т.п. для встроенных, случайный id мока для маркетплейса; сервер не проверяет его существование в
+/// каталоге (контента каталога здесь нет), только хранит статус.
+model IntegrationConnection {
+  id             String    @id @db.VarChar(32)
+  businessId     String    @map("business_id") @db.VarChar(32)
+  locationId     String    @map("location_id") @db.VarChar(32)
+  appId          String    @map("app_id") @db.VarChar(60)
+  /// pendingActivation | connected | error | disconnected | autoDisconnected
+  status         String    @db.VarChar(20)
+  grantedScopes  Json      @map("granted_scopes")
+  connectedAt    DateTime  @map("connected_at") @db.DateTime(3)
+  activatesBy    DateTime? @map("activates_by") @db.DateTime(3)
+  activatedAt    DateTime? @map("activated_at") @db.DateTime(3)
+  disconnectedAt DateTime? @map("disconnected_at") @db.DateTime(3)
+  paidUntil      DateTime? @map("paid_until") @db.DateTime(3)
+  systemUserId   String?   @map("system_user_id") @db.VarChar(32)
+  errorText      String?   @map("error_text") @db.VarChar(200)
+
+  @@index([businessId, locationId])
+  @@index([appId])
+  @@map("integration_connections")
+}
+
+// === stage 18 ===
+// ───────────────────────── Этап 18: настройки, подписка, монеты, промокоды (docs/backend/06 §2–5, 02 §18) ─────────────────────────
+
+/// Цены и сроки платформы (В-01: «цены храним в таблице, не в коде»; В-15, В-02). Ключи: individual, masterSeat,
+/// adminExtraSeat, minPaidMasters, coinPrice, graceDays, freeMonthDays, promoValidDays, photoSlotCoins.
+model PlatformPrice {
+  key       String   @id @db.VarChar(40)
+  value     BigInt
+  note      String?  @db.VarChar(200)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy String?  @map("updated_by") @db.VarChar(32)
+
+  @@map("platform_prices")
+}
+
+/// Объявленные изменения цен (F-15-048/056/066): действуют только с новой покупки
+model PriceRuleChange {
+  id             String   @id @db.VarChar(32)
+  /// 'YYYY-MM-DD' — с какого дня действует
+  effectiveFrom  String   @map("effective_from") @db.VarChar(10)
+  announcedAt    String   @map("announced_at") @db.VarChar(10)
+  descriptionKey String   @map("description_key") @db.VarChar(40)
+  oldPrice       BigInt   @map("old_price")
+  newPrice       BigInt   @map("new_price")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@map("price_rule_changes")
+}
+
+/// Подписка бизнеса (06 §3.2) — одна на бизнес; у филиала сети своя (филиал = бизнес).
+model Subscription {
+  businessId        String    @id @map("business_id") @db.VarChar(32)
+  /// unpaid (сам зарегистрировался, ещё не платил) | trial_free | active | grace | frozen | cancelled | left
+  status            String    @db.VarChar(12)
+  /// Конец оплаченного/бесплатного срока (UTC, начало следующего дня по Еревану)
+  paidUntil         DateTime  @map("paid_until") @db.DateTime(3)
+  freeUntil         DateTime? @map("free_until") @db.DateTime(3)
+  autoRenew         Boolean   @default(true) @map("auto_renew")
+  savedCardId       String?   @map("saved_card_id") @db.VarChar(32)
+  /// Промокод регистрации (В-13): снимок ступеней на момент применения — отзыв кода скидку не отнимает
+  promoRedemptionId String?   @map("promo_redemption_id") @db.VarChar(32)
+  promoCode         String?   @map("promo_code") @db.VarChar(40)
+  promoTiers        Json?     @map("promo_tiers")
+  /// Скидка потрачена на первую оплату (F-00-021) — дальше обычная цена
+  promoUsedAt       DateTime? @map("promo_used_at") @db.DateTime(3)
+  paymentDocsEmail  Boolean   @default(true) @map("payment_docs_email")
+  /// Отсрочка (В-02: 3 дня → только чтение)
+  graceUntil        DateTime? @map("grace_until") @db.DateTime(3)
+  /// За сколько дней уже предупредили (7/3/1) в текущем периоде — чтобы не слать дважды
+  warnedDays        Int?      @map("warned_days")
+  /// Следующая попытка списания после неудачи (раз в сутки)
+  retryAt           DateTime? @map("retry_at") @db.DateTime(3)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy         String?   @map("updated_by") @db.VarChar(32)
+  version           Int       @default(1)
+
+  @@index([status, paidUntil])
+  @@map("subscriptions")
+}
+
+/// Списание за подписку (06 §3.2) — строка «Истории лицензии» (F-15-072)
+model SubscriptionCharge {
+  id             String    @id @db.VarChar(32)
+  businessId     String    @map("business_id") @db.VarChar(32)
+  periodStart    DateTime  @map("period_start") @db.DateTime(3)
+  periodEnd      DateTime  @map("period_end") @db.DateTime(3)
+  months         Int
+  seatsMasters   Int       @map("seats_masters")
+  seatsAdmins    Int       @map("seats_admins")
+  baseAmount     BigInt    @map("base_amount")
+  discountPct    Int       @default(0) @map("discount_pct")
+  amount         BigInt
+  /// card | idram | telcell | invoice | promo | freeMonth | platform
+  method         String    @db.VarChar(12)
+  /// pending | paid | failed | refunded
+  status         String    @db.VarChar(10)
+  provider       String    @db.VarChar(12)
+  providerRef    String?   @map("provider_ref") @db.VarChar(80)
+  invoiceId      String?   @map("invoice_id") @db.VarChar(32)
+  /// auto — автопродление воркером; manual — «Оплатить»
+  trigger        String    @default("manual") @db.VarChar(8)
+  attemptedAt    DateTime  @default(now()) @map("attempted_at") @db.DateTime(3)
+  paidAt         DateTime? @map("paid_at") @db.DateTime(3)
+  createdBy      String?   @map("created_by") @db.VarChar(32)
+
+  @@index([businessId, attemptedAt])
+  @@map("subscription_charges")
+}
+
+/// Счёт/чек за подписку, монеты, рекламу (F-15-073/087/088, В-33: нефискальный документ)
+model BillingInvoice {
+  id         String    @id @db.VarChar(32)
+  businessId String    @map("business_id") @db.VarChar(32)
+  number     String    @unique @db.VarChar(20)
+  /// subscription | coins | ads
+  purpose    String    @db.VarChar(12)
+  amount     BigInt
+  /// paid | unpaid | cancelled
+  status     String    @db.VarChar(10)
+  periodFrom String?   @map("period_from") @db.VarChar(10)
+  periodTo   String?   @map("period_to") @db.VarChar(10)
+  method     String?   @db.VarChar(12)
+  /// Снимок реквизитов плательщика на момент выставления
+  payer      Json?
+  /// Что куплено за монеты: id пакета
+  refId      String?   @map("ref_id") @db.VarChar(32)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  paidAt     DateTime? @map("paid_at") @db.DateTime(3)
+
+  @@index([businessId, createdAt])
+  @@map("billing_invoices")
+}
+
+/// Счётчики нумерации (номер счёта) — строка на ключ, инкремент под блокировкой строки
+model BillingCounter {
+  key   String @id @db.VarChar(20)
+  value Int
+
+  @@map("billing_counters")
+}
+
+/// Сохранённый способ оплаты (06 §3.2): токен провайдера, маска
+model SavedCard {
+  id          String   @id @db.VarChar(32)
+  businessId  String   @map("business_id") @db.VarChar(32)
+  provider    String   @db.VarChar(12)
+  /// card | idram | telcell
+  method      String   @db.VarChar(12)
+  token       String   @db.VarChar(200)
+  label       String   @db.VarChar(40)
+  unavailable Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("saved_cards")
+}
+
+/// Бесплатные дни (06 §5): visit — подключили на визите, first — первому, promo, manual
+model FreePeriodGrant {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  days       Int
+  reason     String   @db.VarChar(8)
+  by         String   @db.VarChar(32)
+  note       String?  @db.VarChar(300)
+  at         DateTime @default(now()) @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("free_period_grants")
+}
+
+/// Промокод (06 §4.2, В-13: 10/15/25% за 3/6/12 мес., на один бизнес, 30 дней)
+model PromoCode {
+  id          String    @id @db.VarChar(32)
+  /// Всегда в верхнем регистре
+  code        String    @unique @db.VarChar(24)
+  /// discount | freeMonth
+  kind        String    @db.VarChar(10)
+  /// [{months, percent}]
+  tiers       Json
+  freeDays    Int?      @map("free_days")
+  personal    Boolean   @default(true)
+  /// {name, phone?, visitId?, businessId?}
+  issuedTo    Json?     @map("issued_to")
+  issuedAt    DateTime? @map("issued_at") @db.DateTime(3)
+  validUntil  String?   @map("valid_until") @db.VarChar(10)
+  revokedAt   DateTime? @map("revoked_at") @db.DateTime(3)
+  note        String?   @db.VarChar(300)
+  createdBy   String    @map("created_by") @db.VarChar(32)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@map("promo_codes")
+}
+
+/// Применение промокода — уникальный индекс держит «одноразовый» (два салона в одну секунду → второй promo_used)
+model PromoRedemption {
+  id          String   @id @db.VarChar(32)
+  promoCodeId String   @unique @map("promo_code_id") @db.VarChar(32)
+  businessId  String   @map("business_id") @db.VarChar(32)
+  redeemedAt  DateTime @default(now()) @map("redeemed_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("promo_redemptions")
+}
+
+/// Кошелёк монет бизнеса — кэш баланса, строка блокируется при списании (06 §2.2)
+model CoinWallet {
+  businessId String   @id @map("business_id") @db.VarChar(32)
+  balance    Int      @default(0)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("coin_wallets")
+}
+
+/// Журнал движений монет (06 §2.2): баланс = SUM(amount)
+model CoinEntry {
+  id             String   @id @db.VarChar(32)
+  businessId     String   @map("business_id") @db.VarChar(32)
+  /// + пришло, − ушло
+  amount         Int
+  /// topup | charge | refund | gift (как CoinMove.kind фронта)
+  kind           String   @db.VarChar(8)
+  reason         String   @db.VarChar(40)
+  area           String   @db.VarChar(20)
+  refId          String?  @map("ref_id") @db.VarChar(32)
+  /// Фактическая цена в драмах для покупки пакета
+  price          BigInt?
+  idempotencyKey String?  @unique @map("idempotency_key") @db.VarChar(80)
+  by             String   @db.VarChar(32)
+  at             DateTime @default(now()) @db.DateTime(3)
+
+  @@index([businessId, at])
+  @@map("coin_entries")
+}
+
+/// Пакеты монет (В-15: 1 монета = 10 ֏, пакеты 100 / 500 (+5%) / 2000 (+10%))
+model CoinPackage {
+  id           String  @id @db.VarChar(20)
+  coins        Int
+  price        BigInt
+  bonusPercent Int     @default(0) @map("bonus_percent")
+  popular      Boolean @default(false)
+  sort         Int     @default(0)
+  active       Boolean @default(true)
+
+  @@map("coin_packages")
+}
+
+/// Журнал правок настроек компании (F-15-180): «было → стало» по полю
+model SettingsChangeLog {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// brand | contacts | legal | system | categories
+  section    String   @db.VarChar(12)
+  fieldKey   String   @map("field_key") @db.VarChar(40)
+  before     String   @db.Text
+  after      String   @db.Text
+  staffId    String   @map("staff_id") @db.VarChar(32)
+  staffName  String   @map("staff_name") @db.VarChar(160)
+  at         DateTime @default(now()) @db.DateTime(3)
+
+  @@index([businessId, at])
+  @@map("settings_change_log")
+}
+
+/// Обращения бизнеса к нам: help — помощь (F-15-001), mobileApp — «хочу своё приложение» (В-29)
+model BizRequest {
+  id            String   @id @db.VarChar(32)
+  businessId    String   @map("business_id") @db.VarChar(32)
+  authorStaffId String   @map("author_staff_id") @db.VarChar(32)
+  /// help | mobileApp
+  kind          String   @db.VarChar(10)
+  topic         String?  @db.VarChar(12)
+  message       String?  @db.Text
+  /// open | answered | closed
+  status        String   @default("open") @db.VarChar(10)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId, kind, createdAt])
+  @@map("biz_requests")
+}
+
+/// «Моей сферы нет» / новая сфера на год (F-15-005, F-00-151/152, В-14: не готова за 60 дней → возврат или сдвиг)
+model SphereRequest {
+  id            String   @id @db.VarChar(32)
+  businessId    String   @map("business_id") @db.VarChar(32)
+  authorStaffId String   @map("author_staff_id") @db.VarChar(32)
+  name          String   @db.VarChar(160)
+  message       String?  @db.Text
+  /// open | answered | closed
+  status        String   @default("open") @db.VarChar(10)
+  /// [{id, labelKey, done}]
+  checklist     Json?
+  etaDate       String?  @map("eta_date") @db.VarChar(10)
+  readyAt       String?  @map("ready_at") @db.VarChar(10)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId, createdAt])
+  @@map("sphere_requests")
+}
+
+/// Личные настройки сотрудника в кабинете (F-15-150…157): уведомления, стартовая страница
+model StaffAccountPref {
+  staffId           String   @id @map("staff_id") @db.VarChar(32)
+  notificationPrefs Json     @map("notification_prefs")
+  startPage         String?  @map("start_page") @db.VarChar(20)
+  startLocationId   String?  @map("start_location_id") @db.VarChar(32)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("staff_account_prefs")
+}
+// === end stage 18 ===

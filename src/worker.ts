@@ -10,6 +10,8 @@ import { notifyServices } from './jobs/notify-jobs.js';
 import { notifyBookingReminders } from './jobs/notify-reminders.js';
 import { reportsExportDispatch } from './jobs/reports-export.js';
 import { notifyEmptyWeek } from './modules/notify/notify-empty-week.js';
+import { billingDispatch } from './jobs/billing-tick.js';
+import { webhooksDispatch } from './jobs/webhooks-dispatch.js';
 
 /**
  * Воркер: очереди BullMQ и расписания (PLAN.md Р10) — напоминания, снятие заявок по сроку, списания, выгрузки.
@@ -31,6 +33,12 @@ await queue.upsertJobScheduler('notify-dispatch', { every: 20_000 }, { name: 'no
 await queue.upsertJobScheduler('notify-reminders', { every: 300_000 }, { name: 'notify.reminders', data: {} });
 // Этап 16: выгрузка отчёта — CSV должен быть готов быстро, не в час по расписанию
 await queue.upsertJobScheduler('reports-export', { every: 15_000 }, { name: 'reports.export', data: {} });
+// Этап 18: подписка — 03:00 по Еревану предупреждения/списания/заморозка, каждые 5 мин повтор списаний (06 §3.3)
+await queue.upsertJobScheduler('billing-daily', { pattern: '0 3 * * *', tz: 'Asia/Yerevan' }, { name: 'billing.tick', data: {} });
+await queue.upsertJobScheduler('billing-retry', { every: 300_000 }, { name: 'billing.tick', data: {} });
+// Этап 17: доставка вебхуков — подпись + до 5 попыток с отступом (fan-out кладёт AuditService.record); часто,
+// как notify.dispatch — событие должно уйти за секунды
+await queue.upsertJobScheduler('webhooks-dispatch', { every: 10_000 }, { name: 'webhooks.dispatch', data: {} });
 const prisma = new PrismaService();
 const journal = journalServices(prisma, createRedis('worker-journal'));
 const notify = notifyServices(prisma);
@@ -72,9 +80,18 @@ const worker = new Worker(
       if (res.sent) logger.info(res, 'notify.reminders');
       return;
     }
+    if (job.name === 'billing.tick') {
+      const res = await billingDispatch(prisma);
+      if (res.warned || res.charged || res.failed || res.grace || res.frozen) logger.info(res, 'billing.tick');
+      return;
+    }
     if (job.name === 'reports.export') {
       const res = await reportsExportDispatch(prisma);
       if (res.done || res.failed) logger.info(res, 'reports.export');
+      return;
+    }
+    if (job.name === 'webhooks.dispatch') {
+      await webhooksDispatch(prisma);
       return;
     }
     logger.warn({ job: job.name }, 'unknown system job');

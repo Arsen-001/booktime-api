@@ -18,10 +18,13 @@ import { NotifyModule } from './modules/notify/notify.module.js';
 import { PayrollModule } from './modules/payroll/payroll.module.js';
 import { ReportsModule } from './modules/reports/reports.module.js';
 import { StockModule } from './modules/stock/stock.module.js';
+import { BillingModule } from './modules/billing/billing.module.js';
+import { SettingsModule } from './modules/settings/settings.module.js';
+import { IntegrationsModule } from './modules/integrations/integrations.module.js';
 
 /** Корневой модуль API. Разделы (PLAN.md §6) добавляются сюда по этапам. */
 @Module({
-  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule, ClientsModule, ScheduleModule, JournalModule, OnlineModule, ClientModule, NotifyModule, LoyaltyModule, FinanceModule, StockModule, PayrollModule, NetworkModule, ReportsModule],
+  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule, ClientsModule, ScheduleModule, JournalModule, OnlineModule, ClientModule, NotifyModule, LoyaltyModule, FinanceModule, StockModule, PayrollModule, NetworkModule, ReportsModule, BillingModule, SettingsModule, IntegrationsModule],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {

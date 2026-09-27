@@ -1,3 +1,4 @@
+import { onBusinessRegistered } from '../billing/registration.js';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client.js';
 import { AuditService } from '../../common/audit/audit.service.js';
@@ -126,14 +127,15 @@ export class BusinessService {
         after: { name, kind: input.kind, sphereIds: input.sphereIds, slug },
       });
       await tx.session.update({ where: { id: session.sessionId }, data: { mode: 'business', activeBusinessId: businessId } });
-      return { businessId };
+      // Этап 18: подписка (В-02: unpaid до оплаты) и промокод регистрации (В-13) — в той же транзакции
+      const promoApplied = await onBusinessRegistered(tx, businessId, input.promoCode, session.userId);
+      return { businessId, promoApplied };
     });
     const [m] = (await this.membership.list(session.userId)).filter((x) => x.businessId === created.businessId);
     return {
       businessId: created.businessId,
       persona: input.kind === 'individual' ? ('individual' as const) : ('owner' as const),
-      // Промокод применит раздел подписки (этап 18): код сохранён на бизнесе
-      promoApplied: false,
+      promoApplied: created.promoApplied,
       membership: m ?? null,
       core: await this.core(created.businessId, [created.businessId]),
     };

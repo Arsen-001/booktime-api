@@ -22,6 +22,10 @@ const en = {
   'staff.clientCancelled': '{client} cancelled the visit at {time}.',
   'staff.clientRescheduled': '{client} moved the visit to {time}.',
   'staff.emptyWeek': "Next week has no open slots yet — open some for clients to book.",
+  // этап 18 — подписка владельцу (06 §3.3, F-00-023)
+  'billing.endingSoon': 'Your BookTime subscription ends in {days} day(s). Renew it to stay visible to clients.',
+  'billing.paymentFailed': "We couldn't charge your card for BookTime. We'll retry tomorrow — or pay now in Billing.",
+  'billing.frozen': 'Your page is hidden from clients: the subscription was not paid. Pay to restore it — all data is kept.',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -42,6 +46,9 @@ const ru: Record<MessageKey, string> = {
   'staff.clientCancelled': '{client} отменил(а) визит на {time}.',
   'staff.clientRescheduled': '{client} перенёс(ла) визит на {time}.',
   'staff.emptyWeek': 'На следующей неделе нет открытых окон — откройте время для записи.',
+  'billing.endingSoon': 'Подписка BookTime закончится через {days} дн. Продлите, чтобы клиенты вас видели.',
+  'billing.paymentFailed': 'Не удалось списать оплату BookTime. Повторим завтра — или оплатите сейчас в разделе «Подписка».',
+  'billing.frozen': 'Страница скрыта от клиентов: подписка не оплачена. Оплатите — все данные на месте.',
 };
 
 const hy: Record<MessageKey, string> = {
@@ -60,6 +67,9 @@ const hy: Record<MessageKey, string> = {
   'staff.clientCancelled': '{client}-ը չեղարկեց այցը՝ {time}։',
   'staff.clientRescheduled': '{client}-ը տեղափոխեց այցը՝ {time}։',
   'staff.emptyWeek': 'Հաջորդ շաբաթ դեռ բաց ժամեր չկան՝ բացեք ժամանակ գրանցման համար։',
+  'billing.endingSoon': 'BookTime-ի բաժանորդագրությունը կավարտվի {days} օրից։ Երկարացրեք, որպեսզի հաճախորդները ձեզ տեսնեն։',
+  'billing.paymentFailed': 'Չհաջողվեց գանձել BookTime-ի վճարը։ Կփորձենք վաղը, կամ վճարեք հիմա «Բաժանորդագրություն» բաժնում։',
+  'billing.frozen': 'Էջը թաքցված է հաճախորդներից՝ բաժանորդագրությունը վճարված չէ։ Վճարեք՝ բոլոր տվյալները պահպանված են։',
 };
 
 export const messages: Record<'ru' | 'hy' | 'en', Record<MessageKey, string>> = { en, ru, hy };

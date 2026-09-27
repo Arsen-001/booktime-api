@@ -127,6 +127,12 @@ export const ERROR_STATUS = {
   // зарплата (этап 14) — как в моке фронта (src/api/finance.ts, src/domain/payroll.ts)
   sheet_not_draft: HttpStatus.CONFLICT,
   cannot_pay: HttpStatus.CONFLICT,
+  // подписка, монеты, промокоды, настройки (этап 18) — docs/backend/06 §2–4, коды мока (src/api/settings.ts)
+  promo_not_found: HttpStatus.NOT_FOUND,
+  payment_failed: HttpStatus.PAYMENT_REQUIRED,
+  bad_tax_id: HttpStatus.UNPROCESSABLE_ENTITY,
+  bad_telegram_url: HttpStatus.UNPROCESSABLE_ENTITY,
+  read_only: HttpStatus.LOCKED,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

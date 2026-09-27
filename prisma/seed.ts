@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '../src/generated/prisma/client.js';
 import { PrismaService } from '../src/common/prisma.service.js';
 import { norm } from '../src/common/text.js';
-import { localToUtc, utcToLocalDate } from '../src/common/time/time.js';
+import { localDayRangeUtc, localToUtc, utcToLocalDate } from '../src/common/time/time.js';
 import { hashPassword } from '../src/modules/auth/passwords.js';
 import { SYSTEM_ITEMS } from '../src/modules/finance/finance-catalog.service.js';
 import { loadMockCore } from './seed/mock-core.js';
@@ -1182,6 +1182,196 @@ await prisma.client.createMany({
     }
   }
   console.log(`seed: сеть — пользователей сети ${netUsersCreated}, полей ${fieldsCreated}, ячеек плана ${planCellsCreated}`);
+}
+
+// ─────────── этап 18: цены, пакеты монет, промокоды, подписки, счета, монеты, настройки компании — те же демо-случаи,
+// что срез settings фронта (src/mock/slices/settings.ts): заморожен biz_davit, кончается biz_arman (+промокод),
+// бесплатный месяц biz_mariam; история оплат за 3 месяца; реквизиты у 2 из 3. Идемпотентно (детерминированные id). ───
+{
+  const { DEFAULT_PRICES, PRICE_NOTES, DEFAULT_PROMO_TIERS } = await import('../src/modules/billing/billing-prices.js');
+  const dayMs = 86_400_000;
+  const tzDay = (offsetDays: number) => {
+    const d = localDayRangeUtc(utcToLocalDate(new Date(now.getTime() + offsetDays * dayMs))).from;
+    return d;
+  };
+  const isoDay = (offsetDays: number) => utcToLocalDate(new Date(now.getTime() + offsetDays * dayMs));
+  await prisma.platformPrice.createMany({
+    skipDuplicates: true,
+    data: Object.entries(DEFAULT_PRICES).map(([key, value]) => ({ key, value: BigInt(value), note: PRICE_NOTES[key as keyof typeof PRICE_NOTES], updatedBy: 'seed' })),
+  });
+  // В-15: 1 монета = 10 ֏, пакеты 100 / 500 (+5 %) / 2 000 (+10 %)
+  await prisma.coinPackage.createMany({
+    skipDuplicates: true,
+    data: [
+      { id: 'coins_100', coins: 100, price: 1000n, bonusPercent: 0, sort: 1 },
+      { id: 'coins_500', coins: 500, price: 5000n, bonusPercent: 5, popular: true, sort: 2 },
+      { id: 'coins_2000', coins: 2000, price: 20000n, bonusPercent: 10, sort: 3 },
+    ],
+  });
+  await prisma.priceRuleChange.createMany({
+    skipDuplicates: true,
+    data: [
+      { id: 'prc_2026_02', effectiveFrom: '2026-03-01', announcedAt: '2026-02-01', descriptionKey: 'masterSeat', oldPrice: 3500n, newPrice: 4000n },
+      { id: 'prc_2026_11', effectiveFrom: '2026-11-01', announcedAt: isoDay(0), descriptionKey: 'adminSeat', oldPrice: 2000n, newPrice: 2500n },
+    ],
+  });
+
+  const bizIds = businesses.map((b) => String(b.id));
+  const B = (i: number) => bizIds[i];
+  const tiers = DEFAULT_PROMO_TIERS as unknown as Prisma.InputJsonValue;
+  const promos = [
+    { id: 'promo_1', code: 'VISIT30', kind: 'freeMonth', tiers: [], freeDays: 30, personal: true, issuedTo: { name: 'Nail Studio Ева', businessId: B(4) }, validUntil: isoDay(20), note: 'Выдан на визите' },
+    { id: 'promo_2', code: 'NURI-10', kind: 'discount', tiers, personal: true, issuedTo: { name: 'Nuri Nails', businessId: B(0) }, validUntil: isoDay(15) },
+    { id: 'promo_3', code: 'FRIEND25', kind: 'discount', tiers: [{ months: 12, percent: 25 }], personal: false, validUntil: isoDay(30) },
+    { id: 'promo_4', code: 'BARBER-KAYTSAK', kind: 'freeMonth', tiers: [], freeDays: 30, personal: true, issuedTo: { name: 'Барбершоп Kaytsak', businessId: B(1) }, validUntil: isoDay(-30) },
+    { id: 'promo_5', code: 'EXPIRED-15', kind: 'discount', tiers: [{ months: 6, percent: 15 }], personal: false, validUntil: isoDay(-5) },
+    { id: 'promo_6', code: 'DENTAL-ATAM', kind: 'discount', tiers: [{ months: 3, percent: 10 }, { months: 12, percent: 25 }], personal: true, issuedTo: { name: 'Стоматология Atam', businessId: B(2) }, validUntil: isoDay(25) },
+    { id: 'promo_7', code: 'REVOKED-1', kind: 'discount', tiers, personal: false, validUntil: isoDay(10), revoked: true },
+    { id: 'promo_8', code: 'NEWSALON', kind: 'discount', tiers, personal: false, validUntil: isoDay(60) },
+    { id: 'promo_9', code: 'WELCOME15', kind: 'discount', tiers, personal: true, issuedTo: { name: 'Arman', businessId: 'biz_arman' }, validUntil: isoDay(-10) },
+  ];
+  await prisma.promoCode.createMany({
+    skipDuplicates: true,
+    data: promos.map((p) => ({
+      id: p.id,
+      code: p.code,
+      kind: p.kind,
+      tiers: p.tiers as Prisma.InputJsonValue,
+      freeDays: p.freeDays ?? null,
+      personal: p.personal,
+      issuedTo: J(p.issuedTo),
+      issuedAt: p.issuedTo ? now : null,
+      validUntil: p.validUntil,
+      revokedAt: p.revoked ? now : null,
+      note: p.note ?? null,
+      createdBy: 'seed',
+    })),
+  });
+  const redemptions = [
+    { id: 'prr_seed_kaytsak', promoCodeId: 'promo_4', businessId: B(1)! },
+    { id: 'prr_seed_arman', promoCodeId: 'promo_9', businessId: 'biz_arman' },
+  ].filter((r) => r.businessId && bizIds.includes(r.businessId));
+  await prisma.promoRedemption.createMany({ skipDuplicates: true, data: redemptions });
+
+  let subsCreated = 0;
+  let invoiceNo = 1000;
+  for (const [index, id] of bizIds.entries()) {
+    if ((await prisma.subscription.count({ where: { businessId: id } })) > 0) continue;
+    const empty = id === 'biz_empty' || id === 'biz_empty_solo';
+    let status = 'active';
+    let paidUntil = tzDay(3 + ((index * 7) % 25));
+    let freeUntil: Date | null = null;
+    let graceUntil: Date | null = null;
+    let autoRenew = index % 5 !== 3;
+    if (id === 'biz_davit') {
+      status = 'frozen';
+      paidUntil = tzDay(-6);
+      graceUntil = tzDay(-3);
+    } else if (id === 'biz_arman') paidUntil = tzDay(2);
+    else if (id === 'biz_mariam') {
+      status = 'trial_free';
+      freeUntil = tzDay(18);
+      paidUntil = freeUntil;
+      autoRenew = false;
+    }
+    let savedCardId: string | null = null;
+    if (id === 'biz_davit' || index % 3 !== 2) {
+      savedCardId = `card_seed_${index}`;
+      await prisma.savedCard.createMany({
+        skipDuplicates: true,
+        data: [{ id: savedCardId, businessId: id, provider: 'fake', method: 'card', token: `fake_seed_${index}`, label: id === 'biz_davit' ? '•• 4041' : `•• ${4000 + index * 7}`, unavailable: id === 'biz_davit' }],
+      });
+    }
+    await prisma.subscription.create({
+      data: {
+        businessId: id,
+        status,
+        paidUntil,
+        freeUntil,
+        graceUntil,
+        autoRenew,
+        savedCardId,
+        paymentDocsEmail: index % 6 !== 4,
+        ...(id === 'biz_arman' ? { promoCode: 'WELCOME15', promoRedemptionId: 'prr_seed_arman', promoTiers: tiers } : {}),
+        ...(id === B(1) ? { promoCode: 'BARBER-KAYTSAK', promoRedemptionId: 'prr_seed_kaytsak' } : {}),
+        updatedBy: 'seed',
+      },
+    });
+    if (status === 'frozen') await prisma.business.update({ where: { id }, data: { status: 'frozen' } });
+    if (id === 'biz_mariam') await prisma.freePeriodGrant.createMany({ skipDuplicates: true, data: [{ id: 'fpg_seed_mariam', businessId: id, days: 30, reason: 'visit', by: platformUserId, note: 'Подключили на визите' }] });
+    subsCreated++;
+    if (empty) continue;
+    const payer = index % 3 !== 0 ? { name: String(businesses[index]!.name), address: `Ереван, ул. Абовяна, ${10 + index}`, taxId: `${20000000 + index}` } : undefined;
+    for (let i = 3; i >= 1; i--) {
+      const amount = BigInt(4000 * Math.max(2, 1 + (index % 4)));
+      const start = tzDay(-i * 30);
+      const end = tzDay(-(i - 1) * 30);
+      const invId = `inv_seed_${index}_${i}`;
+      const promo = i === 3 && id === 'biz_arman';
+      invoiceNo = 1000 + index * 10 + i;
+      await prisma.billingInvoice.createMany({
+        skipDuplicates: true,
+        data: [{ id: invId, businessId: id, number: String(invoiceNo), purpose: 'subscription', amount, status: 'paid', periodFrom: utcToLocalDate(start), periodTo: utcToLocalDate(end), method: promo ? 'promo' : 'card', payer: J(payer), createdAt: start, paidAt: start }],
+      });
+      await prisma.subscriptionCharge.createMany({
+        skipDuplicates: true,
+        data: [{ id: `sbc_seed_${index}_${i}`, businessId: id, periodStart: start, periodEnd: end, months: 1, seatsMasters: Math.max(2, 1 + (index % 4)), seatsAdmins: 0, baseAmount: amount, discountPct: 0, amount, method: 'card', status: 'paid', provider: 'fake', providerRef: `fake_seed_${index}_${i}`, invoiceId: invId, trigger: i === 3 ? 'manual' : 'auto', attemptedAt: start, paidAt: start, createdBy: 'seed' }],
+      });
+    }
+    if (index % 4 === 0) {
+      await prisma.billingInvoice.createMany({
+        skipDuplicates: true,
+        data: [{ id: `inv_seed_coins_${index}`, businessId: id, number: String(2000 + index), purpose: 'coins', amount: 3000n, status: index % 8 === 0 ? 'unpaid' : 'paid', createdAt: new Date(now.getTime() - 5 * dayMs), refId: 'coins_500' }],
+      });
+    }
+  }
+  // Счётчик номеров — после сидовых номеров (1000 + index·10 + i, 2000 + index)
+  await prisma.billingCounter.upsert({ where: { key: 'invoice' }, create: { key: 'invoice', value: 3000 + bizIds.length }, update: {} });
+
+  // Монеты: стартовые балансы демо (client.coinBalances мока) — одной строкой-подарком «opening» в журнале
+  for (const [i, id] of bizIds.entries()) {
+    const amount = i === 0 ? 8000 : i % 4 === 0 ? 0 : 1200 * ((i % 5) + 1);
+    if (!amount) continue;
+    const entryId = `coin_seed_${id}`.slice(0, 32);
+    if ((await prisma.coinEntry.count({ where: { id: entryId } })) > 0) continue;
+    await prisma.coinEntry.create({ data: { id: entryId, businessId: id, amount, kind: 'gift', reason: 'opening', area: 'platform', by: 'system', at: new Date(now.getTime() - 20 * dayMs) } });
+    await prisma.coinWallet.upsert({ where: { businessId: id }, create: { businessId: id, balance: amount }, update: { balance: { increment: amount } } });
+  }
+
+  // Настройки компании: реквизиты, основные, категории записи (разделы business_settings)
+  const SYS = [
+    { key: 'fullPrepay', colorIndex: 3 },
+    { key: 'partialPrepay', colorIndex: 4 },
+    { key: 'specialistImportant', colorIndex: 1 },
+    { key: 'anySpecialist', colorIndex: 5 },
+  ];
+  const areaRows: { businessId: string; area: string; data: Prisma.InputJsonValue; updatedBy: string }[] = [];
+  for (const [index, id] of bizIds.entries()) {
+    const b = businesses[index]!;
+    const empty = id === 'biz_empty' || id === 'biz_empty_solo';
+    if (index % 3 !== 0)
+      areaRows.push({ businessId: id, area: 'legal', updatedBy: 'seed', data: { entityType: b.kind === 'salon' ? 'legalEntity' : 'soleProprietor', companyName: String(b.name), taxId: `${20000000 + index}`, billingAddress: `Ереван, ул. Абовяна, ${10 + index}` } });
+    areaRows.push({ businessId: id, area: 'system', updatedBy: 'seed', data: { city: 'Yerevan', dateTimeFormat: index % 6 === 1 ? '12' : '24', messageLanguage: index % 4 === 2 ? 'hy' : index % 4 === 3 ? 'en' : 'ru' } });
+    const items: Record<string, unknown>[] = SYS.map((c) => ({ id: `rcat_${id}_${c.key}`.slice(0, 32), businessId: id, name: `system.${c.key}`, colorIndex: c.colorIndex, system: true, systemKey: c.key }));
+    if (!empty) {
+      items.push({ id: `rcat_${id}_first`.slice(0, 32), businessId: id, name: 'Первая консультация', colorIndex: 2, icon: 'Sparkles' });
+      if (index % 2 === 0) items.push({ id: `rcat_${id}_repeat`.slice(0, 32), businessId: id, name: 'Повторный визит', colorIndex: 6, icon: 'Repeat' });
+    }
+    areaRows.push({ businessId: id, area: 'recordCategories', updatedBy: 'seed', data: { items } as Prisma.InputJsonValue });
+  }
+  await prisma.businessSetting.createMany({ skipDuplicates: true, data: areaRows });
+
+  // «Моей сферы нет» (F-00-152): одна в работе с чек-листом и сроком, одна только отправлена
+  const ownerOf = (bizId: string) => staffRecs.find((s) => S(s.businessId) === bizId && S(s.role) === 'owner') ?? staffRecs.find((s) => S(s.businessId) === bizId);
+  const sphereRows = [
+    { id: 'sphreq_demo_inwork', businessId: 'biz_arman', name: 'Тату-салон', message: 'Нужна отдельная сфера: карта тела, эскизы, согласие на процедуру.', status: 'answered', checklist: [{ id: 'catalog', labelKey: 'catalog', done: true }, { id: 'terms', labelKey: 'terms', done: true }, { id: 'icons', labelKey: 'icons', done: false }, { id: 'launch', labelKey: 'launch', done: false }], etaDate: isoDay(20), createdAt: new Date(now.getTime() - 12 * dayMs) },
+    { id: 'sphreq_demo_new', businessId: 'biz_mariam', name: 'Хостел (посуточная аренда)', message: null, status: 'open', checklist: null, etaDate: null, createdAt: new Date(now.getTime() - dayMs) },
+  ].filter((r) => bizIds.includes(r.businessId));
+  await prisma.sphereRequest.createMany({
+    skipDuplicates: true,
+    data: sphereRows.map((r) => ({ ...r, authorStaffId: String(ownerOf(r.businessId)?.id ?? 'system'), checklist: J(r.checklist) })),
+  });
+  console.log(`seed: подписка — подписок ${subsCreated}, промокодов ${promos.length}, пакетов монет 3, разделов настроек ${areaRows.length}`);
 }
 
 console.log(

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { newId } from '../ids/ids.js';
 import type { RequestContext } from '../http/context.js';
+import { fanOutWebhooks } from './webhook-fanout.js';
 
 export type ActorType = 'staff' | 'client' | 'link_holder' | 'system' | 'platform';
 
@@ -72,5 +73,7 @@ export class AuditService {
         device: ctx?.device ?? null,
       },
     });
+    // Этап 17: одна и та же транзакция — доставка вебхука коммитится, только если коммитится сама правка
+    await fanOutWebhooks(tx, input.businessId ?? ctx?.member?.businessId ?? null, input);
   }
 }

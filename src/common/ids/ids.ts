@@ -136,6 +136,27 @@ export const ID_PREFIX = {
   networkBroadcast: 'nbc',
   // этап 16 — отчёты: только на сервере — выгрузка rex
   reportExport: 'rex',
+  // этап 17 — интеграции: только на сервере (мок хранит id произвольными строками) — ключ/токен apik,
+  // адрес вебхука wha, доставка whd, подключение каталожного приложения ic
+  apiKey: 'apik',
+  webhookAddress: 'wha',
+  webhookDelivery: 'whd',
+  integrationConnection: 'ic',
+  // этап 18 — подписка, монеты, промокоды, настройки: только на сервере — списание sbc, счёт inv (как newId('inv')
+  // мока), способ оплаты card, бесплатные дни fpg, промокод prm/prr, движение монет coin, объявление цены prc,
+  // журнал настроек scl, обращение breq, заявка на сферу sphr, категория записи rcat (как мок)
+  subscriptionCharge: 'sbc',
+  billingInvoice: 'inv',
+  savedCard: 'card',
+  freePeriodGrant: 'fpg',
+  promoCode: 'prm',
+  promoRedemption: 'prr',
+  coinEntry: 'coin',
+  priceRuleChange: 'prc',
+  settingsChangeLog: 'scl',
+  bizRequest: 'breq',
+  sphereRequest: 'sphr',
+  recordCategory: 'rcat',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;
