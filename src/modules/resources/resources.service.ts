@@ -473,7 +473,12 @@ export class ResourcesService {
 
   /** F-16-011/012: по одному свободному экземпляру каждого ресурса услуги; чего-то не хватает — undefined */
   async pickFreeInstances(businessId: string, serviceIds: string[], start: Date, durationMin: number, excludeBookingId?: string): Promise<string[] | undefined> {
-    const resources = await this.prisma.resource.findMany({ where: { businessId, active: true, deletedAt: null } });
+    // Resource не мягко удаляется (delete() выше — настоящий DELETE), своего deletedAt в схеме нет —
+    // отдельная от "мягко удалённых" сущностей модель; найдена и починена этапом 21 (лейн resources):
+    // `deletedAt: null` в where молча проходил TypeScript (generic Subset у Prisma не ловит лишний ключ
+    // литерала where excess-property-check'ом) и падал 500 `PrismaClientValidationError` в рантайме на
+    // ЛЮБОМ вызове окна записи — не поймано `tsc`, поймано только настоящим HTTP-запросом.
+    const resources = await this.prisma.resource.findMany({ where: { businessId, active: true } });
     const relevant = resources.filter((r) => arr<string>(r.serviceIds).some((id) => serviceIds.includes(id)));
     if (!relevant.length) return [];
     const end = new Date(start.getTime() + durationMin * 60_000);
@@ -493,7 +498,7 @@ export class ResourcesService {
   async checkInstancesFree(businessId: string, instanceIds: string[], start: Date, durationMin: number, excludeBookingId?: string): Promise<boolean> {
     if (!instanceIds.length) return true;
     const end = new Date(start.getTime() + durationMin * 60_000);
-    const all = await this.prisma.resource.findMany({ where: { businessId, active: true, deletedAt: null }, select: { id: true } });
+    const all = await this.prisma.resource.findMany({ where: { businessId, active: true }, select: { id: true } });
     const busyByResource = await this.instancesBusyMap(businessId, all.map((r) => r.id), start, end, excludeBookingId);
     const busy = new Set<string>();
     for (const set of busyByResource.values()) for (const id of set) busy.add(id);
@@ -502,7 +507,7 @@ export class ResourcesService {
 
   /** F-16-013: все активные ресурсы локации с отметкой занятых сейчас экземпляров (окно записи) */
   async listResourceOptions(businessId: string, start: Date, durationMin: number, excludeBookingId?: string) {
-    const resources = await this.prisma.resource.findMany({ where: { businessId, active: true, deletedAt: null } });
+    const resources = await this.prisma.resource.findMany({ where: { businessId, active: true } });
     const end = new Date(start.getTime() + durationMin * 60_000);
     const busyByResource = await this.instancesBusyMap(businessId, resources.map((r) => r.id), start, end, excludeBookingId);
     return resources.map((r) => ({
