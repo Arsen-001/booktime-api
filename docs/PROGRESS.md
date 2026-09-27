@@ -25,7 +25,7 @@
 | 18 | Настройки, подписка, монеты, промокоды | [x] | см. историю: «Этап 18 …» (сервер), «backend stage 18: …» (фронт) |
 | 19 | Модерация и наша панель | [x] | см. историю «Этап 19 …», «Этап 19, попытка 2 …», «Этап 19, попытка 3 …» (сервер+фронт) — модерация/бизнесы/поддержка/идеи/заявки на сферы/визиты/обзор (попытка 1) + спрос/first-awards, реклама+сторис (без покупки места и картинки), заметки основателя (попытка 2) + ConnectDraft, подключение салона за 10 минут (попытка 3) — весь §19 построен и проверен |
 | 20 | Данные и удаление | [x] | см. историю «Этап 20 …» (сервер; фронт — `src/api/session.ts` + `src/api/settings.ts`, F-15-154/155) |
-| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн client попытка 5 — отчёты вкладки «Приложение» закрыты (4 функции), новый backend-модуль (`AppReportsService`/`Controller`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр; лейн resources попытка 2 — из 41 закрыто 40 (было 20): достроен `ResourcesEventsController`+модуль (`resources-events.*` лежал без контроллера), 3 новых метода листа ожидания (create/close/remove), 8 недостающих кодов ошибок, backfill `EventSeriesDef` под уже сеяные `GroupEvent.seriesId`; осталось 1 — `getBookingAutoCharge` (ждёт лейна «loyalty»); лейн resources попытка 3 — из 41 по-прежнему закрыто 40, но нашёл и починил 2 функции, ошибочно числившиеся закрытыми в попытке 2 (`notifyWaitlistForFreedSlot`/`getWaitlistNotifications` — сервер и обёртка были готовы, в `resources.ts` не хватало строки `isApiMode()`); осталось всё то же 1 — `getBookingAutoCharge`/`chargeBookingAutoDebit`, ждут лейна «loyalty» (на бэкенде до сих пор нет ни `ServiceAutoCharge`, ни правки баланса абонемента) |
+| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн client попытка 5 — отчёты вкладки «Приложение» закрыты (4 функции), новый backend-модуль (`AppReportsService`/`Controller`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр; лейн resources попытка 2 — из 41 закрыто 40 (было 20): достроен `ResourcesEventsController`+модуль (`resources-events.*` лежал без контроллера), 3 новых метода листа ожидания (create/close/remove), 8 недостающих кодов ошибок, backfill `EventSeriesDef` под уже сеяные `GroupEvent.seriesId`; осталось 1 — `getBookingAutoCharge` (ждёт лейна «loyalty»); лейн resources попытка 3 — из 41 по-прежнему закрыто 40, но нашёл и починил 2 функции, ошибочно числившиеся закрытыми в попытке 2 (`notifyWaitlistForFreedSlot`/`getWaitlistNotifications` — сервер и обёртка были готовы, в `resources.ts` не хватало строки `isApiMode()`); осталось всё то же 1 — `getBookingAutoCharge`/`chargeBookingAutoDebit`, ждут лейна «loyalty» (на бэкенде до сих пор нет ни `ServiceAutoCharge`, ни правки баланса абонемента); лейн services+rest попытка 2 — `reports.ts` favorites закрыты (2), `payroll.ts` закрыт 5/7 (новая таблица+модуль `PayrollStaffRights`, `getStaffWorkedHours` → готовый `getScheduledMinutes`), осталось 2 (`evaluateCriterionValue`/`previewChartForStaff` — не однострочные); `clients/*` — только аудит (0 закрыто, нашёл более точный реальный список: 19 реальных, не 20/19 из попытки 1), `network`/`finance`/`stock`/`notify`/`integrations`/`loyalty`/`platform/*` не трогал |
 
 ---
 
@@ -4404,3 +4404,132 @@ scripts/renders.mjs --check-compiler` — 0. Живой смоук на обще
 ### Вопросы владельцу (этап 21, лейн resources, попытка 3)
 Ничего денежного/юридического. Расхождение с журналом попытки 2 (2 функции числились закрытыми, но не были) —
 починено и записано выше, не эскалирую.
+
+## Этап 21, лейн «services+rest», попытка 2 (28.09.2026)
+
+Продолжение попытки 1 (закрыла `services.ts` 11/11, `payroll.ts` 2/9, `clients/catalog.ts` 1/3). Задача по
+письму лаунчера: довести `services.ts` (уже 0 дыр — попытка 1 закрыла), затем `schedule/calendar.ts`/
+`table.ts`/`slots.ts`, `settings.ts`, `schedule/staff.ts`, `staff.ts` (все уже перепроверены попыткой 1 — 0
+реальных дыр), затем «Осталось» из `clients/*`/`platform/*`/network/finance/stock/payroll/integrations/
+notify/reports/loyalty. Реальный объём остатка (см. таблицу в попытке 1) не влезает в один заход — сделал
+`payroll.ts` (нетронутые попыткой 1 7 функций) и один быстрый верный выигрыш в `reports.ts`, а по остальным
+файлам — только точный аудит вместо кода, чтобы следующий заход не тратил на него время заново.
+
+**`payroll.ts` — из 7 оставшихся закрыто 5, реальных осталось 2**:
+- `getPayrollRights`/`savePayrollRights` (единственное число) — **0 вызовов с экрана и 0 внутренних** (не
+  зовутся даже из `resolvePayrollAccess`, которая принимает уже готовый `overrides`-словарь параметром) —
+  мёртвый код, не дыра. Не выбрасывал (вдруг понадобятся), но и не делал их точкой опоры для выбора решения.
+- `listPayrollRights`/`savePayrollRightsBatch` — **настоящие вызовы** (`access.ts`, `GeneralSettingsScreen.tsx`)
+  и настоящий пробел: второго слоя прав на сотрудника (F-09-085…089) не было ни строкой в схеме, ни
+  таблицей — комментарий в `payroll.server.ts` прямо называл это честной дырой этапа 14. Завёл:
+  - `prisma/schema.prisma`: новая модель `PayrollStaffRights` (`staffId` PK, `businessId`, JSON `data`,
+    `updatedAt/By`) — тот же приём, что `StaffReportsPermission` у `reports` (этап 16), в блоке
+    `// === stage 21 (лейн services+rest) ===` сразу после `PayrollStatementApproval`, миграция
+    `stage21_payroll_staff_rights` под локом.
+  - `payroll.schemas.ts`: `payrollStaffRightsBody`/`payrollStaffRightsBatchBody` (zod), `calcAccess`/
+    `accrueAccess` — `'none'|'today'|'all'` (сверил с `PayrollScopeAccess` мока, не придумал `'own'`).
+  - `payroll-catalog.service.ts`: `getStaffRights`/`listStaffRights`/`saveStaffRights`/`saveStaffRightsBatch`
+    (batch — один `$transaction` upsert'ов, не цикл `await`); точка входа F-09-085 — `assertCanEditRights`
+    требует `staff.manage` (второго уровня «те, кому уже дали schemesAccess, тоже могут менять чужие права»
+    сознательно не строил — рекурсивная проверка через ту же таблицу, которую только что завожу, лишний риск
+    без готового кейса в UI, который бы её использовал).
+  - `payroll.controller.ts`: `GET/POST /v1/biz/{b}/payroll/rights`, `POST .../rights/batch` (список),
+    `GET /v1/biz/{b}/staff/{staffId}/payroll-rights` (одного — управленческий экран, не самообслуживание,
+    поэтому тоже `@Biz('staff.manage')`, не «own or manage», как у `payroll-scheme`).
+  - Фронт: `payroll.server.ts` — 4 обёртки (`getStaffRights`/`listStaffRights`/`saveStaffRights`/
+    `saveStaffRightsBatch`); `payroll.ts` — `isApiMode()` во все 4 экспортируемые функции (включая мёртвые
+    `getPayrollRights`/`savePayrollRights` — раз бэкенд уже есть, дописать одну строку дешевле, чем оставлять
+    асимметрию «половина пары на сервере, половина на моке»).
+- `getStaffWorkedHours` — **не новый бэкенд**: `schedule/table.ts::getScheduledMinutes` уже был переведён
+  (докстринг там же прямо говорит «для будущего расчёта зарплаты — F-02-057 связка с payroll») и просто не был
+  позван из `payroll.ts`. Добавил `isApiMode()`-ветку: `getScheduledMinutes(...).then(min => roundMoney(min/60))`.
+- **Не трогал** (подтвердил вывод попытки 1 «не однострочная правка»): `evaluateCriterionValue` (пересчёт
+  критерия по реальным записям периода — админский предпросмотр), `previewChartForStaff`.
+
+**`reports.ts` — закрыл `listFavoriteReports`/`toggleFavoriteReport`**: комментарий в `reports.server.ts`
+называл их «не переключено — сигнатура мока несёт только `staffId`, серверный маршрут требует `businessId` в
+пути». Это было решение уровня «не разбирался», не настоящий блокер — `apiIdentity()?.businessId` (тот же
+`currentBusinessId()`, что и `services.ts`/`payroll.server.ts`) доступен в этой же точке без изменения сигнатур
+вызовов. Сервер (`GET/POST /v1/biz/{b}/reports/favorites(/:slug)`, `ReportsSettingsService.listFavorites/
+toggleFavorite`) уже был полностью готов с этапа 16 — просто не позван.
+
+**Аудит остальных файлов — измерил точнее, не строил** (двухфильтровый приём: живой вызыватель из `src/areas`
++ ручная проверка «не делегирует ли уже переведённой функции»):
+- `clients/*` — переоценил список попытки 1 (20→закрыто 1→19 «осталось»). Настоящие ложные срабатывания,
+  которые попытка 1 не отделяла: `catalog.ts::listSubscriptions/listProductPurchases/listClientBookingsIndex/
+  listServiceOptions` — 0 вызовов из `areas` (внутренние/неиспользуемые, тот же класс, что мёртвый
+  `getPayrollRights` выше); `visits.ts::listDebtVisits` — чистый `.then()`-фильтр поверх `listClientVisits`,
+  не отдельная точка входа; `loyalty.ts::recalcClientLoyaltyImpl/recalcAllClientsLoyalty` — внутренние impl
+  под уже переведённой `recalcClientLoyalty`; `shared.ts` целиком — внутренние хелперы файла, не факады.
+  Реальный список (проверил вызовами из `src/areas`, не только текстом): `bulk.ts` 6 (`bulkAudience`/
+  `bulkSendMessage`/`bulkSendPush`/`listMessageLog`/`listClientMessages`/`sendBookingWindowMessage` — упираются
+  в рассылки/лог сообщений, тот же бэкенд, что нужен `notify.ts`, отдельно не строил); `catalog.ts` 3
+  (`listCertificates`/`getClientLoyalty`/`findClientByLoyaltyCode` — упираются в расхождение имён: у мока
+  `Subscription`, у бэкенда `MembershipSale`/`Certificate` без общего «список всех для бизнеса»/«по клиенту
+  вместе» эндпоинта — `loyalty-instances.service.ts` умеет только `listClientCards`/`listPendingCertificates`/
+  `listPendingMemberships`/`listClientAccounts`, ни один не даёт нужную форму без нового метода); `extras.ts` 5
+  (`submitConsentForm` — публичная анкета по ссылке/QR, не тот же путь, что уже переведённый `recordAdConsent`
+  с сессией сотрудника, нужен отдельный неаутентифицированный маршрут; `getBookingWindowFavorites`/
+  `toggleBookingWindowFavorite` — мини-список «ещё» в окне записи; `listCalls` — телефонии нет вовсе, только
+  мок; `listVisitors` — нет модели присутствия/Wi-Fi); `importExport.ts` 1 (`logExport` — `parseImportText`
+  подтвердил как ложный, чистая функция без стора); `settings.ts` 2 (`getBookingReminder`/`setBookingReminder`
+  — нет таблицы «своё напоминание на запись», нужна новая модель); `visits.ts` 3 (`listClientVisits`/
+  `getCrmSummary`/`listPendingMarks` — реально закрываемо без новых таблиц: `journal.server.ts::listBookings`
+  уже отдаёт нужные записи с сервера, вся агрегация в мок-версии этих трёх функций — чистая математика над
+  `Booking[]`, которую можно пересчитать на клиенте над серверным списком; не успел в этот заход). Итого 20
+  (было 20 в попытке 1, но состав другой — 4 новых ложных срабатывания нашёл, 4 новых реальных, которые
+  попытка 1 не увидела текстовым скриптом, компенсировали друг друга).
+- `network.ts` (76), `finance.ts` (58, из них ~11 вне мандата Р14/В-05, ~11 — не построенная подсистема
+  депозитов/штрафов), `stock.ts` (36), `integrations.ts` (20), `notify.ts` (39), `reports.ts` (оставшиеся 13:
+  `getPlanEmailSchedule`/`setPlanEmailSchedule`/`getWeeklyReportSettings`/`setWeeklyReportEnabled` — сеть/
+  еженедельная рассылка, `getMyAnalytics`/`getMonthlyPlan`/`setMonthlyPlan`/`getReviewsReport`/
+  `getCallsReport`/6 отчётов склада — комментарий `reports.server.ts` прямо перечисляет их как не построенные
+  этапом 16), `loyalty.ts` целиком, `platform/*` — не трогал, числа не изменились с попытки 1.
+
+**Проверено настоящим HTTP на общем деве** (`:4010`, лок на миграцию/generate/build/рестарт): вход
+`+37400110001` упёрся в дневной лимит кода (пере-использован многими лейнами за день — `otp_requests` по
+этому телефону 5/5 за час), переключился на `+37400140001` (`biz_manana_nn`, роль `network`, тоже
+`staff.manage`+`payroll.manage`). `GET/POST /v1/biz/{b}/reports/favorites(/:slug)` — toggle добавил и убрал
+`sales-by-staff`, финальный `GET` снова `[]`. Права зарплаты: `GET rights` пусто → `POST rights` (одного) →
+`GET .../staff/{id}/payroll-rights` вернул сохранённое → `GET rights` (список) — 1 запись → `POST rights/batch`
+(2 сотрудника) → `GET rights` — 3 записи → откатил (`DELETE FROM payroll_staff_rights WHERE staff_id IN (...)`
+под локом, только тестовые 3 строки). `getStaffWorkedHours`: проверил косвенно — базовый `GET .../hours`
+(на котором стоит `getScheduledMinutes`) уже отдаёт настоящие 8160 минут за сентябрь для `st_manana_anna`,
+моя ветка — чистый `min/60` над уже работающим ответом, отдельно не гонял (тот же эндпоинт, 0 новой логики).
+
+**Прогон проверок**: frontend `npx tsc --noEmit -p tsconfig.json` — 0 ошибок в изменённых файлах (`payroll.ts`,
+`payroll.server.ts`, `reports.ts`, `reports.server.ts`). `eslint` на все 4 — 0 ошибок (1 старый warning в
+`reports.ts` про неиспользуемый `CANCELLED`, не моя строка). `node scripts/fids.mjs` — `2892/2896`, без потерь
+(не трогал `src/areas/**`). `node scripts/renders.mjs --check-compiler` — 0. Backend `npx tsc --noEmit -p
+tsconfig.build.json` и `npm run build` — 0 ошибок. `prisma migrate dev` на общей базе — применилась чисто,
+`prisma migrate reset --force` НЕ гонял (общий `:4010`/база держит ~15 параллельных лейнов, полный сброс
+данных без крайней необходимости — это разрушительно для всех, не только для меня; новая таблица проверена
+адресно через сами эндпоинты выше). Playwright/браузер не гонял (тот же аргумент, что у лейна resources:
+общий вход rate-limited, прямой HTTP по каждому новому маршруту с полным циклом create→read→verify→откат
+достаточен для этой пары файлов).
+
+Решено по ходу:
+- **Не строил второй уровень прав над правами** (право менять чужой `PayrollStaffRights` без `staff.manage`,
+  но с собственным `schemesAccess: true`) — F-09-085 говорит «доступ к схемам и справочнику», не «доступ к
+  правам других»; UI (`GeneralSettingsScreen.tsx`) зовёт `savePayrollRightsBatch` только за `staff.manage`,
+  разводить теоретическую рекурсивную проверку без экрана, который её использует, счёл лишним риском.
+- **Оставил мёртвые `getPayrollRights`/`savePayrollRights` (ед. число) вместо удаления** — 0 вызовов сейчас,
+  но раз бэкенд под них уже есть (симметрично `getStaffRights`/`saveStaffRights` на сервере), выключать им
+  API-ветку означало бы новую асимметрию «половина пары живая, половина нет» без выигрыша.
+- **Пересчитал `clients/*` заново, а не доверился числу попытки 1** — текстовый скрипт по `readCore(`/
+  `readArea(` даёт разный список ложных срабатываний в зависимости от того, кто и когда его гонял (файлы
+  меняются параллельно), поэтому «было 20 → стало 20» — совпадение по счёту, не по составу; следующий заход
+  должен читать этот список функций по именам, не полагаться на голое число.
+
+### Вопросы владельцу (этап 21, лейн services+rest, попытка 2)
+Ничего денежного/юридического нового. `clients/catalog.ts` (`listCertificates`/`getClientLoyalty`/
+`findClientByLoyaltyCode`) упирается в расхождение доменных имён между моком (`Subscription`) и бэкендом
+(`MembershipSale`) — не решение владельца, просто ещё не построенный на бэкенде метод «список для бизнеса»/
+«по клиенту вместе»; зафиксировано для следующего захода, не эскалирую как открытый вопрос.
+
+лейн services+rest: закрыто N=7 в этом заходе (`reports.ts` 2 + `payroll.ts` 5), суммарно с попыткой 1 —
+`services.ts` 11/11, `schedule/table.ts` +2 маршрута, `reports.ts` 2 (favorites), `payroll.ts` 7/9 (осталось
+`evaluateCriterionValue`/`previewChartForStaff`), `clients/catalog.ts` 1/3; осталось по файлам: `clients/*` 19
+(состав уточнён выше), `network.ts` 76, `finance.ts` 58 (~11 вне мандата, ~11 отдельная подсистема депозитов),
+`stock.ts` 36, `integrations.ts` 20, `notify.ts` 39, `reports.ts` 13 (мелкие отчёты/настройки, не построены
+этапом 16), `loyalty.ts` целиком (2900+ строк, не пересчитывал), `platform/*` не измерен тем же приёмом.
