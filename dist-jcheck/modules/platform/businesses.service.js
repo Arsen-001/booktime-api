@@ -1,0 +1,138 @@
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+import { Injectable } from '@nestjs/common';
+import { ApiError } from '../../common/errors/api-error.js';
+import { newId } from '../../common/ids/ids.js';
+import { PrismaService } from '../../common/prisma.service.js';
+import { utcToLocal, utcToLocalDate } from '../../common/time/time.js';
+const CSV_SEPARATOR = ';';
+/** CSV для Excel — тот же приём, что src/lib/csv.ts фронта (';' + BOM, кавычки при спецсимволах) */
+function csvCell(value) {
+    const text = value === null || value === undefined ? '' : String(value);
+    return text.includes(CSV_SEPARATOR) || /["\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+function toCsv(rows, headers) {
+    const lines = rows.map((row) => row.map((v) => csvCell(v)).join(CSV_SEPARATOR));
+    return [headers.map((h) => csvCell(h)).join(CSV_SEPARATOR), ...lines].join('\r\n');
+}
+/** Бизнесы на платформе (docs/backend/06 §6, 02 §19): обзор, копии, выгрузка при уходе, согласие на рекламу. */
+let PlatformBusinessesService = class PlatformBusinessesService {
+    constructor(prisma) {
+        this.prisma = prisma;
+    }
+    async overview() {
+        const businesses = await this.prisma.business.findMany({ select: { id: true, name: true, kind: true, sphereIds: true, status: true, leftAt: true } });
+        const bizIds = businesses.map((b) => b.id);
+        const [locations, staffCounts, metas] = await Promise.all([
+            this.prisma.location.findMany({ where: { businessId: { in: bizIds }, deletedAt: null }, select: { businessId: true, district: true }, orderBy: { sortOrder: 'asc' } }),
+            this.prisma.staff.groupBy({ by: ['businessId'], where: { businessId: { in: bizIds }, deletedAt: null, status: { not: 'fired' } }, _count: { _all: true } }),
+            this.prisma.bizMeta.findMany({ where: { businessId: { in: bizIds } } }),
+        ]);
+        const districtOf = new Map(locations.map((l) => [l.businessId, l.district]));
+        const staffCountOf = new Map(staffCounts.map((s) => [s.businessId, s._count._all]));
+        const metaOf = new Map(metas.map((m) => [m.businessId, m]));
+        return businesses
+            .map((b) => {
+            const meta = metaOf.get(b.id);
+            return {
+                id: b.id,
+                name: b.name,
+                kind: b.kind,
+                sphereIds: Array.isArray(b.sphereIds) ? b.sphereIds : [],
+                district: districtOf.get(b.id),
+                status: (b.leftAt ? 'left' : b.status === 'frozen' ? 'frozen' : 'active'),
+                staffCount: staffCountOf.get(b.id) ?? 0,
+                meta: meta
+                    ? {
+                        businessId: meta.businessId,
+                        source: meta.source,
+                        responsibleId: meta.responsibleId ?? undefined,
+                        promoCodeId: meta.promoCodeId ?? undefined,
+                        leftAt: b.leftAt ? utcToLocalDate(b.leftAt) : undefined,
+                        dataHandedAt: meta.dataHandedAt ? utcToLocal(meta.dataHandedAt) : undefined,
+                        note: meta.note ?? undefined,
+                    }
+                    : b.leftAt
+                        ? { businessId: b.id, source: 'self', leftAt: utcToLocalDate(b.leftAt) }
+                        : undefined,
+            };
+        })
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }
+    async setAdsOptIn(businessId, optIn) {
+        const n = await this.prisma.business.updateMany({ where: { id: businessId }, data: { adsOptIn: optIn } });
+        if (!n.count)
+            throw new ApiError('not_found', 'Business not found');
+    }
+    async listBackupCopies(businessId) {
+        const rows = await this.prisma.backupCopy.findMany({ where: { businessId }, orderBy: { at: 'desc' }, take: 100 });
+        return rows.map((r) => ({ id: r.id, businessId: r.businessId, at: utcToLocal(r.at), kind: r.kind, counts: r.counts, sizeKb: r.sizeKb }));
+    }
+    async makeBackupCopy(businessId) {
+        const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { id: true } });
+        if (!biz)
+            throw new ApiError('not_found', 'Business not found');
+        const [clients, bookings, services, staff] = await Promise.all([
+            this.prisma.client.count({ where: { businessId, deletedAt: null } }),
+            this.prisma.booking.count({ where: { businessId, deletedAt: null } }),
+            this.prisma.service.count({ where: { businessId } }),
+            this.prisma.staff.count({ where: { businessId, deletedAt: null } }),
+        ]);
+        const counts = { clients, bookings, services, staff };
+        const row = await this.prisma.backupCopy.create({
+            data: { id: newId('backupCopy'), businessId, kind: 'manual', counts, sizeKb: 40 + Math.ceil((clients + bookings) / 5) },
+        });
+        return { id: row.id, businessId: row.businessId, at: utcToLocal(row.at), kind: 'manual', counts, sizeKb: row.sizeKb };
+    }
+    async exportBusinessData(businessId, what, headers, authorId, authorName) {
+        const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { id: true } });
+        if (!biz)
+            throw new ApiError('not_found', 'Business not found');
+        const rows = what === 'clients'
+            ? (await this.prisma.client.findMany({ where: { businessId, deletedAt: null } })).map((c) => [c.name, c.phone, c.gender, (Array.isArray(c.tags) ? c.tags : []).join(', '), c.noShowCount])
+            : (await this.prisma.booking.findMany({ where: { businessId, deletedAt: null } })).map((b) => [utcToLocal(b.startAt).replace('T', ' '), b.status, Number(b.total), b.source]);
+        await this.prisma.dataExport.create({ data: { id: newId('dataExport'), businessId, area: what, authorId, authorName, count: rows.length, fileName: `${what}-${businessId}-${utcToLocalDate(new Date())}.csv` } });
+        return { fileName: `${what}-${businessId}-${utcToLocalDate(new Date())}.csv`, csv: toCsv(rows, headers), rows: rows.length };
+    }
+    /** F-00-019: подключённые нами на визите — только им можно выдать бесплатный месяц вручную (billing.grantFreeDays) */
+    async listVisitBusinesses() {
+        const metas = await this.prisma.bizMeta.findMany({ where: { source: 'visit' } });
+        const bizIds = metas.map((m) => m.businessId);
+        const [businesses, subs] = await Promise.all([
+            this.prisma.business.findMany({ where: { id: { in: bizIds }, leftAt: null }, select: { id: true, name: true } }),
+            this.prisma.subscription.findMany({ where: { businessId: { in: bizIds } }, select: { businessId: true, freeUntil: true } }),
+        ]);
+        const freeUntilOf = new Map(subs.map((s) => [s.businessId, s.freeUntil]));
+        return businesses
+            .map((b) => ({ id: b.id, name: b.name, freeUntil: freeUntilOf.get(b.id) ? utcToLocalDate(freeUntilOf.get(b.id)) : undefined }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }
+    /** «Бизнес ушёл, данные выданы» — пропадает из каталога (business.leftAt), не отменяется (F-00-183) */
+    async markLeft(businessId, dataHanded) {
+        const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { id: true } });
+        if (!biz)
+            throw new ApiError('not_found', 'Business not found');
+        const now = new Date();
+        await this.prisma.$transaction([
+            this.prisma.business.update({ where: { id: businessId }, data: { leftAt: now } }),
+            this.prisma.bizMeta.upsert({
+                where: { businessId },
+                create: { businessId, source: 'self', dataHandedAt: dataHanded ? now : null },
+                update: { dataHandedAt: dataHanded ? now : undefined },
+            }),
+        ]);
+    }
+};
+PlatformBusinessesService = __decorate([
+    Injectable(),
+    __metadata("design:paramtypes", [PrismaService])
+], PlatformBusinessesService);
+export { PlatformBusinessesService };
+//# sourceMappingURL=businesses.service.js.map

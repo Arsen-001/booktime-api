@@ -1,0 +1,266 @@
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+import { Injectable } from '@nestjs/common';
+import { AuditService } from '../../common/audit/audit.service.js';
+import { ApiError } from '../../common/errors/api-error.js';
+import { SessionStore } from '../../common/http/sessions.js';
+import { updateVersioned } from '../../common/http/version.js';
+import { isLocale } from '../../common/i18n/i18n.js';
+import { newId } from '../../common/ids/ids.js';
+import { normalizePhone } from '../../common/phone.js';
+import { PrismaService } from '../../common/prisma.service.js';
+import { CONSENT_VERSION } from '../auth/auth.service.js';
+import { OtpService } from '../auth/otp.service.js';
+/** Удаление аккаунта наступает через 25 дней после запроса, до того — можно отменить (F-10-129, F-15-158) */
+export const ACCOUNT_DELETION_DAYS = 25;
+const iso = (d) => (d ? d.toISOString() : null);
+const PROFILE_KEYS = ['gender', 'birthday', 'district', 'photoUrl', 'bigFont', 'timeFormat'];
+let AccountService = class AccountService {
+    constructor(prisma, audit, otp, sessions) {
+        this.prisma = prisma;
+        this.audit = audit;
+        this.otp = otp;
+        this.sessions = sessions;
+    }
+    async get(userId) {
+        const u = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { appProfile: true } });
+        const p = u.appProfile;
+        return {
+            id: u.id,
+            name: u.name,
+            phone: u.phone,
+            locale: isLocale(u.locale) ? u.locale : 'ru',
+            twoFactorEnabled: u.twoFactorEnabled,
+            sessionsRevokedAt: iso(u.sessionsRevokedAt),
+            deleteRequestedAt: iso(u.deleteRequestedAt),
+            deletionAt: u.deleteRequestedAt ? new Date(u.deleteRequestedAt.getTime() + ACCOUNT_DELETION_DAYS * 86_400_000).toISOString() : null,
+            dataBlockRequestedAt: iso(u.dataBlockRequestedAt),
+            profile: p
+                ? {
+                    gender: p.gender,
+                    birthday: p.birthday,
+                    district: p.district,
+                    photoUrl: p.photoUrl,
+                    bigFont: p.bigFont,
+                    timeFormat: p.timeFormat,
+                    consentAt: iso(p.consentAt),
+                }
+                : null,
+            version: u.version,
+        };
+    }
+    /** Имя, язык, профиль клиента (F-00-124). If-Match — версия пользователя. */
+    async patch(ctx, input, expectedVersion) {
+        const userId = ctx.session.userId;
+        const before = await this.get(userId);
+        const userData = { updatedBy: userId };
+        if (input.name !== undefined)
+            userData.name = input.name;
+        if (input.locale !== undefined)
+            userData.locale = input.locale;
+        const profileData = {};
+        for (const k of PROFILE_KEYS)
+            if (input[k] !== undefined)
+                profileData[k] = input[k];
+        await this.prisma.$transaction(async (tx) => {
+            await updateVersioned(tx.user, { id: userId }, expectedVersion, userData);
+            if (Object.keys(profileData).length) {
+                await tx.appProfile.upsert({ where: { userId }, create: { userId, ...profileData }, update: { ...profileData, version: { increment: 1 } } });
+            }
+            await this.audit.record(tx, ctx, {
+                action: 'update',
+                entityType: 'user',
+                entityId: userId,
+                before: { name: before.name, locale: before.locale, ...(before.profile ?? {}) },
+                after: { name: before.name, locale: before.locale, ...(before.profile ?? {}), ...userData, ...profileData, updatedBy: undefined },
+            });
+        });
+        return this.get(userId);
+    }
+    async consent(userId) {
+        const p = await this.prisma.appProfile.findUnique({ where: { userId }, select: { consentAt: true, consentVersion: true } });
+        return { accepted: Boolean(p?.consentAt), at: iso(p?.consentAt), version: p?.consentVersion ?? null };
+    }
+    async acceptConsent(userId) {
+        await this.prisma.appProfile.upsert({
+            where: { userId },
+            create: { userId, consentAt: new Date(), consentVersion: CONSENT_VERSION },
+            update: { consentAt: new Date(), consentVersion: CONSENT_VERSION },
+        });
+        return this.consent(userId);
+    }
+    async requestDeletion(ctx) {
+        const userId = ctx.session.userId;
+        await this.prisma.$transaction(async (tx) => {
+            const u = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+            if (u.deleteRequestedAt)
+                return;
+            const at = new Date();
+            await tx.user.update({ where: { id: userId }, data: { deleteRequestedAt: at, updatedBy: userId, version: { increment: 1 } } });
+            await this.audit.record(tx, ctx, { action: 'delete_request', entityType: 'user', entityId: userId, before: { deleteRequestedAt: null }, after: { deleteRequestedAt: at.toISOString() } });
+        });
+        return this.get(userId);
+    }
+    async cancelDeletion(ctx) {
+        const userId = ctx.session.userId;
+        await this.prisma.$transaction(async (tx) => {
+            const u = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+            if (!u.deleteRequestedAt)
+                return;
+            await tx.user.update({ where: { id: userId }, data: { deleteRequestedAt: null, updatedBy: userId, version: { increment: 1 } } });
+            await this.audit.record(tx, ctx, { action: 'delete_cancel', entityType: 'user', entityId: userId, before: { deleteRequestedAt: u.deleteRequestedAt.toISOString() }, after: { deleteRequestedAt: null } });
+        });
+        return this.get(userId);
+    }
+    // ─────────── этап 20: данные и удаление (F-15-154/155, 06 §6) ───────────
+    /** «Выгрузить мои данные» (F-15-154) — не чаще раза в сутки; готовность мгновенная (расчёт синхронный) */
+    async requestDataExport(ctx) {
+        const userId = ctx.session.userId;
+        const last = await this.prisma.accountDataExport.findFirst({ where: { userId }, orderBy: { at: 'desc' } });
+        if (last && Date.now() - last.at.getTime() < 86_400_000)
+            throw new ApiError('too_soon', 'Already exported today — once a day at most');
+        const id = newId('accountDataExport');
+        const row = await this.prisma.$transaction(async (tx) => {
+            const created = await tx.accountDataExport.create({ data: { id, userId } });
+            await this.audit.record(tx, ctx, { action: 'export', entityType: 'user', entityId: userId, after: { at: created.at.toISOString() } });
+            return created;
+        });
+        return { id: row.id, requestedAt: row.at.toISOString(), ready: true };
+    }
+    /** История заявок на выгрузку, новые сверху (для PrivacyTab фронта) */
+    async listDataExports(ctx) {
+        const rows = await this.prisma.accountDataExport.findMany({ where: { userId: ctx.session.userId }, orderBy: { at: 'asc' }, take: 50 });
+        return rows.map((r) => ({ id: r.id, requestedAt: r.at.toISOString(), ready: true }));
+    }
+    /**
+     * «Запрос на блокировку данных» (F-15-155) — заявка, не мгновенное действие; по закону о персональных данных,
+     * формулировку и то, что именно блокируется, должен подтвердить юрист (docs/backend/08, открытый вопрос вне
+     * этого этапа) — сервер честно только записывает заявку и не позволяет подать её дважды подряд.
+     */
+    async requestDataBlock(ctx) {
+        const userId = ctx.session.userId;
+        await this.prisma.$transaction(async (tx) => {
+            const u = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+            if (u.dataBlockRequestedAt)
+                return;
+            const at = new Date();
+            await tx.user.update({ where: { id: userId }, data: { dataBlockRequestedAt: at, updatedBy: userId, version: { increment: 1 } } });
+            await this.audit.record(tx, ctx, { action: 'data_block_request', entityType: 'user', entityId: userId, before: { dataBlockRequestedAt: null }, after: { dataBlockRequestedAt: at.toISOString() } });
+        });
+        return this.get(userId);
+    }
+    // ─────────── смена номера (F-15-149): код на НОВЫЙ номер ───────────
+    async sendPhoneCode(ctx, input) {
+        const phone = normalizePhone(input.phone);
+        if (!phone)
+            throw new ApiError('invalid_phone', 'Phone must be +374XXXXXXXX');
+        const owner = await this.prisma.user.findUnique({ where: { phone }, select: { id: true } });
+        if (owner && owner.id !== ctx.session.userId)
+            throw new ApiError('phone_taken', 'Phone belongs to another account');
+        return this.otp.send({ phone, purpose: 'phone_change', channel: input.channel, ip: ctx.ip, locale: ctx.session.locale, userId: ctx.session.userId });
+    }
+    async confirmPhone(ctx, input) {
+        const userId = ctx.session.userId;
+        const phone = normalizePhone(input.phone);
+        if (!phone)
+            throw new ApiError('invalid_phone', 'Phone must be +374XXXXXXXX');
+        const otp = await this.otp.verify({ phone, purpose: 'phone_change' }, input.code);
+        if (otp.userId !== userId)
+            throw new ApiError('wrong_code', 'Code was requested by another account');
+        await this.prisma.$transaction(async (tx) => {
+            const u = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+            const taken = await tx.user.findUnique({ where: { phone }, select: { id: true } });
+            if (taken && taken.id !== userId)
+                throw new ApiError('phone_taken', 'Phone belongs to another account');
+            await tx.user.update({ where: { id: userId }, data: { phone, updatedBy: userId, version: { increment: 1 } } });
+            await this.audit.record(tx, ctx, { action: 'update', entityType: 'user', entityId: userId, before: { phone: u.phone }, after: { phone } });
+        });
+        return this.get(userId);
+    }
+    /** Двухэтапная проверка (F-15-159): код приходит на телефон аккаунта — без телефона включить нельзя */
+    async setTwoFactor(ctx, enabled) {
+        const userId = ctx.session.userId;
+        await this.prisma.$transaction(async (tx) => {
+            const u = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+            if (enabled && !u.phone)
+                throw new ApiError('phone_required', 'Add a phone number first');
+            if (u.twoFactorEnabled === enabled)
+                return;
+            await tx.user.update({ where: { id: userId }, data: { twoFactorEnabled: enabled, updatedBy: userId, version: { increment: 1 } } });
+            await this.audit.record(tx, ctx, { action: 'update', entityType: 'user', entityId: userId, before: { twoFactorEnabled: u.twoFactorEnabled }, after: { twoFactorEnabled: enabled } });
+        });
+        return this.get(userId);
+    }
+    // ─────────── устройства и журнал входов ───────────
+    async listSessions(ctx) {
+        const rows = await this.prisma.session.findMany({
+            where: { userId: ctx.session.userId, revokedAt: null, expiresAt: { gt: new Date() } },
+            orderBy: { lastSeenAt: 'desc' },
+            take: 50,
+        });
+        return rows.map((s) => ({
+            id: s.id,
+            app: s.app,
+            device: s.device,
+            ip: s.ip,
+            createdAt: s.createdAt.toISOString(),
+            lastSeenAt: s.lastSeenAt.toISOString(),
+            current: s.id === ctx.session.sessionId,
+        }));
+    }
+    async revokeSession(ctx, sessionId) {
+        const s = await this.prisma.session.findFirst({ where: { id: sessionId, userId: ctx.session.userId, revokedAt: null } });
+        if (!s)
+            throw new ApiError('not_found', 'Session not found');
+        await this.sessions.revoke(s.id, 'logout');
+    }
+    async loginEvents(ctx, limit) {
+        const rows = await this.prisma.loginEvent.findMany({
+            where: { userId: ctx.session.userId },
+            orderBy: { at: 'desc' },
+            take: Math.min(Math.max(limit, 1), 200),
+        });
+        return rows.map((e) => ({
+            id: e.id,
+            at: e.at.toISOString(),
+            method: e.method,
+            app: e.app,
+            result: e.result,
+            device: e.device,
+            ip: e.ip,
+            current: e.sessionId === ctx.session.sessionId,
+        }));
+    }
+    // ─────────── токены пушей (05 §4) ───────────
+    async savePushToken(ctx, input) {
+        const userId = ctx.session.userId;
+        const data = {
+            userId,
+            app: input.app,
+            platform: input.platform,
+            subscription: (input.subscription ?? undefined),
+            locale: ctx.session.locale,
+            invalidAt: null,
+        };
+        await this.prisma.pushToken.upsert({ where: { token: input.token }, create: { id: newId('pushToken'), token: input.token, ...data }, update: data });
+    }
+    async deletePushToken(ctx, token) {
+        await this.prisma.pushToken.deleteMany({ where: { token, userId: ctx.session.userId } });
+    }
+};
+AccountService = __decorate([
+    Injectable(),
+    __metadata("design:paramtypes", [PrismaService,
+        AuditService,
+        OtpService,
+        SessionStore])
+], AccountService);
+export { AccountService };
+//# sourceMappingURL=account.service.js.map

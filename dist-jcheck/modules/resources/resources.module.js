@@ -1,0 +1,21 @@
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+import { Module } from '@nestjs/common';
+import { ResourcesController } from './resources.controller.js';
+import { ResourcesService } from './resources.service.js';
+/** Этап 4: ресурсы — кресла, кабинеты, аппараты (docs/backend/01 §4, 02 §9) */
+let ResourcesModule = class ResourcesModule {
+};
+ResourcesModule = __decorate([
+    Module({
+        controllers: [ResourcesController],
+        providers: [ResourcesService],
+        exports: [ResourcesService],
+    })
+], ResourcesModule);
+export { ResourcesModule };
+//# sourceMappingURL=resources.module.js.map

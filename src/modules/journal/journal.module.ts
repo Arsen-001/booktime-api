@@ -19,6 +19,8 @@ import { SeriesService } from './series.service.js';
   imports: [ScheduleModule, LoyaltyModule, StockModule],
   controllers: [BookingsController, JournalController, ClaimsController, MeBookingsController, PublicClaimsController],
   providers: [BookingsService, JournalService, GroupEventsService, SeriesService, JournalSettingsService, JournalAccess],
-  exports: [BookingsService, JournalService, JournalSettingsService],
+  // GroupEventsService, BookingsService — stage 21 lane «resources» использует их для участников/повтора/
+  // серий группового события (src/modules/resources/*), не переопределяя логику журнала своей копией.
+  exports: [BookingsService, JournalService, JournalSettingsService, GroupEventsService],
 })
 export class JournalModule {}

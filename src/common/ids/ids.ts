@@ -178,6 +178,17 @@ export const ID_PREFIX = {
   // мастера внутри черновика — свой префикс cinv, не 'inv' (уже занят billingInvoice, этап 18)
   connectDraft: 'cd',
   connectInvite: 'cinv',
+  // этап 21 — расписание группового события (F-16-067…077, EventSeriesDef фронта — как мок newId('evs')) и
+  // расписание посещений клиента (F-16-078…080, VisitScheduleEntry — как мок newId('vsc'))
+  eventSeriesDef: 'evs',
+  visitScheduleEntry: 'vsc',
+  // этап 21 — лист ожидания СВОЕГО экрана resources.ts (F-16-149…168) — отдельная таблица от journal
+  // waitlist_entries (та — другая реализация, слоты вместо желаний, tags нет; сводить их — отдельная задача,
+  // qa/requests/resources.md, домен src/domain/resources.ts), поэтому свой префикс, как мок newId('wl')
+  resourcesWaitlistEntry: 'wl',
+  // этап 21 (лейн services+rest) — дипломы/сертификаты мастера (F-00-088, StaffDocument фронта, мок newId('doc'));
+  // хранятся в business_settings (area 'services.documents'), не своей таблицей — id всё равно должен быть уникален
+  staffDocument: 'sdoc',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

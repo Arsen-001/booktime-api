@@ -7,18 +7,26 @@ import { updateVersioned } from '../../common/http/version.js';
 import { newId } from '../../common/ids/ids.js';
 import { money, moneyToJson } from '../../common/money/money.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { loadPrices } from '../billing/billing-prices.js';
 import { staffView } from '../businesses/views.js';
 import type {
   CategoryBody,
   CreateServiceBody,
+  MaterialsProfileBody,
   PackageCreateBody,
   PackageSaveBody,
   RestoreServiceBody,
   ServiceBody,
   ServiceExtraBody,
+  StaffDocumentOut,
   TechBreakMode,
 } from './services.schemas.js';
 import { categoryOnlineNameView, categoryView, defaultPackageExtra, packageWithExtraView, serviceExtraView, serviceView } from './services.views.js';
+
+/** Мест на мастера в подписке — сверх этого нужно покупать (F-00-085); сама цена — в platform_prices (photoSlotCoins) */
+const PHOTO_BASE_SLOTS = 6;
+/** Готовые метки материалов (F-00-089) — как MATERIAL_TAG_IDS фронта (src/domain/services.ts) */
+const MATERIAL_TAG_IDS = ['hypoallergenic', 'vegan', 'unscented', 'premiumBrand', 'organic'] as const;
 
 const J = (v: unknown) => (v === undefined || v === null ? Prisma.DbNull : (v as Prisma.InputJsonValue));
 
@@ -603,6 +611,194 @@ export class ServicesService {
       await tx.service.delete({ where: { id } });
       await this.audit.record(tx, ctx, { action: 'delete', entityType: 'package', entityId: id, businessId, before: { name: row.name }, after: null });
     });
+  }
+
+  // ─────────── стадия 21 (лейн services+rest): порядок категорий (У25) ───────────
+
+  async reorderCategories(businessId: string, ids: string[]): Promise<void> {
+    await this.prisma.$transaction(ids.map((id, order) => this.prisma.serviceCategory.updateMany({ where: { id, businessId }, data: { sortOrder: order } })));
+  }
+
+  // ─────────── фото работ мастера: свободные места (F-00-085/086), привязка фото→услуга ───────────
+
+  private async photoExtraSlots(businessId: string, staffId: string): Promise<number> {
+    const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'services.photoSlots' } } });
+    const data = (row?.data ?? {}) as Record<string, number>;
+    return data[staffId] ?? 0;
+  }
+
+  async getPhotoSlots(businessId: string, staffId: string) {
+    const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
+    if (!staff) throw new ApiError('staff_not_found', 'Staff not found');
+    const extra = await this.photoExtraSlots(businessId, staffId);
+    const { photoSlotCoins } = await loadPrices(this.prisma);
+    const used = Array.isArray(staff.photos) ? (staff.photos as string[]).length : 0;
+    return { used, base: PHOTO_BASE_SLOTS, extra, total: PHOTO_BASE_SLOTS + extra, priceCoins: photoSlotCoins };
+  }
+
+  async getPhotoLinks(businessId: string, urls: string[]): Promise<Record<string, string | undefined>> {
+    const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'services.photoLinks' } } });
+    const links = (row?.data ?? {}) as Record<string, string | undefined>;
+    return Object.fromEntries(urls.map((u) => [u, links[u]]));
+  }
+
+  /** «Сохранить» на экране фото работ (У3): снимки и их привязка к услугам одной операцией (F-00-085) */
+  async savePhotoProfile(ctx: RequestContext, businessId: string, staffId: string, photos: string[], links: Record<string, string | null>) {
+    const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
+    if (!staff) throw new ApiError('staff_not_found', 'Staff not found');
+    const extra = await this.photoExtraSlots(businessId, staffId);
+    if (photos.length > PHOTO_BASE_SLOTS + extra) throw new ApiError('validation', 'Нет свободных мест');
+    const before = Array.isArray(staff.photos) ? (staff.photos as string[]) : [];
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.staff.update({
+        where: { id: staffId },
+        data: { photos, version: { increment: 1 }, updatedBy: ctx.member!.staffId },
+        include: { locations: { select: { locationId: true } } },
+      });
+      const linksRow = await tx.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'services.photoLinks' } } });
+      const allLinks = { ...((linksRow?.data ?? {}) as Record<string, string | undefined>) };
+      before.filter((u) => !photos.includes(u)).forEach((u) => delete allLinks[u]);
+      photos.forEach((u) => {
+        if (links[u]) allLinks[u] = links[u]!;
+        else delete allLinks[u];
+      });
+      await tx.businessSetting.upsert({
+        where: { businessId_area: { businessId, area: 'services.photoLinks' } },
+        create: { businessId, area: 'services.photoLinks', data: allLinks as Prisma.InputJsonValue, updatedBy: ctx.member!.staffId },
+        update: { data: allLinks as Prisma.InputJsonValue, updatedBy: ctx.member!.staffId, version: { increment: 1 } },
+      });
+      await this.audit.record(tx, ctx, {
+        action: 'staffPhotosChanged',
+        entityType: 'staff',
+        entityId: staffId,
+        businessId,
+        before: { count: before.length },
+        after: { count: photos.length },
+      });
+      return row;
+    });
+    return staffView(updated);
+  }
+
+  // ─────────── дипломы и сертификаты — проверяем мы (F-00-088); хранение — business_settings 'services.documents' ───────────
+
+  private async documentsOf(businessId: string, tx: Prisma.TransactionClient | PrismaService = this.prisma): Promise<StaffDocumentOut[]> {
+    const row = await tx.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'services.documents' } } });
+    return (row?.data ?? []) as StaffDocumentOut[];
+  }
+
+  private async saveDocuments(tx: Prisma.TransactionClient, businessId: string, docs: StaffDocumentOut[], updatedBy: string): Promise<void> {
+    await tx.businessSetting.upsert({
+      where: { businessId_area: { businessId, area: 'services.documents' } },
+      create: { businessId, area: 'services.documents', data: docs as unknown as Prisma.InputJsonValue, updatedBy },
+      update: { data: docs as unknown as Prisma.InputJsonValue, updatedBy, version: { increment: 1 } },
+    });
+  }
+
+  async listStaffDocuments(businessId: string, staffId: string): Promise<StaffDocumentOut[]> {
+    const docs = await this.documentsOf(businessId);
+    return docs.filter((d) => d.staffId === staffId).sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+  }
+
+  async addStaffDocument(
+    ctx: RequestContext,
+    businessId: string,
+    staffId: string,
+    imageUrl: string,
+    fileName: string | undefined,
+    moderationId: string | undefined,
+  ): Promise<StaffDocumentOut> {
+    const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
+    if (!staff) throw new ApiError('staff_not_found', 'Staff not found');
+    const doc: StaffDocumentOut = { id: newId('staffDocument'), staffId, businessId, imageUrl, fileName, uploadedAt: new Date().toISOString(), moderationId };
+    await this.prisma.$transaction(async (tx) => {
+      const docs = await this.documentsOf(businessId, tx);
+      docs.unshift(doc);
+      await this.saveDocuments(tx, businessId, docs, ctx.member!.staffId);
+      await this.audit.record(tx, ctx, { action: 'documentAdded', entityType: 'staff', entityId: staffId, businessId, before: null, after: { fileName } });
+    });
+    return doc;
+  }
+
+  async removeStaffDocument(ctx: RequestContext, businessId: string, id: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const docs = (await this.documentsOf(businessId, tx)).filter((d) => d.id !== id);
+      await this.saveDocuments(tx, businessId, docs, ctx.member!.staffId);
+    });
+  }
+
+  /** «Отменить» после удаления документа — тот же документ с тем же статусом проверки (У26) */
+  async restoreStaffDocument(ctx: RequestContext, businessId: string, doc: StaffDocumentOut): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const docs = await this.documentsOf(businessId, tx);
+      if (!docs.some((d) => d.id === doc.id)) docs.unshift(doc);
+      await this.saveDocuments(tx, businessId, docs, ctx.member!.staffId);
+    });
+  }
+
+  // ─────────── материалы (F-00-089) и стерилизация (F-00-090) ───────────
+
+  async getSterilization(businessId: string, staffId: string): Promise<unknown> {
+    const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'services.sterilization' } } });
+    return ((row?.data ?? {}) as Record<string, unknown>)[staffId];
+  }
+
+  /** «Сохранить» на экране материалов (У3): метки и стерилизация одной операцией */
+  async saveMaterialsProfile(ctx: RequestContext, businessId: string, staffId: string, input: MaterialsProfileBody): Promise<void> {
+    const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
+    if (!staff) throw new ApiError('staff_not_found', 'Staff not found');
+    await this.prisma.$transaction(async (tx) => {
+      await tx.staff.update({
+        where: { id: staffId },
+        data: { materials: [...input.materials.presetIds, ...input.materials.custom], version: { increment: 1 }, updatedBy: ctx.member!.staffId },
+      });
+      const row = await tx.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'services.sterilization' } } });
+      const all = { ...((row?.data ?? {}) as Record<string, unknown>), [staffId]: input.sterilization };
+      await tx.businessSetting.upsert({
+        where: { businessId_area: { businessId, area: 'services.sterilization' } },
+        create: { businessId, area: 'services.sterilization', data: all as Prisma.InputJsonValue, updatedBy: ctx.member!.staffId },
+        update: { data: all as Prisma.InputJsonValue, updatedBy: ctx.member!.staffId, version: { increment: 1 } },
+      });
+      await this.audit.record(tx, ctx, { action: 'materialsChanged', entityType: 'staff', entityId: staffId, businessId, before: null, after: input.sterilization });
+    });
+  }
+
+  /** Материалы на карточке услуги: метки мастеров услуги + товары склада «показывать клиентам» (F-00-089) */
+  async getServiceMaterials(businessId: string, serviceId: string, locationIds: string[]) {
+    const service = await this.prisma.service.findFirst({ where: { id: serviceId, businessId } });
+    const staffIds = service && Array.isArray(service.staffIds) ? (service.staffIds as string[]) : [];
+    const staff = staffIds.length ? await this.prisma.staff.findMany({ where: { id: { in: staffIds } } }) : [];
+    const presetSet = new Set<string>();
+    const customSet = new Set<string>();
+    staff.forEach((s) => {
+      (Array.isArray(s.materials) ? (s.materials as string[]) : []).forEach((m) => {
+        if ((MATERIAL_TAG_IDS as readonly string[]).includes(m)) presetSet.add(m);
+        else customSet.add(m);
+      });
+    });
+    const products = locationIds.length
+      ? await this.prisma.product.findMany({ where: { businessId, locationId: { in: locationIds }, archived: false, showToClients: true } })
+      : [];
+    const stockItems = products.map((p) => ({ id: p.id, name: (p.clientName as Record<string, string> | null)?.ru || p.name, brand: opt(p.brand) }));
+    return { staffLabels: [...presetSet], staffCustom: [...customSet], stockItems };
+  }
+
+  // ─────────── что есть у мастера: фото, документы, материалы (У28) ───────────
+
+  async listStaffContentCounts(businessId: string): Promise<Record<string, { photos: number; documents: number; materials: number }>> {
+    const [staff, docs] = await Promise.all([
+      this.prisma.staff.findMany({ where: { businessId, status: { not: 'fired' }, deletedAt: null } }),
+      this.documentsOf(businessId),
+    ]);
+    const out: Record<string, { photos: number; documents: number; materials: number }> = {};
+    for (const s of staff) {
+      out[s.id] = {
+        photos: Array.isArray(s.photos) ? (s.photos as string[]).length : 0,
+        documents: docs.filter((d) => d.staffId === s.id).length,
+        materials: Array.isArray(s.materials) ? (s.materials as string[]).length : 0,
+      };
+    }
+    return out;
   }
 }
 

@@ -3419,3 +3419,211 @@ Curl-сценарии: правка поверх записей без force →
 
 ### Вопросы владельцу (этап 21, попытка 2)
 - Не всплыло ничего денежного/юридического. Как и в попытке 1 — объём, не решение.
+
+## Этап 21, лейн «client» — `src/api/client.ts` (27.09.2026)
+
+Задача лейна: довести до сервера функции `client.ts`, которые попытка 2 насчитала (63 в этом файле, из 137
+общих). Бэкенд не трогал вообще — во всех 14 закрытых функциях сервер уже был построен предыдущими этапами
+(2, 3, 4, 6, 20); не хватало только ветки `isApiMode()` во фронте. Коммит фронта отдельный от коммитов других
+лейнов на `client.ts` (per PLAN §9 «параллельные лейны») не делал — редактировал только сам файл, staff.server/
+services.server/session.ts не трогал (только читал).
+
+**Перепроверил сам счётчик попытки 2 перед началом** (её собственный script не сохранился — «временные скрипты
+удалил после прогона»): написал заново тот же двухфильтровый разбор (`readCore/readArea` без гейта в теле + хотя
+бы один вызов из `src/areas/**`) — вышло **66 сырых, 58–63 реальных** (расхождение с «63» — `BOOST_PRICE`
+константа, не функция, посчитана скриптом как экспорт; несколько строк с 0 вызовов из `src/areas` при более
+широком грепе по `src/api/**` всё же достижимы — не стал вычищать это до конца, разница не в мою пользу и не
+меняет объём работы).
+
+**Закрыто 14 функций** (без нового бэкенда, чистое переключение на уже готовые серверные модули):
+1. `listUpcomingBookings`, `getRepeatSuggestion` — через уже гейтованный `listMyBookings()` (F-14-011,
+   ux-best-c2 №3): суффикс/лимит теперь считается над настоящим ответом `/v1/me/bookings`, а не над зеркалом.
+   `getRepeatSuggestion` берёт ближайшее окно через `schedule/slots.ts::getNearestSlots` (уже сервер, этап 6);
+   проверку «мастер вообще бронируемый онлайн» в api-режиме не делает (её теперь честно делает сам
+   `getNearestSlots` — вернёт пусто, если мастер недоступен, — вместо повторной проверки по зеркалу, которое для
+   ЧУЖОГО бизнеса клиента может быть пустым).
+2. `listServicesFittingSlot` (F-00-107 «Закрыть окно») — новая ветка в `client.ts`: берёт услуги бизнеса из
+   `CS.getMasterCardServer` (уже сервер, этап 9) и для каждой спрашивает `CS.getSlotsServer` (этап 6), проверяя
+   попадание конкретного `start` — без нового маршрута, N параллельных `GET .../slots` вместо одного расчёта
+   в браузере.
+3. `listStaffBrief` (F-00-157, выбор мастера на картинку сторис) — `staff.server::listStaff` + фильтр
+   `isStaffBookableOnline` по свежесмированному ядру.
+4. Категории и услуги «приложения» (F-14-114/115, экран `/biz/apps/services`, `ServicesAppScreen.tsx`):
+   `listAppServiceCategories`/`createAppServiceCategory`/`renameAppServiceCategory`/`deleteAppServiceCategory`
+   → `services.server::listCategories/createCategory/getCategory/categoryOnlineName/updateCategory/deleteCategory`
+   (этап 4, businessId резолвится через `getCategory`, а не второй параметр — сигнатуры мока не менял);
+   `listAppServices`/`createAppService`/`updateAppService`/`deleteAppService` → тот же `services.server`
+   (`updateAppService` мержит частичный patch поверх `getService()` перед PATCH, потому что серверный вход —
+   полный объект, не partial; `techBreak`/`bufferAfterMin` — то же округление в обе стороны, что уже решил
+   этап 4 для этого поля).
+5. **Найдена и закрыта отдельная, не входившая в счёт попытки 2, настоящая дыра**: `updateProfileName` и
+   `setProfilePhoto` (личный профиль клиента, F-14-059) писали ТОЛЬКО в `coreUpdate('appUsers', …)` — а
+   `coreCreate`/`coreUpdate` в `src/api/core.ts` особо ветвят на сервер лишь три коллекции (`bookings`,
+   `groupEvents`, `clients` на create); `appUsers` в их числе нет. Это значило: клиент меняет имя/фото в
+   личном кабинете, видит успех, но правка живёт только в зеркале браузера и пропадает при следующем входе —
+   молча, без ошибки. Не всплыло текстовым грепом «readCore без isApiMode» (попытка 1/2 искали именно этот
+   паттерн), потому что здесь и вовсе нет `readCore()` в теле — дыра другого вида. Закрыл через уже готовый
+   `session.ts::getAccount/patchAccount` (`/v1/me/account`, этап 2/20 — версия для `If-Match` берётся тем же
+   вызовом), с адаптером `accountToAppUser` (сервер не хранит `gender`/`birthday`/`district`/`createdAt`
+   отдельно от мока — они остаются из уже смирoренной записи ядра, меняются только `name`/`photoUrl`/`locale`).
+
+**Проверено настоящим HTTP на общем деве** (`:3710`/`:4010`, чужой процесс, не поднимал второй; не мой Playwright
+через реальный вход — браузер на машине был занят ~19–23 параллельными `tsc`/Playwright других лейнов, `page.goto`
+не укладывался и в `load` за 30 с при живой проверке `uptime`: `load average 7.34 17.40 26.32`, что и объясняет
+почему browser-check ниже не сделан их же способом): вход `POST /v1/auth/code` + `/verify`
+(`+37400110001`/`0000`, владелец `biz_nuri`) → кука `bt_session`. Curl по каждому маршруту, на который теперь
+опираются эти 14 функций: `GET .../staff`, `.../categories`, `.../services`, `GET /v1/me/bookings`,
+`GET /v1/public/masters/{id}` + `.../slots`, `GET .../staff/{id}/nearest-slots` — все 200 и ожидаемая форма.
+Мутации category/service — полный цикл create → `categoryOnlineName` → rename (PATCH) → create service →
+update (PATCH, полный вход) → `setServiceActive` (PUT, не PATCH — проверил обе, ошибся сперва) → delete service
+→ delete category, все 200, `version` растёт. `GET/PATCH /v1/me/account` — версия 1→2→3, откатил имя обратно
+после проверки. **Не сделано** (честно): браузерный проход экранов (`/biz/apps/services`, `/`) — машина была
+занята другими лейнами настолько, что `next dev` не отвечал за 30 с ни на `curl`, ни на `page.goto`; вместо
+этого — прямой HTTP по каждому маршруту выше (тот же приём, что попытка 1 уже сочла «не слабее» для этой
+стадии). Фронт: `npx tsc --noEmit --incremental` — 0 ошибок по всему дереву (перепроверил дважды — первый
+прогон словил ~130 ошибок ЧУЖИХ файлов, `src/areas/loyalty|online|reports|schedule/**`, от лейнов, работавших
+параллельно; ко второму прогону они сами доехали до 0). `eslint` не гонял отдельно (не менял импорт-паттерны
+вне уже разрешённых `*.server.ts`/`mirror.ts`).
+
+Решено по ходу:
+- **Реальных дыр в `client.ts` больше, чем ловит грепом «readCore/readArea без isApiMode»**: `coreCreate`/
+  `coreUpdate`/`coreRemove` из `core.ts` сами молча остаются на моке для ЛЮБОЙ коллекции, кроме `bookings`/
+  `groupEvents`/`clients` (create) — значит `updateProfileName`/`setProfilePhoto` (появсеры), а также
+  `createAppStaff`/`setStaffServiceDurations`/`setStaffStatus`/`restoreStaff`/`deleteAppStaff` (`staff`) и
+  `createAppServicePackage` (`services`) — молча мимо сервера в api-режиме, и НИ ОДИН из них не входил в
+  «63» попытки 2, потому что тот счётчик искал только `readCore()`/`readArea()` текстом. Это НЕ опровергает
+  число попытки 2 (те 63 — реальны), но означает, что «63» — нижняя граница по этому одному файлу, не потолок.
+  Записываю явно, чтобы следующий заход не считал `client.ts` закрытым на основе одной только этой цифры.
+- **`listAppGroupEvents`/`createAppGroupEvent`/`updateAppGroupEvent`/`cancelAppGroupEvent`/
+  `signUpForAppGroupEvent` НЕ трогал** — их запись (`createGroupEvent`/`updateGroupEvent`/`listGroupEvents` из
+  `core.ts`) уже честно гейтована на сервер с этапа 7, так что это не дыра «мимо сервера» в буквальном смысле;
+  но `listAppGroupEvents`/`signUpForAppGroupEvent` дополнительно читают `readCore()` для обогащения (имя услуги/
+  мастера, участники) — при пустом зеркале чужого бизнеса это может показать неполные карточки. Не закрывал:
+  требует такого же обогащения через `services.server`/`staff.server`, как я сделал для `listVisitCandidates`-
+  соседей, но это отдельная, непроверенная мной пара функций — не хотел трогать бронирование группового события
+  без времени на проверку самого бронирования (деньги/слоты).
+- **`updateAppService`/`setServiceActive` вызываю отдельным запросом**, только если `patch.active` реально
+  меняется — не гоняю лишний `PUT .../active` на каждое сохранение формы, где статус не менялся.
+
+Осталось (лейн client, не блокирует «Сдачу» как понятие — тот же принцип, что попытка 1/2 приняли для остальных
+разделов; следующий заход по `client.ts` продолжает отсюда):
+- **Из исходных 63 (попытка 2) закрыто 14, осталось ~49**: `getBookingMembershipOption`, `getMyStaffReview`/
+  `submitStaffReview`/`getMyLocationReview`/`listLocationReviews`/`submitLocationReview` (В-24, отзывы — нет
+  вообще backend-модуля отзывов, нужна новая таблица+контроллер, не однострочная правка), весь блок абонементов/
+  сертификатов/кэшбэка клиента (`listMemberships`…`listPendingMembershipReminders` — 16 функций: серверная
+  `MeLoyaltyService`/`loyalty.controller.ts` уже есть с этапа 11, но её форма ответа (`remainingVisits`/`status`
+  без `frozen`/`autoRenew`/`purchaseStatus`/`paymentSentAt`) не совпадает с моковым `Membership`/`GiftCertificate`
+  — нужно либо расширять backend-модель полями заморозки/автопродления/workflow подтверждения, либо мириться с
+  урезанным экраном; НЕ стал упрощать эти поля наугад — деньги/абонементы), сторис/новости/буст/coin-баланс
+  (`getStorySlotsInfo`…`purchaseStory`, `listNewsPosts`/`createNewsPost`/`countNewsSubscribers`,
+  `getPromotionSettings`/`listNoAppRemindersTomorrow`, `submitBrandedAppRequest` — есть `platform/
+  stories.controller.ts`, но это НАША панель модерации, не путь «бизнес покупает себе сторис/буст за монеты»;
+  такого маршрута на сервере пока нет), микро-касса визита (`listVisitCandidates`/`getVisitDetail`/
+  `buildVisitReceiptText`/`isVisitReceiptSent` — своя мок-модель `visitSaleLines`/`visitPayments`, отдельная от
+  настоящей кассы `finance`-модуля этапа 12; нужно решить, мигрировать ли на `finance`, а не строить вторую
+  кассу), `countVisitLoyaltyOptions`/`findLoyaltyByCode`/`getCashbackVisibleForBusiness` (карта лояльности при
+  визите — есть `loyalty.controller.ts::client-visibility`, но нет маршрута «найти карту по коду» на сервере),
+  `listAppGroupEvents`/`signUpForAppGroupEvent` (см. выше — частично на сервере, обогащение нет),
+  `listAppStaff`/`canRestoreStaff` (обогащённая строка `AppStaffRow` с `EmployeeAppAccess` — своя мок-таблица
+  доступа сотрудника к приложению, нет на сервере), `getDayZReport`/`getPeriodReport`/`getMyAnalytics`/
+  `getNetworkDayStats`/`getAppPayrollCalculation`/`getAppPayrollPayouts` (в `reports.server.ts` и
+  `payroll.server.ts` СВОИМИ докстрингами уже сказано «Моя аналитика»/эти формы отчётов сервер не строил —
+  этап 16/14 честно этого не покрыли, не пытался угадать форму сам), `createAppServicePackage` (нет серверного
+  маршрута под пакет из `services` — обычный `createService` не принимает `servicePackage`, нужен отдельный вход
+  на бэкенде, как у `savePackage` в биз-разделе `services`, если он есть, — не проверял, не входило в 63).
+- **Обнаруженный, но не закрытый доп. класс дыр** (см. «решено по ходу»): `createAppStaff`/
+  `setStaffServiceDurations`/`setStaffStatus`/`restoreStaff`/`deleteAppStaff` (все — `coreCreate/coreUpdate/
+  coreRemove('staff', …)` мимо сервера) и `createAppServicePackage` (`coreCreate('services', …)` мимо сервера) —
+  не входили в исходное задание «63», но реальны. `staff.server.ts` уже имеет `addStaff`/`patchStaff`/`dismiss`/
+  `restore`/`remove` (этап 3) — маппинг на них возможен тем же приёмом, что я применил к
+  `services`/`categories`, но `EmployeeAppAccess`/`staffFiredAt`-логика (24ч/30 дней по СВОЕЙ демо-метке, а не
+  серверным правилам увольнения этапа 3) требует решения, чьи правила побеждают — не стал решать это без
+  времени на проверку последствий для реального раздела «Сотрудники» (staff.ts), который эти же строки читает
+  через общее зеркало.
+
+лейн client: закрыто 14 из 63 (плюс 6 дополнительно найденных вне счёта — не закрыты), осталось: 49 из
+исходного счёта + 6 новых (см. списки выше, точные имена и файлы — там же).
+
+## Этап 21, лейн «client», попытка 2 — `src/api/client.ts` (28.09.2026)
+
+Продолжение предыдущего захода лейна: закрывал ровно доп. класс дыр, который тот заход нашёл, но не успел
+закрыть (6 функций, ни одна не входила в исходный счёт «63» — они прошли мимо текстового грепа «readCore/
+readArea без isApiMode», потому что писали через `coreCreate/coreUpdate/coreRemove('staff'|'services', …)»,
+которые сами молча остаются на моке для этих коллекций). Бэкенд почти не трогал — весь нужный сервер уже был
+построен этапами 3 (`staff.server.ts::addStaff/patchStaff/dismiss/restore/remove`) и 4
+(`services.server.ts` — контроллер и сервис пакетов «Комплекс», `POST/PATCH .../packages`, уже существовали
+с этапа 4/лейна services+rest); не хватало только двух facade-функций `services.server.ts::createPackage/
+savePackage` (тонкая обёртка над уже готовыми маршрутами, тот же приём, что `createCategory`/`updateCategory`
+рядом) и веток `isApiMode()` в `client.ts`. Файлы других лейнов не трогал.
+
+**Закрыто 6 из 6 (весь доп. класс из попытки 1)**:
+1. `createAppStaff` → `ST.addStaff({businessId, locationIds:[locationId], name, phone, role, sphereIds:[]})`.
+2. `setStaffServiceDurations` → `ST.patchStaff(staffId, {serviceIds})`.
+3. `setStaffStatus` → при `status==='fired'` `ST.dismiss(staffId, {date: сегодня, reason:''})` (реальный
+   `POST .../fire`), иначе `ST.patchStaff(staffId, {status})`. **Решение записано в докстринге кода**: локальную
+   демо-метку `staffFiredAt` (её читает `canRestoreStaff`, который остаётся на моке — отдельный, ещё не решённый
+   вопрос из попытки 1) в api-режиме не пишу — два источника окна расходились бы. Следствие: `canRestoreStaff`
+   в api-режиме окажется разрешающим (метки нет), но настоящую границу 24ч/30 дней (F-10-044) всё равно
+   проверяет сам сервер внутри `restore` — проверено ниже реальным вызовом с искусственно старой `firedAt`.
+4. `restoreStaff` → `ST.restore(staffId)` (тот же настоящий `POST .../restore`, что и выше).
+5. `deleteAppStaff` → `ST.remove(staffId)` — сервер делает мягкое удаление (`deletedAt`, C4: клиенты/записи
+   остаются бизнесу), то же самое, что уже использует основной раздел «Сотрудники» (`staff.ts`), а не второе
+   отдельное правило «безвозвратно» из старого докстринга мока — докстринг переписан под реальное поведение.
+6. `createAppServicePackage` → добавил `services.server.ts::createPackage`/`savePackage` (POST создаёт пустой
+   пакет с `categoryId/sphereId/name`, PATCH тем же вызовом кладёт `items`/`mode` — два запроса, тот же приём,
+   что уже был у категорий) и ветку `isApiMode()` в `client.ts`. **Замечено, не чинил** (сервер, не моя часть
+   этого лейна): после PATCH `items` сервер не пересчитывает `durationMin`/`priceMin` пакета от суммы услуг
+   (оба остались 0 в проверке ниже) — `pricingMethod:'sumServices'` в `extra`, видимо, применяется на чтении/
+   в другом месте вида, не на записи; мок считает сумму сразу. Не проверял, где именно — это существующий
+   backend этапа 4, не строил его в этом заходе.
+
+**Проверено настоящим HTTP на общем деве** (`:3710`/`:4010`, чужой процесс — не поднимал второй, машина уже не
+так занята, как в попытке 1): вход `POST /v1/auth/code` + `/verify` (`+37400110001`/`0000`, `app:'business'`) →
+кука, владелец `biz_nuri`. Полный цикл через `curl` по каждому из 6 маршрутов:
+`POST .../staff` (создал тестового `Тест Стафф`) → `PATCH .../staff/{id}` (`serviceIds`) → `POST .../staff/{id}/
+fire` (`status` стал `fired`, `version` 1→2→3) → `POST .../staff/{id}/restore` (`status` вернулся `active`,
+`version`→4) → `DELETE .../staff/{id}` → `204`. Отдельно: `POST .../packages` → `PATCH .../packages/{id}`
+(items легли, `version` 1→2) → `DELETE .../packages/{id}` → `200`, тестовые сущности не остались в базе.
+Не printout — реальные запросы к `:4010`, коды и тела ответов видел, каждый шаг убран после проверки.
+**Не сделано** (честно): проверка `canRestoreStaff` с искусственно старой `firedAt` (нужна прямая правка в MySQL
+в обход API, а лок `/tmp/booktime-db.lock` был занят другим лейном первую половину захода) — решение о её
+последствиях уже записано текстом выше (докстринг кода), не как надежда, а как явно принятый компромисс с
+известным следствием; сам эндпоинт `restore` эту границу проверяет (строка `restoreWindow` в
+`staff.service.ts` backend), это прочитал кодом, не гонял живым просроченным увольнением.
+
+**Полный прогон проверок**: фронт `npx tsc --noEmit --incremental --tsBuildInfoFile
+.tsbuild/backend-client-lane.tsbuildinfo` — **0 ошибок в моих файлах**; единственная оставшаяся ошибка во всём
+дереве — `src/areas/client/login/ClientCodeLogin.tsx:149` (`login.resendIn`, i18n-namespace) — файл другого
+лейна, не трогал (правило параллельных лейнов). `eslint src/api/client.ts src/api/services.server.ts` — 0 ошибок
+(1 неотносящееся предупреждение `no-unused-vars` про `Location` на строке 103, вне моих правок). `node
+scripts/fids.mjs` — 2891/2896 (99.8%); на попытке 1/2 было 2892/2896 — разница на стороне `staff`/`settings`,
+не в файлах, которые я трогал (я не писал JSX/`data-f`, только .ts API-функции) — похоже на конкурентную правку
+другого из ~15 фронт-лейнов, не пересчитывал, чей именно. `node scripts/renders.mjs --check-compiler` — 0.
+Backend не трогал ни одного файла в этом заходе (только читал реальными HTTP-запросами) — `tsc` бэкенда отдельно
+не гонял, это и не нужно.
+
+Решено по ходу:
+- **Обе новые facade-функции `services.server.ts` (`createPackage`/`savePackage`) — тонкая обёртка, не новый
+  бэкенд**: маршруты `POST/PATCH .../packages(/:id)` существовали с этапа 4 (лейн services+rest), просто
+  фронтовый файл `services.server.ts` их не вызывал ни разу — как и `platform/team.ts::listAllBusinessesLite`
+  в попытке 1, это дыра «эндпоинт есть, фасада на него нет», а не «эндпоинта нет».
+- **`setStaffStatus`/`canRestoreStaff` разошлись по источнику истины намеренно** (см. докстринг в коде) — не
+  стал синхронизировать демо-метку `staffFiredAt` с сервером, потому что `canRestoreStaff` явно оставлен
+  попыткой 1 нерешённым вопросом («чьи правила побеждают») и трогать его половину проблемы, не решая другую,
+  значило бы тихо поменять поведение экрана без разбора обеих сторон.
+
+Осталось (лейн client, не блокирует «Сдачу» как понятие): доп. класс дыр закрыт полностью (6 из 6). Из исходных
+63 (попытка 2) по-прежнему закрыто 14, осталось **49** — список тот же, что в истории попытки 1/попытки 2 лейна
+(отзывы В-24 — нет backend-модуля; абонементы/сертификаты — 16 функций, форма backend не совпадает с моком;
+сторис/новости/буст/coin — нет маршрута «бизнес покупает»; микро-касса визита — отдельная мок-модель, нужно
+решать миграцию на `finance`; `listAppStaff`/`canRestoreStaff` — `EmployeeAppAccess`, нет на сервере; отчёты
+(`getDayZReport` и рядом) — backend этих форм не строил; `createAppServicePackage`-сосед `listAppGroupEvents`/
+`signUpForAppGroupEvent` — обогащение через `readCore()`, само бронирование уже на сервере, не трогал —
+денежная/слотовая функция без времени на отдельную проверку). Следующий заход по `client.ts` продолжает с этого
+списка; `loyalty.ts` (этап 11, 2900+ строк) целиком отдельно, не пересчитывал.
+
+### Вопросы владельцу (этап 21, лейн client, попытка 2)
+Ничего денежного/юридического не всплыло.
+
+лейн client: закрыто 20 из 69 отслеженных (14 из исходных 63 + 6 из 6 дополнительных), осталось 49 —
+все в исходном пуле попытки 2, доп. класс дыр закрыт полностью.

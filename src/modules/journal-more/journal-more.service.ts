@@ -70,7 +70,7 @@ const PARTY_LEDGER: Record<string, string> = { counterparty: 'contractor', clien
 export interface JournalUserPrefs {
   pinnedFields?: string[];
   clientCardPins: string[];
-  favorites: { id: string; [k: string]: unknown }[];
+  favorites: { id: string; labelKey: string; href: string }[];
   waitlistPanelOpen: boolean;
 }
 const EMPTY_PREFS: JournalUserPrefs = { clientCardPins: [], favorites: [], waitlistPanelOpen: false };
@@ -327,7 +327,12 @@ export class JournalMoreService {
 
   async prefs(businessId: string, userKey: string): Promise<JournalUserPrefs> {
     const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: prefsArea(userKey) } } });
-    return { ...EMPTY_PREFS, ...((row?.data as Partial<JournalUserPrefs> | null) ?? {}) };
+    const stored = { ...EMPTY_PREFS, ...((row?.data as Partial<JournalUserPrefs> | null) ?? {}) };
+    // Строки, записанные до проверки формы (без labelKey/href), не отдаём — экран строит по ним ссылки
+    const favorites = (Array.isArray(stored.favorites) ? stored.favorites : []).filter(
+      (f) => f && typeof f.id === 'string' && typeof f.labelKey === 'string' && typeof f.href === 'string' && f.href.startsWith('/'),
+    );
+    return { ...stored, favorites };
   }
 
   async patchPrefs(ctx: RequestContext, businessId: string, userKey: string, patch: Partial<JournalUserPrefs>): Promise<JournalUserPrefs> {

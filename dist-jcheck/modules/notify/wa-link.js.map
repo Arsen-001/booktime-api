@@ -1,0 +1,1 @@
+{"version":3,"file":"wa-link.js","sourceRoot":"","sources":["../../../src/modules/notify/wa-link.ts"],"names":[],"mappings":"AAAA,yGAAyG;AACzG,MAAM,UAAU,MAAM,CAAC,KAAa,EAAE,IAAY;IAChD,MAAM,MAAM,GAAG,KAAK,CAAC,OAAO,CAAC,KAAK,EAAE,EAAE,CAAC,CAAC;IACxC,OAAO,iBAAiB,MAAM,SAAS,kBAAkB,CAAC,IAAI,CAAC,EAAE,CAAC;AACpE,CAAC"}

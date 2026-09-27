@@ -147,3 +147,53 @@ export const deleteImpactOut = z.object({ staffCount: z.number(), futureBookings
 export const categoryDeleteImpactOut = z.object({ serviceCount: z.number() });
 export const techBreakExportRowOut = z.object({ id: z.string(), name: z.string(), seconds: z.union([z.number(), z.literal('Default')]) });
 export const techBreakImportResultOut = z.object({ applied: z.number(), failed: z.array(z.object({ name: z.string(), reason: z.string() })) });
+
+// ─────────── стадия 21 (лейн services+rest): фото мастера (свободные места, привязка к услуге), дипломы,
+// материалы/стерилизация, порядок категорий, сводка контента (F-00-085…091, У28) ───────────
+
+export const photoProfileBody = z.object({
+  photos: z.array(z.string().max(4_000_000)).max(30),
+  links: z.record(z.string(), z.string().max(32).nullable()),
+});
+export type PhotoProfileBody = z.infer<typeof photoProfileBody>;
+
+export const staffDocumentBody = z.object({
+  imageUrl: z.string().max(4_000_000),
+  fileName: z.string().max(255).optional(),
+  moderationId: id32.optional(),
+});
+export type StaffDocumentBody = z.infer<typeof staffDocumentBody>;
+
+export const staffDocumentOut = z.object({
+  id: z.string(),
+  staffId: z.string(),
+  businessId: z.string(),
+  imageUrl: z.string(),
+  fileName: z.string().optional(),
+  uploadedAt: z.string(),
+  moderationId: z.string().optional(),
+});
+export type StaffDocumentOut = z.infer<typeof staffDocumentOut>;
+
+/** «Отменить» после удаления диплома (У26) — пересоздаёт ту же строку, что вернул GET/POST */
+export const staffDocumentRestoreBody = staffDocumentOut;
+
+export const materialsProfileBody = z.object({
+  materials: z.object({
+    presetIds: z.array(z.string().max(40)).max(20),
+    custom: z.array(z.string().max(200)).max(50),
+  }),
+  sterilization: z.object({
+    methods: z.array(z.enum(['autoclave', 'craftBags', 'disposable'])),
+    note: z.string().max(500).optional(),
+  }),
+});
+export type MaterialsProfileBody = z.infer<typeof materialsProfileBody>;
+
+export const photoSlotsOut = z.object({ used: z.number(), base: z.number(), extra: z.number(), total: z.number(), priceCoins: z.number() });
+export const serviceMaterialsOut = z.object({
+  staffLabels: z.array(z.string()),
+  staffCustom: z.array(z.string()),
+  stockItems: z.array(z.object({ id: z.string(), name: z.string(), brand: z.string().optional() })),
+});
+export const staffContentCountsOut = z.record(z.string(), z.object({ photos: z.number(), documents: z.number(), materials: z.number() }));

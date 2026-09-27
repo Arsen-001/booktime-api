@@ -30,7 +30,8 @@ const packageSlotsBody = z.object({
 const prefsBody = z.object({
   pinnedFields: z.array(z.string().max(60)).max(60).optional(),
   clientCardPins: z.array(z.string().max(60)).max(60).optional(),
-  favorites: z.array(z.object({ id: z.string().min(1).max(120) }).passthrough()).max(100).optional(),
+  // FavoriteSection фронта: без labelKey/href «Ещё» журнала падает (Link без href) — принимаем только полную форму
+  favorites: z.array(z.object({ id: z.string().min(1).max(120), labelKey: z.string().min(1).max(160), href: z.string().regex(/^\/[^\s]*$/).max(300) }).strict()).max(100).optional(),
   waitlistPanelOpen: z.boolean().optional(),
 });
 const draftBody = z.object({ key: z.string().min(1).max(200), data: z.unknown().nullable() });

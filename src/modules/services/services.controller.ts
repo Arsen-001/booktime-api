@@ -13,15 +13,23 @@ import {
   categoryOut,
   createServiceBody,
   deleteImpactOut,
+  materialsProfileBody,
   orderBody,
   packageCreateBody,
   packageOut,
   packageSaveBody,
+  photoProfileBody,
+  photoSlotsOut,
   restoreServiceBody,
   serviceBody,
   serviceExtraBody,
+  serviceMaterialsOut,
   serviceOut,
   serviceRowOut,
+  staffContentCountsOut,
+  staffDocumentBody,
+  staffDocumentOut,
+  staffDocumentRestoreBody,
   staffTermBody,
   techBreakBody,
   techBreakExportRowOut,
@@ -93,6 +101,14 @@ export class ServicesController {
     return this.svc.deleteCategory(ctx, businessId, id);
   }
 
+  @Put('categories/order')
+  @Biz('services.edit')
+  @ApiOperation({ summary: 'Порядок категорий (У25)' })
+  @ZodBody(orderBody)
+  reorderCategories(@Param('businessId') businessId: string, @Body(new Zod(orderBody)) body: z.infer<typeof orderBody>) {
+    return this.svc.reorderCategories(businessId, body.ids);
+  }
+
   // ─────────── услуги — статичные пути (регистрируются раньше /services/:id) ───────────
 
   @Get('service-rows')
@@ -133,6 +149,14 @@ export class ServicesController {
   @ZodBody(orderBody)
   reorderServices(@Param('businessId') businessId: string, @Body(new Zod(orderBody)) body: z.infer<typeof orderBody>) {
     return this.svc.reorder(businessId, body.ids);
+  }
+
+  @Get('services/photo-links')
+  @Biz('services.view')
+  @ApiOperation({ summary: 'Привязка фото→услуга одним запросом (вместо запроса на каждое фото); ключ — сам url фото, не мастер' })
+  getPhotoLinks(@Param('businessId') businessId: string, @Query('urls') urls?: string) {
+    const list = urls ? urls.split(',').filter(Boolean) : [];
+    return this.svc.getPhotoLinks(businessId, list);
   }
 
   // ─────────── услуги ───────────
@@ -329,5 +353,102 @@ export class ServicesController {
   @Biz('resources.manage')
   deletePackage(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('id') id: string) {
     return this.svc.deletePackage(ctx, businessId, id);
+  }
+
+  // ─────────── стадия 21 (лейн services+rest): фото работ мастера (F-00-085/086) ───────────
+
+  @Get('staff/:staffId/photo-slots')
+  @Biz('services.view')
+  @ZodOk(photoSlotsOut)
+  getPhotoSlots(@Param('businessId') businessId: string, @Param('staffId') staffId: string) {
+    return this.svc.getPhotoSlots(businessId, staffId);
+  }
+
+
+  @Put('staff/:staffId/photo-profile')
+  @Biz('services.edit')
+  @ApiOperation({ summary: '«Сохранить» на экране фото работ (У3): снимки и привязки одной операцией' })
+  @ZodBody(photoProfileBody)
+  savePhotoProfile(
+    @Ctx() ctx: RequestContext,
+    @Param('businessId') businessId: string,
+    @Param('staffId') staffId: string,
+    @Body(new Zod(photoProfileBody)) body: z.infer<typeof photoProfileBody>,
+  ) {
+    return this.svc.savePhotoProfile(ctx, businessId, staffId, body.photos, body.links);
+  }
+
+  // ─────────── дипломы и сертификаты — проверяем мы (F-00-088) ───────────
+
+  @Get('staff/:staffId/documents')
+  @Biz('services.view')
+  @ZodOk(z.array(staffDocumentOut))
+  listStaffDocuments(@Param('businessId') businessId: string, @Param('staffId') staffId: string) {
+    return this.svc.listStaffDocuments(businessId, staffId);
+  }
+
+  @Post('staff/:staffId/documents')
+  @Biz('services.edit')
+  @ZodBody(staffDocumentBody)
+  @ZodOk(staffDocumentOut)
+  addStaffDocument(
+    @Ctx() ctx: RequestContext,
+    @Param('businessId') businessId: string,
+    @Param('staffId') staffId: string,
+    @Body(new Zod(staffDocumentBody)) body: z.infer<typeof staffDocumentBody>,
+  ) {
+    return this.svc.addStaffDocument(ctx, businessId, staffId, body.imageUrl, body.fileName, body.moderationId);
+  }
+
+  @Delete('services/documents/:id')
+  @Biz('services.edit')
+  removeStaffDocument(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('id') id: string) {
+    return this.svc.removeStaffDocument(ctx, businessId, id);
+  }
+
+  @Post('services/documents/restore')
+  @Biz('services.edit')
+  @ApiOperation({ summary: '«Отменить» после удаления документа (У26)' })
+  @ZodBody(staffDocumentRestoreBody)
+  restoreStaffDocument(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(staffDocumentRestoreBody)) body: z.infer<typeof staffDocumentRestoreBody>) {
+    return this.svc.restoreStaffDocument(ctx, businessId, body);
+  }
+
+  // ─────────── материалы (F-00-089) и стерилизация (F-00-090) ───────────
+
+  @Get('staff/:staffId/sterilization')
+  @Biz('services.view')
+  getSterilization(@Param('businessId') businessId: string, @Param('staffId') staffId: string) {
+    return this.svc.getSterilization(businessId, staffId);
+  }
+
+  @Put('staff/:staffId/materials-profile')
+  @Biz('services.edit')
+  @ApiOperation({ summary: '«Сохранить» на экране материалов (У3): метки и стерилизация одной операцией' })
+  @ZodBody(materialsProfileBody)
+  saveMaterialsProfile(
+    @Ctx() ctx: RequestContext,
+    @Param('businessId') businessId: string,
+    @Param('staffId') staffId: string,
+    @Body(new Zod(materialsProfileBody)) body: z.infer<typeof materialsProfileBody>,
+  ) {
+    return this.svc.saveMaterialsProfile(ctx, businessId, staffId, body);
+  }
+
+  @Get('services/:id/materials')
+  @Biz('services.view')
+  @ZodOk(serviceMaterialsOut)
+  getServiceMaterials(@Param('businessId') businessId: string, @Param('id') id: string, @Query('locationIds') locationIds?: string) {
+    const list = locationIds ? locationIds.split(',').filter(Boolean) : [];
+    return this.svc.getServiceMaterials(businessId, id, list);
+  }
+
+  // ─────────── что есть у мастера: фото, документы, материалы (У28) ───────────
+
+  @Get('staff-content-counts')
+  @Biz('services.view')
+  @ZodOk(staffContentCountsOut)
+  listStaffContentCounts(@Param('businessId') businessId: string) {
+    return this.svc.listStaffContentCounts(businessId);
   }
 }

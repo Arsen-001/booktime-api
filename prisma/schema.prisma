@@ -1372,9 +1372,6 @@ model WaitlistEntry {
   bookingId   String?   @map("booking_id") @db.VarChar(32)
   /// Когда предложено освободившееся окно (В-18, первая волна)
   notifiedAt  DateTime? @map("notified_at") @db.DateTime(3)
-  /// stage 21: история отметок «Проверить лист ожидания» (resources.ts notifyWaitlistForFreedSlot — свой
-  /// ручной путь, отдельный от волн В-18 выше) — ISODateTime[]
-  notifiedTimes Json?   @map("notified_times")
   createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
   createdBy   String?   @map("created_by") @db.VarChar(32)
@@ -3721,6 +3718,35 @@ model VisitScheduleEntry {
 
   @@index([seriesId])
   @@map("visit_schedule_entries")
+}
+
+/// Лист ожидания СВОЕГО экрана resources.ts (F-16-149…168, /biz/waitlist) — своя, более новая надстройка над
+/// желаниями (wishes) и тегами (tags); journal.WaitlistEntry выше — вторая, более старая реализация со
+/// слотами (slots) для другого экрана (журнал) — их сведение в одну сознательно не входит в этот этап (см.
+/// докстринг src/domain/resources.ts фронта, qa/requests/resources.md).
+model ResourcesWaitlistEntry {
+  id            String    @id @db.VarChar(32)
+  businessId    String    @map("business_id") @db.VarChar(32)
+  locationId    String    @map("location_id") @db.VarChar(32)
+  clientName    String    @map("client_name") @db.VarChar(160)
+  clientPhone   String    @map("client_phone") @db.VarChar(20)
+  /// Id услуг, которых клиент ждёт (хотя бы одна)
+  serviceIds    Json      @map("service_ids")
+  /// Пусто — любой специалист
+  staffIds      Json      @map("staff_ids")
+  /// WaitlistWish[]: { date, time?, intervals? }
+  wishes        Json
+  comment       String    @default("") @db.VarChar(2000)
+  tags          Json
+  /// Заявка закрыта записью — id созданной брони (F-16-163)
+  closedBookingId String? @map("closed_booking_id") @db.VarChar(32)
+  /// История отметок «Проверить лист ожидания» (F-16-166…168) — ISODateTime[]
+  notifiedTimes Json?     @map("notified_times")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy     String?   @map("created_by") @db.VarChar(32)
+
+  @@index([businessId, createdAt])
+  @@map("resources_waitlist_entries")
 }
 
 // === end stage 21 ===

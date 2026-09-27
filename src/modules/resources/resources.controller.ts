@@ -1,19 +1,31 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
 import { Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
+import { localToUtc } from '../../common/time/time.js';
 import { Zod } from '../../common/http/validation.js';
 import {
+  assistantSettingsBody,
   changeLogEntryOut,
+  checkInstancesFreeBody,
+  createAssistantBody,
+  eventCategoryBody,
+  eventTemplateBody,
+  fineRightsBody,
+  freeInstancesBody,
+  groupSeatsSettingsBody,
+  groupServicePaymentBody,
   instanceBody,
   resourceCreateBody,
+  resourceOptionsBody,
   resourceOut,
   resourceServicesBody,
   resourceUpdateBody,
   restoreResourceBody,
   splitByResourceBody,
+  staffEligibleBody,
   toggleServiceBody,
 } from './resources.schemas.js';
 import { ResourcesService } from './resources.service.js';
@@ -61,6 +73,163 @@ export class ResourcesController {
   @ZodOk(z.array(resourceOut))
   listForService(@Param('businessId') businessId: string, @Param('serviceId') serviceId: string) {
     return this.svc.listForService(businessId, serviceId);
+  }
+
+  // ─────────── stage 21: окно записи — подбор/проверка свободных экземпляров (F-16-011…013) ───────────
+  // Литеральные сегменты объявлены ДО `:id`/`@Get()` ниже — иначе Nest принял бы их за id ресурса.
+
+  @Post('free-instances')
+  @HttpCode(200)
+  @Biz()
+  @ApiOperation({ summary: 'По одному свободному экземпляру каждого ресурса услуги (F-16-011/012)' })
+  @ZodBody(freeInstancesBody)
+  async freeInstances(@Param('businessId') businessId: string, @Body(new Zod(freeInstancesBody)) body: z.infer<typeof freeInstancesBody>) {
+    const tz = await this.svc.tzOfBusiness(businessId);
+    return this.svc.pickFreeInstances(businessId, body.serviceIds, localToUtc(body.start, tz), body.durationMin, body.excludeBookingId);
+  }
+
+  @Post('check-instances-free')
+  @HttpCode(200)
+  @Biz()
+  @ApiOperation({ summary: 'Выбранные вручную экземпляры всё ещё свободны? (F-16-013)' })
+  @ZodBody(checkInstancesFreeBody)
+  async checkFree(@Param('businessId') businessId: string, @Body(new Zod(checkInstancesFreeBody)) body: z.infer<typeof checkInstancesFreeBody>) {
+    const tz = await this.svc.tzOfBusiness(businessId);
+    return { value: await this.svc.checkInstancesFree(businessId, body.instanceIds, localToUtc(body.start, tz), body.durationMin, body.excludeBookingId) };
+  }
+
+  @Post('options')
+  @HttpCode(200)
+  @Biz()
+  @ApiOperation({ summary: 'Все активные ресурсы с отметкой занятых сейчас экземпляров (F-16-013)' })
+  @ZodBody(resourceOptionsBody)
+  async options(@Param('businessId') businessId: string, @Body(new Zod(resourceOptionsBody)) body: z.infer<typeof resourceOptionsBody>) {
+    const tz = await this.svc.tzOfBusiness(businessId);
+    return this.svc.listResourceOptions(businessId, localToUtc(body.start, tz), body.durationMin, body.excludeBookingId);
+  }
+
+  // ─────────── stage 21: ассистенты (F-16-136…147) ───────────
+
+  @Get('assistant-settings')
+  @Biz()
+  getAssistantSettings(@Param('businessId') businessId: string) {
+    return this.svc.getAssistantSettings(businessId);
+  }
+
+  @Put('assistant-settings')
+  @Biz('resources.manage')
+  @ZodBody(assistantSettingsBody)
+  saveAssistantSettings(@Param('businessId') businessId: string, @Body(new Zod(assistantSettingsBody)) body: z.infer<typeof assistantSettingsBody>) {
+    return this.svc.saveAssistantSettings(businessId, body);
+  }
+
+  @Get('assistant-staff')
+  @Biz()
+  listAssistantStaff(@Param('businessId') businessId: string) {
+    return this.svc.listAssistantStaff(businessId);
+  }
+
+  @Put('assistant-staff/:staffId')
+  @Biz('resources.manage')
+  @ZodBody(staffEligibleBody)
+  setStaffAssistantEligible(@Param('businessId') businessId: string, @Param('staffId') staffId: string, @Body(new Zod(staffEligibleBody)) body: z.infer<typeof staffEligibleBody>) {
+    return this.svc.setStaffAssistantEligible(businessId, staffId, body.value);
+  }
+
+  @Post('create-assistant')
+  @Biz('resources.manage')
+  @ApiOperation({ summary: 'F-09-044/F-16-137/139: короткий путь для минимального помощника без графика' })
+  @ZodBody(createAssistantBody)
+  createAssistant(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(createAssistantBody)) body: z.infer<typeof createAssistantBody>) {
+    return this.svc.createAssistant(ctx, businessId, body.locationId, body.name, body.phone);
+  }
+
+  // ─────────── stage 21: тонкие права раздела (F-16-026, F-16-144, F-16-169) ───────────
+
+  @Get('staff-rights/:staffId')
+  @Biz()
+  getStaffResourcesRights(@Param('businessId') businessId: string, @Param('staffId') staffId: string) {
+    return this.svc.getStaffResourcesRights(businessId, staffId);
+  }
+
+  @Put('staff-rights/:staffId')
+  @Biz('resources.manage')
+  @ZodBody(fineRightsBody)
+  setStaffResourcesRights(@Param('businessId') businessId: string, @Param('staffId') staffId: string, @Body(new Zod(fineRightsBody)) body: z.infer<typeof fineRightsBody>) {
+    return this.svc.setStaffResourcesRights(businessId, staffId, body);
+  }
+
+  // ─────────── stage 21: несколько мест для клиента (F-16-049) ───────────
+
+  @Get('group-seats-settings')
+  @Biz()
+  getGroupSeatsSettings(@Param('businessId') businessId: string) {
+    return this.svc.getGroupSeatsSettings(businessId);
+  }
+
+  @Put('group-seats-settings')
+  @Biz('resources.manage')
+  @ZodBody(groupSeatsSettingsBody)
+  saveGroupSeatsSettings(@Param('businessId') businessId: string, @Body(new Zod(groupSeatsSettingsBody)) body: z.infer<typeof groupSeatsSettingsBody>) {
+    return this.svc.saveGroupSeatsSettings(businessId, body);
+  }
+
+  // ─────────── stage 21: шаблоны повтора события (F-16-064/065/101) ───────────
+
+  @Get('event-templates')
+  @Biz()
+  listEventTemplates(@Param('businessId') businessId: string) {
+    return this.svc.listEventTemplates(businessId);
+  }
+
+  @Post('event-templates')
+  @Biz('journal.edit')
+  @ZodBody(eventTemplateBody)
+  saveEventTemplate(@Param('businessId') businessId: string, @Body(new Zod(eventTemplateBody)) body: z.infer<typeof eventTemplateBody>) {
+    return this.svc.saveEventTemplate(businessId, body);
+  }
+
+  // ─────────── stage 21: категории событий (F-16-043) ───────────
+
+  @Get('event-categories')
+  @Biz()
+  listEventCategories(@Param('businessId') businessId: string) {
+    return this.svc.listEventCategories(businessId);
+  }
+
+  @Post('event-categories')
+  @Biz('resources.manage')
+  @ZodBody(eventCategoryBody)
+  createEventCategory(@Param('businessId') businessId: string, @Body(new Zod(eventCategoryBody)) body: z.infer<typeof eventCategoryBody>) {
+    return this.svc.createEventCategory(businessId, body.name, body.colorIndex);
+  }
+
+  @Patch('event-categories/:id')
+  @Biz('resources.manage')
+  @ZodBody(eventCategoryBody)
+  updateEventCategory(@Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(eventCategoryBody)) body: z.infer<typeof eventCategoryBody>) {
+    return this.svc.updateEventCategory(businessId, id, body);
+  }
+
+  @Delete('event-categories/:id')
+  @Biz('resources.manage')
+  deleteEventCategory(@Param('businessId') businessId: string, @Param('id') id: string) {
+    return this.svc.deleteEventCategory(businessId, id);
+  }
+
+  // ─────────── stage 21: предоплата и абонемент у групповой услуги (F-16-031) ───────────
+
+  @Get('group-service-payment/:serviceId')
+  @Biz()
+  getGroupServicePayment(@Param('businessId') businessId: string, @Param('serviceId') serviceId: string) {
+    return this.svc.getGroupServicePayment(businessId, serviceId);
+  }
+
+  @Put('group-service-payment/:serviceId')
+  @Biz('services.edit')
+  @ZodBody(groupServicePaymentBody)
+  setGroupServicePayment(@Param('businessId') businessId: string, @Param('serviceId') serviceId: string, @Body(new Zod(groupServicePaymentBody)) body: z.infer<typeof groupServicePaymentBody>) {
+    return this.svc.setGroupServicePayment(businessId, serviceId, body);
   }
 
   @Get()
