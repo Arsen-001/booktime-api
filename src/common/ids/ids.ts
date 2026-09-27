@@ -38,6 +38,13 @@ export const ID_PREFIX = {
   // этап 4 — каталог: категории/услуги/пакеты используют cat/sv (пакет — обычная услуга, 01 §4);
   // у ресурса — свои экземпляры (Resource.instances, JSON, как во фронте)
   resourceInstance: 'resinst',
+  // этап 5 — клиенты/CRM: client уже был зарезервирован (как во фронте); остальное — только на сервере,
+  // не мирроруется в ядро браузера, поэтому префикс свой, фронтовому ID_PREFIX не обязан совпадать
+  clientComment: 'ccmt',
+  clientFile: 'cfile',
+  clientImportRun: 'cimp',
+  dataExport: 'dexp',
+  clientCustomField: 'cf',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

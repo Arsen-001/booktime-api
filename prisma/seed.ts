@@ -357,10 +357,39 @@ await prisma.resource.createMany({
   })),
 });
 
+// ─────────── этап 5: клиенты / CRM ───────────
+// seedCore() отдаёт только ядро (CoreData) — профильные поля мока (скидка, класс, «Оплачено» сверх визитов
+// и т.п.) живут в area-срезе браузера, а не в этом снимке, поэтому сеются только поля ядра; остальное — 0/null,
+// как и у настоящего клиента, заведённого через API без формы (см. clients.service.ts createClient).
+const clientsRaw = (core.clients ?? []) as Rec[];
+await prisma.client.createMany({
+  skipDuplicates: true,
+  data: clientsRaw.map((c) => ({
+    id: String(c.id),
+    businessId: String(c.businessId),
+    phone: String(c.phone),
+    name: String(c.name),
+    gender: String(c.gender ?? 'unknown'),
+    birthday: S(c.birthday) ?? null,
+    email: S(c.email) ?? null,
+    note: S(c.note) ?? null,
+    tags: (c.tags ?? []) as Prisma.InputJsonValue,
+    appUserId: S(c.appUserId) ?? null,
+    noShowCount: Number(c.noShowCount ?? 0),
+    blocked: typeof c.blocked === 'boolean' ? c.blocked : null,
+    source: 'manual',
+    deletedAt: S(c.deletedAt) ? localToUtc(String(c.deletedAt).slice(0, 16)) : null,
+    createdAt: local(S(c.createdAt)),
+    createdBy: 'seed',
+    updatedBy: 'seed',
+  })),
+});
+
 console.log(
   `seed: людей ${users.length} (клиентов ${core.appUsers.length}), логинов администраторов ${admins.length}, команда платформы 1; ` +
     `сетей ${networks.length}, бизнесов ${businesses.length}, филиалов ${locations.length}, сотрудников ${core.staff.length}, ` +
     `должностей ${positions.length}, приглашений ${invited.length}; ` +
-    `каталог — категорий ${categoriesRaw.length}, услуг ${servicesRaw.length}, ресурсов ${resourcesRaw.length} — ${Date.now() - t0} мс`,
+    `каталог — категорий ${categoriesRaw.length}, услуг ${servicesRaw.length}, ресурсов ${resourcesRaw.length}; ` +
+    `CRM — клиентов ${clientsRaw.length} — ${Date.now() - t0} мс`,
 );
 await prisma.$disconnect();

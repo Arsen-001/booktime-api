@@ -353,6 +353,8 @@ model Business {
   categories ServiceCategory[]
   services   Service[]
   resources  Resource[]
+  clients    Client[]
+  clientCategories ClientCategory[]
 
   @@index([status])
   @@index([networkId])
@@ -710,6 +712,188 @@ model Resource {
   @@index([businessId])
   @@index([locationId])
   @@map("resources")
+}
+
+// ─────────────────────────── Этап 5 · Клиенты / CRM (01 §5, PLAN §6 №5) ───────────────────────────
+
+/// Клиент — карточка в базе КОНКРЕТНОГО бизнеса (= Client мока + профиль среза clients.profiles), ключ — телефон
+/// в пределах бизнеса (F-00-128). Не пользователь приложения: у одного человека может быть карточка в N салонах.
+/// Уникальность (businessId, phone) — не задаётся индексом (MySQL не умеет частичный WHERE deleted_at IS NULL без
+/// генерируемой колонки, PLAN §4.1: A12 прямо разрешает свободный номер после удаления карточки — «unique среди
+/// неудалённых» здесь и не нужен). Проверка дубля — в приложении перед вставкой (createClient), как и у имени
+/// категории/услуги этапа 4 — без блокировки строки: создание клиентов не на «замке на мастера» §4.2.
+model Client {
+  id                     String    @id @db.VarChar(32)
+  businessId             String    @map("business_id") @db.VarChar(32)
+  phone                  String    @db.VarChar(20)
+  name                   String    @db.VarChar(160)
+  lastName               String?   @map("last_name") @db.VarChar(80)
+  middleName             String?   @map("middle_name") @db.VarChar(80)
+  /// female | male | unknown
+  gender                 String    @default("unknown") @db.VarChar(8)
+  /// 'YYYY-MM-DD'
+  birthday               String?   @db.VarChar(10)
+  email                  String?   @db.VarChar(160)
+  note                   String?   @db.VarChar(2000)
+  /// string[] — категории (= теги ядра мока, F-04-029); справочник цветов — ClientCategory
+  tags                   Json
+  additionalPhone        String?   @map("additional_phone") @db.VarChar(20)
+  /// data URL, как Staff.avatarUrl (F-04-069)
+  avatarUrl              String?   @map("avatar_url") @db.MediumText
+  discountPercent        Int       @default(0) @map("discount_percent")
+  /// gold | silver | bronze
+  importanceClass        String?   @map("importance_class") @db.VarChar(8)
+  cardNumber             String?   @map("card_number") @db.VarChar(40)
+  /// Внесено сверх оплат визитов (F-04-059/166); «Оплачено» = оплаты визитов (этап 7) + это число
+  paidAmount             BigInt    @default(0) @map("paid_amount")
+  /// «Продано» из импорта, прибавляется к визитам, а не заменяет их (F-04-129/177)
+  importedSold           BigInt    @default(0) @map("imported_sold")
+  /// 12 цифр, необязательный (F-04-192)
+  nationalId             String?   @map("national_id") @db.VarChar(12)
+  /// ConsentRecord: { given, at, method, recordedBy } (F-04-153/227)
+  adConsent              Json?     @map("ad_consent")
+  birthdayGreetingOptOut Boolean?  @map("birthday_greeting_opt_out")
+  /// Язык клиента без приложения (F-04-228); с приложением — язык берётся из users.locale
+  locale                 String?   @db.VarChar(2)
+  /// call | wa | tg | viber (F-04-066)
+  preferredContact       String?   @map("preferred_contact") @db.VarChar(6)
+  /// Запрет онлайн-записи (F-04-056 / F-00-189)
+  blocked                Boolean?
+  /// Наличие приложения — вычисляется на лету (users.phone = clients.phone, P1); здесь — только запись
+  /// «запись сделана этим пользователем через приложение» ставит booking (этап 7/8), не карточка клиента.
+  appUserId              String?   @map("app_user_id") @db.VarChar(32)
+  /// Меняет только запись визита «Не пришёл» / поздняя отмена (этап 7); здесь всегда 0 до тех пор
+  noShowCount            Int       @default(0) @map("no_show_count")
+  /// Свои доп. поля клиента (F-04-060) — { fieldId: value } (01 §5 предлагает отдельную таблицу
+  /// client_field_values; JSON на строке — то же намеренное упрощение, что Resource.instances этапа 4:
+  /// значений немного, правка всегда идёт с самой карточкой)
+  customFieldValues      Json?     @map("custom_field_values")
+  /// F-00-130: приглашение из CRM в приложение — когда отправлено (сама отправка сообщения — этап 10)
+  invitedAt              DateTime? @map("invited_at") @db.DateTime(3)
+  /// F-04-211: обезличен по требованию клиента (purgeClientData) — телефон анонимизирован, возврата нет
+  purgedAt               DateTime? @map("purged_at") @db.DateTime(3)
+  /// manual | import | chat | widget — как заведена карточка
+  source                 String?   @db.VarChar(20)
+  /// Мягкое удаление (F-04-074, A12): история остаётся у этой карточки, номер свободен для новой
+  deletedAt              DateTime? @map("deleted_at") @db.DateTime(3)
+  deletedBy              String?   @map("deleted_by") @db.VarChar(32)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy              String?   @map("created_by") @db.VarChar(32)
+  updatedBy              String?   @map("updated_by") @db.VarChar(32)
+  version                Int       @default(1)
+
+  business Business         @relation(fields: [businessId], references: [id])
+  comments ClientComment[]
+  files    ClientFile[]
+
+  @@index([businessId, phone])
+  @@index([businessId, deletedAt])
+  @@index([appUserId])
+  @@map("clients")
+}
+
+/// Справочник категорий клиентов бизнеса (F-04-109/110): имя + цвет; счёт клиентов по категории — на лету
+model ClientCategory {
+  businessId String   @map("business_id") @db.VarChar(32)
+  name       String   @db.VarChar(80)
+  color      String   @db.VarChar(20)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  business Business @relation(fields: [businessId], references: [id])
+
+  @@id([businessId, name])
+  @@map("client_categories")
+}
+
+/// История комментариев карточки (F-04-070)
+model ClientComment {
+  id         String    @id @db.VarChar(32)
+  clientId   String    @map("client_id") @db.VarChar(32)
+  authorId   String?   @map("author_id") @db.VarChar(32)
+  authorName String    @map("author_name") @db.VarChar(120)
+  text       String    @db.VarChar(2000)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  deletedAt  DateTime? @map("deleted_at") @db.DateTime(3)
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, createdAt])
+  @@map("client_comments")
+}
+
+/// Файлы клиента (F-04-086) — как фото каталога, data URL прямо на строке (та же причина, что Service.photos)
+model ClientFile {
+  id         String   @id @db.VarChar(32)
+  clientId   String   @map("client_id") @db.VarChar(32)
+  name       String   @db.VarChar(200)
+  ext        String   @db.VarChar(10)
+  size       Int
+  dataUrl    String   @map("data_url") @db.LongText
+  uploadedAt DateTime @default(now()) @map("uploaded_at") @db.DateTime(3)
+  uploadedBy String   @map("uploaded_by") @db.VarChar(120)
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("client_files")
+}
+
+/// Тонкие права «Клиентская база» поверх грубых clients.* (F-04-194…204) — свой срез поверх permissions.ts
+model ClientFineRights {
+  staffId    String   @id @map("staff_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// Partial<ClientsFineRights> — только то, что владелец переопределил; остальное — умолчание роли
+  rights     Json
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("client_fine_rights")
+}
+
+/// Колонки таблицы клиентов — свои у каждого сотрудника (F-04-004/005); staffId = '' — общая настройка бизнеса
+model ClientColumnsPref {
+  businessId String @map("business_id") @db.VarChar(32)
+  staffId    String @default("") @map("staff_id") @db.VarChar(32)
+  visible    Json
+  pinned     Json
+
+  @@id([businessId, staffId])
+  @@map("client_columns_prefs")
+}
+
+/// Прогон импорта клиентов из Excel/CSV (F-04-126…129) — журнал раздела, «видно в отчёте сообщений» их не касается
+model ClientImportRun {
+  id            String   @id @db.VarChar(32)
+  businessId    String   @map("business_id") @db.VarChar(32)
+  authorName    String   @map("author_name") @db.VarChar(120)
+  /// paste | file
+  method        String   @db.VarChar(6)
+  totalRows     Int      @map("total_rows")
+  createdCount  Int      @map("created_count")
+  updatedCount  Int      @map("updated_count")
+  rejectedCount Int      @map("rejected_count")
+  at            DateTime @default(now()) @db.DateTime(3)
+
+  @@index([businessId, at])
+  @@map("client_import_runs")
+}
+
+/// Выгрузка данных (P4: закрыта по умолчанию, право `clients.export`) — общий журнал, не только для клиентов
+model DataExport {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// clients | … (будущие разделы)
+  area       String   @db.VarChar(20)
+  authorId   String?  @map("author_id") @db.VarChar(32)
+  authorName String   @map("author_name") @db.VarChar(120)
+  count      Int
+  fileName   String?  @map("file_name") @db.VarChar(200)
+  at         DateTime @default(now()) @db.DateTime(3)
+
+  @@index([businessId, area, at])
+  @@map("data_exports")
 }
 
 /// Что уходит с мастером (C4, F-00-044): портфолио, дипломы, материалы привязаны к человеку, а не к салону
