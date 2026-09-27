@@ -8,6 +8,7 @@ import { localDayRangeUtc, localToUtc, utcToLocalDate } from '../src/common/time
 import { hashPassword } from '../src/modules/auth/passwords.js';
 import { SYSTEM_ITEMS } from '../src/modules/finance/finance-catalog.service.js';
 import { loadMockCore } from './seed/mock-core.js';
+import { seedLoyaltyFromMock } from './seed/loyalty.js';
 
 /**
  * Сид разработки (npx prisma db seed; его же зовёт prisma migrate reset). Строит те же данные, что демо фронта:
@@ -864,9 +865,11 @@ await prisma.client.createMany({
   let memberships = 0;
   let accounts = 0;
   let seq = 0;
+  // этап 21, лейн loyalty: бизнесы со срезом «loyalty» мока (ниже) получают его данные, а не эти образцы
+  const fromMock = new Set((((core as Rec).areaLoyalty as Rec | undefined)?.cardTypes as Rec[] | undefined ?? []).map((t) => String(t.businessId)));
   for (const b of core.businesses) {
     const client = clientsAll2.find((c) => c.businessId === b.id);
-    if (!client) continue;
+    if (!client || fromMock.has(String(b.id))) continue;
     const clientId = String(client.id);
     const ownerId = String((b as Rec).networkId ?? b.id);
     const shortId = String(b.id).slice(0, 12);
@@ -930,6 +933,9 @@ await prisma.client.createMany({
   }
   console.log(`seed: лояльность — типов карт ${cardTypes}, сертификатов ${certs}, абонементов ${memberships}, счетов ${accounts}`);
 }
+
+// ─────────── этап 21, лейн loyalty: срез «loyalty» мока фронта — prisma/seed/loyalty.ts ───────────
+await seedLoyaltyFromMock(prisma, core);
 
 // ─────────── этап 12: финансы и касса — 15 системных статей, кассы «Наличные»/«Карта» на филиал, методы
 // оплаты cash/card, и одна реальная оплата визита на бизнес (чтобы касса дня/отчёты не были пустыми). Идемпотентно

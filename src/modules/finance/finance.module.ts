@@ -3,12 +3,14 @@ import { BookingPaymentLineController, BookingPaymentsController, BookingReceipt
 import { BookingPaymentsService } from './booking-payments.service.js';
 import { FinanceCatalogService } from './finance-catalog.service.js';
 import { FinanceController } from './finance.controller.js';
+import { FinanceExtController } from './finance-ext.controller.js';
+import { FinanceExtService } from './finance-ext.service.js';
 import { FinOpsService } from './fin-ops.service.js';
 
 /** Этап 12: финансы и касса (docs/backend/02-api.md §12, PLAN §6 №12). */
 @Module({
-  controllers: [FinanceController, BookingPaymentsController, BookingReceiptController, BookingPaymentLineController],
-  providers: [FinanceCatalogService, FinOpsService, BookingPaymentsService],
-  exports: [FinanceCatalogService, FinOpsService, BookingPaymentsService],
+  controllers: [FinanceController, BookingPaymentsController, BookingReceiptController, BookingPaymentLineController, FinanceExtController],
+  providers: [FinanceCatalogService, FinOpsService, BookingPaymentsService, FinanceExtService],
+  exports: [FinanceCatalogService, FinOpsService, BookingPaymentsService, FinanceExtService],
 })
 export class FinanceModule {}

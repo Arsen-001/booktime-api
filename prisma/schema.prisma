@@ -2249,6 +2249,14 @@ model BookingPayment {
   cancelledAt  DateTime? @map("cancelled_at") @db.DateTime(3)
   createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   createdBy    String?   @map("created_by") @db.VarChar(32)
+  /// Этап 21 (лейн finance+stock): строка за товары визита — в кассу finance не идёт, выручку кладёт продажа склада
+  goods            Boolean @default(false)
+  /// Этап 21: оплата счётом клиента в долг (F-07-061/062)
+  debt             Boolean @default(false)
+  /// Этап 21: счёт уже списан разделом «Лояльность» — баланс «личного счёта» finance не трогаем
+  loyaltyAccountId String? @map("loyalty_account_id") @db.VarChar(32)
+  /// Этап 21: общий ключ одного платежа, разнесённого по строкам визита (groupId мока)
+  groupId          String? @map("group_id") @db.VarChar(32)
 
   @@index([businessId, bookingId])
   @@index([finOpId])
@@ -3905,3 +3913,25 @@ model OnlineClientFieldsConfig {
 }
 
 // === end stage 21 (лейн client+online) ===
+
+// === stage 21 (лейн finance+stock) ===
+
+/// Демо-состояние онлайн-платежей без настоящего провайдера (Р14, F-00-028): ссылки на оплату, снимки и счёт
+/// политики оплаты, транзакции Adyen, заказы «оплачено другим способом». Деньги (FinOp/BookingPayment) пишутся
+/// своими таблицами — здесь только сам документ-имитация в форме сущности фронта (domain/finance.ts).
+model FinRecord {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// paymentLink | policySnapshot | policyEntry | adyenTxn | manualOrder
+  kind       String   @db.VarChar(20)
+  /// bookingId (ссылка/снимок) или id заказа
+  refId      String?  @map("ref_id") @db.VarChar(32)
+  clientId   String?  @map("client_id") @db.VarChar(32)
+  data       Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([businessId, kind, refId])
+  @@index([businessId, kind, clientId])
+  @@map("fin_records")
+}

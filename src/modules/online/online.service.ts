@@ -513,7 +513,9 @@ export class OnlineService {
   async isSubdomainAvailable(subdomain: string, excludeLinkId?: string): Promise<boolean> {
     const clean = subdomain.trim().toLowerCase();
     if (!clean) return false;
-    const rows = await this.prisma.bookingLink.findMany({ where: { config: { path: ['subdomain'], not: Prisma.JsonNull } }, select: { id: true, config: true } });
+    // Глобальная проверка (F-03-037): подсайт `<subdomain>.booktime.am` уникален по ВСЕЙ платформе, не одному
+    // бизнесу — ссылок мало (одна форма на бизнес обычно), фильтруем JSON-поле в JS, а не JSON-path в MySQL.
+    const rows = await this.prisma.bookingLink.findMany({ select: { id: true, config: true } });
     return !rows.some((r) => r.id !== excludeLinkId && String((r.config as Record<string, unknown>).subdomain ?? '').toLowerCase() === clean);
   }
 

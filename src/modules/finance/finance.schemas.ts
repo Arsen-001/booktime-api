@@ -141,7 +141,7 @@ export type FineBody = z.infer<typeof fineBody>;
 
 // ─────────────────────────── Оплата визита (F-07-036…050/181/184) ───────────────────────────
 
-export const paySplitPart = z.object({ methodKey: z.string().min(1).max(32), amount: positiveMoney, accountId: id32.optional() });
+export const paySplitPart = z.object({ methodKey: z.string().min(1).max(32), amount: positiveMoney, accountId: id32.optional(), loyaltyAccountId: id32.optional(), debt: z.boolean().optional() });
 export const payBookingBody = z.union([
   z.object({ mode: z.literal('quick'), methodKey: z.string().min(1).max(32), accountId: id32.optional() }),
   z.object({ mode: z.literal('split'), parts: z.array(paySplitPart).min(1).max(10) }),

@@ -7,7 +7,9 @@
 import { seedCore } from '@/mock/seed';
 // @ts-expect-error — путь из tsconfig фронта
 import { scheduleSlice } from '@/mock/slices/schedule';
+// @ts-expect-error — путь из tsconfig фронта (этап 21, лейн loyalty: срез «loyalty» — карты, акции, сертификаты, абонементы, счета)
+import { loyaltySlice } from '@/mock/slices/loyalty';
 
 const now = process.env.SEED_NOW ? new Date(process.env.SEED_NOW) : new Date();
 const core = seedCore(now);
-process.stdout.write(JSON.stringify({ ...core, areaSchedule: scheduleSlice.seed(core, now) }));
+process.stdout.write(JSON.stringify({ ...core, areaSchedule: scheduleSlice.seed(core, now), areaLoyalty: loyaltySlice.seed(core, now) }));

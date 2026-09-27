@@ -106,6 +106,8 @@ export const ID_PREFIX = {
   finOp: 'fop',
   finCounterparty: 'fcp',
   financeDocument: 'fdoc',
+  // этап 21, лейн finance+stock
+  finRecord: 'frec',
   paymentMethod: 'fpm',
   // этап 13 — склад: только на сервере (мок хранит id произвольными строками) — склад wh, категория gcat,
   // товар gd, документ операции sop, техкарта tc, инвентаризация sinv, оборудование equ, напоминание srem
