@@ -13,6 +13,8 @@ export const demandBody = z.object({
   sphereId: z.string().max(20).optional(),
   district: z.string().max(20).optional(),
   phone: z.string().max(24).optional(),
+  // «Сообщить, когда появится» (F-00-180, этап 19 продолжение — поле не хватало при первой постройке демо)
+  notify: z.boolean().optional(),
 });
 
 export const callbackBody = z.object({

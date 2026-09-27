@@ -57,27 +57,27 @@ model AuditEvent {
 /// Человек. Один на все роли: клиент, мастер, владелец, администратор, команда платформы (01 §1).
 /// Администратор салона может быть без телефона (входит логином, F-00-034) — поэтому phone необязателен.
 model User {
-  id                String    @id @db.VarChar(32)
+  id                   String    @id @db.VarChar(32)
   /// '+374XXXXXXXX' (В-37: только армянские номера)
-  phone             String?   @unique @db.VarChar(16)
-  name              String    @db.VarChar(120)
+  phone                String?   @unique @db.VarChar(16)
+  name                 String    @db.VarChar(120)
   /// ru | hy | en — язык пушей и писем (Р12)
-  locale            String    @default("ru") @db.VarChar(2)
+  locale               String    @default("ru") @db.VarChar(2)
   /// Двухэтапная проверка входа по паролю (F-15-159): после пароля — код на телефон
-  twoFactorEnabled  Boolean   @default(false) @map("two_factor_enabled")
+  twoFactorEnabled     Boolean   @default(false) @map("two_factor_enabled")
   /// «Завершить все сеансы» — когда нажато последний раз (F-15-152)
-  sessionsRevokedAt DateTime? @map("sessions_revoked_at") @db.DateTime(3)
-  blockedAt         DateTime? @map("blocked_at") @db.DateTime(3)
+  sessionsRevokedAt    DateTime? @map("sessions_revoked_at") @db.DateTime(3)
+  blockedAt            DateTime? @map("blocked_at") @db.DateTime(3)
   /// Удаление аккаунта через 25 дней, можно отменить (F-10-129, F-15-158)
-  deleteRequestedAt DateTime? @map("delete_requested_at") @db.DateTime(3)
-  deletedAt         DateTime? @map("deleted_at") @db.DateTime(3)
+  deleteRequestedAt    DateTime? @map("delete_requested_at") @db.DateTime(3)
+  deletedAt            DateTime? @map("deleted_at") @db.DateTime(3)
   /// «Запрос на блокировку данных» (F-15-155) — этап 20, заявка на рассмотрение, юр. текст не решён (Р14-подобно)
   dataBlockRequestedAt DateTime? @map("data_block_requested_at") @db.DateTime(3)
-  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt         DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy         String?   @map("created_by") @db.VarChar(32)
-  updatedBy         String?   @map("updated_by") @db.VarChar(32)
-  version           Int       @default(1)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy            String?   @map("created_by") @db.VarChar(32)
+  updatedBy            String?   @map("updated_by") @db.VarChar(32)
+  version              Int       @default(1)
 
   appProfile     AppProfile?
   sessions       Session[]
@@ -1577,6 +1577,8 @@ model DemandLead {
   district  String?  @db.VarChar(20)
   phone     String?  @db.VarChar(20)
   appUserId String?  @map("app_user_id") @db.VarChar(32)
+  /// Попросил «сообщить, когда появится» (этап 19 продолжение: поле мока не хватало — getDemandReport считает notify)
+  notify    Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   @@index([createdAt])
@@ -3464,6 +3466,138 @@ model PlatformCounter {
   @@map("platform_counters")
 }
 
+// ─── Этап 19 (продолжение, попытка 2): спрос/first-award, реклама+сторис, заметки основателя (02 §19) ───
+// DemandLead уже был (этап 9, поле notify добавлено там же выше) — здесь только FirstAward. AdPlacement —
+// статичный справочник в коде (4 места, ads.constants.ts), как PLACEMENTS мок-контракта, не таблица.
+
+/// Достижение «первый в районе/сфере» (F-00-181) — по одному на (scope, sphereId, district): второй раз тот же
+/// слот не выдаётся (проверка в сервисе, не уникальный индекс — MySQL не различает NULL в district одинаково
+/// для двух вставок; частота вызова — ручная кнопка панели раз на бизнес, гонка не имеет практического веса).
+model FirstAward {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// sphere | district
+  scope      String   @db.VarChar(8)
+  sphereId   String   @map("sphere_id") @db.VarChar(20)
+  district   String?  @db.VarChar(20)
+  freeDays   Int      @map("free_days")
+  coins      Int
+  at         DateTime @default(now()) @db.DateTime(3)
+
+  @@index([scope, sphereId, district])
+  @@index([businessId])
+  @@map("first_awards")
+}
+
+/// Реклама (F-00-163…166): баннеры клиенту, предложения поставщиков кабинету — ставим только мы, рекламодатель
+/// без аккаунта (имя+контакт). targetSphereIds/targetDistricts — SphereId[]/DistrictId[] (пусто = все).
+model Ad {
+  id                String   @id @db.VarChar(32)
+  /// banner | supplier
+  kind              String   @db.VarChar(8)
+  title             String   @db.VarChar(200)
+  text              String?  @db.VarChar(2000)
+  imageUrl          String?  @map("image_url") @db.MediumText
+  ctaUrl            String?  @map("cta_url") @db.VarChar(1000)
+  advertiserName    String   @map("advertiser_name") @db.VarChar(160)
+  advertiserContact String   @map("advertiser_contact") @db.VarChar(160)
+  placementId       String   @map("placement_id") @db.VarChar(20)
+  targetSphereIds   Json     @map("target_sphere_ids")
+  targetDistricts   Json     @map("target_districts")
+  /// any | individual | salonSmall | salonLarge
+  targetSize        String   @default("any") @map("target_size") @db.VarChar(12)
+  targetMinStars    Int?     @map("target_min_stars")
+  /// Товары/бренды — только для места pl_stock (F-00-165)
+  productKeywords   Json     @map("product_keywords")
+  startDate         String   @map("start_date") @db.VarChar(10)
+  endDate           String   @map("end_date") @db.VarChar(10)
+  price             BigInt
+  paused            Boolean  @default(false)
+  supportTicketId   String?  @map("support_ticket_id") @db.VarChar(32)
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([placementId, paused, startDate, endDate])
+  @@map("ads")
+}
+
+/// Счётчики показов/нажатий по дням (F-00-166, P10 07-mock-only) — своя таблица, не JSON на Ad: показ/клик
+/// растут атомарным upsert-инкрементом (`INSERT … ON DUPLICATE KEY UPDATE views = views + 1`), не
+/// read-modify-write — иначе параллельные показы клиентам теряли бы счёт (мок писал в JSON браузера — там
+/// гонок не было, потому что один браузер = одна вкладка).
+model AdDayStat {
+  adId   String @map("ad_id") @db.VarChar(32)
+  date   String @db.VarChar(10)
+  views  Int    @default(0)
+  clicks Int    @default(0)
+
+  @@id([adId, date])
+  @@map("ad_day_stats")
+}
+
+/// Настройки мест сторис (F-00-160) — одна строка (id='singleton'), правит наша панель; pricePerDay — монеты,
+/// не драмы (Money — только для рекламы поставщиков, здесь коротко Int, как в моке).
+model StoryConfig {
+  id               String   @id @default("singleton") @db.VarChar(10)
+  places           Int      @default(6)
+  /// district | city
+  scope            String   @default("city") @db.VarChar(8)
+  pricePerDay      Int      @default(2000) @map("price_per_day")
+  lastPlacesCount  Int      @default(2) @map("last_places_count")
+  lastPlacesMarkup Int      @default(50) @map("last_places_markup")
+  queueMarkup      Int      @default(30) @map("queue_markup")
+  daysAhead        Int      @default(14) @map("days_ahead")
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("story_config")
+}
+
+/// Бронирования мест сторис (F-00-159…162). Покупка кабинетом ещё не построена во фронте (только чтение
+/// getStoryBoard/getStoryPlaces — P9 07-mock-only, K18 картинка сторис тоже не решена) — таблица и «замок на
+/// день» ниже готовы принять первую настоящую покупку без новой миграции, очередь дня сейчас у всех пуста.
+model StoryBooking {
+  id                String   @id @db.VarChar(32)
+  businessId        String   @map("business_id") @db.VarChar(32)
+  date              String   @db.VarChar(10)
+  district          String?  @db.VarChar(40)
+  /// place | queue
+  mode              String   @db.VarChar(6)
+  price             Int
+  /// active | cancelled | rejected
+  status            String   @default("active") @db.VarChar(10)
+  /// template | photo
+  source            String   @default("photo") @db.VarChar(10)
+  moderationItemId  String?  @map("moderation_item_id") @db.VarChar(32)
+  views             Int      @default(0)
+  clicks            Int      @default(0)
+  bookingsFromStory Int      @default(0) @map("bookings_from_story")
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([date, status])
+  @@index([businessId])
+  @@map("story_bookings")
+}
+
+/// «Замок на день» очереди сторис (PLAN §4.2 приём — своя таблица, не пересечение времени, а счётчик мест
+/// одного дня+области): INSERT IGNORE + SELECT…FOR UPDATE перед подсчётом занятых мест, как person_locks.
+model StoryDayLock {
+  dayKey String @id @map("day_key") @db.VarChar(50)
+
+  @@map("story_day_locks")
+}
+
+/// Заметки основателя — план запуска, окупаемость, имя (01 §8, F-00-203…208): рабочий документ, не продуктовая
+/// функция конечных пользователей. Одна строка, одним JSON-документом (02 §19: «…/notes, одним документом») —
+/// проще отдельных таблиц под волны/имена/окупаемость, экран правит их вместе. payingNow — не хранится, считается
+/// каждый раз заново от Business/Subscription (F-00-206: «не вводим руками»).
+model PlatformNotes {
+  id        String   @id @default("singleton") @db.VarChar(10)
+  /// { waveItems, prelaunchItems, paybackInputs, nameCandidates, brand } — LaunchNotesDoc фронта
+  data      Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("platform_notes")
+}
+
 // === end stage 19 ===
 
 // === stage 20 ===
@@ -3483,4 +3617,5 @@ model AccountDataExport {
   @@index([userId, at])
   @@map("account_data_exports")
 }
+
 // === end stage 20 ===

@@ -41893,6 +41893,9 @@
                   "phone": {
                     "type": "string",
                     "maxLength": 24
+                  },
+                  "notify": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -55865,6 +55868,368 @@
         ],
         "tags": [
           "platform-overview"
+        ]
+      }
+    },
+    "/v1/platform/demand": {
+      "get": {
+        "operationId": "PlatformDemandController_report",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-demand"
+        ]
+      }
+    },
+    "/v1/platform/first-candidates": {
+      "get": {
+        "operationId": "PlatformDemandController_candidates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-demand"
+        ]
+      }
+    },
+    "/v1/platform/first-awards": {
+      "post": {
+        "operationId": "PlatformDemandController_grant",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-demand"
+        ]
+      }
+    },
+    "/v1/platform/ad-placements": {
+      "get": {
+        "operationId": "PlatformAdsController_placements",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-ads"
+        ]
+      }
+    },
+    "/v1/platform/ads": {
+      "get": {
+        "operationId": "PlatformAdsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-ads"
+        ]
+      },
+      "post": {
+        "operationId": "PlatformAdsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-ads"
+        ]
+      }
+    },
+    "/v1/platform/ads/{id}/pause": {
+      "put": {
+        "operationId": "PlatformAdsController_pause",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-ads"
+        ]
+      }
+    },
+    "/v1/platform/ads/reach": {
+      "get": {
+        "operationId": "PlatformAdsController_reach",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-ads"
+        ]
+      }
+    },
+    "/v1/public/ads": {
+      "get": {
+        "operationId": "PublicAdsController_active",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ads"
+        ]
+      }
+    },
+    "/v1/public/ads/stock-offer": {
+      "get": {
+        "operationId": "PublicAdsController_stockOffer",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ads"
+        ]
+      }
+    },
+    "/v1/public/ads/{id}/impression": {
+      "post": {
+        "operationId": "PublicAdsController_impression",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ads"
+        ]
+      }
+    },
+    "/v1/public/ads/{id}/click": {
+      "post": {
+        "operationId": "PublicAdsController_click",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ads"
+        ]
+      }
+    },
+    "/v1/platform/story-config": {
+      "get": {
+        "operationId": "PlatformStoriesController_config",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-stories"
+        ]
+      },
+      "put": {
+        "operationId": "PlatformStoriesController_save",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-stories"
+        ]
+      }
+    },
+    "/v1/platform/story-board": {
+      "get": {
+        "operationId": "PlatformStoriesController_board",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-stories"
+        ]
+      }
+    },
+    "/v1/platform/story-places": {
+      "get": {
+        "operationId": "PlatformStoriesController_places",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-stories"
+        ]
+      }
+    },
+    "/v1/platform/notes": {
+      "get": {
+        "operationId": "PlatformNotesController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-notes"
+        ]
+      },
+      "put": {
+        "operationId": "PlatformNotesController_save",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-notes"
+        ]
+      }
+    },
+    "/v1/platform/notes/paying-now": {
+      "get": {
+        "operationId": "PlatformNotesController_payingNow",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-notes"
         ]
       }
     },

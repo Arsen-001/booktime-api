@@ -169,6 +169,11 @@ export const ID_PREFIX = {
   salesVisitEvent: 'vev',
   // этап 20 — данные и удаление: личная выгрузка «мои данные» (F-15-154) — только на сервере, свой префикс
   accountDataExport: 'adex',
+  // этап 19 (продолжение) — реклама/сторис/спрос/план: объявление ad (как мок newId('ad')), место сторис
+  // story (мок newId('story')), достижение «первый» first (мок newId('first')); demandLead уже был (этап 9)
+  ad: 'ad',
+  storyBooking: 'story',
+  firstAward: 'first',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

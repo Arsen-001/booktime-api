@@ -109,3 +109,122 @@ export const completeCallbackBody = z.object({ note: z.string().max(2000).option
 // ─────────────────────────── Копии (F-00-183) ───────────────────────────
 
 export const backupCountsShape = z.object({ clients: z.number().int(), bookings: z.number().int(), services: z.number().int(), staff: z.number().int() });
+
+// ─────────────────────────── Спрос и «первый» (F-00-180, F-00-181) ───────────────────────────
+
+export const demandQuery = z.object({ period: z.enum(['week', 'prevWeek', 'month']).default('week') });
+
+export const firstAwardBody = z.object({
+  businessId: z.string().min(1).max(32),
+  scope: z.enum(['sphere', 'district']),
+  sphereId: z.string().min(1).max(20),
+  district: z.string().max(20).optional(),
+  freeDays: z.number().int().min(0).max(366),
+  coins: z.number().int().min(0).max(1_000_000),
+});
+
+// ─────────────────────────── Реклама (F-00-163…166) ───────────────────────────
+
+export const AD_KINDS = ['banner', 'supplier'] as const;
+export const AD_SIZES = ['any', 'individual', 'salonSmall', 'salonLarge'] as const;
+
+export const adTargetShape = z.object({
+  sphereIds: z.array(z.string().max(20)).max(30).default([]),
+  districts: z.array(z.string().max(20)).max(30).default([]),
+  size: z.enum(AD_SIZES).default('any'),
+  minStars: z.number().min(0).max(5).optional(),
+});
+
+export const adInputBody = z.object({
+  kind: z.enum(AD_KINDS),
+  title: z.string().min(1).max(200),
+  text: z.string().max(2000).optional(),
+  imageUrl: z.string().max(4_000_000).optional(),
+  ctaUrl: z.string().max(1000).optional(),
+  advertiser: z.object({ name: z.string().min(1).max(160), contact: z.string().min(1).max(160) }),
+  placementId: z.string().min(1).max(20),
+  target: adTargetShape,
+  productKeywords: z.array(z.string().max(60)).max(30).default([]),
+  startDate: z.string().length(10),
+  endDate: z.string().length(10),
+  price: z.number().int().nonnegative(),
+  paused: z.boolean().optional(),
+  supportTicketId: z.string().max(32).optional(),
+});
+
+export const adListQuery = z.object({ kind: z.enum(AD_KINDS).optional() });
+export const adPauseBody = z.object({ paused: z.boolean() });
+
+export const adContextQuery = z.object({
+  placement: z.string().min(1).max(20),
+  date: z.string().length(10).optional(),
+  businessId: z.string().max(32).optional(),
+  district: z.string().max(20).optional(),
+  sphere: z.string().max(20).optional(),
+});
+
+export const stockOfferQuery = z.object({ businessId: z.string().min(1).max(32), product: z.string().min(1).max(200) });
+
+// ─────────────────────────── Сторис (F-00-159…162) ───────────────────────────
+
+export const storyConfigBody = z.object({
+  places: z.union([z.literal(5), z.literal(6), z.literal(10)]),
+  scope: z.enum(['district', 'city']),
+  pricePerDay: z.number().int().nonnegative(),
+  lastPlacesCount: z.number().int().nonnegative(),
+  lastPlacesMarkup: z.number().int().nonnegative(),
+  queueMarkup: z.number().int().nonnegative(),
+  daysAhead: z.number().int().positive().max(60),
+});
+
+export const storyBoardQuery = z.object({ days: z.coerce.number().int().positive().max(60).default(10), district: z.string().max(20).optional() });
+export const storyPlacesQuery = z.object({ date: z.string().length(10), district: z.string().max(20).optional() });
+
+// ─────────────────────────── Заметки основателя (01 §8, F-00-203…208) ───────────────────────────
+
+export const waveItemStatus = z.enum(['todo', 'building', 'passed']);
+export const waveItemShape = z.object({ id: z.string().min(1).max(32), wave: z.union([z.literal(1), z.literal(2), z.literal(3)]), fids: z.array(z.string().max(20)).max(200), title: localized, status: waveItemStatus, note: z.string().max(2000).optional() });
+
+export const prelaunchStatus = z.enum(['open', 'decided', 'done']);
+export const prelaunchItemShape = z.object({
+  id: z.string().min(1).max(32),
+  order: z.number().int(),
+  title: localized,
+  hint: localized,
+  status: prelaunchStatus,
+  decision: z.string().max(2000).default(''),
+  note: z.string().max(2000).default(''),
+  updatedAt: z.string().max(20).optional(),
+});
+
+export const paybackInputsShape = z.object({
+  monthlyCosts: z.number().nonnegative(),
+  individualPrice: z.number().nonnegative(),
+  salonPerMaster: z.number().nonnegative(),
+  avgMasters: z.number().nonnegative(),
+  discountShare: z.number().min(0).max(100),
+  discountPercent: z.number().min(0).max(100),
+  targetNet: z.number().nonnegative(),
+  usdRate: z.number().nonnegative(),
+  eurRate: z.number().nonnegative(),
+});
+
+export const nameCandidateShape = z.object({
+  id: z.string().min(1).max(32),
+  name: z.string().min(1).max(80),
+  spelling: z.object({ ru: z.string().max(80), hy: z.string().max(80), en: z.string().max(80) }),
+  checks: z.object({ ru: z.enum(['unknown', 'ok', 'bad']), hy: z.enum(['unknown', 'ok', 'bad']), en: z.enum(['unknown', 'ok', 'bad']) }),
+  domain: z.string().max(120),
+  domainStatus: z.enum(['unknown', 'free', 'taken', 'bought']),
+  note: z.string().max(500).default(''),
+});
+
+export const brandStateShape = z.object({ chosenId: z.string().max(32).optional(), decidedAt: z.string().max(30).optional() });
+
+export const platformNotesBody = z.object({
+  waveItems: z.array(waveItemShape).max(200).optional(),
+  prelaunchItems: z.array(prelaunchItemShape).max(200).optional(),
+  paybackInputs: paybackInputsShape.optional(),
+  nameCandidates: z.array(nameCandidateShape).max(200).optional(),
+  brand: brandStateShape.optional(),
+});

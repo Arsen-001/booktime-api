@@ -13,10 +13,19 @@ import { PlatformSupportController } from './support.controller.js';
 import { PlatformSupportService } from './support.service.js';
 import { PlatformVisitsController } from './visits.controller.js';
 import { VisitsService } from './visits.service.js';
+import { PlatformDemandController } from './demand.controller.js';
+import { DemandService } from './demand.service.js';
+import { PlatformAdsController, PublicAdsController } from './ads.controller.js';
+import { AdsService } from './ads.service.js';
+import { PlatformStoriesController } from './stories.controller.js';
+import { StoriesService } from './stories.service.js';
+import { PlatformNotesController } from './notes.controller.js';
+import { PlatformNotesService } from './notes.service.js';
 
 /**
- * Этап 19 — модерация и наша панель (docs/backend/02 §19, 06 §1). Не строит этим проходом: подключение салона
- * за 10 минут (ConnectDraft), спрос/first-awards, реклама и сторис, план запуска — см. docs/PROGRESS.md.
+ * Этап 19 — модерация и наша панель (docs/backend/02 §19, 06 §1). Не строит этим проходом (попытка 2): подключение
+ * салона за 10 минут (ConnectDraft) — см. docs/PROGRESS.md. Спрос/first-awards, реклама+сторис (без покупки места
+ * и без картинки сторис K18, они не построены ещё и во фронте) и заметки основателя — построены этой попыткой.
  */
 @Module({
   controllers: [
@@ -30,8 +39,13 @@ import { VisitsService } from './visits.service.js';
     PlatformSphereController,
     PlatformVisitsController,
     PlatformOverviewController,
+    PlatformDemandController,
+    PlatformAdsController,
+    PublicAdsController,
+    PlatformStoriesController,
+    PlatformNotesController,
   ],
-  providers: [ModerationService, PlatformBusinessesService, PlatformSupportService, IdeasService, SphereRequestsService, VisitsService, OverviewService],
+  providers: [ModerationService, PlatformBusinessesService, PlatformSupportService, IdeasService, SphereRequestsService, VisitsService, OverviewService, DemandService, AdsService, StoriesService, PlatformNotesService],
   exports: [ModerationService],
 })
 export class PlatformModule {}

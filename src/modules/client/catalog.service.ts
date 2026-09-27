@@ -336,9 +336,9 @@ export class CatalogService {
 
   // ─────────────────────────── «Не нашли?» (F-00-112, F-00-180) ───────────────────────────
 
-  async submitDemand(input: { query: string; sphereId?: string; district?: string; phone?: string; appUserId?: string }): Promise<void> {
+  async submitDemand(input: { query: string; sphereId?: string; district?: string; phone?: string; appUserId?: string; notify?: boolean }): Promise<void> {
     await this.prisma.demandLead.create({
-      data: { id: newId('demandLead'), query: input.query.slice(0, 200), sphereId: input.sphereId, district: input.district, phone: input.phone ? normalizePhone(input.phone) : undefined, appUserId: input.appUserId },
+      data: { id: newId('demandLead'), query: input.query.slice(0, 200), sphereId: input.sphereId, district: input.district, phone: input.phone ? normalizePhone(input.phone) : undefined, appUserId: input.appUserId, notify: input.notify ?? false },
     });
   }
 
