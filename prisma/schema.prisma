@@ -1491,3 +1491,113 @@ model BookingLink {
   @@index([businessId])
   @@map("booking_links")
 }
+
+// ─────────────────────────── Этап 9 — приложение клиента (docs/backend/02 §2, PLAN §6 №9) ───────────────────────────
+// Каталог/карточки считаются live (AvailabilityService.cached — тот же Redis-кеш с версией бизнеса, что виджет
+// онлайн-записи этапа 8, 04 §6); ниже — только то, что клиент копит сам: избранное, звёздочка, дневник, лист
+// ожидания «от себя», лента и заявки без входа. appUserId — без внешнего ключа, как у Booking/WaitlistEntry.
+
+/// ❤ подписка на мастера/место = избранное + новости (F-00-113, F-00-115)
+model Favorite {
+  id         String   @id @db.VarChar(32)
+  appUserId  String   @map("app_user_id") @db.VarChar(32)
+  /// staff | business
+  targetType String   @map("target_type") @db.VarChar(10)
+  targetId   String   @map("target_id") @db.VarChar(32)
+  newsMuted  Boolean  @default(false) @map("news_muted")
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@unique([appUserId, targetType, targetId])
+  @@index([targetType, targetId])
+  @@map("favorites")
+}
+
+/// ★ звёздочка мастеру (F-00-116): одна на клиента на мастера, только после визита «пришёл»
+model StarRating {
+  id        String   @id @db.VarChar(32)
+  appUserId String   @map("app_user_id") @db.VarChar(32)
+  staffId   String   @map("staff_id") @db.VarChar(32)
+  bookingId String   @map("booking_id") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@unique([appUserId, staffId])
+  @@index([staffId])
+  @@map("star_ratings")
+}
+
+/// Дневник клиента (F-00-122) — только ручные строки; визиты «пришёл» добавляются на лету при чтении, не дублируются тут
+model DiaryEntry {
+  id          String   @id @db.VarChar(32)
+  appUserId   String   @map("app_user_id") @db.VarChar(32)
+  serviceName String   @map("service_name") @db.VarChar(200)
+  masterName  String   @map("master_name") @db.VarChar(160)
+  /// 'YYYY-MM-DD', как ISODate ядра (birthday-конвенция 04.1)
+  date        String   @db.VarChar(10)
+  amount      BigInt   @default(0)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([appUserId, date])
+  @@map("diary_entries")
+}
+
+/// «Попросить перезвонить», когда кнопка звонка закрыта (F-00-106)
+model CallbackRequest {
+  id         String    @id @db.VarChar(32)
+  staffId    String    @map("staff_id") @db.VarChar(32)
+  businessId String    @map("business_id") @db.VarChar(32)
+  phone      String    @db.VarChar(20)
+  name       String?   @db.VarChar(160)
+  seenAt     DateTime? @map("seen_at") @db.DateTime(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId, createdAt])
+  @@index([staffId])
+  @@map("callback_requests")
+}
+
+/// «Не нашли? Сообщить, когда появится» (F-00-112, F-00-180) — своя заявка + строка отчёта спроса нашей панели
+model DemandLead {
+  id        String   @id @db.VarChar(32)
+  query     String   @db.VarChar(200)
+  sphereId  String?  @map("sphere_id") @db.VarChar(20)
+  district  String?  @db.VarChar(20)
+  phone     String?  @db.VarChar(20)
+  appUserId String?  @map("app_user_id") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([createdAt])
+  @@map("demand_leads")
+}
+
+/// «Обращение к нам» из приложения (F-00-182) — очередь читает наша панель (этап 19, здесь только запись)
+model SupportTicket {
+  id        String   @id @db.VarChar(32)
+  appUserId String?  @map("app_user_id") @db.VarChar(32)
+  phone     String?  @db.VarChar(20)
+  subject   String   @db.VarChar(200)
+  message   String   @db.Text
+  status    String   @default("open") @db.VarChar(12)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([appUserId, createdAt])
+  @@map("support_tickets")
+}
+
+/// Лента /v1/me/inbox (F-14-055): статусы своих записей, которые пишет BookingsService.logEvents/reportDelay.
+/// Напоминания (E1) и новости бизнеса (E3, broadcast) — этап 10, тот же стол, kind ещё не занят.
+model InboxItem {
+  id         String    @id @db.VarChar(32)
+  appUserId  String    @map("app_user_id") @db.VarChar(32)
+  /// booking_created | salon_confirmed | salon_moved | salon_deleted | cancelled_by_master | master_delayed | prepayment_expired
+  kind       String    @db.VarChar(24)
+  businessId String?   @map("business_id") @db.VarChar(32)
+  staffId    String?   @map("staff_id") @db.VarChar(32)
+  bookingId  String?   @map("booking_id") @db.VarChar(32)
+  /// Параметры для строки перевода (delayMin, start…) — client.notifications.kind.<kind> фронта
+  params     Json?
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  readAt     DateTime? @map("read_at") @db.DateTime(3)
+
+  @@index([appUserId, createdAt])
+  @@map("inbox_items")
+}

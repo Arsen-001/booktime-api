@@ -1,0 +1,182 @@
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
+import type { RequestContext } from '../../common/http/context.js';
+import { Authed, Ctx } from '../../common/http/guards.js';
+import { ZodBody } from '../../common/http/openapi.js';
+import { Zod } from '../../common/http/validation.js';
+import { createMyBookingBody, diaryEntryBody, favoriteBody, favoriteMuteBody, myWaitlistBody, rateStaffBody, supportBody } from './client.schemas.js';
+import { MeService } from './me.service.js';
+
+/**
+ * Раздел «client», после входа (docs/backend/02 §2.2, PLAN §6 №9): запись из приложения, «мои записи», лист
+ * ожидания «от себя», избранное, звёздочка, дневник, «мои мастера», лента, сторис, обращение к нам.
+ */
+@ApiTags('client')
+@Controller('v1/me')
+@Authed()
+export class MeController {
+  constructor(private readonly svc: MeService) {}
+
+  // ─────────────────────────── записи ───────────────────────────
+
+  @Post('bookings')
+  @ApiOperation({ summary: 'Запись из приложения (F-00-031) — окно/статус/предоплата решает единый поток place()' })
+  @ZodBody(createMyBookingBody)
+  createBooking(@Ctx() ctx: RequestContext, @Body(new Zod(createMyBookingBody)) body: z.infer<typeof createMyBookingBody>) {
+    return this.svc.createBooking(ctx, body);
+  }
+
+  @Get('bookings')
+  @ApiOperation({ summary: 'Мои записи: предстоящие/прошедшие/отменённые (F-14-011), или ?businessId= — в одной компании (F-14-026)' })
+  listBookings(@Ctx() ctx: RequestContext, @Query('businessId') businessId?: string) {
+    return this.svc.listMine(ctx.session!.userId, businessId);
+  }
+
+  @Get('bookings/:id')
+  @ApiOperation({ summary: 'Детали моей записи — только своя (F-00-092)' })
+  getBooking(@Ctx() ctx: RequestContext, @Param('id') id: string) {
+    return this.svc.getOne(ctx.session!.userId, id);
+  }
+
+  // «Я оплатил» (`POST bookings/:id/paid`) — уже построен в `MeBookingsController` (журнал, этап 7); не дублируем.
+
+  // ─────────────────────────── лист ожидания «от себя» ───────────────────────────
+
+  @Get('waitlist')
+  @ApiOperation({ summary: 'Мой лист ожидания (F-00-101/102)' })
+  listWaitlist(@Ctx() ctx: RequestContext) {
+    return this.svc.listMyWaitlist(ctx.session!.userId);
+  }
+
+  @Post('waitlist')
+  @ApiOperation({ summary: 'Встать в лист ожидания' })
+  @ZodBody(myWaitlistBody)
+  addWaitlist(@Ctx() ctx: RequestContext, @Body(new Zod(myWaitlistBody)) body: z.infer<typeof myWaitlistBody>) {
+    return this.svc.addWaitlist(ctx.session!.userId, body);
+  }
+
+  @Delete('waitlist/:id')
+  @ApiOperation({ summary: 'Выйти из листа ожидания' })
+  removeWaitlist(@Ctx() ctx: RequestContext, @Param('id') id: string) {
+    return this.svc.removeWaitlist(ctx.session!.userId, id);
+  }
+
+  // ─────────────────────────── «Мои мастера» (F-00-118) ───────────────────────────
+
+  @Get('masters')
+  @ApiOperation({ summary: '«Мои мастера» — только записанные сам через приложение/веб' })
+  myMasters(@Ctx() ctx: RequestContext, @Query('limit') limit?: string) {
+    return this.svc.listMyMasters(ctx.session!.userId, limit ? Number(limit) : undefined);
+  }
+
+  // ─────────────────────────── ❤ избранное (F-00-113/115) ───────────────────────────
+
+  @Get('favorites')
+  @ApiOperation({ summary: 'Список избранного (F-14-031)' })
+  listFavorites(@Ctx() ctx: RequestContext) {
+    return this.svc.listFavorites(ctx.session!.userId);
+  }
+
+  @Get('favorites/check')
+  @ApiOperation({ summary: 'Подписан ли на мастера/место — кнопка ❤ на карточке' })
+  isFavorited(@Ctx() ctx: RequestContext, @Query('targetType') targetType: string, @Query('targetId') targetId: string) {
+    return this.svc.isFavorited(ctx.session!.userId, targetType, targetId).then((favorited) => ({ favorited }));
+  }
+
+  @Post('favorites')
+  @ApiOperation({ summary: '❤ подписаться/отписаться (F-00-113)' })
+  @ZodBody(favoriteBody)
+  async toggleFavorite(@Ctx() ctx: RequestContext, @Body(new Zod(favoriteBody)) body: z.infer<typeof favoriteBody>) {
+    return { subscribed: await this.svc.toggleFavorite(ctx.session!.userId, body.targetType, body.targetId) };
+  }
+
+  @Post('favorites/:id/mute')
+  @HttpCode(200)
+  @ApiOperation({ summary: '«Приглушить новости», не отписываясь (F-00-115)' })
+  @ZodBody(favoriteMuteBody)
+  async muteFavorite(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new Zod(favoriteMuteBody)) body: z.infer<typeof favoriteMuteBody>) {
+    await this.svc.setFavoriteNewsMuted(ctx.session!.userId, id, body.muted);
+  }
+
+  // ─────────────────────────── ★ звёздочка (F-00-116) ───────────────────────────
+
+  @Get('ratings/:staffId')
+  @ApiOperation({ summary: 'Моя звёздочка этому мастеру, если стоит' })
+  getMyStar(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string) {
+    return this.svc.getMyStar(ctx.session!.userId, staffId);
+  }
+
+  @Put('ratings/:staffId')
+  @ApiOperation({ summary: 'Поставить ★ (одна на клиента на мастера, только после визита «пришёл»)' })
+  @ZodBody(rateStaffBody)
+  async rateStaff(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Body(new Zod(rateStaffBody)) body: z.infer<typeof rateStaffBody>) {
+    await this.svc.rateStaff(ctx.session!.userId, staffId, body.bookingId);
+  }
+
+  @Delete('ratings/:staffId')
+  @ApiOperation({ summary: 'Снять свою ★' })
+  async unrateStaff(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string) {
+    await this.svc.unrateStaff(ctx.session!.userId, staffId);
+  }
+
+  // ─────────────────────────── дневник (F-00-122) ───────────────────────────
+
+  @Get('diary')
+  @ApiOperation({ summary: 'Дневник: визиты «пришёл» через приложение сами + ручные строки' })
+  listDiary(@Ctx() ctx: RequestContext) {
+    return this.svc.listDiary(ctx.session!.userId);
+  }
+
+  @Post('diary')
+  @ApiOperation({ summary: 'Добавить ручную строку дневника' })
+  @ZodBody(diaryEntryBody)
+  addDiary(@Ctx() ctx: RequestContext, @Body(new Zod(diaryEntryBody)) body: z.infer<typeof diaryEntryBody>) {
+    return this.svc.addDiary(ctx.session!.userId, body);
+  }
+
+  @Delete('diary/:id')
+  @ApiOperation({ summary: 'Удалить ручную строку дневника' })
+  removeDiary(@Ctx() ctx: RequestContext, @Param('id') id: string) {
+    return this.svc.removeDiary(ctx.session!.userId, id);
+  }
+
+  // ─────────────────────────── лента (F-14-055) ───────────────────────────
+
+  @Get('inbox')
+  @ApiOperation({ summary: 'Лента уведомлений клиента (статусы своих записей — напоминания/новости: этап 10)' })
+  listInbox(@Ctx() ctx: RequestContext) {
+    return this.svc.listInbox(ctx.session!.userId);
+  }
+
+  @Post('inbox/:id/read')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Отметить одно уведомление прочитанным' })
+  markInboxRead(@Ctx() ctx: RequestContext, @Param('id') id: string) {
+    return this.svc.markInboxRead(ctx.session!.userId, id);
+  }
+
+  @Post('inbox/read-all')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Отметить всю ленту прочитанной' })
+  markAllInboxRead(@Ctx() ctx: RequestContext) {
+    return this.svc.markAllInboxRead(ctx.session!.userId);
+  }
+
+  // ─────────────────────────── сторис (просмотр) ───────────────────────────
+
+  @Get('stories')
+  @ApiOperation({ summary: 'Сторис на главной — заводит нашa панель (этап 19), пока честно пусто' })
+  listStories() {
+    return this.svc.listStories();
+  }
+
+  // ─────────────────────────── обращение к нам (F-00-182) ───────────────────────────
+
+  @Post('support')
+  @ApiOperation({ summary: 'Обращение к нам из приложения' })
+  @ZodBody(supportBody)
+  async submitSupport(@Ctx() ctx: RequestContext, @Body(new Zod(supportBody)) body: z.infer<typeof supportBody>) {
+    await this.svc.submitSupport({ appUserId: ctx.session!.userId, phone: body.phone, subject: body.subject, message: body.message });
+  }
+}

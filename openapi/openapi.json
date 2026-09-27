@@ -33040,6 +33040,1057 @@
           "online"
         ]
       }
+    },
+    "/v1/public/catalog": {
+      "get": {
+        "operationId": "PublicCatalogController_catalog",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Каталог мастеров с ближайшими окнами (F-00-108…112)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/public/masters/{staffId}": {
+      "get": {
+        "operationId": "PublicCatalogController_masterCard",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Карточка мастера (F-00-123)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/public/places/{businessId}": {
+      "get": {
+        "operationId": "PublicCatalogController_placeCard",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Карточка места/компании (F-14-028)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/public/masters/{staffId}/days": {
+      "get": {
+        "operationId": "PublicCatalogController_days",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serviceId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Окна мастера на N дней по услуге (F-00-092)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/public/masters/{staffId}/slots": {
+      "get": {
+        "operationId": "PublicCatalogController_slots",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Окна мастера на дату (клиентский режим, 04 §5)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/public/services/{serviceId}/shades": {
+      "get": {
+        "operationId": "PublicCatalogController_shades",
+        "parameters": [
+          {
+            "name": "serviceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Варианты оттенка при записи (F-00-094…096) — со склада, пока честно пусто без него",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/public/masters/{staffId}/cancel-window": {
+      "get": {
+        "operationId": "PublicCatalogController_cancelWindow",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Часы бесплатной отмены у мастера (F-00-098)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/public/demand": {
+      "post": {
+        "operationId": "PublicCatalogController_demand",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "sphereId": {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  "district": {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 24
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "«Не нашли? Сообщить, когда появится» (F-00-112, F-00-180)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/public/callback": {
+      "post": {
+        "operationId": "PublicCatalogController_callback",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 24
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "staffId",
+                  "phone"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "«Попросить перезвонить» (F-00-106)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/bookings": {
+      "post": {
+        "operationId": "MeController_createBooking",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "serviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "workplace": {
+                    "type": "string",
+                    "enum": [
+                      "salon",
+                      "home",
+                      "visit",
+                      "hall",
+                      "online"
+                    ]
+                  },
+                  "visitAddress": {
+                    "type": "string",
+                    "maxLength": 400
+                  },
+                  "forWhom": {
+                    "type": "string",
+                    "enum": [
+                      "self",
+                      "child",
+                      "pet",
+                      "other"
+                    ]
+                  },
+                  "visitorName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "seats": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  },
+                  "groupEventId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "staffId",
+                  "serviceId",
+                  "start"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Запись из приложения (F-00-031) — окно/статус/предоплата решает единый поток place()",
+        "tags": [
+          "client"
+        ]
+      },
+      "get": {
+        "operationId": "MeController_listBookings",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Мои записи: предстоящие/прошедшие/отменённые (F-14-011), или ?businessId= — в одной компании (F-14-026)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/bookings/{id}": {
+      "get": {
+        "operationId": "MeController_getBooking",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Детали моей записи — только своя (F-00-092)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/waitlist": {
+      "get": {
+        "operationId": "MeController_listWaitlist",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Мой лист ожидания (F-00-101/102)",
+        "tags": [
+          "client"
+        ]
+      },
+      "post": {
+        "operationId": "MeController_addWaitlist",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "serviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "date": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "string",
+                        "const": "any"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "staffId",
+                  "serviceId",
+                  "date"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Встать в лист ожидания",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/waitlist/{id}": {
+      "delete": {
+        "operationId": "MeController_removeWaitlist",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Выйти из листа ожидания",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/masters": {
+      "get": {
+        "operationId": "MeController_myMasters",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Мои мастера» — только записанные сам через приложение/веб",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/favorites": {
+      "get": {
+        "operationId": "MeController_listFavorites",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Список избранного (F-14-031)",
+        "tags": [
+          "client"
+        ]
+      },
+      "post": {
+        "operationId": "MeController_toggleFavorite",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "targetType": {
+                    "type": "string",
+                    "enum": [
+                      "staff",
+                      "business"
+                    ]
+                  },
+                  "targetId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "targetType",
+                  "targetId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "❤ подписаться/отписаться (F-00-113)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/favorites/check": {
+      "get": {
+        "operationId": "MeController_isFavorited",
+        "parameters": [
+          {
+            "name": "targetType",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Подписан ли на мастера/место — кнопка ❤ на карточке",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/favorites/{id}/mute": {
+      "post": {
+        "operationId": "MeController_muteFavorite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "muted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "muted"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Приглушить новости», не отписываясь (F-00-115)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/ratings/{staffId}": {
+      "get": {
+        "operationId": "MeController_getMyStar",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Моя звёздочка этому мастеру, если стоит",
+        "tags": [
+          "client"
+        ]
+      },
+      "put": {
+        "operationId": "MeController_rateStaff",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "bookingId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Поставить ★ (одна на клиента на мастера, только после визита «пришёл»)",
+        "tags": [
+          "client"
+        ]
+      },
+      "delete": {
+        "operationId": "MeController_unrateStaff",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Снять свою ★",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/diary": {
+      "get": {
+        "operationId": "MeController_listDiary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Дневник: визиты «пришёл» через приложение сами + ручные строки",
+        "tags": [
+          "client"
+        ]
+      },
+      "post": {
+        "operationId": "MeController_addDiary",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "masterName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "serviceName",
+                  "masterName",
+                  "date",
+                  "amount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Добавить ручную строку дневника",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/diary/{id}": {
+      "delete": {
+        "operationId": "MeController_removeDiary",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Удалить ручную строку дневника",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/inbox": {
+      "get": {
+        "operationId": "MeController_listInbox",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Лента уведомлений клиента (статусы своих записей — напоминания/новости: этап 10)",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/inbox/{id}/read": {
+      "post": {
+        "operationId": "MeController_markInboxRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Отметить одно уведомление прочитанным",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/inbox/read-all": {
+      "post": {
+        "operationId": "MeController_markAllInboxRead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Отметить всю ленту прочитанной",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/stories": {
+      "get": {
+        "operationId": "MeController_listStories",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сторис на главной — заводит нашa панель (этап 19), пока честно пусто",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/me/support": {
+      "post": {
+        "operationId": "MeController_submitSupport",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 24
+                  }
+                },
+                "required": [
+                  "subject",
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Обращение к нам из приложения",
+        "tags": [
+          "client"
+        ]
+      }
     }
   },
   "info": {

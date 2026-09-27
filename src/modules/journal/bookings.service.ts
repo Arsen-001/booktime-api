@@ -466,6 +466,39 @@ export class BookingsService {
       }
     }
     if (rows.length) await tx.bookingEvent.createMany({ data: rows });
+    if (next.appUserId) await this.pushInbox(tx, rows, next.appUserId, by);
+  }
+
+  /**
+   * Лента `/v1/me/inbox` (F-14-055, этап 9): те же переходы, что уже пишет `logEvents` в `booking_events`, но
+   * персистентно и с собственным `readAt` на клиента — не переизобретаем правило перехода, только маппим kind.
+   * Своё же действие клиента (`by === 'client'`, F-00-130-соседнее: не уведомлять человека о его собственном клике)
+   * не заводит запись «создано»/«перенесено»; статусы, которые может выставить только бизнес/система, — заводят всегда.
+   */
+  private async pushInbox(tx: Tx, events: Prisma.BookingEventCreateManyInput[], appUserId: string, by: string): Promise<void> {
+    const rows: Prisma.InboxItemCreateManyInput[] = [];
+    for (const e of events) {
+      let kind: string | undefined;
+      let bookingId: string | undefined = e.bookingId;
+      if (e.kind === 'created' && by !== 'client') kind = 'booking_created';
+      else if (e.kind === 'deleted') {
+        kind = 'salon_deleted';
+        bookingId = undefined; // запись уже удалена — ссылка на неё клиенту ничего не откроет (как мок)
+      } else if (e.kind === 'moved' && by !== 'client') kind = 'salon_moved';
+      else if (e.kind === 'status') {
+        if (e.toStatus === 'scheduled' && e.fromStatus === 'awaiting_confirmation') kind = 'salon_confirmed';
+        else if (e.toStatus === 'cancelled_by_master') kind = 'cancelled_by_master';
+        else if (e.reason === 'prepayment_expired') kind = 'prepayment_expired';
+      }
+      if (!kind) continue;
+      rows.push({ id: newId('inboxItem'), appUserId, kind, businessId: e.businessId, staffId: e.staffId, bookingId, params: { start: e.startLocal } as Prisma.InputJsonValue });
+    }
+    // Пишем в той же транзакции, что и booking_events (атомарно); живой пуш «есть новое» через SSE — сюда
+    // не добавляем намеренно: сама transaction ещё не закоммичена, публикация раньше коммита рискует прийти на
+    // несуществующие данные (тот же приём, что `booking.changed`/`staff:*` этого файла — публикуются ПОСЛЕ
+    // `$transaction`, см. touched()/t.businessIds ниже). Колокольчик ленты обновится при следующем открытии
+    // экрана; постоянный SSE-канал для inbox — доработка следующего среза, не блокирует этап 9.
+    if (rows.length) await tx.inboxItem.createMany({ data: rows });
   }
 
   /** Освободилось время в будущем → раздача окна (В-18): сначала лист ожидания */
@@ -1272,7 +1305,10 @@ export class BookingsService {
         startLocal: utcToLocal(b.startAt, tz),
       },
     });
-    if (b.appUserId) await this.live.publish(`user:${b.appUserId}`, { type: 'inbox.new', data: { bookingId: b.id } });
+    if (b.appUserId) {
+      await this.prisma.inboxItem.create({ data: { id: newId('inboxItem'), appUserId: b.appUserId, kind: 'master_delayed', businessId: b.businessId, staffId: b.staffId, bookingId: b.id, params: { delayMin: ev.delayMin, start: ev.startLocal } as Prisma.InputJsonValue } });
+      await this.live.publish(`user:${b.appUserId}`, { type: 'inbox.new', data: { bookingId: b.id } });
+    }
     return eventView(ev, tz);
   }
 

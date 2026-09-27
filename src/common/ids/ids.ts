@@ -71,6 +71,15 @@ export const ID_PREFIX = {
   recurrenceTemplate: 'rt',
   // этап 8 — онлайн-запись и страница по ссылке: как в срезе online фронта (ссылка lnk)
   bookingLink: 'lnk',
+  // этап 9 — приложение клиента: только на сервере, не мирроруются в ядро браузера (как этап 5) — свои префиксы
+  favorite: 'fav',
+  starRating: 'str',
+  diaryEntry: 'dia',
+  callbackRequest: 'cbr',
+  demandLead: 'lead',
+  supportTicket: 'sup',
+  /// Лента /v1/me/inbox (F-14-055) — тот же смысл, что зарезервированный на этапе 2 'ntf' (уведомление)
+  inboxItem: 'ntf',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

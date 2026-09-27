@@ -53,8 +53,9 @@ function nextDay(date: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Публичный подвид мастера (F-00-077, F-00-010): без точного домашнего адреса, логина и часов звонков */
-function sanitizePublicStaff(row: Parameters<typeof staffView>[0]) {
+/** Публичный подвид мастера (F-00-077, F-00-010): без точного домашнего адреса, логина и часов звонков — тот же
+ * подвид используют публичный каталог и карточки клиента (этап 9, `client` module) */
+export function sanitizePublicStaff(row: Parameters<typeof staffView>[0]) {
   const { homeAddress: _h, login: _l, callHours: _c, ...rest } = staffView(row);
   return rest;
 }
