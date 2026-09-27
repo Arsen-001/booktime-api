@@ -142,6 +142,21 @@ export class PayrollController {
     return this.catalog.getCriterion(ctx.member!.businessId, id);
   }
 
+  // === stage 21 (лейн services+rest) ===
+  /** F-09-052: предпросмотр значения критерия для сотрудника/филиала на дату (src/api/payroll.ts::evaluateCriterionValue) */
+  @Get('criteria/:id/value')
+  @Biz('payroll.manage')
+  evaluateCriterionValue(@Ctx() ctx: RequestContext, @Param('id') id: string, @Query('staffId') staffId: string, @Query('locationId') locationId: string, @Query('atDate') atDate: string) {
+    return this.catalog.evaluateCriterionValue(ctx.member!.businessId, id, staffId, locationId, atDate);
+  }
+
+  /** F-09-054/055/099: предпросмотр правила у сотрудника на дату (src/api/payroll.ts::previewChartForStaff) */
+  @Get('preview')
+  @Biz('payroll.manage')
+  previewChartForStaff(@Ctx() ctx: RequestContext, @Query('staffId') staffId: string, @Query('locationId') locationId: string, @Query('atDate') atDate: string) {
+    return this.catalog.previewChartForStaff(ctx.member!.businessId, staffId, locationId, atDate);
+  }
+
   @Post('criteria')
   @Biz('payroll.manage')
   @ZodBody(criterionBody)

@@ -5,7 +5,8 @@ import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { emptySchemeBlocks, type SchemeBlocks } from './payroll-engine.js';
+import { DEFAULT_TZ, localDayRangeUtc } from '../../common/time/time.js';
+import { emptySchemeBlocks, evaluateCriterion, pickRuleForChart, resolveActiveChartAssignment, roundMoney, type PayrollChartAssignmentData, type SchemeBlocks } from './payroll-engine.js';
 import type { AssignmentBody, BonusPenaltyTypeBody, ChartBody, CriterionBody, GeneralSettingsBody, PayrollStaffRightsBody, RuleBody, SchemeBlocksBody } from './payroll.schemas.js';
 
 function jsonOf<T>(v: T): Prisma.InputJsonValue {
@@ -303,6 +304,82 @@ export class PayrollCatalogService {
       await tx.payrollChart.delete({ where: { id } });
       await this.audit.record(tx, ctx, { action: 'delete', entityType: 'payrollChart', entityId: id, businessId, before: { name: row.name }, after: null });
     });
+  }
+
+  // === stage 21 (лейн services+rest) ===
+  // Предпросмотр классической модели (F-09-052/054/099, src/api/payroll.ts::evaluateCriterionValue/
+  // previewChartForStaff) — не участвует в расчёте ведомости (PayrollComputeService), это отдельный
+  // инструмент редактора схем «что сработает у сотрудника на дату». Полный набор метрик (count/profit/
+  // категории/позиции/includeDiscounts), в отличие от `evaluateCriterionForStaff` внутри самого расчёта,
+  // который сознательно ограничен только `metric==='turnover'` (комментарий в payroll-compute.service.ts) —
+  // трогать расчёт ведомости здесь не стал, отдельная зона.
+  private async criterionActualValue(
+    criterion: { businessId: string; period: string; metric: string; scope: string; byServices: boolean; threshold: bigint; includeDiscounts: boolean; countCategoryIds: unknown; countItemIds: unknown },
+    staffId: string,
+    locationId: string,
+    atDate: string,
+  ): Promise<number> {
+    const from = criterion.period === 'day' ? atDate : `${atDate.slice(0, 7)}-01`;
+    const { from: gte } = localDayRangeUtc(from, DEFAULT_TZ);
+    const { to: lt } = localDayRangeUtc(atDate, DEFAULT_TZ);
+    const bookings = await this.prisma.booking.findMany({ where: { businessId: criterion.businessId, locationId, startAt: { gte, lt }, status: 'arrived', deletedAt: null }, select: { services: true } });
+    const countCategoryIds = (criterion.countCategoryIds as string[] | null) ?? [];
+    const countItemIds = (criterion.countItemIds as string[] | null) ?? [];
+    let serviceCategoryById: Map<string, string | null> | undefined;
+    if (countCategoryIds.length) {
+      const services = await this.prisma.service.findMany({ where: { businessId: criterion.businessId }, select: { id: true, categoryId: true } });
+      serviceCategoryById = new Map(services.map((s) => [s.id, s.categoryId]));
+    }
+    let turnover = 0;
+    let count = 0;
+    for (const row of bookings) {
+      const lines = (row.services as unknown as { serviceId: string; staffId: string; price: number; qty: number; unitPrice?: number }[] | null) ?? [];
+      for (const line of lines) {
+        if (criterion.scope === 'staff' && line.staffId !== staffId) continue;
+        if (!criterion.byServices) continue;
+        if (countCategoryIds.length || countItemIds.length) {
+          const categoryId = serviceCategoryById?.get(line.serviceId);
+          const matches = countItemIds.includes(line.serviceId) || (categoryId != null && countCategoryIds.includes(categoryId));
+          if (!matches) continue;
+        }
+        const amount = criterion.includeDiscounts ? line.price * line.qty : (line.unitPrice ?? line.price) * line.qty;
+        turnover = roundMoney(turnover + amount);
+        count += line.qty;
+      }
+    }
+    if (criterion.metric === 'count') return count;
+    if (criterion.metric === 'profit') return roundMoney(turnover * 0.3);
+    return turnover;
+  }
+
+  async evaluateCriterionValue(businessId: string, criterionId: string, staffId: string, locationId: string, atDate: string): Promise<number> {
+    const criterion = await this.prisma.payrollCriterion.findFirst({ where: { id: criterionId, businessId } });
+    if (!criterion) throw new ApiError('not_found', 'Criterion not found');
+    return this.criterionActualValue(criterion, staffId, locationId, atDate);
+  }
+
+  async previewChartForStaff(businessId: string, staffId: string, locationId: string, atDate: string) {
+    const assignmentRows = await this.prisma.payrollChartAssignment.findMany({ where: { businessId, staffId } });
+    const assignments: PayrollChartAssignmentData[] = assignmentRows.map((a) => ({ chartId: a.chartId, staffId: a.staffId, startDate: a.startDate.toISOString().slice(0, 10) }));
+    const assignment = resolveActiveChartAssignment(assignments, staffId, atDate);
+    if (!assignment) return undefined;
+    const chartRow = await this.prisma.payrollChart.findFirst({ where: { id: assignment.chartId, businessId } });
+    if (!chartRow) return undefined;
+    const planRows = chartRow.planRows as { criterionId: string; ruleId: string }[];
+    const criterionIds = [...new Set(planRows.map((r) => r.criterionId))];
+    const criterionRows = criterionIds.length ? await this.prisma.payrollCriterion.findMany({ where: { id: { in: criterionIds }, businessId } }) : [];
+    const criterionById = new Map(criterionRows.map((c) => [c.id, c]));
+    const met = new Map<string, boolean>();
+    for (const row of planRows) {
+      const criterion = criterionById.get(row.criterionId);
+      if (!criterion) continue;
+      const value = await this.criterionActualValue(criterion, staffId, locationId, atDate);
+      met.set(row.criterionId, evaluateCriterion(Number(criterion.threshold), value));
+    }
+    const ruleId = pickRuleForChart({ type: chartRow.type as 'standard' | 'planned', standardRuleId: chartRow.standardRuleId, planRows }, (id) => met.get(id) ?? false);
+    const matchedRow = planRows.find((r) => met.get(r.criterionId));
+    const rule = ruleId ? await this.getRule(businessId, ruleId).catch(() => undefined) : undefined;
+    return { chart: chartView(chartRow), ruleId, rule, matchedCriterionId: matchedRow?.criterionId };
   }
 
   // ─────────────────────────── Классическая модель: назначения (F-09-055) ───────────────────────────
