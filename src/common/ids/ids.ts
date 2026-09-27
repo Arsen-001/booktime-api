@@ -35,6 +35,9 @@ export const ID_PREFIX = {
   // этап 3 — как в срезе staff фронта
   position: 'stpos',
   staffInvite: 'stinv',
+  // этап 4 — каталог: категории/услуги/пакеты используют cat/sv (пакет — обычная услуга, 01 §4);
+  // у ресурса — свои экземпляры (Resource.instances, JSON, как во фронте)
+  resourceInstance: 'resinst',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

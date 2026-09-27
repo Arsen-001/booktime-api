@@ -134,6 +134,10 @@ export const coreOut = z.object({
   locations: z.array(locationOut),
   staff: z.array(staffOut),
   networks: z.array(networkOut),
+  // Каталог (этап 4) — см. src/modules/services/services.views.ts, src/modules/resources/resources.views.ts
+  serviceCategories: z.array(z.unknown()),
+  services: z.array(z.unknown()),
+  resources: z.array(z.unknown()),
 });
 
 export const registerOut = z.object({

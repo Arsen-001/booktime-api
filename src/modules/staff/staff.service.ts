@@ -251,6 +251,28 @@ export class StaffService {
         await tx.staffLocation.deleteMany({ where: { staffId } });
         if (allowed.length) await tx.staffLocation.createMany({ data: allowed.map((l) => ({ staffId, locationId: l.id })) });
       }
+      if (input.serviceIds) {
+        // Услуга ↔ мастер хранится дважды (01 §4): держим Service.staffIds в паре со Staff.serviceIds
+        const prevIds = new Set(before.serviceIds as string[]);
+        const nextIds = new Set(input.serviceIds);
+        const added = input.serviceIds.filter((id) => !prevIds.has(id));
+        const removed = [...prevIds].filter((id) => !nextIds.has(id));
+        if (added.length) {
+          const rows = await tx.service.findMany({ where: { id: { in: added }, businessId }, select: { id: true, staffIds: true } });
+          for (const r of rows) {
+            const ids = new Set(Array.isArray(r.staffIds) ? (r.staffIds as string[]) : []);
+            if (!ids.has(staffId)) await tx.service.update({ where: { id: r.id }, data: { staffIds: [...ids, staffId] } });
+          }
+        }
+        if (removed.length) {
+          const rows = await tx.service.findMany({ where: { id: { in: removed }, businessId }, select: { id: true, staffIds: true } });
+          for (const r of rows) {
+            const ids = (Array.isArray(r.staffIds) ? (r.staffIds as string[]) : []).filter((x) => x !== staffId);
+            await tx.service.update({ where: { id: r.id }, data: { staffIds: ids } });
+          }
+          await tx.staffServiceTerm.deleteMany({ where: { staffId, serviceId: { in: removed } } });
+        }
+      }
       const after = await tx.staff.findUniqueOrThrow({ where: { id: staffId }, include: STAFF_INCLUDE });
       await this.audit.record(tx, ctx, {
         action: 'update',

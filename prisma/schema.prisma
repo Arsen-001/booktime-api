@@ -344,12 +344,15 @@ model Business {
   updatedBy                     String?   @map("updated_by") @db.VarChar(32)
   version                       Int       @default(1)
 
-  network   Network?          @relation(fields: [networkId], references: [id])
-  locations Location[]
-  staff     Staff[]
-  positions Position[]
-  invites   StaffInvite[]
-  settings  BusinessSetting[]
+  network    Network?          @relation(fields: [networkId], references: [id])
+  locations  Location[]
+  staff      Staff[]
+  positions  Position[]
+  invites    StaffInvite[]
+  settings   BusinessSetting[]
+  categories ServiceCategory[]
+  services   Service[]
+  resources  Resource[]
 
   @@index([status])
   @@index([networkId])
@@ -386,8 +389,9 @@ model Location {
   updatedBy     String?   @map("updated_by") @db.VarChar(32)
   version       Int       @default(1)
 
-  business Business        @relation(fields: [businessId], references: [id])
-  staff    StaffLocation[]
+  business  Business        @relation(fields: [businessId], references: [id])
+  staff     StaffLocation[]
+  resources Resource[]
 
   @@index([businessId])
   @@index([district])
@@ -492,11 +496,12 @@ model Staff {
   updatedBy            String?   @map("updated_by") @db.VarChar(32)
   version              Int       @default(1)
 
-  business  Business        @relation(fields: [businessId], references: [id])
-  user      User?           @relation(fields: [userId], references: [id])
-  locations StaffLocation[]
-  invites   StaffInvite[]
-  logins    StaffLogin[]
+  business     Business           @relation(fields: [businessId], references: [id])
+  user         User?              @relation(fields: [userId], references: [id])
+  locations    StaffLocation[]
+  invites      StaffInvite[]
+  logins       StaffLogin[]
+  serviceTerms StaffServiceTerm[]
 
   @@index([businessId, status])
   @@index([userId])
@@ -569,6 +574,142 @@ model StaffInvite {
   @@index([staffId])
   @@index([phone, status])
   @@map("staff_invites")
+}
+
+// ─────────────────────────── Этап 4 · Услуги и ресурсы (01 §4, PLAN §6 №4) ───────────────────────────
+
+/// Категория услуг (= ServiceCategory мока). Своё имя для витрины (F-03-131) — на самой категории, без надстройки.
+model ServiceCategory {
+  id                String   @id @db.VarChar(32)
+  businessId        String   @map("business_id") @db.VarChar(32)
+  /// LocalizedText
+  name              Json
+  onlineNameEnabled Boolean  @default(false) @map("online_name_enabled")
+  /// LocalizedText — имя для онлайн-записи, когда включено (F-03-131)
+  onlineName        Json?    @map("online_name")
+  sortOrder         Int      @default(0) @map("sort_order")
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy         String?  @map("created_by") @db.VarChar(32)
+  updatedBy         String?  @map("updated_by") @db.VarChar(32)
+  version           Int      @default(1)
+
+  business Business  @relation(fields: [businessId], references: [id])
+  services Service[]
+
+  @@index([businessId])
+  @@map("service_categories")
+}
+
+/// Услуга (= Service мока). Пакет «Комплекс» (F-16-107…135) — та же строка с заполненным servicePackage/packageExtra
+/// (01 §4: «хозяин — services»); kind у пакета остаётся individual. staffIds — денормализованный список (мастер ×
+/// услуга — 01 §4 staff_services, срок цены/длительности мастера — staff_service_terms).
+model Service {
+  id                 String   @id @db.VarChar(32)
+  businessId         String   @map("business_id") @db.VarChar(32)
+  /// Пусто — категория удалена (F-16-171: удаление категории мока не блокирует и не переносит услуги;
+  /// на сервере FK этого не разрешает, поэтому категория при удалении снимается — SetNull, не запрет)
+  categoryId         String?  @map("category_id") @db.VarChar(32)
+  sphereId           String   @map("sphere_id") @db.VarChar(40)
+  /// LocalizedText
+  name               Json
+  description        Json?
+  /// individual | group
+  kind               String   @default("individual") @db.VarChar(10)
+  durationMin        Int      @map("duration_min")
+  /// «От–до» (F-00-057); нет поля — фиксированная длительность
+  durationMax        Int?     @map("duration_max")
+  /// Драмы
+  priceMin           BigInt   @map("price_min")
+  /// «От–до»; нет поля — фиксированная цена
+  priceMax           BigInt?  @map("price_max")
+  /// Запас после услуги; null — общая настройка локации («shared»), 0 — без перерыва (F-02-060 — различать!)
+  bufferAfterMin     Int?     @map("buffer_after_min")
+  /// «Пора снова», дней (F-00-084)
+  repeatIntervalDays Int?     @map("repeat_interval_days")
+  /// off | custom — нет поля — общая настройка notify (F-05-037)
+  winbackReminder    String?  @map("winback_reminder") @db.VarChar(6)
+  /// Мест в событии — только у групповых
+  capacity           Int?
+  photos             Json
+  materials          Json
+  /// Id мастеров, привязанных к услуге — держит services/staff.service.ts в паре с Staff.serviceIds
+  staffIds           Json     @map("staff_ids")
+  workplaces         Json
+  onlineBookable     Boolean  @default(true) @map("online_bookable")
+  active             Boolean  @default(true)
+  /// Порядок в категории; у пакета — Date.now() при создании (как во фронте), поэтому bigint
+  order              BigInt   @default(0)
+  /// required | preferred — выбор оттенка при записи (F-00-094…096); нет поля — шага нет
+  shadeChoice        String?  @map("shade_choice") @db.VarChar(10)
+  /// { items: {serviceId, order}[], mode } — состав пакета (нет поля — обычная услуга)
+  servicePackage     Json?    @map("service_package")
+  /// Надстройка пакета — способ цены, окно доступности, предоплата, ресурсы «на весь пакет» (PackageExtra фронта)
+  packageExtra       Json?    @map("package_extra")
+  /// Автоперевод/чек/выбор варианта при записи — ServiceExtra фронта (F-03-115, F-15-141, F-07-149)
+  extra              Json?
+  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy          String?  @map("created_by") @db.VarChar(32)
+  updatedBy          String?  @map("updated_by") @db.VarChar(32)
+  version            Int      @default(1)
+
+  business Business           @relation(fields: [businessId], references: [id])
+  category ServiceCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  terms    StaffServiceTerm[]
+
+  @@index([businessId, order])
+  @@index([categoryId])
+  @@map("services")
+}
+
+/// Своя цена/длительность мастера по услуге (F-02-058, F-16-030) — пара «мастер × услуга»; сама привязка
+/// (список кто вообще делает услугу) — денормализованные Service.staffIds / Staff.serviceIds.
+model StaffServiceTerm {
+  staffId     String   @map("staff_id") @db.VarChar(32)
+  serviceId   String   @map("service_id") @db.VarChar(32)
+  /// Драмы; нет строки/поля — цена и длительность услуги
+  price       BigInt?
+  durationMin Int?     @map("duration_min")
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  staff   Staff   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([staffId, serviceId])
+  @@index([serviceId])
+  @@map("staff_service_terms")
+}
+
+/// Ресурс — кресло/кабинет/аппарат (= Resource мока). Экземпляры и привязанные услуги — JSON-массивы прямо на
+/// строке, как во фронте (Resource.instances/serviceIds); отдельная таблица занятости — этап 6/7 (availability).
+model Resource {
+  id          String   @id @db.VarChar(32)
+  businessId  String   @map("business_id") @db.VarChar(32)
+  locationId  String   @map("location_id") @db.VarChar(32)
+  /// LocalizedText
+  name        Json
+  /// chair | room | device | box | hall | other
+  kind        String   @db.VarChar(10)
+  /// { id, name }[] — «Кресло 1», «Кресло 2» (F-16-004); новый ресурс получает первый экземпляр сразу
+  instances   Json
+  serviceIds  Json     @map("service_ids")
+  /// Надстройка своего среза (F-16-002) — не в ядре мока
+  description String?  @db.VarChar(2000)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy   String?  @map("created_by") @db.VarChar(32)
+  updatedBy   String?  @map("updated_by") @db.VarChar(32)
+  version     Int      @default(1)
+
+  business Business @relation(fields: [businessId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@index([businessId])
+  @@index([locationId])
+  @@map("resources")
 }
 
 /// Что уходит с мастером (C4, F-00-044): портфолио, дипломы, материалы привязаны к человеку, а не к салону

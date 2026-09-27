@@ -11,6 +11,9 @@ import { normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { slugify } from '../../common/text.js';
 import { utcToLocalDate } from '../../common/time/time.js';
+import { categoryView } from '../services/services.views.js';
+import { serviceView } from '../services/services.views.js';
+import { resourceView } from '../resources/resources.views.js';
 import type { LocationBody, PatchBusinessBody, PatchLocationBody, RegisterBusinessBody } from './business.schemas.js';
 import { businessView, locationView, networkView, staffViewWithLogin } from './views.js';
 
@@ -141,10 +144,13 @@ export class BusinessService {
   /** Бизнесы, филиалы, сотрудники и сеть — одним ответом (кабинет и зеркало ядра во фронте) */
   async core(businessId: string, businessIds: string[]) {
     const ids = businessIds.includes(businessId) ? businessIds : [businessId, ...businessIds];
-    const [businesses, locations, staff] = await Promise.all([
+    const [businesses, locations, staff, categories, services, resources] = await Promise.all([
       this.prisma.business.findMany({ where: { id: { in: ids } }, orderBy: { createdAt: 'asc' } }),
       this.prisma.location.findMany({ where: { businessId: { in: ids }, deletedAt: null }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
       this.prisma.staff.findMany({ where: { businessId: { in: ids }, deletedAt: null }, include: STAFF_INCLUDE, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
+      this.prisma.serviceCategory.findMany({ where: { businessId: { in: ids } }, orderBy: [{ sortOrder: 'asc' }] }),
+      this.prisma.service.findMany({ where: { businessId: { in: ids } }, orderBy: [{ order: 'asc' }] }),
+      this.prisma.resource.findMany({ where: { businessId: { in: ids } } }),
     ]);
     const networkId = businesses.find((b) => b.id === businessId)?.networkId;
     const network = networkId ? await this.prisma.network.findUnique({ where: { id: networkId }, include: { businesses: { select: { id: true }, where: { leftAt: null } } } }) : null;
@@ -153,6 +159,11 @@ export class BusinessService {
       locations: locations.map(locationView),
       staff: staff.map(staffViewWithLogin),
       networks: network ? [networkView(network, network.businesses.map((b) => b.id))] : [],
+      // Каталог (этап 4) — зеркало во фронте кладёт это в core.serviceCategories/services/resources,
+      // чтобы разделы, ещё живущие на моке (журнал, график, клиент, online), видели настоящий каталог
+      serviceCategories: categories.map(categoryView),
+      services: services.map(serviceView),
+      resources: resources.map(resourceView),
     };
   }
 

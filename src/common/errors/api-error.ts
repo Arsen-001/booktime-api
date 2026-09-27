@@ -47,6 +47,8 @@ export const ERROR_STATUS = {
   invite_used: HttpStatus.CONFLICT,
   invite_wrong_phone: HttpStatus.FORBIDDEN,
   rate_limited: HttpStatus.TOO_MANY_REQUESTS,
+  // каталог (этап 4) — как в моке фронта (src/api/resources.ts)
+  last_instance: HttpStatus.CONFLICT,
   validation: HttpStatus.BAD_REQUEST,
   internal: HttpStatus.INTERNAL_SERVER_ERROR,
 } as const;

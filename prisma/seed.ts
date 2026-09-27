@@ -294,9 +294,73 @@ if (!(await prisma.platformMember.findUnique({ where: { id: 'pm_platform' } })))
   });
 }
 
+// ─────────── этап 4: каталог — категории, услуги (включая пакеты «Комплекс»), ресурсы ───────────
+const categoriesRaw = (core.serviceCategories ?? []) as Rec[];
+await prisma.serviceCategory.createMany({
+  skipDuplicates: true,
+  data: categoriesRaw.map((c) => ({
+    id: String(c.id),
+    businessId: String(c.businessId),
+    name: c.name as Prisma.InputJsonValue,
+    sortOrder: Number(c.order ?? 0),
+    createdBy: 'seed',
+    updatedBy: 'seed',
+  })),
+});
+
+const servicesRaw = (core.services ?? []) as Rec[];
+await prisma.service.createMany({
+  skipDuplicates: true,
+  data: servicesRaw.map((s) => ({
+    id: String(s.id),
+    businessId: String(s.businessId),
+    categoryId: String(s.categoryId),
+    sphereId: String(s.sphereId),
+    name: s.name as Prisma.InputJsonValue,
+    description: J(s.description),
+    kind: String(s.kind ?? 'individual'),
+    durationMin: Number(s.durationMin ?? 0),
+    durationMax: typeof s.durationMax === 'number' ? s.durationMax : null,
+    priceMin: BigInt(Math.trunc(Number(s.priceMin ?? 0))),
+    priceMax: typeof s.priceMax === 'number' ? BigInt(Math.trunc(s.priceMax)) : null,
+    bufferAfterMin: typeof s.bufferAfterMin === 'number' ? s.bufferAfterMin : null,
+    repeatIntervalDays: typeof s.repeatIntervalDays === 'number' ? s.repeatIntervalDays : null,
+    capacity: typeof s.capacity === 'number' ? s.capacity : null,
+    photos: (s.photos ?? []) as Prisma.InputJsonValue,
+    materials: (s.materials ?? []) as Prisma.InputJsonValue,
+    staffIds: (s.staffIds ?? []) as Prisma.InputJsonValue,
+    workplaces: (s.workplaces ?? []) as Prisma.InputJsonValue,
+    onlineBookable: s.onlineBookable !== false,
+    active: s.active !== false,
+    order: BigInt(Math.trunc(Number(s.order ?? 0))),
+    shadeChoice: S(s.shadeChoice) ?? null,
+    servicePackage: J(s.servicePackage),
+    createdBy: 'seed',
+    updatedBy: 'seed',
+  })),
+});
+
+const resourcesRaw = (core.resources ?? []) as Rec[];
+await prisma.resource.createMany({
+  skipDuplicates: true,
+  data: resourcesRaw.map((r) => ({
+    id: String(r.id),
+    businessId: String(r.businessId),
+    locationId: String(r.locationId),
+    name: r.name as Prisma.InputJsonValue,
+    kind: String(r.kind ?? 'other'),
+    instances: (r.instances ?? []) as Prisma.InputJsonValue,
+    serviceIds: (r.serviceIds ?? []) as Prisma.InputJsonValue,
+    active: r.active !== false,
+    createdBy: 'seed',
+    updatedBy: 'seed',
+  })),
+});
+
 console.log(
   `seed: людей ${users.length} (клиентов ${core.appUsers.length}), логинов администраторов ${admins.length}, команда платформы 1; ` +
     `сетей ${networks.length}, бизнесов ${businesses.length}, филиалов ${locations.length}, сотрудников ${core.staff.length}, ` +
-    `должностей ${positions.length}, приглашений ${invited.length} — ${Date.now() - t0} мс`,
+    `должностей ${positions.length}, приглашений ${invited.length}; ` +
+    `каталог — категорий ${categoriesRaw.length}, услуг ${servicesRaw.length}, ресурсов ${resourcesRaw.length} — ${Date.now() - t0} мс`,
 );
 await prisma.$disconnect();

@@ -4,10 +4,12 @@ import { ContextMiddleware } from './common/http/context.middleware.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { BusinessesModule } from './modules/businesses/businesses.module.js';
 import { HealthController } from './modules/health/health.controller.js';
+import { ResourcesModule } from './modules/resources/resources.module.js';
+import { ServicesModule } from './modules/services/services.module.js';
 
 /** Корневой модуль API. Разделы (PLAN.md §6) добавляются сюда по этапам. */
 @Module({
-  imports: [CommonModule, AuthModule, BusinessesModule],
+  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {
