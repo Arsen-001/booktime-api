@@ -1187,6 +1187,13 @@ model Booking {
   paidAmount       BigInt    @default(0) @map("paid_amount")
   /// Технический перерыв под записью, мин (F-01-032); null — по услуге/настройке
   breakOverrideMin Int?      @map("break_override_min")
+  /// Неугадываемый хэш для «моя запись без входа» (B19: 128 бит, в базе — sha256); только у онлайн-записи
+  accessHash          String?   @unique @map("access_hash") @db.Char(64)
+  /// Срок ссылки (B8: до конца визита + 7 дней); истёк — ссылка мертва, сама запись остаётся
+  accessHashExpiresAt DateTime? @map("access_hash_expires_at") @db.DateTime(3)
+  /// OnlineBookingMeta без bookingId/accessHash (этап 8, F-03-091…139): откуда пришла запись — ссылка/форма,
+  /// устройство, e-mail/фамилия/отчество, свои поля виджета, «специалист не важен», адрес выезда
+  onlineMeta          Json?     @map("online_meta")
   deletedAt        DateTime? @map("deleted_at") @db.DateTime(3)
   deletedBy        String?   @map("deleted_by") @db.VarChar(32)
   deletedByName    String?   @map("deleted_by_name") @db.VarChar(160)
@@ -1444,4 +1451,43 @@ model TreatmentPlan {
   @@index([clientId])
   @@index([businessId])
   @@map("treatment_plans")
+}
+
+// ─────────────────────────── Этап 8: онлайн-запись и страница по ссылке (docs/backend/02 §3, PLAN §6 №8) ───────────────────────────
+
+/// Ссылка на запись / форма (F-03-003…037): страница /b/<Business.slug>[/f/<formId>]. Настройки шагов, дизайна,
+/// кнопки на сайте, аналитики и домена — JSON на строке (config), как Resource.instances (этап 4): правятся
+/// только вместе со всей ссылкой на одном экране кабинета, отдельных выборок «по полю конфигурации» нет.
+model BookingLink {
+  id            String   @id @db.VarChar(32)
+  businessId    String   @map("business_id") @db.VarChar(32)
+  locationId    String?  @map("location_id") @db.VarChar(32)
+  /// Сеть, чьи филиалы клиент выбирает первым шагом — только kind='network' (F-03-008)
+  networkId     String?  @map("network_id") @db.VarChar(32)
+  /// Видно только сотрудникам кабинета (F-03-006)
+  name          String   @db.VarChar(160)
+  description   String?  @db.VarChar(2000)
+  /// normal | network
+  kind          String   @db.VarChar(8)
+  /// individual | group | mixed
+  bookingType   String   @map("booking_type") @db.VarChar(10)
+  defaultLocale String   @map("default_locale") @db.VarChar(2)
+  /// Ссылка «для сотрудника» — ведёт сразу к нему (F-03-005)
+  staffId       String?  @map("staff_id") @db.VarChar(32)
+  primary       Boolean  @default(false)
+  /// Короткий номер формы: часть адреса /b/<slug>/f/<formId> (F-03-009)
+  formId        String   @map("form_id") @db.VarChar(20)
+  /// Остальные поля BookingLink фронта: bookingFlow, stepOrder/Hidden/Labels, preselectedStaffId/ServiceId,
+  /// staffDisplayField, categoryDisplay, staffForAllBookings, theme, widgetButtonColor, hidePrice/Duration,
+  /// submitButtonLabel, heroImageUrl/Status, websiteButton, subdomain, domain, аналитика, onlineSalesNetworkId
+  config        Json
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy     String?  @map("created_by") @db.VarChar(32)
+  updatedBy     String?  @map("updated_by") @db.VarChar(32)
+  version       Int      @default(1)
+
+  @@unique([businessId, formId])
+  @@index([businessId])
+  @@map("booking_links")
 }

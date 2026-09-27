@@ -69,6 +69,8 @@ export const ID_PREFIX = {
   goodsLine: 'gl',
   bookingCategory: 'bc',
   recurrenceTemplate: 'rt',
+  // этап 8 — онлайн-запись и страница по ссылке: как в срезе online фронта (ссылка lnk)
+  bookingLink: 'lnk',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

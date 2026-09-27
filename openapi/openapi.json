@@ -29335,6 +29335,3711 @@
           "journal"
         ]
       }
+    },
+    "/v1/public/b/{slug}": {
+      "get": {
+        "operationId": "PublicOnlineController_business",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "formId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "business": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "individual",
+                            "salon"
+                          ]
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "sphereIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "networkId": {
+                          "type": "string"
+                        },
+                        "ownerStaffId": {
+                          "type": "string"
+                        },
+                        "locationIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "logoUrl": {
+                          "type": "string"
+                        },
+                        "photos": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "frozen",
+                            "moderation",
+                            "draft"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "forbidHomeBookingsDuringShift": {
+                          "type": "boolean"
+                        },
+                        "socials": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "bookingRules": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "brandName": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "name",
+                        "slug",
+                        "sphereIds",
+                        "ownerStaffId",
+                        "locationIds",
+                        "phone",
+                        "photos",
+                        "status",
+                        "createdAt",
+                        "forbidHomeBookingsDuringShift",
+                        "version"
+                      ]
+                    },
+                    "location": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "businessId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "address": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "district": {
+                          "type": "string"
+                        },
+                        "yandexMapsUrl": {
+                          "type": "string"
+                        },
+                        "coords": {
+                          "type": "object",
+                          "properties": {
+                            "lat": {
+                              "type": "number"
+                            },
+                            "lng": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "lat",
+                            "lng"
+                          ]
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "extraPhones": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "hoursText": {
+                          "type": "string"
+                        },
+                        "openHours": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "journalKind": {
+                          "type": "string",
+                          "enum": [
+                            "individual",
+                            "mixed",
+                            "group"
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "businessId",
+                        "name",
+                        "address",
+                        "district",
+                        "timezone",
+                        "version"
+                      ]
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "object",
+                            "properties": {
+                              "ru": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "hy": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "en": {
+                                "type": "string",
+                                "maxLength": 4000
+                              }
+                            },
+                            "required": [
+                              "ru"
+                            ],
+                            "additionalProperties": {}
+                          },
+                          "order": {
+                            "type": "number"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "name",
+                          "order",
+                          "version"
+                        ]
+                      }
+                    },
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "categoryId": {
+                            "type": "string"
+                          },
+                          "sphereId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "object",
+                            "properties": {
+                              "ru": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "hy": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "en": {
+                                "type": "string",
+                                "maxLength": 4000
+                              }
+                            },
+                            "required": [
+                              "ru"
+                            ],
+                            "additionalProperties": {}
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "individual",
+                              "group"
+                            ]
+                          },
+                          "durationMin": {
+                            "type": "number"
+                          },
+                          "priceMin": {
+                            "type": "number"
+                          },
+                          "photos": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "staffIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "onlineBookable": {
+                            "type": "boolean"
+                          },
+                          "active": {
+                            "type": "boolean"
+                          },
+                          "order": {
+                            "type": "number"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "categoryId",
+                          "sphereId",
+                          "name",
+                          "kind",
+                          "durationMin",
+                          "priceMin",
+                          "photos",
+                          "staffIds",
+                          "onlineBookable",
+                          "active",
+                          "order",
+                          "version"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    },
+                    "staff": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "locationIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "phone": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "owner",
+                              "admin",
+                              "master"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "invited",
+                              "disabled",
+                              "fired"
+                            ]
+                          },
+                          "sphereIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "workplaces": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "serviceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "hiredAt": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "locationIds",
+                          "name",
+                          "phone",
+                          "role",
+                          "status",
+                          "sphereIds",
+                          "workplaces",
+                          "serviceIds",
+                          "hiredAt",
+                          "version"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    },
+                    "link": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "regularsCount": {
+                      "type": "number"
+                    },
+                    "serviceConfigs": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "staffServiceOnline": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "boolean"
+                      }
+                    },
+                    "linkStaffGone": {
+                      "type": "boolean"
+                    },
+                    "promoBlocks": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "businessStars": {
+                      "type": "number"
+                    },
+                    "networkBranches": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "individual",
+                              "salon"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "sphereIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "networkId": {
+                            "type": "string"
+                          },
+                          "ownerStaffId": {
+                            "type": "string"
+                          },
+                          "locationIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "phone": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "object",
+                            "properties": {
+                              "ru": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "hy": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "en": {
+                                "type": "string",
+                                "maxLength": 4000
+                              }
+                            },
+                            "required": [
+                              "ru"
+                            ],
+                            "additionalProperties": {}
+                          },
+                          "logoUrl": {
+                            "type": "string"
+                          },
+                          "photos": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "frozen",
+                              "moderation",
+                              "draft"
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "forbidHomeBookingsDuringShift": {
+                            "type": "boolean"
+                          },
+                          "socials": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "bookingRules": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "brandName": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "name",
+                          "slug",
+                          "sphereIds",
+                          "ownerStaffId",
+                          "locationIds",
+                          "phone",
+                          "photos",
+                          "status",
+                          "createdAt",
+                          "forbidHomeBookingsDuringShift",
+                          "version"
+                        ]
+                      }
+                    },
+                    "packages": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "hourCycle": {
+                      "type": "string",
+                      "enum": [
+                        "12",
+                        "24"
+                      ]
+                    },
+                    "addressHidden": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "business",
+                    "categories",
+                    "services",
+                    "staff",
+                    "regularsCount",
+                    "serviceConfigs",
+                    "staffServiceOnline",
+                    "linkStaffGone",
+                    "promoBlocks",
+                    "businessStars",
+                    "packages",
+                    "hourCycle",
+                    "addressHidden"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Публичная страница бизнеса /b/<slug> (F-03-134)",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/public/b/{slug}/f/{formId}": {
+      "get": {
+        "operationId": "PublicOnlineController_businessForm",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "formId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "business": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "individual",
+                            "salon"
+                          ]
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "sphereIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "networkId": {
+                          "type": "string"
+                        },
+                        "ownerStaffId": {
+                          "type": "string"
+                        },
+                        "locationIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "logoUrl": {
+                          "type": "string"
+                        },
+                        "photos": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "frozen",
+                            "moderation",
+                            "draft"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "forbidHomeBookingsDuringShift": {
+                          "type": "boolean"
+                        },
+                        "socials": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "bookingRules": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "brandName": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "name",
+                        "slug",
+                        "sphereIds",
+                        "ownerStaffId",
+                        "locationIds",
+                        "phone",
+                        "photos",
+                        "status",
+                        "createdAt",
+                        "forbidHomeBookingsDuringShift",
+                        "version"
+                      ]
+                    },
+                    "location": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "businessId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "address": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "district": {
+                          "type": "string"
+                        },
+                        "yandexMapsUrl": {
+                          "type": "string"
+                        },
+                        "coords": {
+                          "type": "object",
+                          "properties": {
+                            "lat": {
+                              "type": "number"
+                            },
+                            "lng": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "lat",
+                            "lng"
+                          ]
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "extraPhones": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "hoursText": {
+                          "type": "string"
+                        },
+                        "openHours": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "journalKind": {
+                          "type": "string",
+                          "enum": [
+                            "individual",
+                            "mixed",
+                            "group"
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "businessId",
+                        "name",
+                        "address",
+                        "district",
+                        "timezone",
+                        "version"
+                      ]
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "object",
+                            "properties": {
+                              "ru": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "hy": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "en": {
+                                "type": "string",
+                                "maxLength": 4000
+                              }
+                            },
+                            "required": [
+                              "ru"
+                            ],
+                            "additionalProperties": {}
+                          },
+                          "order": {
+                            "type": "number"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "name",
+                          "order",
+                          "version"
+                        ]
+                      }
+                    },
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "categoryId": {
+                            "type": "string"
+                          },
+                          "sphereId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "object",
+                            "properties": {
+                              "ru": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "hy": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "en": {
+                                "type": "string",
+                                "maxLength": 4000
+                              }
+                            },
+                            "required": [
+                              "ru"
+                            ],
+                            "additionalProperties": {}
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "individual",
+                              "group"
+                            ]
+                          },
+                          "durationMin": {
+                            "type": "number"
+                          },
+                          "priceMin": {
+                            "type": "number"
+                          },
+                          "photos": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "staffIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "onlineBookable": {
+                            "type": "boolean"
+                          },
+                          "active": {
+                            "type": "boolean"
+                          },
+                          "order": {
+                            "type": "number"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "categoryId",
+                          "sphereId",
+                          "name",
+                          "kind",
+                          "durationMin",
+                          "priceMin",
+                          "photos",
+                          "staffIds",
+                          "onlineBookable",
+                          "active",
+                          "order",
+                          "version"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    },
+                    "staff": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "locationIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "phone": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "owner",
+                              "admin",
+                              "master"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "invited",
+                              "disabled",
+                              "fired"
+                            ]
+                          },
+                          "sphereIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "workplaces": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "serviceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "hiredAt": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "locationIds",
+                          "name",
+                          "phone",
+                          "role",
+                          "status",
+                          "sphereIds",
+                          "workplaces",
+                          "serviceIds",
+                          "hiredAt",
+                          "version"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    },
+                    "link": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "regularsCount": {
+                      "type": "number"
+                    },
+                    "serviceConfigs": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "staffServiceOnline": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "boolean"
+                      }
+                    },
+                    "linkStaffGone": {
+                      "type": "boolean"
+                    },
+                    "promoBlocks": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "businessStars": {
+                      "type": "number"
+                    },
+                    "networkBranches": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "individual",
+                              "salon"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "sphereIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "networkId": {
+                            "type": "string"
+                          },
+                          "ownerStaffId": {
+                            "type": "string"
+                          },
+                          "locationIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "phone": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "object",
+                            "properties": {
+                              "ru": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "hy": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "en": {
+                                "type": "string",
+                                "maxLength": 4000
+                              }
+                            },
+                            "required": [
+                              "ru"
+                            ],
+                            "additionalProperties": {}
+                          },
+                          "logoUrl": {
+                            "type": "string"
+                          },
+                          "photos": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "frozen",
+                              "moderation",
+                              "draft"
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "forbidHomeBookingsDuringShift": {
+                            "type": "boolean"
+                          },
+                          "socials": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "bookingRules": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "brandName": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "name",
+                          "slug",
+                          "sphereIds",
+                          "ownerStaffId",
+                          "locationIds",
+                          "phone",
+                          "photos",
+                          "status",
+                          "createdAt",
+                          "forbidHomeBookingsDuringShift",
+                          "version"
+                        ]
+                      }
+                    },
+                    "packages": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "hourCycle": {
+                      "type": "string",
+                      "enum": [
+                        "12",
+                        "24"
+                      ]
+                    },
+                    "addressHidden": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "business",
+                    "categories",
+                    "services",
+                    "staff",
+                    "regularsCount",
+                    "serviceConfigs",
+                    "staffServiceOnline",
+                    "linkStaffGone",
+                    "promoBlocks",
+                    "businessStars",
+                    "packages",
+                    "hourCycle",
+                    "addressHidden"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Страница формы /b/<slug>/f/<formId> (F-03-009)",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/public/b/{slug}/slots": {
+      "get": {
+        "operationId": "PublicOnlineController_slots",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "durationMin",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "staffId": {
+                        "type": "string"
+                      },
+                      "locationId": {
+                        "type": "string"
+                      },
+                      "workplace": {
+                        "type": "string"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "end": {
+                        "type": "string"
+                      },
+                      "extra": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "staffId",
+                      "locationId",
+                      "workplace",
+                      "start",
+                      "end"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Свободные окна виджета (F-03-065) — вход как у `getWidgetFreeSlots` фронта",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/public/b/{slug}/nearest-date": {
+      "get": {
+        "operationId": "PublicOnlineController_nearestDate",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "durationMin",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Ближайший день с окнами (F-03-085)",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/public/b/{slug}/month": {
+      "get": {
+        "operationId": "PublicOnlineController_month",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "durationMin",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Дни месяца с окнами (F-03-084)",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/public/b/{slug}/code": {
+      "post": {
+        "operationId": "PublicOnlineController_sendCode",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 24
+                  },
+                  "channel": {
+                    "default": "telegram",
+                    "type": "string",
+                    "enum": [
+                      "telegram",
+                      "whatsapp",
+                      "sms"
+                    ]
+                  },
+                  "locale": {
+                    "type": "string",
+                    "enum": [
+                      "ru",
+                      "hy",
+                      "en"
+                    ]
+                  }
+                },
+                "required": [
+                  "phone"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "challengeId": {
+                      "type": "string"
+                    },
+                    "resendAfter": {
+                      "type": "number"
+                    },
+                    "expiresIn": {
+                      "type": "number"
+                    },
+                    "channel": {
+                      "type": "string",
+                      "enum": [
+                        "telegram",
+                        "whatsapp",
+                        "sms"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "challengeId",
+                    "resendAfter",
+                    "expiresIn",
+                    "channel"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Код перед записью без входа (F-00-007, B2) — тот же канал, что вход",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/public/b/{slug}/bookings": {
+      "post": {
+        "operationId": "PublicOnlineController_create",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "businessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "services": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        }
+                      },
+                      "required": [
+                        "serviceId"
+                      ]
+                    }
+                  },
+                  "clientName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 24
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{4}$"
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "forWhom": {
+                    "type": "string",
+                    "enum": [
+                      "self",
+                      "child",
+                      "pet",
+                      "other"
+                    ]
+                  },
+                  "linkId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "formId": {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "link",
+                      "widget"
+                    ]
+                  },
+                  "device": {
+                    "type": "string",
+                    "enum": [
+                      "mobile",
+                      "desktop"
+                    ]
+                  },
+                  "workplace": {
+                    "type": "string",
+                    "enum": [
+                      "salon",
+                      "home",
+                      "visit",
+                      "hall",
+                      "online"
+                    ]
+                  },
+                  "visitDistrict": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "visitAddress": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "reminderMinutesBefore": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "anySpecialist": {
+                    "type": "boolean"
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "patronymic": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "customFieldValues": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "businessId",
+                  "locationId",
+                  "staffId",
+                  "start",
+                  "services",
+                  "clientName",
+                  "clientPhone",
+                  "code",
+                  "source",
+                  "device"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "booking": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "client": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "accessHash": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "booking",
+                    "client",
+                    "accessHash"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "«Записаться» из виджета/ссылки (F-03-093, F-03-125)",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/public/bookings/{id}": {
+      "get": {
+        "operationId": "PublicOnlineController_view",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "h",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "booking": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "business": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "individual",
+                            "salon"
+                          ]
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "sphereIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "networkId": {
+                          "type": "string"
+                        },
+                        "ownerStaffId": {
+                          "type": "string"
+                        },
+                        "locationIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "logoUrl": {
+                          "type": "string"
+                        },
+                        "photos": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "frozen",
+                            "moderation",
+                            "draft"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "forbidHomeBookingsDuringShift": {
+                          "type": "boolean"
+                        },
+                        "socials": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "bookingRules": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "brandName": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "name",
+                        "slug",
+                        "sphereIds",
+                        "ownerStaffId",
+                        "locationIds",
+                        "phone",
+                        "photos",
+                        "status",
+                        "createdAt",
+                        "forbidHomeBookingsDuringShift",
+                        "version"
+                      ]
+                    },
+                    "location": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "businessId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "address": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "district": {
+                          "type": "string"
+                        },
+                        "yandexMapsUrl": {
+                          "type": "string"
+                        },
+                        "coords": {
+                          "type": "object",
+                          "properties": {
+                            "lat": {
+                              "type": "number"
+                            },
+                            "lng": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "lat",
+                            "lng"
+                          ]
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "extraPhones": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "hoursText": {
+                          "type": "string"
+                        },
+                        "openHours": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "journalKind": {
+                          "type": "string",
+                          "enum": [
+                            "individual",
+                            "mixed",
+                            "group"
+                          ]
+                        },
+                        "timezone": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "businessId",
+                        "name",
+                        "address",
+                        "district",
+                        "timezone",
+                        "version"
+                      ]
+                    },
+                    "staff": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "businessId": {
+                          "type": "string"
+                        },
+                        "locationIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "owner",
+                            "admin",
+                            "master"
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "invited",
+                            "disabled",
+                            "fired"
+                          ]
+                        },
+                        "sphereIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "workplaces": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "serviceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "hiredAt": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "businessId",
+                        "locationIds",
+                        "name",
+                        "phone",
+                        "role",
+                        "status",
+                        "sphereIds",
+                        "workplaces",
+                        "serviceIds",
+                        "hiredAt",
+                        "version"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "categoryId": {
+                            "type": "string"
+                          },
+                          "sphereId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "object",
+                            "properties": {
+                              "ru": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "hy": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "en": {
+                                "type": "string",
+                                "maxLength": 4000
+                              }
+                            },
+                            "required": [
+                              "ru"
+                            ],
+                            "additionalProperties": {}
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "individual",
+                              "group"
+                            ]
+                          },
+                          "durationMin": {
+                            "type": "number"
+                          },
+                          "priceMin": {
+                            "type": "number"
+                          },
+                          "photos": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "staffIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "onlineBookable": {
+                            "type": "boolean"
+                          },
+                          "active": {
+                            "type": "boolean"
+                          },
+                          "order": {
+                            "type": "number"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "categoryId",
+                          "sphereId",
+                          "name",
+                          "kind",
+                          "durationMin",
+                          "priceMin",
+                          "photos",
+                          "staffIds",
+                          "onlineBookable",
+                          "active",
+                          "order",
+                          "version"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "hourCycle": {
+                      "type": "string",
+                      "enum": [
+                        "12",
+                        "24"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "booking",
+                    "business",
+                    "services",
+                    "hourCycle"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Запись по ссылке без входа (F-03-098) — только по правильному хэшу",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/public/bookings/{id}/cancel-window": {
+      "get": {
+        "operationId": "PublicOnlineController_cancelWindow",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "h",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "canCancelFree": {
+                      "type": "boolean"
+                    },
+                    "canReschedule": {
+                      "type": "boolean"
+                    },
+                    "cancelWindowHours": {
+                      "type": "number"
+                    },
+                    "rescheduleWindowHours": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "canCancelFree",
+                    "canReschedule",
+                    "cancelWindowHours",
+                    "rescheduleWindowHours"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Можно ли сейчас бесплатно отменить/перенести (F-03-066/067)",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/public/bookings/{id}/cancel": {
+      "post": {
+        "operationId": "PublicOnlineController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "h",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Отмена своей записи по ссылке без входа (F-03-100). Перенос по ссылке не строим — B8",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/links": {
+      "get": {
+        "operationId": "BizOnlineController_list",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "locationId": {
+                        "type": "string"
+                      },
+                      "networkId": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "normal",
+                          "network"
+                        ]
+                      },
+                      "bookingType": {
+                        "type": "string",
+                        "enum": [
+                          "individual",
+                          "group",
+                          "mixed"
+                        ]
+                      },
+                      "defaultLocale": {
+                        "type": "string"
+                      },
+                      "staffId": {
+                        "type": "string"
+                      },
+                      "primary": {
+                        "type": "boolean"
+                      },
+                      "formId": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "businessId",
+                      "name",
+                      "kind",
+                      "bookingType",
+                      "defaultLocale",
+                      "primary",
+                      "formId",
+                      "createdAt",
+                      "version"
+                    ],
+                    "additionalProperties": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "online"
+        ]
+      },
+      "post": {
+        "operationId": "BizOnlineController_create",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "normal",
+                      "network"
+                    ]
+                  },
+                  "bookingType": {
+                    "type": "string",
+                    "enum": [
+                      "individual",
+                      "group",
+                      "mixed"
+                    ]
+                  },
+                  "defaultLocale": {
+                    "type": "string",
+                    "enum": [
+                      "ru",
+                      "hy",
+                      "en"
+                    ]
+                  },
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "primary": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "bookingType",
+                  "defaultLocale"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": "string"
+                    },
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "normal",
+                        "network"
+                      ]
+                    },
+                    "bookingType": {
+                      "type": "string",
+                      "enum": [
+                        "individual",
+                        "group",
+                        "mixed"
+                      ]
+                    },
+                    "defaultLocale": {
+                      "type": "string"
+                    },
+                    "staffId": {
+                      "type": "string"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "formId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "name",
+                    "kind",
+                    "bookingType",
+                    "defaultLocale",
+                    "primary",
+                    "formId",
+                    "createdAt",
+                    "version"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Новая ссылка» (F-03-005, F-03-006)",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/links/{id}": {
+      "get": {
+        "operationId": "BizOnlineController_get",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": "string"
+                    },
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "normal",
+                        "network"
+                      ]
+                    },
+                    "bookingType": {
+                      "type": "string",
+                      "enum": [
+                        "individual",
+                        "group",
+                        "mixed"
+                      ]
+                    },
+                    "defaultLocale": {
+                      "type": "string"
+                    },
+                    "staffId": {
+                      "type": "string"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "formId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "name",
+                    "kind",
+                    "bookingType",
+                    "defaultLocale",
+                    "primary",
+                    "formId",
+                    "createdAt",
+                    "version"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "online"
+        ]
+      },
+      "patch": {
+        "operationId": "BizOnlineController_update",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "defaultLocale": {
+                    "type": "string",
+                    "enum": [
+                      "ru",
+                      "hy",
+                      "en"
+                    ]
+                  },
+                  "staffId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": "string"
+                    },
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "normal",
+                        "network"
+                      ]
+                    },
+                    "bookingType": {
+                      "type": "string",
+                      "enum": [
+                        "individual",
+                        "group",
+                        "mixed"
+                      ]
+                    },
+                    "defaultLocale": {
+                      "type": "string"
+                    },
+                    "staffId": {
+                      "type": "string"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "formId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "name",
+                    "kind",
+                    "bookingType",
+                    "defaultLocale",
+                    "primary",
+                    "formId",
+                    "createdAt",
+                    "version"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "online"
+        ]
+      },
+      "delete": {
+        "operationId": "BizOnlineController_remove",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/links/{id}/primary": {
+      "post": {
+        "operationId": "BizOnlineController_setPrimary",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": "string"
+                    },
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "normal",
+                        "network"
+                      ]
+                    },
+                    "bookingType": {
+                      "type": "string",
+                      "enum": [
+                        "individual",
+                        "group",
+                        "mixed"
+                      ]
+                    },
+                    "defaultLocale": {
+                      "type": "string"
+                    },
+                    "staffId": {
+                      "type": "string"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "formId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "name",
+                    "kind",
+                    "bookingType",
+                    "defaultLocale",
+                    "primary",
+                    "formId",
+                    "createdAt",
+                    "version"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff/{staffId}/client-rules": {
+      "get": {
+        "operationId": "BizOnlineController_clientRules",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "staffId": {
+                      "type": "string"
+                    },
+                    "rescheduleWindowHours": {
+                      "type": "number"
+                    },
+                    "cancelWindowHours": {
+                      "type": "number"
+                    },
+                    "allowReschedule": {
+                      "type": "boolean"
+                    },
+                    "allowCancel": {
+                      "type": "boolean"
+                    },
+                    "allowReschedulePrepaid": {
+                      "type": "boolean"
+                    },
+                    "allowCancelPrepaid": {
+                      "type": "boolean"
+                    },
+                    "keepPrepaymentOnLateCancel": {
+                      "type": "boolean"
+                    },
+                    "travelFee": {
+                      "type": "number"
+                    },
+                    "travelTimeMin": {
+                      "type": "number"
+                    },
+                    "vacationUntil": {
+                      "type": "string"
+                    },
+                    "allowAnyStaffAssignment": {
+                      "type": "boolean"
+                    },
+                    "depositPolicyKind": {
+                      "type": "string",
+                      "enum": [
+                        "deposit",
+                        "cardGuarantee"
+                      ]
+                    },
+                    "depositAmount": {
+                      "type": "number"
+                    },
+                    "noShowPenalty": {
+                      "type": "number"
+                    },
+                    "addClaimLinkToMessage": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "staffId",
+                    "rescheduleWindowHours",
+                    "cancelWindowHours",
+                    "allowReschedule",
+                    "allowCancel",
+                    "allowReschedulePrepaid",
+                    "allowCancelPrepaid",
+                    "keepPrepaymentOnLateCancel"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "online"
+        ]
+      },
+      "put": {
+        "operationId": "BizOnlineController_setClientRules",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rescheduleWindowHours": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 720
+                  },
+                  "cancelWindowHours": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 720
+                  },
+                  "allowReschedule": {
+                    "type": "boolean"
+                  },
+                  "allowCancel": {
+                    "type": "boolean"
+                  },
+                  "allowReschedulePrepaid": {
+                    "type": "boolean"
+                  },
+                  "allowCancelPrepaid": {
+                    "type": "boolean"
+                  },
+                  "keepPrepaymentOnLateCancel": {
+                    "type": "boolean"
+                  },
+                  "travelFee": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "travelTimeMin": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 240
+                  },
+                  "vacationUntil": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "allowAnyStaffAssignment": {
+                    "type": "boolean"
+                  },
+                  "depositPolicyKind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "deposit",
+                          "cardGuarantee"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "depositAmount": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "noShowPenalty": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "addClaimLinkToMessage": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "staffId": {
+                      "type": "string"
+                    },
+                    "rescheduleWindowHours": {
+                      "type": "number"
+                    },
+                    "cancelWindowHours": {
+                      "type": "number"
+                    },
+                    "allowReschedule": {
+                      "type": "boolean"
+                    },
+                    "allowCancel": {
+                      "type": "boolean"
+                    },
+                    "allowReschedulePrepaid": {
+                      "type": "boolean"
+                    },
+                    "allowCancelPrepaid": {
+                      "type": "boolean"
+                    },
+                    "keepPrepaymentOnLateCancel": {
+                      "type": "boolean"
+                    },
+                    "travelFee": {
+                      "type": "number"
+                    },
+                    "travelTimeMin": {
+                      "type": "number"
+                    },
+                    "vacationUntil": {
+                      "type": "string"
+                    },
+                    "allowAnyStaffAssignment": {
+                      "type": "boolean"
+                    },
+                    "depositPolicyKind": {
+                      "type": "string",
+                      "enum": [
+                        "deposit",
+                        "cardGuarantee"
+                      ]
+                    },
+                    "depositAmount": {
+                      "type": "number"
+                    },
+                    "noShowPenalty": {
+                      "type": "number"
+                    },
+                    "addClaimLinkToMessage": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "staffId",
+                    "rescheduleWindowHours",
+                    "cancelWindowHours",
+                    "allowReschedule",
+                    "allowCancel",
+                    "allowReschedulePrepaid",
+                    "allowCancelPrepaid",
+                    "keepPrepaymentOnLateCancel"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Владелец/администратор — всем; сам мастер — только себе (online.own, как в 03 §2)",
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/online/rules": {
+      "get": {
+        "operationId": "BizOnlineController_businessRules",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "consentText": {
+                      "type": "object",
+                      "properties": {
+                        "ru": {
+                          "type": "string",
+                          "maxLength": 4000
+                        },
+                        "hy": {
+                          "type": "string",
+                          "maxLength": 4000
+                        },
+                        "en": {
+                          "type": "string",
+                          "maxLength": 4000
+                        }
+                      },
+                      "required": [
+                        "ru"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    "pauseUntil": {
+                      "type": "string"
+                    },
+                    "allowAnyStaffForAllLinks": {
+                      "type": "boolean"
+                    },
+                    "hourCycle": {
+                      "type": "string",
+                      "enum": [
+                        "12",
+                        "24"
+                      ]
+                    },
+                    "reviewMode": {
+                      "type": "string",
+                      "enum": [
+                        "star",
+                        "text"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "businessId",
+                    "consentText"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "online"
+        ]
+      },
+      "put": {
+        "operationId": "BizOnlineController_setBusinessRules",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "consentText": {
+                    "type": "object",
+                    "properties": {
+                      "ru": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "hy": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "en": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "ru"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "pauseUntil": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "allowAnyStaffForAllLinks": {
+                    "type": "boolean"
+                  },
+                  "hourCycle": {
+                    "type": "string",
+                    "enum": [
+                      "12",
+                      "24"
+                    ]
+                  },
+                  "reviewMode": {
+                    "type": "string",
+                    "enum": [
+                      "star",
+                      "text"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "consentText": {
+                      "type": "object",
+                      "properties": {
+                        "ru": {
+                          "type": "string",
+                          "maxLength": 4000
+                        },
+                        "hy": {
+                          "type": "string",
+                          "maxLength": 4000
+                        },
+                        "en": {
+                          "type": "string",
+                          "maxLength": 4000
+                        }
+                      },
+                      "required": [
+                        "ru"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    "pauseUntil": {
+                      "type": "string"
+                    },
+                    "allowAnyStaffForAllLinks": {
+                      "type": "boolean"
+                    },
+                    "hourCycle": {
+                      "type": "string",
+                      "enum": [
+                        "12",
+                        "24"
+                      ]
+                    },
+                    "reviewMode": {
+                      "type": "string",
+                      "enum": [
+                        "star",
+                        "text"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "businessId",
+                    "consentText"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "online"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/online-meta": {
+      "get": {
+        "operationId": "BizOnlineController_onlineMeta",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bookingId": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "bookingId",
+                    "source"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "online"
+        ]
+      }
     }
   },
   "info": {

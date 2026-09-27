@@ -738,3 +738,118 @@ Curl-сценарии: правка поверх записей без force →
 ### Вопросы владельцу
 - Нет новых: сроки и правила — из ANSWERS (В-03, В-04, В-05, В-07, В-18, В-39, F-01-121, F-00-107) и 08 (A2, A4, A8, A11),
   спорные места решены и записаны выше.
+
+## Этап 8 — Онлайн-запись и страница по ссылке (27.09.2026)
+
+Сделано (сервер, `src/modules/online`):
+- Схема и миграция `online_links_and_access_hash`: `booking_links` (ссылка на запись, F-03-003…037 — только
+  системные колонки настоящие: businessId/locationId/networkId/kind/bookingType/defaultLocale/staffId/primary/
+  formId; всё остальное — шаги, дизайн, кнопка сайта, аналитика, домен — `config` JSON на строке, тот же приём,
+  что `Resource.instances` этапа 4: полей много, правятся всегда вместе на одном экране); `bookings.access_hash`
+  (sha256, уникальный), `access_hash_expires_at`, `online_meta` JSON (F-03-091…139: linkId/formId/device/e-mail/
+  фамилия/отчество/свои поля/«специалист не важен»/адрес выезда — без bookingId/accessHash, они уже колонки).
+  Новый `OtpPurpose = 'booking'` (`otp_requests.purpose`, обычный VARCHAR — миграция не понадобилась).
+- **Публичная страница `/b/<slug>[/f/<formId>]`** (`OnlineService.publicBusinessData`): фильтр мастеров — как
+  `isStaffOnlineVisible` фронта (active, `onlineBookingEnabled≠false`, есть график, есть активная online-услуга
+  из своих); **В-22 сознательно НЕ фильтрует по calendarVisibility='mine'** — F-00-065 (исправлено): «mine»
+  прячет из каталога/поиска (другой раздел), а не со своей же прямой ссылки — иначе по ссылке не смог бы
+  записаться никто, даже свой клиент; подтверждено curl (мастер с `mine` виден на странице). F-00-077: адрес
+  скрыт, если владелец принимает только на дому. F-03-143: ссылка на ушедшего мастера — страница без него,
+  не 404. Постоянные клиенты (В-38, 3+ визита) — настоящий подсчёт по `bookings.groupBy`.
+- **Окна виджета/ближайшая дата/месяц** (`widgetSlots`/`nearestDate`/`monthAvailability`): вход — как у
+  `getWidgetFreeSlots` фронта (`durationMin`/`durationMax`/`serviceId` от вызывающего, не список услуг как
+  предполагал старый `02-api.md` — фронт эволюционировал, экран не трогаем, PLAN §3 источник 4); считает тот же
+  `AvailabilityService` этапа 6 (кеш, «замок на мастера» ниже), поверх — F-00-080 «время на дорогу» вокруг чужих
+  выездов того же дня (буфер из `staff.bookingRules.travelTimeMin`) и фильтр по месту оказания услуги.
+- **Код перед записью без входа** (B2, F-00-007): `POST /v1/public/b/{slug}/code` — тот же `OtpService`
+  этапа 2 (реальные каналы telegram/whatsapp/sms, лимиты, `DEV_LOGIN_CODE`), purpose='booking'; `POST …/bookings`
+  требует `code` и проверяет его **сервером** (`otp.verify`) — самоотчёту клиента (`phoneVerified` мока) больше
+  не доверяем. Curl: неверный код → `wrong_code`, верный → запись.
+- **Создание записи** (`createBooking`): тонкий слой поверх `BookingsService.place()` этапа 7 — вся бизнес-логика
+  (В-22 calendarVisibility, «выезд — всегда подтверждение», предоплата, подбор ресурса, «замок на мастера»)
+  уже там, не продублирована. После `place()` — генерируется `accessHash` (128 бит, `randomBytes(16)`, в базе
+  только sha256, B19), срок — конец визита + 7 дней (B8), `onlineMeta` пишется отдельным `UPDATE`. Curl: двойная
+  запись на то же время → `slot_taken` (через тот же замок, что журнал).
+- **«Моя запись без входа»** (B8: **просмотр и отмена, БЕЗ переноса** — принятое предложение `08`, П-17):
+  `GET/POST /v1/public/bookings/{id}[/cancel][/cancel-window]?h=` — хэш сверяется `sha256`, просроченная ссылка
+  и неверный хэш отвечают одинаковым `not_found` (не подсказывают, какая ошибка). Отмена — `bookingsService.
+  cancelByClient(actor, id, {booking})`: тот же приём, что журнал строит для клиента приложения, только без
+  проверки `appUserId` (её там нет — предусмотрено уже в сигнатуре этапа 7). **Перенос по ссылке НЕ строил** —
+  решение B8; фронт правится (см. ниже).
+- **Ссылки** (F-03-003…037): CRUD `/v1/biz/{b}/links[/{id}[/primary]]`, право `online.manage`; сетевая ссылка
+  берёт сеть бизнеса (F-03-008). If-Match/409 conflict — `updateVersioned`, curl проверил.
+- **Правила мастера для клиента** (F-00-066, `/v1/biz/{b}/staff/{s}/client-rules`): **НЕ отдельная таблица** —
+  общее с журналом поле `staff.bookingRules` (В-04, `cancelWindowMin`/`rescheduleWindowMin` в минутах,
+  единственный источник правды для `journal/rules.ts`); экран этого раздела отдаёт/принимает те же сроки в
+  часах (F-00-066), остальные поля (travelFee/travelTimeMin/vacationUntil/depositPolicy/noShowPenalty/
+  addClaimLinkToMessage/allowAnyStaffAssignment) — в том же JSON, новыми ключами. Право: `online.manage` всем,
+  `online.own` — только себе (как staff.manage/«свой профиль» этапа 3); curl: мастер правит себя, чужого — 403.
+- **Правила бизнеса** (F-03-079, F-03-116, В-24, `/v1/biz/{b}/online/rules`): `business_settings(area='online')`
+  — тот же приём F4, что и другие разделы; **не через общий `/settings/{area}`** (тот заперт на `settings.manage`,
+  здесь — `online.manage`, отдельный экран). `publicBusinessData` читает оттуда `hourCycle` напрямую.
+- **Источник записи для кабинета** (F-03-123, `GET …/bookings/{id}/online-meta`, право `journal.view`): читает
+  `bookings.source`/`online_meta`.
+
+Сделано (фронт): —(продолжение в следующем прогоне/ниже, см. «Осталось»).
+
+Проверено (сервер): `tsc` 0; миграция применена вручную (`prisma migrate dev` отказывается работать
+неинтерактивно на этой машине — `prisma migrate diff --script` → миграция руками в `prisma/migrations/`,
+`prisma migrate resolve --rolled-back` + `migrate deploy`, как и раньше `booktime_check`); `npm run build`,
+`npm run openapi` — 282 пути (было 266, +16 новых шаблонов). Живой сервер + curl (владелец/мастер Kaytsak
+Barbershop, реальный вход): публичная страница (мастер `calendarVisibility=mine` виден, `link: null` без
+ссылок), окна/ближайшая дата/месяц (совпадают между собой), код → неверный → `wrong_code` → верный → запись
+создана (клиент заведён, ресурс подобран, `scheduled`), повтор на то же время → `slot_taken`; запись по хэшу:
+верный хэш → видно, неверный → `not_found`, окно отмены (3 ч по умолчанию), отмена → `cancelled_by_client`,
+повторная отмена → `not_active`; ссылки: создание (primary), список, правка (If-Match верный/устаревший →
+`conflict`), публичная страница подхватила новое имя, «сделать основной», удаление; правила мастера: чтение
+(дефолты), запись (`cancelWindowHours=5` → `cancelWindowMin=300` в базе → обратно 5 при чтении, `travelTimeMin`
+сохранён); правила бизнеса (`hourCycle`, `reviewMode`); online-meta (source/device/submittedAt); права: master
+правит своё (`online.own`), чужое и создание ссылки — `403 missing permission: online.manage` (owner может).
+
+Решено по ходу:
+- **`serviceIds[]` из `02-api.md` для окон виджета — не строил**: текущий фронт (`getWidgetFreeSlots`/
+  `WidgetSlotQuery`) считает `durationMin`/`durationMax`/один `serviceId` сам и шлёт их, как и предпроверка
+  окна внутри `BookingsService.place()` этапа 7 — сервер повторяет именно этот контракт (PLAN «источники
+  правды» №4: свежий факт фронта важнее устаревшего наброска `02`, письменного решения по этому пункту нет).
+- **Онлайн-видимость мастера с `calendarVisibility='mine'`** — see выше, задокументировано в коде докстрингом
+  `sanitizePublicStaff`/`publicBusinessData` со ссылкой на исправление F-00-065 фронта.
+- **`BookingLink` — не через общий снимок `/core`**: ссылок на бизнес немного, но они не часть каталога/
+  сотрудников этапов 3–4 — каждый экран раздела читает их отдельным запросом (как клиенты этапа 5).
+- **`serviceConfigs`/`staffServiceOnline`/`promoBlocks`/`businessStars`/`packages` — честные пустые/нулевые**
+  до своих этапов (ServiceOnlineConfig донастройка услуги — нигде не строилась и на этапе 4; отзывы — этап 9/11,
+  В-24; промоблоки/пакеты — этапы 19/11) — тот же приём, что «0 будущих записей» этапа 4 до журнала: не выдумано,
+  честное отсутствие данных, а не подгонка под мок.
+- **`CabinetScreen`/`getCabinetData`/публичный `getBookingMeta(bookingId)` — оставлены на моке**: это
+  отдельный путь «кабинет по номеру телефона» БЕЗ проверки кода — у него нет ни одной строки в `02-api.md` §3,
+  и по факту это дыра приватности мока (любой чужой номер показывает чужие записи), а не документированное
+  поведение. Чинить её вместе с рутинным переводом фасада — расширять рамки этапа непредсказуемо; оставлено
+  явным флагом ниже, не тронуто и не переведено на сервер.
+- **Перенос по хэшу (`rescheduleOnlineBooking`) не строил на сервере** — B8 прямо говорит «без переноса»; экран
+  правится (см. «Осталось на фронт»), а не сервер подгоняется под старую кнопку.
+- `prisma migrate dev` по-прежнему отказывается быть неинтерактивным на этой машине — миграция сделана вручную
+  (`migrate diff --script` → файл → `migrate resolve --rolled-back` при первом кривом файле → `migrate deploy`),
+  тем же способом, что и раньше; рабочая база не сносилась.
+
+Осталось на фронт (следующий срез той же задачи, не откладывается на другой этап):
+- `src/api/online.server.ts` (новый) + ветки `isApiMode()` в `src/api/online.ts` — **только** для функций, у
+  которых есть серверная пара выше: `getPublicBusinessData`, `getWidgetFreeSlots`, `getNearestAvailableDate`,
+  `getMonthAvailability`, новая `sendOnlineBookingCode`, `createOnlineBooking`, `getOnlineBooking`,
+  `getCancelWindow`, `cancelOnlineBooking`, `listLinks`/`getLink`/`getLinkByFormId`/`createLink`/`updateLink`/
+  `deleteLink`/`setPrimaryLink`, `getStaffRules`/`updateStaffRules`, `getBusinessRules`/`updateBusinessRules`,
+  `getBookingMeta` (бизнес-сторона, `BookingWindow.tsx` — только с businessId из мирора/сессии, НЕ публичный
+  вызов `CabinetScreen`, см. выше).
+- `BookingWizard.tsx`: `onSendCode`/`onVerifyCode` — сейчас чистая клиентская демонстрация (`Math.random`,
+  `codeSentDemo` тост) — B2 требует настоящий код в api-режиме; submit несёт `code` вместо доверия
+  `phoneVerified`. Мок-режим не трогать.
+- `BookingConfirmedScreen.tsx`: скрыть/отключить кнопку переноса в api-режиме (B8) — `rescheduleOnlineBooking`
+  не имеет и не будет иметь серверной пары.
+- `CabinetScreen.tsx`/`getCabinetData` — оставить на моке в обоих режимах (см. «Решено по ходу» — дыра
+  приватности мока, не в рамках этого среза; отметить отдельным вопросом владельцу, если попросят перевести).
+- Проверить: `tsc`/`lint`/`fids`/`renders --check-compiler`, Playwright по `/b/[slug]`, `/b/[slug]/f/[formId]`,
+  экрану записи и `/booking/[id]` (BookingConfirmedScreen) в режиме `api`, режим `mock` — без ошибок и без
+  обращений к серверу (как в прошлых этапах).
+
+### Вопросы владельцу
+- Ничего денежного/юридического не всплыло. Один флаг практики (не решение, не блокирует): мок `CabinetScreen`
+  открывает чужие записи по одному номеру телефона без кода — если раздел переводится на сервер позже, этот
+  экран либо получит свою проверку кода, либо будет закрыт до неё; на этом этапе он просто не тронут.

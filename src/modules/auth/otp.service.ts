@@ -23,7 +23,8 @@ export const OTP = {
   perIpHour: 20,
 } as const;
 
-export type OtpPurpose = 'login' | 'phone_change' | 'second_factor' | 'platform';
+/** 'booking' — F-00-007: подтвердить номер перед онлайн-записью без входа, без сессии (этап 8) */
+export type OtpPurpose = 'login' | 'phone_change' | 'second_factor' | 'platform' | 'booking';
 
 export interface OtpSendInput {
   phone: string;
