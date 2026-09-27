@@ -155,6 +155,17 @@ export const ERROR_STATUS = {
   // подключение салона за 10 минут (этап 19, F-00-176) — коды мока (src/api/platform/connect.ts)
   connect_incomplete: HttpStatus.UNPROCESSABLE_ENTITY,
   duplicate: HttpStatus.CONFLICT,
+  // лояльность (этап 21, лейн loyalty) — коды мока src/api/loyalty.ts как есть
+  account_already_open: HttpStatus.CONFLICT,
+  bonus_unavailable: HttpStatus.UNPROCESSABLE_ENTITY,
+  certificate_not_applicable: HttpStatus.UNPROCESSABLE_ENTITY,
+  discount_exists: HttpStatus.CONFLICT,
+  freeze_not_allowed: HttpStatus.UNPROCESSABLE_ENTITY,
+  has_sales: HttpStatus.CONFLICT,
+  has_usage: HttpStatus.CONFLICT,
+  membership_not_applicable: HttpStatus.UNPROCESSABLE_ENTITY,
+  negative_limit_required: HttpStatus.UNPROCESSABLE_ENTITY,
+  over_limit: HttpStatus.UNPROCESSABLE_ENTITY,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

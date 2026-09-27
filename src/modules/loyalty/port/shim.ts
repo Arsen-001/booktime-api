@@ -7,7 +7,7 @@ import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
 import { ulid } from 'ulid';
-import { ApiError as ServerApiError, type ErrorCode } from '../../../common/errors/api-error.js';
+import { ApiError as ServerApiError, ERROR_STATUS, type ErrorCode } from '../../../common/errors/api-error.js';
 import type { CoreData } from './core-types.js';
 import type { LoyaltyState } from './state.js';
 
@@ -80,6 +80,8 @@ export function readCore(): CoreData {
 export class ApiError extends ServerApiError {
   constructor(code: string, message?: string) {
     super(code as ErrorCode, message ?? code);
+    // код мока, которого нет в общем списке, — всё равно ошибка клиента, не 500
+    if (!(code in ERROR_STATUS)) (this as { status: number }).status = 422;
   }
 }
 

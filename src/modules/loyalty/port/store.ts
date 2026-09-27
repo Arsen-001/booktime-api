@@ -44,9 +44,10 @@ const n = (v: bigint | number | null | undefined): number => (v === null || v ==
 /** Местная дата/дата-время фронта → момент UTC; мусор — сейчас (не «истёк») */
 export function toUtc(value: string | undefined | null, fallback: Date = new Date()): Date {
   if (!value) return fallback;
-  if (isLocalDateTime(value)) return localToUtc(value, DEFAULT_TZ);
-  if (isLocalDate(value)) return localToUtc(`${value}T00:00`, DEFAULT_TZ);
-  const cut = value.slice(0, 16);
+  const raw: string = value;
+  if (isLocalDateTime(raw)) return localToUtc(raw, DEFAULT_TZ);
+  if (isLocalDate(raw)) return localToUtc(`${raw}T00:00`, DEFAULT_TZ);
+  const cut = String(raw).slice(0, 16);
   if (isLocalDateTime(cut)) return localToUtc(cut, DEFAULT_TZ);
   return fallback;
 }
@@ -399,14 +400,14 @@ function writers(db: Db, owners: Map<Id, Id>, actor: string): Record<Coll, Write
         };
         return db.loyaltyCardType.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt), createdBy: actor }, update: { ...cols, version: { increment: 1 } } });
       },
-      remove: (ids) => db.loyaltyCardType.deleteMany({ where: { id: { in: ids } } }),
+      remove: (ids: Id[]) => db.loyaltyCardType.deleteMany({ where: { id: { in: ids } } }),
     },
     cards: {
       upsert: (e: LoyaltyCard) => {
         const cols = { cardTypeId: e.cardTypeId, businessId: e.businessId, clientId: e.clientId || null, number: e.number.slice(0, 40), balance: BigInt(Math.round(e.balance)), data: json(e), ...audit };
         return db.loyaltyCard.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt), createdBy: actor }, update: { ...cols, version: { increment: 1 } } });
       },
-      remove: (ids) => db.loyaltyCard.deleteMany({ where: { id: { in: ids } } }),
+      remove: (ids: Id[]) => db.loyaltyCard.deleteMany({ where: { id: { in: ids } } }),
     },
     promotions: {
       upsert: (e: Promotion) => {
@@ -426,7 +427,7 @@ function writers(db: Db, owners: Map<Id, Id>, actor: string): Record<Coll, Write
         };
         return db.promotion.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt), createdBy: actor }, update: { ...cols, version: { increment: 1 } } });
       },
-      remove: (ids) => db.promotion.deleteMany({ where: { id: { in: ids } } }),
+      remove: (ids: Id[]) => db.promotion.deleteMany({ where: { id: { in: ids } } }),
     },
     transactions: {
       upsert: (e: LoyaltyTransaction) => {
@@ -452,7 +453,7 @@ function writers(db: Db, owners: Map<Id, Id>, actor: string): Record<Coll, Write
         };
         return db.loyaltyTx.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt) }, update: cols });
       },
-      remove: (ids) => db.loyaltyTx.deleteMany({ where: { id: { in: ids } } }),
+      remove: (ids: Id[]) => db.loyaltyTx.deleteMany({ where: { id: { in: ids } } }),
     },
     certificateTypes: {
       upsert: (e: CertificateType) => {
@@ -460,7 +461,7 @@ function writers(db: Db, owners: Map<Id, Id>, actor: string): Record<Coll, Write
         const cols = { ownerId: ownerOf(e.businessId), businessId: e.businessId, name: e.name.slice(0, 160), faceValue: BigInt(Math.round(e.nominal ?? 0)), validDays, data: json(e), ...audit };
         return db.certificateType.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt), createdBy: actor }, update: { ...cols, version: { increment: 1 } } });
       },
-      remove: (ids) => db.certificateType.deleteMany({ where: { id: { in: ids } } }),
+      remove: (ids: Id[]) => db.certificateType.deleteMany({ where: { id: { in: ids } } }),
     },
     certificates: {
       upsert: (e: Certificate) => {
@@ -479,7 +480,7 @@ function writers(db: Db, owners: Map<Id, Id>, actor: string): Record<Coll, Write
         };
         return db.certificate.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdBy: actor }, update: { ...cols, version: { increment: 1 } } });
       },
-      remove: (ids) => db.certificate.deleteMany({ where: { id: { in: ids } } }),
+      remove: (ids: Id[]) => db.certificate.deleteMany({ where: { id: { in: ids } } }),
     },
     membershipTypes: {
       upsert: (e: MembershipType) => {
@@ -497,7 +498,7 @@ function writers(db: Db, owners: Map<Id, Id>, actor: string): Record<Coll, Write
         };
         return db.membershipType.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt), createdBy: actor }, update: { ...cols, version: { increment: 1 } } });
       },
-      remove: (ids) => db.membershipType.deleteMany({ where: { id: { in: ids } } }),
+      remove: (ids: Id[]) => db.membershipType.deleteMany({ where: { id: { in: ids } } }),
     },
     memberships: {
       upsert: (e: Membership) => {
@@ -517,7 +518,7 @@ function writers(db: Db, owners: Map<Id, Id>, actor: string): Record<Coll, Write
         };
         return db.membershipSale.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdBy: actor }, update: { ...cols, version: { increment: 1 } } });
       },
-      remove: async (ids) => {
+      remove: async (ids: Id[]) => {
         await db.membershipFreeze.deleteMany({ where: { membershipId: { in: ids } } });
         return db.membershipSale.deleteMany({ where: { id: { in: ids } } });
       },
@@ -527,14 +528,14 @@ function writers(db: Db, owners: Map<Id, Id>, actor: string): Record<Coll, Write
         const cols = { ownerId: ownerOf(e.businessId), businessId: e.businessId, name: e.name.slice(0, 160), data: json(e), ...audit };
         return db.clientAccountType.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt), createdBy: actor }, update: { ...cols, version: { increment: 1 } } });
       },
-      remove: (ids) => db.clientAccountType.deleteMany({ where: { id: { in: ids } } }),
+      remove: (ids: Id[]) => db.clientAccountType.deleteMany({ where: { id: { in: ids } } }),
     },
     accounts: {
       upsert: (e: ClientAccount) => {
         const cols = { typeId: e.accountTypeId, businessId: e.businessId, clientId: e.clientId, balance: BigInt(Math.round(e.balance)), data: json(e), ...audit };
         return db.clientAccount.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt), createdBy: actor }, update: { ...cols, version: { increment: 1 } } });
       },
-      remove: async (ids) => {
+      remove: async (ids: Id[]) => {
         await db.clientAccountOp.deleteMany({ where: { accountId: { in: ids } } });
         return db.clientAccount.deleteMany({ where: { id: { in: ids } } });
       },
@@ -544,14 +545,14 @@ function writers(db: Db, owners: Map<Id, Id>, actor: string): Record<Coll, Write
         const cols = { accountId: e.accountId, kind: e.type, amount: BigInt(Math.round(e.amount)), staffId: e.authorStaffId ?? null, data: json(e) };
         return db.clientAccountOp.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt) }, update: cols });
       },
-      remove: (ids) => db.clientAccountOp.deleteMany({ where: { id: { in: ids } } }),
+      remove: (ids: Id[]) => db.clientAccountOp.deleteMany({ where: { id: { in: ids } } }),
     },
     onlineOrders: {
       upsert: (e: OnlineOrder) => {
         const cols = { businessId: e.businessId, status: e.status, data: json(e) };
         return db.loyaltyOnlineOrder.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt) }, update: { ...cols, version: { increment: 1 } } });
       },
-      remove: (ids) => db.loyaltyOnlineOrder.deleteMany({ where: { id: { in: ids } } }),
+      remove: (ids: Id[]) => db.loyaltyOnlineOrder.deleteMany({ where: { id: { in: ids } } }),
     },
   } as unknown as Record<Coll, Writer>;
 }
