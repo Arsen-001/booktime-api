@@ -11,7 +11,7 @@
 cp .env.example .env
 npm install
 npm run db:up            # MySQL :3316, Redis :6389 (Docker)
-npx prisma migrate dev   # схема базы
+npx prisma migrate dev   # схема базы + сид (npx prisma db seed — демо-данные из мока фронта, нужен ../booking-platform или FRONTEND_DIR)
 npm run build
 npm run start:api        # http://localhost:4010 — /v1/health, /docs, /openapi.json
 npm run start:worker     # очереди и расписания (отдельный процесс)
@@ -25,3 +25,13 @@ esbuild/tsx: Nest берёт зависимости из метаданных д
 - Конфиг — только переменные окружения (`src/common/config/env.ts` проверяет их при старте).
 - Файлы — адаптер хранилища: `STORAGE_DRIVER=local` (папка) или `s3`.
 - Коммит: `npm run commit -- "сообщение"` (isomorphic-git, системный git на этой машине может быть недоступен).
+
+## Вход при разработке (этап 2)
+
+- Код входа — в логе API (`[fake code-sender]`); при `NODE_ENV=development` и `DEV_LOGIN_CODE=0000` код всегда `0000`.
+  Telegram Gateway настоящий, если задан `TELEGRAM_GATEWAY_TOKEN`; WhatsApp и SMS — заглушки.
+- Клиенты — номера из мока (`+374 00 160 001` — Ани, `au_01`); новый номер создаёт нового человека.
+- Администраторы салонов — логины из мока (`lilit.nuri`, `anahit.atam`, …), пароль = логин, первый вход просит сменить.
+- Команда платформы (`/platform/login` фронта): `platform` / `booktime-dev`, затем код.
+- Фронт в режиме сервера: `NEXT_PUBLIC_DATA=api` при сборке, при разработке — открыть любой адрес с `?data=api`
+  (`?data=mock` — обратно к демо). Сессия — httpOnly cookie `bt_session` (панель — `bt_platform`).
