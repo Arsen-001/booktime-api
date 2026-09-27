@@ -441,6 +441,12 @@ model Staff {
   /// '+374…' или '' (администратор без телефона)
   phone                String    @default("") @db.VarChar(16)
   email                String?   @db.VarChar(160)
+  // === stage 21 (lane rest) ===
+  /// Почта подтверждена переходом по ссылке (F-15-150) — по умолчанию true (демо, письмо не требовалось до этапа 21)
+  emailVerified        Boolean   @default(true) @map("email_verified")
+  /// Письмо подтверждения отправлено, ссылку ещё не открывали (демо: кнопка «Я перешёл по ссылке»)
+  emailConfirmSentAt   DateTime? @map("email_confirm_sent_at") @db.DateTime(3)
+  // === /stage 21 ===
   /// owner | admin | master
   role                 String    @db.VarChar(8)
   /// 8 шаблонов (F-10-053): systemManager | viewer | specialist | admin | callCenter | accountant | manager | owner
@@ -1715,6 +1721,8 @@ model ClientNotifyPref {
   marketingOptOut Boolean  @default(false) @map("marketing_opt_out")
   /// {push, sms, email} — какие каналы разрешены этому клиенту
   channels        Json
+  /// number[] — отключённые клиентом типы из CLIENT_DISABLEABLE_TYPES фронта (F-05-090); этап 21 «notify+integrations»
+  disabledTypeCodes Json?  @map("disabled_type_codes")
   updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   @@map("client_notify_prefs")

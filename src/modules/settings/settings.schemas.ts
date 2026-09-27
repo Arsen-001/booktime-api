@@ -29,7 +29,14 @@ export const contactsBody = z.object({
 });
 export const galleryBody = z.object({ photos: z.array(z.string().max(4_000_000)).max(6) });
 export const categoryBody = z.object({ name: z.string().max(80), colorIndex: z.number().int().min(1).max(8), icon: z.string().max(40).optional() });
-export const changeLogQuery = z.object({ section: z.enum(['brand', 'contacts', 'gallery', 'legal', 'system', 'categories']).optional() });
+export const changeLogQuery = z.object({ section: z.enum(['brand', 'contacts', 'gallery', 'legal', 'system', 'categories', 'webhooks']).optional() });
+/** «Для разработчиков» — вебхуки (F-15-119, этап 21 «Сдача», лейн rest): форма демо-интерфейса, см. settings.service.ts */
+export const webhookBody = z.object({
+  enabled: z.boolean(),
+  url: z.string().max(500).optional(),
+  entities: z.array(z.enum(['location', 'staff', 'goods', 'services', 'serviceCategories', 'clients', 'bookings', 'loyaltyEvents', 'goodsSales'])).max(20),
+});
+export const emailConfirmBody = z.object({ email: z.string().email().max(160).optional() });
 export const onboardingBody = z.object({ goals: z.array(z.string().max(40)).max(20).optional(), tourSeen: z.boolean().optional() });
 export const helpBody = z.object({ topic: z.enum(['billing', 'settings', 'staff', 'bug', 'other']), message: z.string().min(1).max(4000) });
 export const sphereBody = z.object({ name: z.string().min(1).max(160), message: z.string().max(4000).optional() });

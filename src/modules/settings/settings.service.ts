@@ -10,7 +10,7 @@ import { nextPlatformNumber } from '../platform/counters.js';
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaService | Tx;
-type Section = 'brand' | 'contacts' | 'gallery' | 'legal' | 'system' | 'categories';
+type Section = 'brand' | 'contacts' | 'gallery' | 'legal' | 'system' | 'categories' | 'webhooks';
 
 const TAX_ID_RE = /^\d{8}$/;
 const TELEGRAM_RE = /^https:\/\/t\.me\/[a-zA-Z0-9_]{3,}$/;
@@ -267,6 +267,47 @@ export class SettingsService {
       await this.putArea(tx, ctx, businessId, 'recordCategories', { items: items.filter((c) => c.id !== id) });
       await this.log(tx, ctx, businessId, 'categories', 'delete', found.name, '—');
     });
+  }
+
+  // ─────────── вебхуки, «для разработчиков» (F-15-119, этап 21 «Сдача», лейн rest) ───────────
+  // ❓ не решено, будем ли мы вообще давать вебхуки (00-decisions) — экран демо-интерфейс 1:1 с Altegio, форма
+  // сохраняется (F4, раздел JSON), но никуда реально не шлётся; тот же принцип, что у остальных JSON-разделов.
+
+  async webhooks(businessId: string) {
+    const s = await this.area<{ enabled?: boolean; url?: string; entities?: string[] }>(this.prisma, businessId, 'webhooks', {});
+    return { businessId, enabled: s.enabled ?? false, url: s.url, entities: s.entities ?? [] };
+  }
+
+  async saveWebhooks(ctx: RequestContext, businessId: string, input: { enabled: boolean; url?: string; entities: string[] }) {
+    await this.prisma.$transaction(async (tx) => {
+      const before = await this.area<{ enabled?: boolean }>(tx, businessId, 'webhooks', {});
+      await this.putArea(tx, ctx, businessId, 'webhooks', input);
+      await this.log(tx, ctx, businessId, 'webhooks', 'webhookEnabled', String(before.enabled ?? false), String(input.enabled));
+    });
+    this.changed(businessId);
+    return this.webhooks(businessId);
+  }
+
+  // ─────────── подтверждение почты сотрудника (F-15-150, этап 21 «Сдача», лейн rest) ───────────
+  // Демо: письмо реально не шлётся (Р14-подобно, нет адаптера почты), «Я перешёл по ссылке» — отдельная кнопка,
+  // как в моке (settings.ts::confirmEmailLinkDemo).
+
+  async emailStatus(staffId: string) {
+    const st = await this.prisma.staff.findUniqueOrThrow({ where: { id: staffId }, select: { email: true, emailVerified: true, emailConfirmSentAt: true } });
+    return { email: st.email ?? undefined, emailVerified: st.emailVerified, emailConfirmSentAt: st.emailConfirmSentAt ? utcToLocal(st.emailConfirmSentAt) : undefined };
+  }
+
+  async sendEmailConfirmation(staffId: string, email?: string) {
+    await this.prisma.staff.update({
+      where: { id: staffId },
+      data: { ...(email ? { email: email.trim() } : {}), emailVerified: false, emailConfirmSentAt: new Date(), updatedBy: staffId, version: { increment: 1 } },
+    });
+    return this.emailStatus(staffId);
+  }
+
+  async confirmEmailDemo(staffId: string) {
+    await this.prisma.staff.update({ where: { id: staffId }, data: { emailVerified: true, emailConfirmSentAt: null, updatedBy: staffId, version: { increment: 1 } } });
+    return this.emailStatus(staffId);
   }
 
   // ─────────── анкета, тур, профиль, быстрый старт (F-15-007, F-15-021…023) ───────────

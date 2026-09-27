@@ -17,6 +17,7 @@ import { REPORT_REGISTRY } from './reports-registry.js';
 import { ReportsReviewsService } from './reports-reviews.service.js';
 import { ReportsSalesService } from './reports-sales.service.js';
 import { ReportsSettingsService } from './reports-settings.service.js';
+import { ReportsStockService } from './reports-stock.service.js';
 import {
   clientVisitsQuery,
   exportsListQuery,
@@ -25,6 +26,11 @@ import {
   reportsPermissionsPatchBody,
   reviewsQuery,
   setReviewHiddenBody,
+  stockBalanceQuery,
+  stockOrderQuery,
+  stockRangeCategoryQuery,
+  stockTurnoverQuery,
+  stockWriteOffQuery,
   workloadIncludedBody,
 } from './reports.schemas.js';
 
@@ -49,6 +55,7 @@ export class ReportsController {
     private readonly settings: ReportsSettingsService,
     private readonly exports: ReportsExportService,
     private readonly reviews: ReportsReviewsService,
+    private readonly stock: ReportsStockService,
   ) {
     this.services = { dashboard, journal, sales, marketing, audit };
   }

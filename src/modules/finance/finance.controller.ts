@@ -244,7 +244,8 @@ export class FinanceController {
   @Biz('finance.edit')
   @ZodBody(finOpBody)
   createOp(@Ctx() ctx: RequestContext, @Body(new Zod(finOpBody)) body: z.infer<typeof finOpBody>) {
-    return this.ops.create(ctx, body);
+    // Этап 21: источник из тела (account/sale/…) — политика оплаты, заказы и счёт клиента пишут не «вручную»
+    return this.ops.create(ctx, body, body.source);
   }
 
   @Patch('fin-ops/:id')

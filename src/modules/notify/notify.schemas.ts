@@ -24,7 +24,21 @@ export const staffNotifyPatchBody = z.object({
 export const clientNotifyPatchBody = z.object({
   marketingOptOut: z.boolean().optional(),
   channels: z.object({ push: z.boolean().optional(), sms: z.boolean().optional(), email: z.boolean().optional() }).optional(),
+  disabledTypeCodes: z.array(z.number().int()).max(200).optional(),
 });
+
+export const webPopupBody = z.object({ bookingOps: z.boolean(), incomingCalls: z.boolean() });
+
+export const emailChannelBody = z.object({ replyEmail: z.string().max(160) });
+
+export const dismissBannerBody = z.object({ bannerId: z.string().min(1).max(64) });
+
+export const channelOverviewBody = z.object({
+  channel: z.enum(['push', 'adminApp', 'email', 'sms', 'brandedApp', 'whatsapp', 'telegram']),
+  connected: z.boolean(),
+});
+
+export const sendStaffInviteBody = z.object({ target: z.string().min(3).max(160) });
 
 export const inboxReadBody = z.object({ ids: z.array(z.string().min(1).max(32)).min(1).max(100) });
 

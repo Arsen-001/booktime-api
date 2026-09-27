@@ -52,7 +52,7 @@ function cashRegisterView(r: { id: string; businessId: string; locationId: strin
 }
 
 function itemView(r: { id: string; businessId: string; name: string; kind: string; comment: string | null; systemKey: string | null; version: number; createdAt: Date }) {
-  return { id: r.id, businessId: r.businessId, name: r.name, kind: r.kind as 'income' | 'expense', comment: r.comment ?? undefined, system: r.systemKey !== null, version: r.version, createdAt: r.createdAt.toISOString() };
+  return { id: r.id, businessId: r.businessId, name: r.name, kind: r.kind as 'income' | 'expense', comment: r.comment ?? undefined, system: r.systemKey !== null, systemKey: r.systemKey ?? undefined, version: r.version, createdAt: r.createdAt.toISOString() };
 }
 
 function methodView(r: { id: string; businessId: string; key: string; label: string; kind: string; feePercent: number; accountId: string | null; active: boolean; order: number; version: number }) {

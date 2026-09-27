@@ -29,7 +29,7 @@ let logic = read('src/api/loyalty.ts');
 logic = logic
   .split('\n')
   .filter((l) => !/^\s*if \(isApiMode\(\)\) return /.test(l))
-  .filter((l) => !/^import .* from '@\/api\/(mode|loyalty\.server)';$/.test(l))
+  .filter((l) => !/^import .* from '@\/api\/(http|mode|loyalty\.server)';$/.test(l))
   .join('\n');
 logic = logic
   .replace(/from '@\/api\/request'/g, "from './shim.js'")

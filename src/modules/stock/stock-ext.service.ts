@@ -452,6 +452,53 @@ export class StockExtService {
     });
   }
 
+  // ─────────────────────────── Продажа товаров визита (Ск3, syncVisitGoodsSale журнала) ───────────────────────────
+
+  /**
+   * Товарные строки визита (extras.goodsLines на товары склада), у которого есть оплата, — один документ «Продажа
+   * товара» с bookingId. Состав поменялся, оплату сняли, визит удалили — прежний документ отменяется (возврат на
+   * склад + снятие выручки в кассе, `cancelSale`) и, если нужно, создаётся новый. Идемпотентно: повтор ничего не
+   * делает. Порт `runVisitSaleSync` мока (src/api/journal.ts), только продавец строки на сервере не хранится.
+   */
+  async syncVisitGoodsSale(ctx: RequestContext, bookingId: string) {
+    const businessId = ctx.member!.businessId;
+    const booking = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
+    if (!booking) return { changed: false };
+    const extras = (booking.extras as { goodsLines?: { itemId: string; qty: number; price: number; discountPct?: number }[]; payments?: { method: string }[] } | null) ?? {};
+    const goodsLines = extras.goodsLines ?? [];
+    const products = goodsLines.length ? await this.prisma.product.findMany({ where: { businessId, id: { in: goodsLines.map((l) => l.itemId) } }, select: { id: true } }) : [];
+    const goodIds = new Set(products.map((p) => p.id));
+    const financeGoods = await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId, goods: true, cancelled: false, kind: { not: 'discount' } }, orderBy: { createdAt: 'asc' } });
+    const paid = booking.paidAmount > 0n || financeGoods.length > 0;
+    const wanted = booking.deletedAt || !paid ? [] : goodsLines.filter((l) => goodIds.has(l.itemId) && l.qty > 0);
+    const active = await this.prisma.stockOp.findMany({ where: { businessId, bookingId, type: 'sale', cancelledAt: null } });
+    const key = (lines: { goodId: string; qty: number; price: number; discountPct?: number | null }[]) =>
+      lines.map((l) => `${l.goodId}:${l.qty}:${l.price}:${l.discountPct ?? 0}`).sort().join('|');
+    const wantKey = key(wanted.map((l) => ({ goodId: l.itemId, qty: l.qty, price: l.price, discountPct: l.discountPct || 0 })));
+    let haveKey = '';
+    if (active.length === 1) {
+      const lines = await this.prisma.stockOpLine.findMany({ where: { opId: active[0]!.id } });
+      haveKey = key(lines.map((l) => ({ goodId: l.goodId, qty: Math.abs(l.qtySale), price: Number(l.unitPrice), discountPct: l.discountPct ?? 0 })));
+    }
+    if (active.length <= 1 && wantKey === haveKey) return { changed: false };
+    for (const doc of active) await this.ops.cancelSale(ctx, doc.id);
+    if (!wanted.length) return { changed: true };
+    const warehouse = await this.prisma.warehouse.findFirst({ where: { businessId, locationId: booking.locationId, type: 'sale' }, orderBy: { order: 'asc' } });
+    if (!warehouse) return { changed: true };
+    const methodKey = financeGoods[0]?.methodKey ?? extras.payments?.[0]?.method;
+    const paymentMethod: 'cash' | 'card' | 'loyalty' = methodKey === 'cash' || methodKey === undefined ? 'cash' : methodKey === 'card' ? 'card' : methodKey === 'account' ? 'loyalty' : 'card';
+    await this.ops.createSale(ctx, booking.locationId, {
+      locationId: booking.locationId,
+      warehouseId: warehouse.id,
+      clientId: booking.clientId ?? undefined,
+      staffId: booking.staffId,
+      bookingId,
+      paymentMethod,
+      lines: wanted.map((l) => ({ goodId: l.itemId, qtySale: l.qty, unitPrice: Math.round(l.price), discountPct: l.discountPct || undefined })),
+    });
+    return { changed: true };
+  }
+
   // ─────────────────────────── Чек продажи (F-08-072) ───────────────────────────
 
   async receiptData(businessId: string, docId: string) {

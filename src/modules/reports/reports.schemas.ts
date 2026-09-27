@@ -118,3 +118,33 @@ export const reviewsQuery = z.object({ from: z.string(), to: z.string(), subject
 export const setReviewHiddenBody = z.object({ hidden: z.boolean() });
 
 export const promotionNotReturnedQuery = z.object({ promotionId: id32 });
+
+// ─────────────────────────── F-12-057…062: «Товары» ───────────────────────────
+
+const zBool = z.enum(['true', 'false']).transform((v) => v === 'true');
+
+export const stockBalanceQuery = z.object({
+  locationId: id32,
+  atDate: z.string(),
+  warehouseId: id32.optional(),
+  categoryId: id32.optional(),
+  onlyCritical: zBool.optional(),
+  zeroFilter: z.enum(['all', 'onlyZero', 'withoutZero']).optional(),
+  search: z.string().max(120).optional(),
+});
+
+export const stockOrderQuery = z.object({ locationId: id32, categoryId: id32.optional(), onlyCritical: zBool.optional() });
+
+export const stockRangeCategoryQuery = z.object({ locationId: id32, from: z.string(), to: z.string(), categoryId: id32.optional(), staffId: id32.optional() });
+
+export const stockWriteOffQuery = z.object({
+  locationId: id32,
+  from: z.string(),
+  to: z.string(),
+  warehouseId: id32.optional(),
+  categoryId: id32.optional(),
+  unitMode: z.enum(['sale', 'writeoff']).optional(),
+  countMoves: zBool.optional(),
+});
+
+export const stockTurnoverQuery = z.object({ locationId: id32, from: z.string(), to: z.string(), categoryId: id32.optional(), warehouseId: id32.optional() });

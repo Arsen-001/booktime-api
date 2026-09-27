@@ -106,6 +106,9 @@ export function staffView(s: Staff & { locations?: { locationId: string }[] }) {
     prepayment: opt(s.prepayment as Record<string, unknown> | null),
     bookingRules: opt(s.bookingRules as Record<string, unknown> | null),
     contacts: opt(s.contacts as Record<string, unknown> | null),
+    // Стадия 21 (лейн client+online): нужно `client.ts::canRestoreStaff` (F-14-118) — поле у Staff уже было
+    // (раздел staff, F-10-044), только не отдавалось видом; опциональное добавление, старые потребители целы.
+    firedAt: s.firedAt ? utcToLocal(s.firedAt) : undefined,
     version: s.version,
   };
 }

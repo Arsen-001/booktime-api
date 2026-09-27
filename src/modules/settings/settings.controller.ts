@@ -11,6 +11,7 @@ import {
   categoryBody,
   changeLogQuery,
   contactsBody,
+  emailConfirmBody,
   galleryBody,
   helpBody,
   legalBody,
@@ -18,6 +19,7 @@ import {
   prefsBody,
   sphereBody,
   systemBody,
+  webhookBody,
 } from './settings.schemas.js';
 import { SettingsService } from './settings.service.js';
 
@@ -138,6 +140,44 @@ export class SettingsController {
   @HttpCode(204)
   async deleteCategory(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Param('id') id: string) {
     await this.s.deleteCategory(ctx, b, id);
+  }
+
+  @Get('company/webhooks')
+  @Biz()
+  @ApiOperation({ summary: '«Для разработчиков» — вебхуки (F-15-119): демо-форма, реально ничего не шлёт' })
+  webhooks(@Param('businessId') b: string) {
+    return this.s.webhooks(b);
+  }
+
+  @Put('company/webhooks')
+  @Biz('settings.manage')
+  @ZodBody(webhookBody)
+  saveWebhooks(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(webhookBody)) body: z.infer<typeof webhookBody>) {
+    return this.s.saveWebhooks(ctx, b, body);
+  }
+
+  @Get('me/email')
+  @Biz()
+  @ApiOperation({ summary: 'Статус подтверждения почты (F-15-150)' })
+  emailStatus(@Ctx() ctx: RequestContext) {
+    return this.s.emailStatus(ctx.member!.staffId);
+  }
+
+  @Post('me/email/send-confirmation')
+  @Biz()
+  @HttpCode(200)
+  @ApiOperation({ summary: '«Отправить письмо для подтверждения» (F-15-150) — демо, письмо реально не уходит' })
+  @ZodBody(emailConfirmBody)
+  sendEmailConfirmation(@Ctx() ctx: RequestContext, @Body(new Zod(emailConfirmBody)) body: z.infer<typeof emailConfirmBody>) {
+    return this.s.sendEmailConfirmation(ctx.member!.staffId, body.email);
+  }
+
+  @Post('me/email/confirm-demo')
+  @Biz()
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Демо-имитация перехода по ссылке из письма (F-15-150)' })
+  confirmEmailDemo(@Ctx() ctx: RequestContext) {
+    return this.s.confirmEmailDemo(ctx.member!.staffId);
   }
 
   @Get('onboarding')

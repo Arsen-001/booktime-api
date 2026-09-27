@@ -6,21 +6,28 @@ import type { RequestContext } from '../../common/http/context.js';
 import { Biz, Ctx } from '../../common/http/guards.js';
 import { Zod } from '../../common/http/validation.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { StaffService } from '../staff/staff.service.js';
 import { NotifyChannelsService } from './notify-channels.service.js';
 import { NotifyClientPrefsService } from './notify-client-prefs.service.js';
 import { NotifyInboxService } from './notify-inbox.service.js';
+import { NotifyMiscService } from './notify-misc.service.js';
 import { NotifyNewsService } from './notify-news.service.js';
 import { NotifyStaffPrefsService } from './notify-staff-prefs.service.js';
 import { NotifyTypesService } from './notify-types.service.js';
 import {
+  channelOverviewBody,
   clientNotifyPatchBody,
   connectChannelBody,
   createNewsBody,
+  dismissBannerBody,
+  emailChannelBody,
   inboxReadBody,
+  sendStaffInviteBody,
   sendTestChannelBody,
   staffNotifyPatchBody,
   updateTemplatesBody,
   updateTypeBody,
+  webPopupBody,
 } from './notify.schemas.js';
 
 /** Уведомления (docs/backend/02-api.md §10, docs/backend/05) — /v1/biz/{b}/notify, /inbox, /news, вложенные /staff /clients */
@@ -35,6 +42,8 @@ export class NotifyController {
     private readonly clientPrefs: NotifyClientPrefsService,
     private readonly inbox: NotifyInboxService,
     private readonly channels: NotifyChannelsService,
+    private readonly misc: NotifyMiscService,
+    private readonly staff: StaffService,
   ) {}
 
   // ─────────── типы и шаблоны (F-05-001…023) ───────────
@@ -202,5 +211,80 @@ export class NotifyController {
   @Biz('clients.edit')
   updateClientNotify(@Param('businessId') businessId: string, @Param('clientId') clientId: string, @Body(new Zod(clientNotifyPatchBody)) body: z.infer<typeof clientNotifyPatchBody>) {
     return this.clientPrefs.update(businessId, clientId, body);
+  }
+
+  // ─────────── попапы в веб-версии (F-05-058), этап 21 «notify+integrations» ───────────
+
+  @Get('notify/web-popup')
+  @Biz('notify.manage')
+  getWebPopup(@Param('businessId') businessId: string) {
+    return this.misc.getWebPopup(businessId);
+  }
+
+  @Put('notify/web-popup')
+  @Biz('notify.manage')
+  setWebPopup(@Param('businessId') businessId: string, @Body(new Zod(webPopupBody)) body: z.infer<typeof webPopupBody>) {
+    return this.misc.setWebPopup(businessId, body);
+  }
+
+  // ─────────── Email «для ответов» (F-05-066) ───────────
+
+  @Get('notify/email')
+  @Biz('notify.manage')
+  getEmailSettings(@Param('businessId') businessId: string) {
+    return this.misc.getEmailSettings(businessId);
+  }
+
+  @Put('notify/email')
+  @Biz('notify.manage')
+  setEmailSettings(@Param('businessId') businessId: string, @Body(new Zod(emailChannelBody)) body: z.infer<typeof emailChannelBody>) {
+    return this.misc.setEmailSettings(businessId, body);
+  }
+
+  // ─────────── служебные баннеры (F-05-135) ───────────
+
+  @Get('notify/banners')
+  @Biz('notify.manage')
+  listBanners(@Param('businessId') businessId: string) {
+    return this.misc.listBanners(businessId);
+  }
+
+  @Post('notify/banners/dismiss')
+  @Biz('notify.manage')
+  async dismissBanner(@Param('businessId') businessId: string, @Body(new Zod(dismissBannerBody)) body: z.infer<typeof dismissBannerBody>) {
+    await this.misc.dismissBanner(businessId, body.bannerId);
+    return { ok: true };
+  }
+
+  // ─────────── обзор каналов (F-05-065) ───────────
+
+  @Get('notify/channels/overview')
+  @Biz('notify.manage')
+  listChannelsOverview(@Param('businessId') businessId: string) {
+    return this.misc.listChannels(businessId);
+  }
+
+  @Put('notify/channels/overview')
+  @Biz('notify.manage')
+  setChannelOverview(@Param('businessId') businessId: string, @Body(new Zod(channelOverviewBody)) body: z.infer<typeof channelOverviewBody>) {
+    return this.misc.setChannelFlag(businessId, body.channel, body.connected);
+  }
+
+  // ─────────── приглашение сотрудника с доступом (F-05-063) — переиспользует staff/:staffId/invite (этап 3) ───────────
+
+  @Post('staff/:staffId/notify-invite')
+  @Biz('staff.manage')
+  @ApiOperation({ summary: 'Обёртка над реальным приглашением сотрудника (staff.reissueInvite) под форму нотифай-фасада' })
+  async sendStaffInvite(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('staffId') staffId: string, @Body(new Zod(sendStaffInviteBody)) body: z.infer<typeof sendStaffInviteBody>) {
+    const { invite, link } = await this.staff.reissueInvite(ctx, businessId, staffId);
+    return {
+      staffId,
+      status: invite.status === 'accepted' ? 'accepted' : invite.status === 'revoked' ? 'revoked' : 'pending',
+      target: body.target,
+      token: link.split('/').pop() ?? '',
+      sentAt: invite.createdAt,
+      link,
+      reachableByPhone: true,
+    };
   }
 }

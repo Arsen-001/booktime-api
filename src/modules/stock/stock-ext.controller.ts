@@ -118,6 +118,14 @@ export class StockExtController {
     return { ok: true as const };
   }
 
+  /** Продажа товаров визита на складе — зовёт окно визита после оплаты/правки товаров (journal.syncVisitGoodsSale) */
+  @Post('bookings/:bookingId/goods-sale/sync')
+  @Biz('journal.edit')
+  @HttpCode(200)
+  goodsSaleSync(@Ctx() ctx: RequestContext, @Param('bookingId') bookingId: string) {
+    return this.ext.syncVisitGoodsSale(ctx, bookingId);
+  }
+
   @Get('stock-ops/:id/receipt')
   @Biz('stock.view')
   receipt(@Param('businessId') businessId: string, @Param('id') id: string) {
