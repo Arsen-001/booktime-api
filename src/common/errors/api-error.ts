@@ -124,6 +124,9 @@ export const ERROR_STATUS = {
   insufficient_stock: HttpStatus.CONFLICT,
   not_editable: HttpStatus.CONFLICT,
   already_completed: HttpStatus.CONFLICT,
+  // зарплата (этап 14) — как в моке фронта (src/api/finance.ts, src/domain/payroll.ts)
+  sheet_not_draft: HttpStatus.CONFLICT,
+  cannot_pay: HttpStatus.CONFLICT,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

@@ -2468,3 +2468,184 @@ model StockSettings {
 
   @@map("stock_settings")
 }
+
+// ─────────────────────────── Этап 14: Зарплата (docs/backend/02-api.md §14, domain/payroll.ts) ───────────────────────────
+
+/// «Основные настройки» филиала (F-09-004/005/007/008/009/100/101) — одна строка на локацию, заводится лениво
+/// (ensureSettings), как касса/склад этапов 12/13. Хранит GeneralSettings мока один в один.
+model PayrollSettings {
+  locationId                String   @id @map("location_id") @db.VarChar(32)
+  businessId                String   @map("business_id") @db.VarChar(32)
+  /// visit | received
+  accrualDateBasis          String   @default("visit") @map("accrual_date_basis") @db.VarChar(8)
+  /// staffAssistBusiness | staffBusiness | staffAssist | staffOnly | businessOnly
+  bankCommissionSplit       String   @default("businessOnly") @map("bank_commission_split") @db.VarChar(20)
+  assistCompensationEnabled Boolean  @default(false) @map("assist_compensation_enabled")
+  multipleAssistantsAllowed Boolean  @default(false) @map("multiple_assistants_allowed")
+  /// fullEach | shared
+  assistantSplitRule        String   @default("shared") @map("assistant_split_rule") @db.VarChar(10)
+  /// simplified | classic
+  payrollModel              String   @default("simplified") @map("payroll_model") @db.VarChar(10)
+  statementApprovalEnabled  Boolean  @default(false) @map("statement_approval_enabled")
+  payrollFundTargetPct      Int      @default(30) @map("payroll_fund_target_pct")
+  payrollFundWarnPct        Int      @default(40) @map("payroll_fund_warn_pct")
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy                 String?  @map("updated_by") @db.VarChar(32)
+  version                   Int      @default(1)
+
+  @@index([businessId])
+  @@map("payroll_settings")
+}
+
+/// Упрощённая схема сотрудника (F-09-002/010…048) — шесть блоков как JSON, форма PayrollScheme мока минус
+/// staffId/createdAt/updatedAt (те — колонки строки: createdAt не трогается правкой, F-09-037 условие 3).
+model PayrollScheme {
+  staffId    String   @id @map("staff_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// { personalServices, productSales, workday, records, extraServiceRevenue, extraProductRevenue }
+  data       Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  @@index([businessId])
+  @@map("payroll_schemes")
+}
+
+/// Классическая модель — «Правила расчёта» (F-09-049/050): те же блоки, что у упрощённой схемы (общий движок,
+/// ruleAsScheme мока), плюс себестоимость услуги.
+model PayrollRule {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  name       String   @db.VarChar(120)
+  /// { personalServices, serviceCostBasis, productSales, workday, records, extraServiceRevenue, extraProductRevenue }
+  data       Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  @@index([businessId])
+  @@map("payroll_rules")
+}
+
+/// Классическая модель — «Критерии» (F-09-052): условие плана («оборот сотрудника за месяц > X»).
+model PayrollCriterion {
+  id               String   @id @db.VarChar(32)
+  businessId       String   @map("business_id") @db.VarChar(32)
+  name             String   @db.VarChar(120)
+  /// month | day
+  period           String   @default("month") @db.VarChar(5)
+  /// turnover | profit | count
+  metric           String   @default("turnover") @db.VarChar(10)
+  /// staff | location
+  scope            String   @default("staff") @db.VarChar(10)
+  byServices       Boolean  @default(true) @map("by_services")
+  byProducts       Boolean  @default(false) @map("by_products")
+  /// Сумма (драмы) для turnover/profit, штуки для count
+  threshold        BigInt   @default(0)
+  includeDiscounts Boolean  @default(true) @map("include_discounts")
+  countCategoryIds Json     @map("count_category_ids")
+  countItemIds     Json     @map("count_item_ids")
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy        String?  @map("created_by") @db.VarChar(32)
+  updatedBy        String?  @map("updated_by") @db.VarChar(32)
+  version          Int      @default(1)
+
+  @@index([businessId])
+  @@map("payroll_criteria")
+}
+
+/// Классическая модель — «Схемы расчёта» (плановые графики, F-09-054): standard — всегда одно правило;
+/// planned — строки «критерий → правило» сверху вниз, первая выполненная побеждает.
+model PayrollChart {
+  id             String   @id @db.VarChar(32)
+  businessId     String   @map("business_id") @db.VarChar(32)
+  name           String   @db.VarChar(120)
+  /// standard | planned
+  type           String   @default("standard") @db.VarChar(10)
+  standardRuleId String?  @map("standard_rule_id") @db.VarChar(32)
+  /// PayrollChartPlanRow[]: { criterionId, ruleId }
+  planRows       Json     @map("plan_rows")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy      String?  @map("created_by") @db.VarChar(32)
+  updatedBy      String?  @map("updated_by") @db.VarChar(32)
+  version        Int      @default(1)
+
+  @@index([businessId])
+  @@map("payroll_charts")
+}
+
+/// Назначение схемы сотруднику с датой начала (F-09-055/099) — действует запись с наибольшей startDate ≤ дате расчёта.
+model PayrollChartAssignment {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  chartId    String   @map("chart_id") @db.VarChar(32)
+  staffId    String   @map("staff_id") @db.VarChar(32)
+  startDate  DateTime @map("start_date") @db.DateTime(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+
+  @@index([businessId, staffId, startDate])
+  @@map("payroll_chart_assignments")
+}
+
+/// Справочник «Премии и штрафы» (F-09-072) — шаблоны с суммой по умолчанию; удаление шаблона не трогает уже
+/// начисленные PayrollSettlementEntry (F-09-072).
+model BonusPenaltyType {
+  id            String   @id @db.VarChar(32)
+  businessId    String   @map("business_id") @db.VarChar(32)
+  /// bonus | penalty
+  kind          String   @db.VarChar(7)
+  name          String   @db.VarChar(120)
+  defaultAmount BigInt   @default(0) @map("default_amount")
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("bonus_penalty_types")
+}
+
+/// Взаиморасчёты с сотрудником (F-07-159…162/F-09-066…080) — ведомость (kind=sheet), премия/штраф/внеочередное
+/// начисление, выплата (kind=payout, привязана к FinOp.id операции «Зарплата персонала»). Сумма всегда
+/// положительная — знак вклада в баланс даёт settlementEntrySign(kind) на чтении (penalty/payout = минус).
+model PayrollSettlementEntry {
+  id          String    @id @db.VarChar(32)
+  businessId  String    @map("business_id") @db.VarChar(32)
+  locationId  String?   @map("location_id") @db.VarChar(32)
+  staffId     String    @map("staff_id") @db.VarChar(32)
+  /// sheet | bonus | penalty | adjustment | payout
+  kind        String    @db.VarChar(10)
+  amount      BigInt    @default(0)
+  label       String    @db.VarChar(200)
+  comment     String?   @db.VarChar(400)
+  periodFrom  DateTime? @map("period_from") @db.DateTime(3)
+  periodTo    DateTime? @map("period_to") @db.DateTime(3)
+  /// Связанный FinOp — только у payout (F-07-160)
+  operationId String?   @map("operation_id") @db.VarChar(32)
+  /// draft | accrued — только у kind=sheet (F-09-069); null у остальных = не бывает черновиком
+  status      String?   @db.VarChar(8)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy   String?   @map("created_by") @db.VarChar(32)
+
+  @@index([businessId, staffId, createdAt])
+  @@map("payroll_settlement_entries")
+}
+
+/// Согласование ведомости (F-09-100) — ключ - id PayrollSettlementEntry(kind=sheet). Без строки — «не начато».
+model PayrollStatementApproval {
+  sheetId    String   @id @map("sheet_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// pendingReview | reviewed | approved | sentToStaff | signed | paid
+  status     String   @default("pendingReview") @db.VarChar(14)
+  /// { status, at, by? }[]
+  history    Json
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("payroll_statement_approvals")
+}

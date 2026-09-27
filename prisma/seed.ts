@@ -1062,6 +1062,62 @@ await prisma.client.createMany({
   console.log(`seed: склад — складов ${warehousesCreated}, категорий ${categoriesCreated}, товаров ${productsCreated}, приходов начального остатка ${incomeOpsCreated}`);
 }
 
+// ─────────── этап 14: зарплата — «Основные настройки» на филиал, упрощённая схема 35% с услуг каждому
+// мастеру без схемы (как bulkApplyDefaultScheme самого раздела) и два шаблона премии/штрафа на бизнес —
+// чтобы «Расчёт» и «Премии и штрафы» не были пустыми экранами. Идемпотентно: детерминированные id + «уже есть?». ───
+{
+  let settingsCreated = 0;
+  let schemesCreated = 0;
+  let bonusTypesCreated = 0;
+  for (const loc of locations) {
+    const locId = String(loc.id);
+    const bizId = String(loc.businessId);
+    const hasSettings = (await prisma.payrollSettings.count({ where: { locationId: locId } })) > 0;
+    if (!hasSettings) {
+      await prisma.payrollSettings.create({ data: { locationId: locId, businessId: bizId } });
+      settingsCreated++;
+    }
+  }
+  for (const b of businesses) {
+    const bId = String(b.id);
+    const masters = staffRecs.filter((s) => S(s.businessId) === bId && S(s.role) === 'master');
+    for (const s of masters) {
+      const staffId = String(s.id);
+      const hasScheme = (await prisma.payrollScheme.count({ where: { staffId } })) > 0;
+      if (hasScheme) continue;
+      const scheme: Rec = {
+        personalServices: {
+          enabled: true,
+          defaultPayout: { unit: 'percent', value: 35 },
+          overrides: [],
+          demoConsumablesPercent: 0,
+          consumables: { mode: 'off', applyClientDiscount: false },
+          loyaltyAdjustment: { enabled: false, includeDiscount: false, includeBonus: false, includeMembership: false, includeClientAccount: false, includeCertificate: false, includePromotion: false, promoPayout: { unit: 'percent', value: 0 }, promoOverrides: [] },
+          groupEvents: { enabled: false, minPayoutOn: false, minPayout: { unit: 'percent', value: 0 }, atLeastOneOn: false, atLeastOnePayout: { unit: 'percent', value: 0 }, perAttendeeMode: 'none', threshold: 0 },
+        },
+        productSales: { enabled: false, defaultPayout: { unit: 'percent', value: 0 }, overrides: [], demoCostPercent: 0, costBasis: { enabled: false, order: 'discountFirst' }, loyaltyAdjustment: { enabled: false, includeDiscount: false, includeBonus: false, includeMembership: false, includeClientAccount: false, includeCertificate: false, includePromotion: false, promoPayout: { unit: 'percent', value: 0 }, promoOverrides: [] } },
+        workday: { enabled: false, baseAmount: 0, basePeriod: 'day', guaranteedMinimum: { enabled: false, amount: 0, period: 'month' } },
+        records: { enabled: false, perServicePayout: { unit: 'percent', value: 0 }, perServiceOverrides: [], onlineWidgetEnabled: false, onlineWidgetPayout: { unit: 'percent', value: 0 } },
+        extraServiceRevenue: { enabled: false, percent: 0, base: 'turnover' },
+        extraProductRevenue: { enabled: false, percent: 0, base: 'turnover' },
+      };
+      await prisma.payrollScheme.create({ data: { staffId, businessId: bId, data: scheme as unknown as Prisma.InputJsonValue, createdBy: 'seed', updatedBy: 'seed' } });
+      schemesCreated++;
+    }
+    const hasBonusTypes = (await prisma.bonusPenaltyType.count({ where: { businessId: bId } })) > 0;
+    if (!hasBonusTypes) {
+      await prisma.bonusPenaltyType.createMany({
+        data: [
+          { id: `bpt_${bId}_bonus`.slice(0, 32), businessId: bId, kind: 'bonus', name: 'Премия за перевыполнение плана', defaultAmount: 20000n },
+          { id: `bpt_${bId}_penalty`.slice(0, 32), businessId: bId, kind: 'penalty', name: 'Штраф за опоздание', defaultAmount: 5000n },
+        ],
+      });
+      bonusTypesCreated += 2;
+    }
+  }
+  console.log(`seed: зарплата — настроек локации ${settingsCreated}, схем мастеров ${schemesCreated}, типов премий/штрафов ${bonusTypesCreated}`);
+}
+
 console.log(
   `seed: людей ${users.length} (клиентов ${core.appUsers.length}), логинов администраторов ${admins.length}, команда платформы 1; ` +
     `сетей ${networks.length}, бизнесов ${businesses.length}, филиалов ${locations.length}, сотрудников ${core.staff.length}, ` +

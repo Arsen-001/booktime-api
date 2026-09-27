@@ -118,6 +118,16 @@ export const ID_PREFIX = {
   inventory: 'sinv',
   equipment: 'equ',
   stockReminder: 'srem',
+  // этап 14 — зарплата: только на сервере (мок хранит id произвольными строками, settlement — 'set') —
+  // схема сотрудника pysch, правило pyrul, критерий pycri, схема расчёта (chart) pycht, назначение pyca,
+  // тип премии/штрафа bpt (как newId('bpt') мока), запись взаиморасчётов pyset (мок: newId('set'))
+  payrollScheme: 'pysch',
+  payrollRule: 'pyrul',
+  payrollCriterion: 'pycri',
+  payrollChart: 'pycht',
+  payrollChartAssignment: 'pyca',
+  bonusPenaltyType: 'bpt',
+  payrollSettlementEntry: 'pyset',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;
