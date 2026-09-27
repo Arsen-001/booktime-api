@@ -45,6 +45,13 @@ export const ID_PREFIX = {
   clientImportRun: 'cimp',
   dataExport: 'dexp',
   clientCustomField: 'cf',
+  // этап 6 — график и окна: как в срезе schedule фронта (шаблон sctpl, история scha, правило scr, закрытые дни scun)
+  scheduleTemplate: 'sctpl',
+  scheduleHistory: 'scha',
+  slotRule: 'scr',
+  unavailableRange: 'scun',
+  busyBlock: 'bb',
+  resourceBusy: 'rbz',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

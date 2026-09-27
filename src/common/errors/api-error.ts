@@ -67,6 +67,10 @@ export const ERROR_STATUS = {
   invalid_days: HttpStatus.UNPROCESSABLE_ENTITY,
   chat_autosave_off: HttpStatus.CONFLICT,
   pin_limit: HttpStatus.UNPROCESSABLE_ENTITY,
+  // график и окна (этап 6) — как в моке фронта (src/api/schedule/*)
+  schedule_has_bookings: HttpStatus.CONFLICT,
+  invalid_range: HttpStatus.UNPROCESSABLE_ENTITY,
+  not_ongoing: HttpStatus.CONFLICT,
   validation: HttpStatus.BAD_REQUEST,
   internal: HttpStatus.INTERNAL_SERVER_ERROR,
 } as const;

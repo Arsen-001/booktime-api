@@ -344,16 +344,16 @@ model Business {
   updatedBy                     String?   @map("updated_by") @db.VarChar(32)
   version                       Int       @default(1)
 
-  network    Network?          @relation(fields: [networkId], references: [id])
-  locations  Location[]
-  staff      Staff[]
-  positions  Position[]
-  invites    StaffInvite[]
-  settings   BusinessSetting[]
-  categories ServiceCategory[]
-  services   Service[]
-  resources  Resource[]
-  clients    Client[]
+  network          Network?          @relation(fields: [networkId], references: [id])
+  locations        Location[]
+  staff            Staff[]
+  positions        Position[]
+  invites          StaffInvite[]
+  settings         BusinessSetting[]
+  categories       ServiceCategory[]
+  services         Service[]
+  resources        Resource[]
+  clients          Client[]
   clientCategories ClientCategory[]
 
   @@index([status])
@@ -504,6 +504,8 @@ model Staff {
   invites      StaffInvite[]
   logins       StaffLogin[]
   serviceTerms StaffServiceTerm[]
+  schedules    WorkSchedule[]
+  marks        CalendarMark[]
 
   @@index([businessId, status])
   @@index([userId])
@@ -646,6 +648,8 @@ model Service {
   shadeChoice        String?  @map("shade_choice") @db.VarChar(10)
   /// { items: {serviceId, order}[], mode } — состав пакета (нет поля — обычная услуга)
   servicePackage     Json?    @map("service_package")
+  /// «Доступна ограниченное время» для онлайн-записи (F-02-067) — ServiceSlotWindow без serviceId
+  onlineWindow       Json?    @map("online_window")
   /// Надстройка пакета — способ цены, окно доступности, предоплата, ресурсы «на весь пакет» (PackageExtra фронта)
   packageExtra       Json?    @map("package_extra")
   /// Автоперевод/чек/выбор варианта при записи — ServiceExtra фронта (F-03-115, F-15-141, F-07-149)
@@ -783,7 +787,7 @@ model Client {
   updatedBy              String?   @map("updated_by") @db.VarChar(32)
   version                Int       @default(1)
 
-  business Business         @relation(fields: [businessId], references: [id])
+  business Business        @relation(fields: [businessId], references: [id])
   comments ClientComment[]
   files    ClientFile[]
 
@@ -909,4 +913,217 @@ model MasterProfile {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("master_profiles")
+}
+
+// ───────────────────────── Этап 6: график и окна (docs/backend/01 §6, §7.2; 04; PLAN §4.2) ─────────────────────────
+
+/// График мастера на одном месте работы (WorkSchedule ядра): шаблон недели + конец графика (F-00-055).
+/// Исключения по датам — schedule_days (было WorkSchedule.overrides).
+model WorkSchedule {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  staffId    String   @map("staff_id") @db.VarChar(32)
+  locationId String   @map("location_id") @db.VarChar(32)
+  /// salon | home | visit | hall | online
+  workplace  String   @db.VarChar(8)
+  /// WeekTemplate: { "0": DayHours, … "6": DayHours }, 0 = пн
+  week       Json
+  /// 'YYYY-MM-DD' — после этой даты окон нет (F-00-055, F-02-021)
+  openUntil  String?  @map("open_until") @db.VarChar(10)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  staff Staff         @relation(fields: [staffId], references: [id])
+  days  ScheduleDay[]
+
+  @@index([businessId])
+  @@index([staffId])
+  @@index([locationId])
+  @@map("work_schedules")
+}
+
+/// Часы графика на дату (исключение важнее недели). hours = [] — выходной по исключению.
+model ScheduleDay {
+  scheduleId String   @map("schedule_id") @db.VarChar(32)
+  /// 'YYYY-MM-DD'
+  date       String   @db.VarChar(10)
+  businessId String   @map("business_id") @db.VarChar(32)
+  staffId    String   @map("staff_id") @db.VarChar(32)
+  /// DayHours
+  hours      Json
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  schedule WorkSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@id([scheduleId, date])
+  @@index([staffId, date])
+  @@map("schedule_days")
+}
+
+/// Тип дня человека-сотрудника (F-02-010): work | sick | vacation | … | not_working | custom:<id>.
+/// Отдельно от часов: тип дня один на сотрудника в дату, а часы — у каждого графика (салон/дом).
+model StaffDayType {
+  staffId       String   @map("staff_id") @db.VarChar(32)
+  date          String   @db.VarChar(10)
+  businessId    String   @map("business_id") @db.VarChar(32)
+  typeId        String   @map("type_id") @db.VarChar(40)
+  /// «В отпуске до…» (F-00-054)
+  vacationUntil String?  @map("vacation_until") @db.VarChar(10)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@id([staffId, date])
+  @@index([businessId, date])
+  @@map("staff_day_types")
+}
+
+/// Отметка календаря (F-00-051): busy — «занято» в режиме free; free — «открыто» в режиме busy.
+/// Отметка busy дополнительно проецируется в busy_blocks (source mark_busy) — чужой бизнес видит «занято».
+model CalendarMark {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  staffId    String   @map("staff_id") @db.VarChar(32)
+  date       String   @db.VarChar(10)
+  fromTime   String   @map("from_time") @db.VarChar(5)
+  toTime     String   @map("to_time") @db.VarChar(5)
+  /// busy | free
+  kind       String   @db.VarChar(4)
+  workplace  String?  @db.VarChar(8)
+  note       String?  @db.VarChar(300)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+
+  staff Staff @relation(fields: [staffId], references: [id])
+
+  @@index([staffId, date])
+  @@index([businessId, date])
+  @@map("calendar_marks")
+}
+
+/// Свой шаблон графика (F-02-006…009)
+model ScheduleTemplate {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  name       String   @db.VarChar(120)
+  /// weekdays | shifts
+  kind       String   @db.VarChar(10)
+  weekdays   Json?
+  shiftWork  Int?     @map("shift_work")
+  shiftOff   Int?     @map("shift_off")
+  hours      Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  @@index([businessId])
+  @@map("schedule_templates")
+}
+
+/// История правок графика и правил онлайн-записи (F-02-102) — HistoryEntry фронта
+model ScheduleHistory {
+  id             String   @id @db.VarChar(32)
+  businessId     String   @map("business_id") @db.VarChar(32)
+  at             DateTime @default(now()) @db.DateTime(3)
+  /// set_hours | apply_template | delete_days | copy_schedule | set_mode | toggle_mark | set_column_config | slot_rules
+  action         String   @db.VarChar(20)
+  targetStaffIds Json     @map("target_staff_ids")
+  dates          Json
+  summary        String   @default("") @db.VarChar(500)
+  details        Json?
+  actorName      String   @map("actor_name") @db.VarChar(120)
+  actorStaffId   String?  @map("actor_staff_id") @db.VarChar(32)
+
+  @@index([businessId, at])
+  @@map("schedule_history")
+}
+
+/// Правила онлайн-записи (F-02-041…055): на филиал (scope=location) или на мастера (scope=staff).
+/// Одна строка на scope: список правил (первое — основное), недоступные дни, запас между клиентами.
+model OnlineSlotRuleSet {
+  /// location | staff
+  scope       String   @db.VarChar(8)
+  scopeId     String   @map("scope_id") @db.VarChar(32)
+  businessId  String   @map("business_id") @db.VarChar(32)
+  /// SlotRule[]; null — правила по умолчанию (у мастера — «общее по локации»)
+  rules       Json?
+  /// Только scope=staff: «Персонально» (F-02-041)
+  ownRules    Boolean  @default(false) @map("own_rules")
+  /// UnavailableRange[] (F-02-042/043)
+  unavailable Json?
+  /// Запас между клиентами, мин (F-02-059); null — не задан
+  bufferMin   Int?     @map("buffer_min")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  version     Int      @default(1)
+
+  @@id([scope, scopeId])
+  @@index([businessId])
+  @@map("online_slot_rules")
+}
+
+/// «Замок на мастера» (PLAN §4.2): одна строка на человека; SELECT … FOR UPDATE в порядке person_key
+model PersonLock {
+  personKey String @id @map("person_key") @db.VarChar(32)
+
+  @@map("person_locks")
+}
+
+/// Замок на ресурс (PLAN §4.2): одна строка на ресурс (экземпляры считаются внутри)
+model ResourceLock {
+  resourceId String @id @map("resource_id") @db.VarChar(32)
+
+  @@map("resource_locks")
+}
+
+/// Занятость ЧЕЛОВЕКА во всех его бизнесах (01 §7.2). Пишет только availability/occupy.ts.
+model BusyBlock {
+  id              String    @id @db.VarChar(32)
+  /// users.id мастера; без аккаунта — staff.id
+  personKey       String    @map("person_key") @db.VarChar(32)
+  staffId         String    @map("staff_id") @db.VarChar(32)
+  businessId      String    @map("business_id") @db.VarChar(32)
+  locationId      String?   @map("location_id") @db.VarChar(32)
+  workplace       String?   @db.VarChar(8)
+  /// UTC. Конец — с запасом после услуги и дорогой
+  startAt         DateTime  @map("start_at") @db.DateTime(3)
+  endAt           DateTime  @map("end_at") @db.DateTime(3)
+  /// Конец самой услуги (без запаса) — для показа
+  serviceEndAt    DateTime  @map("service_end_at") @db.DateTime(3)
+  /// booking | group_event | mark_busy | travel
+  source          String    @db.VarChar(12)
+  sourceId        String    @map("source_id") @db.VarChar(32)
+  /// Что видно чужому бизнесу: home | salon | visit | busy — без имени и суммы
+  visibilityLabel String    @map("visibility_label") @db.VarChar(6)
+  active          Boolean   @default(true)
+  /// Запись «не пришёл»: при «онлайн-запись поверх неявок» (F-02-066) окно клиенту снова открыто
+  noShow          Boolean   @default(false) @map("no_show")
+  /// «Ждёт предоплату/подтверждения»: держит время до этого момента (B13)
+  holdUntil       DateTime? @map("hold_until") @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([personKey, active, startAt, endAt])
+  @@index([source, sourceId])
+  @@index([businessId, startAt])
+  @@map("busy_blocks")
+}
+
+/// Занятость ресурса (F-00-149, F-02-070): сколько экземпляров занято одновременно
+model ResourceBusy {
+  id         String    @id @db.VarChar(32)
+  resourceId String    @map("resource_id") @db.VarChar(32)
+  businessId String    @map("business_id") @db.VarChar(32)
+  startAt    DateTime  @map("start_at") @db.DateTime(3)
+  endAt      DateTime  @map("end_at") @db.DateTime(3)
+  source     String    @db.VarChar(12)
+  sourceId   String    @map("source_id") @db.VarChar(32)
+  active     Boolean   @default(true)
+  noShow     Boolean   @default(false) @map("no_show")
+  holdUntil  DateTime? @map("hold_until") @db.DateTime(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([resourceId, active, startAt, endAt])
+  @@index([source, sourceId])
+  @@map("resource_busy")
 }

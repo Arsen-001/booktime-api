@@ -385,6 +385,226 @@ await prisma.client.createMany({
   })),
 });
 
+// ─────────── этап 6: график, отметки, правила окон, занятость (busy_blocks) ───────────
+// Графики и отметки — из ядра мока; шаблоны, история, правила слотов, настройки — из среза schedule (areaSchedule).
+// Записей на сервере ещё нет (этап 7), но их ЗАНЯТОСТЬ уже нужна окнам: busy_blocks сеются из записей мока с теми же
+// id (source=booking) — этап 7 заведёт таблицу записей с этими id и продолжит писать занятость через occupy.ts.
+{
+  const TZ = 'Asia/Yerevan';
+  const schedulesRaw = (core.schedules ?? []) as Rec[];
+  const marksRaw = (core.calendarMarks ?? []) as Rec[];
+  const bookingsRaw = (core.bookings ?? []) as Rec[];
+  const eventsRaw = (core.groupEvents ?? []) as Rec[];
+  const area = ((core as Rec).areaSchedule ?? {}) as Rec;
+  const staffBiz = new Map(core.staff.map((s) => [s.id, s.businessId]));
+  const staffPerson = new Map(core.staff.map((s) => [s.id, s.status === 'invited' ? s.id : personOf(s)]));
+  const servicesById = new Map(((core.services ?? []) as Rec[]).map((s) => [String(s.id), s]));
+  const resourcesById = new Map(((core.resources ?? []) as Rec[]).map((r) => [String(r.id), r]));
+  const atLocal = (dt: string, addMin = 0) => new Date(localToUtc(dt, TZ).getTime() + addMin * 60000);
+
+  await prisma.workSchedule.createMany({
+    skipDuplicates: true,
+    data: schedulesRaw
+      .filter((s) => staffBiz.has(String(s.staffId)))
+      .map((s) => ({
+        id: String(s.id),
+        businessId: staffBiz.get(String(s.staffId))!,
+        staffId: String(s.staffId),
+        locationId: String(s.locationId),
+        workplace: String(s.workplace ?? 'salon'),
+        week: (s.week ?? {}) as Prisma.InputJsonValue,
+        openUntil: S(s.openUntil) ?? null,
+        createdBy: 'seed',
+        updatedBy: 'seed',
+      })),
+  });
+  const dayRows = schedulesRaw.flatMap((s) =>
+    Object.entries((s.overrides ?? {}) as Record<string, unknown>).map(([date, hours]) => ({
+      scheduleId: String(s.id),
+      date,
+      businessId: staffBiz.get(String(s.staffId))!,
+      staffId: String(s.staffId),
+      hours: hours as Prisma.InputJsonValue,
+    })),
+  );
+  await prisma.scheduleDay.createMany({ skipDuplicates: true, data: dayRows.filter((d) => d.businessId) });
+
+  await prisma.calendarMark.createMany({
+    skipDuplicates: true,
+    data: marksRaw
+      .filter((m) => staffBiz.has(String(m.staffId)))
+      .map((m) => ({
+        id: String(m.id),
+        businessId: staffBiz.get(String(m.staffId))!,
+        staffId: String(m.staffId),
+        date: String(m.date),
+        fromTime: String(m.from),
+        toTime: String(m.to),
+        kind: String(m.kind),
+        workplace: S(m.workplace) ?? null,
+        note: S(m.note) ?? null,
+        createdBy: 'seed',
+      })),
+  });
+
+  // Занятость: записи (кроме отменённых и удалённых), групповые события, отметки «занят».
+  // Повторный запуск: блоки источника, уже лежащие в базе, не дублируются.
+  const have = new Set((await prisma.busyBlock.findMany({ select: { sourceId: true } })).map((b) => b.sourceId));
+  const blocks: Prisma.BusyBlockCreateManyInput[] = [];
+  const resBusy: Prisma.ResourceBusyCreateManyInput[] = [];
+  const bufferOf = (lines: Rec[]) => Math.max(0, ...lines.map((l) => Number(servicesById.get(String(l.serviceId))?.bufferAfterMin ?? 0)));
+  const labelOf = (w: unknown) => (w === 'home' ? 'home' : w === 'visit' ? 'visit' : 'salon');
+  let n = 0;
+  const bid = () => `bb_seed${String(++n).padStart(6, '0')}`;
+  for (const b of bookingsRaw) {
+    const status = String(b.status);
+    if (b.deletedAt || status === 'cancelled_by_client' || status === 'cancelled_by_master') continue;
+    if (have.has(String(b.id))) continue;
+    const staffId = String(b.staffId);
+    if (!staffBiz.has(staffId)) continue;
+    const lines = (b.services ?? []) as Rec[];
+    const dur = Number(b.durationMin ?? 0);
+    const start = atLocal(String(b.start));
+    const serviceEnd = atLocal(String(b.start), dur);
+    const end = atLocal(String(b.start), dur + bufferOf(lines));
+    const prepayment = (b.prepayment ?? null) as Rec | null;
+    const holdUntil = status === 'awaiting_prepayment' && prepayment && !prepayment.paid && S(prepayment.holdUntil) ? atLocal(String(prepayment.holdUntil)) : null;
+    blocks.push({
+      id: bid(),
+      personKey: staffPerson.get(staffId)!,
+      staffId,
+      businessId: String(b.businessId),
+      locationId: S(b.locationId) ?? null,
+      workplace: S(b.workplace) ?? null,
+      startAt: start,
+      endAt: end,
+      serviceEndAt: serviceEnd,
+      source: 'booking',
+      sourceId: String(b.id),
+      visibilityLabel: labelOf(b.workplace),
+      noShow: status === 'no_show',
+      holdUntil,
+    });
+    for (const rid of (b.resourceIds ?? []) as string[]) {
+      if (!resourcesById.has(rid)) continue;
+      resBusy.push({ id: `rbz_seed${String(resBusy.length + 1).padStart(6, '0')}`, resourceId: rid, businessId: String(b.businessId), startAt: start, endAt: end, source: 'booking', sourceId: String(b.id), noShow: status === 'no_show', holdUntil });
+    }
+  }
+  for (const e of eventsRaw) {
+    if (String(e.status) !== 'scheduled' || have.has(String(e.id))) continue;
+    const staffId = String(e.staffId);
+    if (!staffBiz.has(staffId)) continue;
+    const dur = Number(e.durationMin ?? 0);
+    const buf = Number(servicesById.get(String(e.serviceId))?.bufferAfterMin ?? 0);
+    blocks.push({
+      id: bid(),
+      personKey: staffPerson.get(staffId)!,
+      staffId,
+      businessId: String(e.businessId),
+      locationId: S(e.locationId) ?? null,
+      workplace: 'salon',
+      startAt: atLocal(String(e.start)),
+      endAt: atLocal(String(e.start), dur + buf),
+      serviceEndAt: atLocal(String(e.start), dur),
+      source: 'group_event',
+      sourceId: String(e.id),
+      visibilityLabel: 'salon',
+    });
+  }
+  const dayStart = (date: string) => localToUtc(`${date}T00:00`, TZ);
+  const hm = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  for (const m of marksRaw) {
+    if (String(m.kind) !== 'busy' || have.has(String(m.id)) || !staffBiz.has(String(m.staffId))) continue;
+    const base = dayStart(String(m.date)).getTime();
+    const staffId = String(m.staffId);
+    blocks.push({
+      id: bid(),
+      personKey: staffPerson.get(staffId)!,
+      staffId,
+      businessId: staffBiz.get(staffId)!,
+      workplace: S(m.workplace) ?? null,
+      startAt: new Date(base + hm(String(m.from)) * 60000),
+      endAt: new Date(base + hm(String(m.to)) * 60000),
+      serviceEndAt: new Date(base + hm(String(m.to)) * 60000),
+      source: 'mark_busy',
+      sourceId: String(m.id),
+      visibilityLabel: 'busy',
+    });
+  }
+  if (have.size === 0 || blocks.length) {
+    for (let i = 0; i < blocks.length; i += 1000) await prisma.busyBlock.createMany({ data: blocks.slice(i, i + 1000), skipDuplicates: true });
+    for (let i = 0; i < resBusy.length; i += 1000) await prisma.resourceBusy.createMany({ data: resBusy.slice(i, i + 1000), skipDuplicates: true });
+  }
+  await prisma.personLock.createMany({ skipDuplicates: true, data: [...new Set(blocks.map((b) => b.personKey))].map((personKey) => ({ personKey })) });
+
+  // Срез schedule: шаблоны, история, правила слотов, настройки
+  const templates = Object.values((area.templates ?? {}) as Record<string, Rec[]>).flat();
+  await prisma.scheduleTemplate.createMany({
+    skipDuplicates: true,
+    data: templates.map((t) => ({
+      id: String(t.id),
+      businessId: String(t.businessId),
+      name: String(t.name ?? ''),
+      kind: String(t.kind),
+      weekdays: J(t.weekdays),
+      shiftWork: typeof t.shiftWork === 'number' ? t.shiftWork : null,
+      shiftOff: typeof t.shiftOff === 'number' ? t.shiftOff : null,
+      hours: (t.hours ?? []) as Prisma.InputJsonValue,
+      createdBy: 'seed',
+    })),
+  });
+  const history = (area.history ?? []) as Rec[];
+  const bizOfStaff = (ids: unknown) => staffBiz.get(String(((ids as string[]) ?? [])[0] ?? '')) ?? null;
+  await prisma.scheduleHistory.createMany({
+    skipDuplicates: true,
+    data: history
+      .map((h) => ({ h, businessId: bizOfStaff(h.targetStaffIds) ?? (h.actorStaffId ? staffBiz.get(String(h.actorStaffId)) : undefined) }))
+      .filter((x) => x.businessId)
+      .map(({ h, businessId }) => ({
+        id: String(h.id),
+        businessId: businessId!,
+        at: local(S(h.at)),
+        action: String(h.action),
+        targetStaffIds: (h.targetStaffIds ?? []) as Prisma.InputJsonValue,
+        dates: (h.dates ?? []) as Prisma.InputJsonValue,
+        summary: String(h.summary ?? ''),
+        details: J(h.details),
+        actorName: String(h.actorName ?? ''),
+        actorStaffId: S(h.actorStaffId) ?? null,
+      })),
+  });
+  const locBiz = new Map(((core.locations ?? []) as Rec[]).map((l) => [String(l.id), String(l.businessId)]));
+  const ruleSets = Object.entries((area.slotRules ?? {}) as Record<string, unknown>).map(([key, rules]) => {
+    const [scope, scopeId] = key.split(':') as [string, string];
+    return { scope, scopeId, businessId: scope === 'location' ? locBiz.get(scopeId) : staffBiz.get(scopeId), rules: rules as Prisma.InputJsonValue };
+  });
+  await prisma.onlineSlotRuleSet.createMany({ skipDuplicates: true, data: ruleSets.filter((r) => r.businessId).map((r) => ({ ...r, businessId: r.businessId! })) });
+  // Настройки раздела: «Любой специалист» по бизнесу, «Пропуск выбора» по сотруднику (как в срезе)
+  const any = (area.anySpecialistAllowed ?? {}) as Record<string, boolean>;
+  const skip = (area.skipStaffSelection ?? {}) as Record<string, boolean>;
+  for (const b of core.businesses) {
+    const data = {
+      anySpecialistAllowed: any[b.id] ?? false,
+      allowOnlineOverNoShow: true,
+      planningPeriodYears: Number(((area.planningPeriodYears ?? {}) as Record<string, number>)[b.id] ?? 1),
+      notifyMasterOnScheduleChange: false,
+      skipStaffSelection: Object.fromEntries(core.staff.filter((s) => s.businessId === b.id && skip[s.id]).map((s) => [s.id, true])),
+      historyLimitDays: {},
+      includeInFillRate: {},
+      googleCalendar: {},
+    };
+    await prisma.businessSetting.upsert({
+      where: { businessId_area: { businessId: b.id, area: 'schedule' } },
+      create: { businessId: b.id, area: 'schedule', data },
+      update: {},
+    });
+  }
+  console.log(
+    `seed: график — графиков ${schedulesRaw.length}, дней-исключений ${dayRows.length}, отметок ${marksRaw.length}, ` +
+      `занятости ${blocks.length} (ресурсы ${resBusy.length}), шаблонов ${templates.length}, правил ${ruleSets.length}`,
+  );
+}
+
 console.log(
   `seed: людей ${users.length} (клиентов ${core.appUsers.length}), логинов администраторов ${admins.length}, команда платформы 1; ` +
     `сетей ${networks.length}, бизнесов ${businesses.length}, филиалов ${locations.length}, сотрудников ${core.staff.length}, ` +
