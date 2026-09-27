@@ -360,7 +360,14 @@ export class OnlineService {
     const row = await this.findByHash(id, hash);
     const rules = await this.clientRulesOf(row.staffId);
     const left = (row.startAt.getTime() - Date.now()) / 3_600_000;
-    return { canCancelFree: left >= Number(rules.cancelWindowHours), canReschedule: left >= Number(rules.rescheduleWindowHours), cancelWindowHours: Number(rules.cancelWindowHours), rescheduleWindowHours: Number(rules.rescheduleWindowHours) };
+    return {
+      canCancelFree: left >= rules.cancelWindowHours,
+      // B8 (08-open-questions.md, принятое предложение): по ссылке без входа переноса нет вообще, не только
+      // «поздно» — экран (`BookingConfirmedScreen`) уже прячет/гасит кнопку по этому полю, ничего не правили.
+      canReschedule: false,
+      cancelWindowHours: rules.cancelWindowHours,
+      rescheduleWindowHours: rules.rescheduleWindowHours,
+    };
   }
 
   async cancelByHash(id: string, hash: string) {
@@ -424,9 +431,11 @@ export class OnlineService {
     return this.getLink(businessId, id);
   }
 
+  /** F-03-010: основную ссылку нельзя удалить — сначала «Сделать основной» другую */
   async deleteLink(businessId: string, id: string) {
     const row = await this.prisma.bookingLink.findFirst({ where: { id, businessId } });
     if (!row) throw new ApiError('not_found', 'Link not found');
+    if (row.primary) throw new ApiError('conflict', 'Primary link cannot be deleted');
     await this.prisma.bookingLink.delete({ where: { id } });
   }
 

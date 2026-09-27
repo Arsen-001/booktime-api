@@ -12,7 +12,7 @@
 | 5 | Клиенты / CRM | [x] | см. историю: «Этап 5 …» (сервер), «backend stage 5: …» (фронт) |
 | 6 | График и окна | [x] | см. историю: «Этап 6 …» (сервер), «backend stage 6: …» (фронт) |
 | 7 | Журнал и записи | [x] | см. историю: «Этап 7 …» (сервер), «backend stage 7: …» (фронт) |
-| 8 | Онлайн-запись и страница по ссылке | [ ] | |
+| 8 | Онлайн-запись и страница по ссылке | [x] | см. историю: «Этап 8 …» (сервер+фронт) |
 | 9 | Приложение клиента | [ ] | |
 | 10 | Уведомления | [ ] | |
 | 11 | Лояльность | [ ] | |
@@ -790,21 +790,62 @@ Curl-сценарии: правка поверх записей без force →
 - **Источник записи для кабинета** (F-03-123, `GET …/bookings/{id}/online-meta`, право `journal.view`): читает
   `bookings.source`/`online_meta`.
 
-Сделано (фронт): —(продолжение в следующем прогоне/ниже, см. «Осталось»).
+Сделано (фронт, `src/api/online.server.ts` новый + ветки `isApiMode()` в `src/api/online.ts`):
+- Публичная страница/виджет: `getPublicBusinessData`, `getWidgetFreeSlots`, `getNearestAvailableDate`,
+  `getMonthAvailability` — три последних получили новый необязательный `slug?: Id` в своём инпуте
+  (`WidgetSlotQuery`/`NearestAvailableOptions`/`MonthAvailabilityOptions`): мок его не читает, `api`-ветка без
+  него честно падает обратно на расчёт по зеркалу ядра, а не бросает ошибку — это сознательный компромисс для
+  экранов этого же файла, которые ещё не прокинули slug (см. «Осталось»), а не молчаливая заглушка нулём.
+- Новая `sendOnlineBookingCode` (F-00-007, B2): в `api` шлёт `POST …/code`, ничего не возвращает (сервер сам
+  доставляет код); мок — как раньше, отдаёт `demoCode` для тоста. `BookingWizard.tsx` разделила «код запрошен,
+  показать поле» (новый `state.codeSent`, работает в обоих режимах) и «демо-значение для локальной сверки»
+  (`state.sentCode`, только мок) — раньше это было одно и то же поле, и в `api` инпут кода никогда бы не
+  появился (`sentCode` не приходит от сервера). `onVerifyCode` в `api` только проверяет формат (4 цифры) —
+  настоящую проверку кода делает сервер при отправке формы, тратить одноразовый код на отдельный «предпросмотр»
+  нельзя. `createOnlineBooking` получил `slug`/`code` в `CreateOnlineBookingInput` (оба необязательны, мок их
+  не читает); submit-тело собирает `code: state.codeInput`, не полагаясь на `phoneVerified`.
+- Ошибки записи: добавлена обработка `code_required`/`wrong_code`/`code_expired`/`code_attempts` (сбрасывают
+  `phoneVerified`/`sentCode`, просят получить код заново) — раньше эти коды сервера не были знакомы экрану.
+- Ссылки: `listLinks`/`getLink`/`getLinkByFormId`/`createLink`/`updateLink`/`deleteLink`/`setPrimaryLink`.
+- Правила: `getStaffRules`/`updateStaffRules`/`listStaffRules` (батч — N параллельных вызовов, справочников
+  обычно единицы), `getBusinessRules`/`updateBusinessRules`.
+- Хэш без входа: `getOnlineBooking`, `getCancelWindow`, `cancelOnlineBooking`. `rescheduleOnlineBooking` в `api`
+  сразу отклоняет вызов (`not_allowed`) — подстраховка; экран ничего не показывает, потому что **сервер сам
+  всегда отдаёт `canReschedule: false`** для этого пути (см. «Решено по ходу» сервера) — кнопка «Перенести» в
+  `BookingConfirmedScreen.tsx` гасится существующей логикой экрана без единой правки в нём: подсказка «Перенести
+  самим уже нельзя — позвоните мастеру» и так была точной формулировкой, ⭐ без специального под B8 текста.
+- `getBookingMeta` (business-side `BookingWindow.tsx`) переведена; публичный вызов из `CabinetScreen.tsx` **не
+  переводился** (см. «Решено по ходу» — дыра приватности мока), но теперь при вызове в `api` получит `403` через
+  ту же функцию (сервер требует `journal.view` в текущем бизнесе) вместо тихого чтения чужой записи — уже сама
+  по себе точка перевода в `api` закрывает половину дыры, `try/catch` экрана эту ошибку гасит молча (как раньше).
+- `messages/{ru,en,hy}/online.json`: две новые строки, `codeSentReal`/`codeSendFailed` (проект держит только
+  3 языка, переведены сразу, черновиков через `i18n:draft` не нужно — та практика для 18-язычного лендинга).
 
-Проверено (сервер): `tsc` 0; миграция применена вручную (`prisma migrate dev` отказывается работать
-неинтерактивно на этой машине — `prisma migrate diff --script` → миграция руками в `prisma/migrations/`,
-`prisma migrate resolve --rolled-back` + `migrate deploy`, как и раньше `booktime_check`); `npm run build`,
-`npm run openapi` — 282 пути (было 266, +16 новых шаблонов). Живой сервер + curl (владелец/мастер Kaytsak
-Barbershop, реальный вход): публичная страница (мастер `calendarVisibility=mine` виден, `link: null` без
-ссылок), окна/ближайшая дата/месяц (совпадают между собой), код → неверный → `wrong_code` → верный → запись
-создана (клиент заведён, ресурс подобран, `scheduled`), повтор на то же время → `slot_taken`; запись по хэшу:
-верный хэш → видно, неверный → `not_found`, окно отмены (3 ч по умолчанию), отмена → `cancelled_by_client`,
-повторная отмена → `not_active`; ссылки: создание (primary), список, правка (If-Match верный/устаревший →
-`conflict`), публичная страница подхватила новое имя, «сделать основной», удаление; правила мастера: чтение
-(дефолты), запись (`cancelWindowHours=5` → `cancelWindowMin=300` в базе → обратно 5 при чтении, `travelTimeMin`
-сохранён); правила бизнеса (`hourCycle`, `reviewMode`); online-meta (source/device/submittedAt); права: master
-правит своё (`online.own`), чужое и создание ссылки — `403 missing permission: online.manage` (owner может).
+Проверено:
+- Сервер: `tsc` 0; миграция применена вручную (`prisma migrate dev` отказывается работать неинтерактивно на этой
+  машине — `prisma migrate diff --script` → миграция руками в `prisma/migrations/`, `prisma migrate resolve
+  --rolled-back` + `migrate deploy`, как и раньше `booktime_check`); `npm run build`, `npm run openapi` — 282
+  пути (было 266, +16 новых шаблонов). Живой сервер + curl (владелец/мастер Kaytsak Barbershop, реальный вход):
+  публичная страница (мастер `calendarVisibility=mine` виден, `link: null` без ссылок), окна/ближайшая
+  дата/месяц (совпадают между собой), код → неверный → `wrong_code` → верный → запись создана (клиент заведён,
+  ресурс подобран, `scheduled`), повтор на то же время → `slot_taken`; запись по хэшу: верный хэш → видно,
+  неверный → `not_found`, окно отмены (3 ч по умолчанию), отмена → `cancelled_by_client`, повторная отмена →
+  `not_active`; ссылки: создание (primary), список, правка (If-Match верный/устаревший → `conflict`),
+  публичная страница подхватила новое имя, «сделать основной», удаление; правила мастера: чтение (дефолты),
+  запись (`cancelWindowHours=5` → `cancelWindowMin=300` в базе → обратно 5 при чтении, `travelTimeMin` сохранён);
+  правила бизнеса (`hourCycle`, `reviewMode`); online-meta (source/device/submittedAt); права: master правит
+  своё (`online.own`), чужое и создание ссылки — `403 missing permission: online.manage` (owner может).
+- Фронт: `tsc --noEmit --incremental` 0, `eslint` 0 на изменённых файлах, `fids` 2892/2896 (как было),
+  `renders --check-compiler` 0. Режим `api`, настоящий браузер (Playwright, без входа): `/b/kaytsak-barbershop`
+  и `/b/kaytsak-barbershop/book` — реальные услуги/мастера/окна с сервера; полный путь до конца — услуга →
+  мастер (модалка «кого принимает») → «нет окон сегодня» → «Перейти к ближайшей дате» → слот 29 сентября
+  11:00–11:30 → имя/телефон → «Получить код» (лог сервера: код отправлен через fake-sender) → код `0000`
+  (`DEV_LOGIN_CODE`) → «Номер подтверждён» → согласие → «Записаться» → `POST …/bookings` `201`, редирект на
+  `/b/kaytsak-barbershop/booking/{id}?h={hash}` с настоящим хэшем → карточка «Вы записаны» с верными
+  датой/ценой/мастером → кнопка «Перенести» гашена подсказкой «позвоните мастеру» (B8, без правки экрана) →
+  «Отменить» → «Запись отменена». Без единой ошибки консоли/страницы за весь прогон. Режим `mock` (без
+  сервера): полный путь до «Получить код» — демо-тост с кодом по-прежнему показывается, поле ввода появляется
+  (по новому `codeSent`, а не только `sentCode`) — без ошибок и без единого обращения к серверу.
 
 Решено по ходу:
 - **`serviceIds[]` из `02-api.md` для окон виджета — не строил**: текущий фронт (`getWidgetFreeSlots`/
@@ -830,24 +871,24 @@ Barbershop, реальный вход): публичная страница (м�
   (`migrate diff --script` → файл → `migrate resolve --rolled-back` при первом кривом файле → `migrate deploy`),
   тем же способом, что и раньше; рабочая база не сносилась.
 
-Осталось на фронт (следующий срез той же задачи, не откладывается на другой этап):
-- `src/api/online.server.ts` (новый) + ветки `isApiMode()` в `src/api/online.ts` — **только** для функций, у
-  которых есть серверная пара выше: `getPublicBusinessData`, `getWidgetFreeSlots`, `getNearestAvailableDate`,
-  `getMonthAvailability`, новая `sendOnlineBookingCode`, `createOnlineBooking`, `getOnlineBooking`,
-  `getCancelWindow`, `cancelOnlineBooking`, `listLinks`/`getLink`/`getLinkByFormId`/`createLink`/`updateLink`/
-  `deleteLink`/`setPrimaryLink`, `getStaffRules`/`updateStaffRules`, `getBusinessRules`/`updateBusinessRules`,
-  `getBookingMeta` (бизнес-сторона, `BookingWindow.tsx` — только с businessId из мирора/сессии, НЕ публичный
-  вызов `CabinetScreen`, см. выше).
-- `BookingWizard.tsx`: `onSendCode`/`onVerifyCode` — сейчас чистая клиентская демонстрация (`Math.random`,
-  `codeSentDemo` тост) — B2 требует настоящий код в api-режиме; submit несёт `code` вместо доверия
-  `phoneVerified`. Мок-режим не трогать.
-- `BookingConfirmedScreen.tsx`: скрыть/отключить кнопку переноса в api-режиме (B8) — `rescheduleOnlineBooking`
-  не имеет и не будет иметь серверной пары.
-- `CabinetScreen.tsx`/`getCabinetData` — оставить на моке в обоих режимах (см. «Решено по ходу» — дыра
-  приватности мока, не в рамках этого среза; отметить отдельным вопросом владельцу, если попросят перевести).
-- Проверить: `tsc`/`lint`/`fids`/`renders --check-compiler`, Playwright по `/b/[slug]`, `/b/[slug]/f/[formId]`,
-  экрану записи и `/booking/[id]` (BookingConfirmedScreen) в режиме `api`, режим `mock` — без ошибок и без
-  обращений к серверу (как в прошлых этапах).
+Осталось на следующие этапы/срезы (не блокирует стадию 8, зафиксировано, чтобы не потерять):
+- **`GroupBookingFlow`** (тот же файл, `BookingWizard.tsx`: экран «Групповое занятие», отдельная функция со
+  своимState) зовёт `listPublicGroupEvents`/`createGroupOnlineBooking` — это НЕ каталог/запись этого этапа,
+  а групповые события раздела `resources`/`journal` (F-16, места в группе, PLAN §9/11 territory); своего кода
+  подтверждения у неё нет вообще (свой `sentCode` без сервера ни в одном режиме). Оставлена на моке целиком,
+  как и было решено выше («промоблоки/пакеты/группы… — этапы 19/11»); не путать с основным индивидуальным
+  путём (`BookingWizardBody`/`DetailsStep`), который переведён полностью.
+- `serviceConfigs`/`staffServiceOnline`/`promoBlocks`/`businessStars`/`packages`/группы/абонементы/сертификаты
+  из `PublicBusinessData` — честные пустые/нулевые до своих этапов (см. «Решено по ходу»); экраны, которые их
+  показывают (промоблоки на первом шаге, звёздочка бизнеса, пакеты «Комплекс»), в `api` увидят пусто, а не
+  ошибку — по духу как «0 будущих записей» этапа 4.
+- `NearestSlotBadge` (бейдж «свободно сегодня» на карточке мастера в списке) не получил `slug` — в `api`
+  считает по зеркалу ядра (браузер), не по серверу; приближённо, не крашится (см. «Решено по ходу»).
+- `CabinetScreen.tsx`/`getCabinetData` — оставлены на моке (privacy-дыра мока, не решение этого этапа; вызов
+  `getBookingMeta` внутри нём при случайном переключении в `api` теперь получает честный `403`, а не чужие
+  данные — уже не полностью открытая дверь).
+- `getStaffRules`/`getBusinessRules` не обвязаны кешем-мирором (каждое открытие экрана настроек — свежий
+  запрос) — оправдано редкой правкой этих экранов, как и решил сервер (ссылки/правила вне `/core`).
 
 ### Вопросы владельцу
 - Ничего денежного/юридического не всплыло. Один флаг практики (не решение, не блокирует): мок `CabinetScreen`
