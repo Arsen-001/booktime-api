@@ -81,6 +81,12 @@ export interface JournalArea {
   autoWriteoffServiceIds: string[];
   /** В-18: скидка «горящего» окна мастера, % (по умолчанию 0) */
   hotDiscountPct: Record<string, number>;
+  // === stage 21 (lane rest) ===
+  /** Шаг сетки журнала, минут — общий на локацию (F-01-015): 5 | 10 | 15 */
+  zoomMin: number;
+  /** Статусы, скрытые фильтром воронки (F-01-014) — только индивидуальные записи */
+  hiddenStatuses: string[];
+  // === /stage 21 ===
 }
 
 export function defaultJournalArea(): JournalArea {
@@ -97,6 +103,8 @@ export function defaultJournalArea(): JournalArea {
     splitByResourceEnabled: false,
     autoWriteoffServiceIds: [],
     hotDiscountPct: {},
+    zoomMin: 15,
+    hiddenStatuses: [],
   };
 }
 

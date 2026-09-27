@@ -25,7 +25,7 @@
 | 18 | Настройки, подписка, монеты, промокоды | [x] | см. историю: «Этап 18 …» (сервер), «backend stage 18: …» (фронт) |
 | 19 | Модерация и наша панель | [x] | см. историю «Этап 19 …», «Этап 19, попытка 2 …», «Этап 19, попытка 3 …» (сервер+фронт) — модерация/бизнесы/поддержка/идеи/заявки на сферы/визиты/обзор (попытка 1) + спрос/first-awards, реклама+сторис (без покупки места и картинки), заметки основателя (попытка 2) + ConnectDraft, подключение салона за 10 минут (попытка 3) — весь §19 построен и проверен |
 | 20 | Данные и удаление | [x] | см. историю «Этап 20 …» (сервер; фронт — `src/api/session.ts` + `src/api/settings.ts`, F-15-154/155) |
-| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн client попытка 5 — отчёты вкладки «Приложение» закрыты (4 функции), новый backend-модуль (`AppReportsService`/`Controller`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр; лейн resources попытка 2 — из 41 закрыто 40 (было 20): достроен `ResourcesEventsController`+модуль (`resources-events.*` лежал без контроллера), 3 новых метода листа ожидания (create/close/remove), 8 недостающих кодов ошибок, backfill `EventSeriesDef` под уже сеяные `GroupEvent.seriesId`; осталось 1 — `getBookingAutoCharge` (ждёт лейна «loyalty»); лейн resources попытка 3 — из 41 по-прежнему закрыто 40, но нашёл и починил 2 функции, ошибочно числившиеся закрытыми в попытке 2 (`notifyWaitlistForFreedSlot`/`getWaitlistNotifications` — сервер и обёртка были готовы, в `resources.ts` не хватало строки `isApiMode()`); осталось всё то же 1 — `getBookingAutoCharge`/`chargeBookingAutoDebit`, ждут лейна «loyalty» (на бэкенде до сих пор нет ни `ServiceAutoCharge`, ни правки баланса абонемента); лейн services+rest попытка 2 — `reports.ts` favorites закрыты (2), `payroll.ts` закрыт 5/7 (новая таблица+модуль `PayrollStaffRights`, `getStaffWorkedHours` → готовый `getScheduledMinutes`), осталось 2 (`evaluateCriterionValue`/`previewChartForStaff` — не однострочные); `clients/*` — только аудит (0 закрыто, нашёл более точный реальный список: 19 реальных, не 20/19 из попытки 1), `network`/`finance`/`stock`/`notify`/`integrations`/`loyalty`/`platform/*` не трогал; лейн resources попытка 4 — полный awk-переаудит `resources.ts` с нуля (103 экспортируемых функции, 16 без `isApiMode`) даёт тот же список, что попытка 3: 14 — законные не-мок (хуки поверх уже переведённых/чтения зеркала/чистые вычисления/задокументированные осознанные решения `logResourcesChange`/`updateSeriesEvent`), 2 по-прежнему блокер (`getBookingAutoCharge`/`chargeBookingAutoDebit` → `@/api/loyalty`, там `isApiMode` всё ещё 0 вхождений на весь файл, `ServiceAutoCharge`/баланс абонемента на бэкенде так и не заведены — лейн «loyalty» стадии 11 не продвинулся); регрессий нет — backend `tsc` 0, frontend `tsc` 0, `eslint resources.ts/resources.server.ts` 0, `fids.mjs` resources 172/172, `renders.mjs --check-compiler` 0, живой `:4010/openapi.json` (706 путей, сервер поднят не мной) подтверждает все маршруты попытки 2/3 на месте (waitlist/notify, waitlist/{id}/notifications и т.д.); счёт не изменился — закрыто 40 из 41, решение не строить сам (домен абонементов — Membership/MembershipType/баланс, отдельная стадия 11, не мои файлы) подтверждаю в третий раз тем же аргументом, дальше повторный awk-аудит без прогресса в loyalty бессмыслен; лейн services+rest попытка 3 — `payroll.ts` закрыт полностью 9/9 (последние `evaluateCriterionValue`/`previewChartForStaff` — новый backend в `payroll-catalog.service.ts`/`payroll.controller.ts`, проверено настоящим HTTP на реальных записях сентября, 0 вызовов с экрана честно отмечено); автоматический скан «готовый .server.ts, не позван» по всем крупным остаткам (`network`/`finance`/`stock`/`integrations`/`notify`/`loyalty`/`clients/*`) дал 1 кандидата (`finance.ts::getBookingReceiptData`) — форма ответа бэкенда не совпадает с мок-контрактом, не подключал; метод скана исчерпан, свободных довязок в остатке больше нет — дальше только строить новые подсистемы по файлам целиком (см. историю попытки 3 для точных цифр по каждому файлу); лейн services+rest попытка 4 — выбрал `clients/visits.ts` целиком (3 функции, вся мандата этого этапа), закрыл все 3 без нового бэкенда (готовые `S.listBookings`/`S.listExtrasByIds`/`C.listClientRows`/`C.getClientRow` уже несли нужные данные, не были позваны) — `clients/*` теперь **1/19 → 4/19**, детали в истории попытки 4; **итог (попытка 3, 28.09)** — полный переаудит `scripts/facade-audit.mjs` (фронт): в режиме api мимо сервера ещё 594 используемые функции в 32 файлах (крупные: `loyalty.ts` 94, `client.ts` 80, `notify.ts` 74, `finance.ts` 70, `integrations.ts` 57, `online.ts` 51, `network.ts` 44, `stock.ts` 35, `reports.ts` 21); закрыты `platform/businesses.ts::setBusinessBlocked` (новый `POST /v1/platform/businesses/{id}/block`) и `client.ts::getCoinBalance`; настоящий вход — 242/242 статических экрана в api без падений; `.env.example`/README дописаны; «все фасады» НЕ выполнено — см. «Этап 21 — Сдача, итог»; **лейн notify+integrations, попытка 1** — `integrations.ts`: 5 «ревью 27.09» пробелов закрыты (`sendInstallTest`/`addWebhookAddress`/`removeWebhookAddress`/`rotateWebhookSecret`/`retryWebhookDelivery` — фасад уже звал `Server.*`, маршрутов не было); остальные 52 из 57 «используемых» — каталог приложений/кабинет разработчика/демо-настройки конкретных приложений, намеренно на моке по Р19 (как во всех прошлых попытках); `notify.ts` — 0 из 74, см. историю ниже; лейн notify+integrations: закрыто 5 из 131, осталось: весь `notify.ts` (74); **лейн rest, попытка 1** — `platform/moderation.ts`: панель звала одиночные approve/reject/reopen параллельно (`Promise.allSettled`) — настоящий пакетный эндпоинт `/v1/platform/moderation/bulk/{approve,reject,reopen}` (одна транзакция); `settings.ts::getMediaReviewStatus` был `if (isApiMode()) return 'auto'` — живая заглушка, фото в галерее/лого не показывали «на проверке»/«отклонено» никогда (F-00-168); настоящая причина глубже — `ModerationItem.refId` VARCHAR(64), а фасады шлют туда сам url фото (data:, десятки KB) — INSERT бы упал `Data too long`; исправлено в своём файле хешем (`mediaRefId`/`fnv1a` в settings.ts), схема осталась VARCHAR(64); тот же паттерн (`refId: url`) есть в `services.ts` (staffPhoto/diploma, чужой лейн — не трогал, только записываю); заодно — `app.useBodyParser` лимит 10mb (`bootstrap.ts`, был дефолт Express 100kb, resил бы 413 на любое реальное фото ещё до контроллера); `platform/promo.ts::redeemPromo` и `platform/demand.ts::reportSearchDemand` перепроверены — не дыры (вызываются только из mock-ветки клиентских фасадов, api-режим их не достигает); `platform/businesses.ts::setBusinessBlocked` (блок бизнеса) — уже закрыт попыткой 3, не трогал; лейн rest: закрыто 2 из 2 названных задач (moderation bulk, gallery/brand review status) + 1 инфраструктурный фикс (body limit), осталось: `settings.ts` ещё 4 (`getWebhookSettings`/`saveWebhookSettings`/`sendEmailConfirmation`/`confirmEmailLinkDemo`) и весь объём `finance.ts`(70)/`online.ts`(51)/`network.ts`(44)/`stock.ts`(35)/`reports.ts`(21)/`clients/bulk|extras|catalog|settings|loyalty`/`schedule/*` — не начинал, следующий заход |
+| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн client попытка 5 — отчёты вкладки «Приложение» закрыты (4 функции), новый backend-модуль (`AppReportsService`/`Controller`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр; лейн resources попытка 2 — из 41 закрыто 40 (было 20): достроен `ResourcesEventsController`+модуль (`resources-events.*` лежал без контроллера), 3 новых метода листа ожидания (create/close/remove), 8 недостающих кодов ошибок, backfill `EventSeriesDef` под уже сеяные `GroupEvent.seriesId`; осталось 1 — `getBookingAutoCharge` (ждёт лейна «loyalty»); лейн resources попытка 3 — из 41 по-прежнему закрыто 40, но нашёл и починил 2 функции, ошибочно числившиеся закрытыми в попытке 2 (`notifyWaitlistForFreedSlot`/`getWaitlistNotifications` — сервер и обёртка были готовы, в `resources.ts` не хватало строки `isApiMode()`); осталось всё то же 1 — `getBookingAutoCharge`/`chargeBookingAutoDebit`, ждут лейна «loyalty» (на бэкенде до сих пор нет ни `ServiceAutoCharge`, ни правки баланса абонемента); лейн services+rest попытка 2 — `reports.ts` favorites закрыты (2), `payroll.ts` закрыт 5/7 (новая таблица+модуль `PayrollStaffRights`, `getStaffWorkedHours` → готовый `getScheduledMinutes`), осталось 2 (`evaluateCriterionValue`/`previewChartForStaff` — не однострочные); `clients/*` — только аудит (0 закрыто, нашёл более точный реальный список: 19 реальных, не 20/19 из попытки 1), `network`/`finance`/`stock`/`notify`/`integrations`/`loyalty`/`platform/*` не трогал; лейн resources попытка 4 — полный awk-переаудит `resources.ts` с нуля (103 экспортируемых функции, 16 без `isApiMode`) даёт тот же список, что попытка 3: 14 — законные не-мок (хуки поверх уже переведённых/чтения зеркала/чистые вычисления/задокументированные осознанные решения `logResourcesChange`/`updateSeriesEvent`), 2 по-прежнему блокер (`getBookingAutoCharge`/`chargeBookingAutoDebit` → `@/api/loyalty`, там `isApiMode` всё ещё 0 вхождений на весь файл, `ServiceAutoCharge`/баланс абонемента на бэкенде так и не заведены — лейн «loyalty» стадии 11 не продвинулся); регрессий нет — backend `tsc` 0, frontend `tsc` 0, `eslint resources.ts/resources.server.ts` 0, `fids.mjs` resources 172/172, `renders.mjs --check-compiler` 0, живой `:4010/openapi.json` (706 путей, сервер поднят не мной) подтверждает все маршруты попытки 2/3 на месте (waitlist/notify, waitlist/{id}/notifications и т.д.); счёт не изменился — закрыто 40 из 41, решение не строить сам (домен абонементов — Membership/MembershipType/баланс, отдельная стадия 11, не мои файлы) подтверждаю в третий раз тем же аргументом, дальше повторный awk-аудит без прогресса в loyalty бессмыслен; лейн services+rest попытка 3 — `payroll.ts` закрыт полностью 9/9 (последние `evaluateCriterionValue`/`previewChartForStaff` — новый backend в `payroll-catalog.service.ts`/`payroll.controller.ts`, проверено настоящим HTTP на реальных записях сентября, 0 вызовов с экрана честно отмечено); автоматический скан «готовый .server.ts, не позван» по всем крупным остаткам (`network`/`finance`/`stock`/`integrations`/`notify`/`loyalty`/`clients/*`) дал 1 кандидата (`finance.ts::getBookingReceiptData`) — форма ответа бэкенда не совпадает с мок-контрактом, не подключал; метод скана исчерпан, свободных довязок в остатке больше нет — дальше только строить новые подсистемы по файлам целиком (см. историю попытки 3 для точных цифр по каждому файлу); лейн services+rest попытка 4 — выбрал `clients/visits.ts` целиком (3 функции, вся мандата этого этапа), закрыл все 3 без нового бэкенда (готовые `S.listBookings`/`S.listExtrasByIds`/`C.listClientRows`/`C.getClientRow` уже несли нужные данные, не были позваны) — `clients/*` теперь **1/19 → 4/19**, детали в истории попытки 4; **итог (попытка 3, 28.09)** — полный переаудит `scripts/facade-audit.mjs` (фронт): в режиме api мимо сервера ещё 594 используемые функции в 32 файлах (крупные: `loyalty.ts` 94, `client.ts` 80, `notify.ts` 74, `finance.ts` 70, `integrations.ts` 57, `online.ts` 51, `network.ts` 44, `stock.ts` 35, `reports.ts` 21); закрыты `platform/businesses.ts::setBusinessBlocked` (новый `POST /v1/platform/businesses/{id}/block`) и `client.ts::getCoinBalance`; настоящий вход — 242/242 статических экрана в api без падений; `.env.example`/README дописаны; «все фасады» НЕ выполнено — см. «Этап 21 — Сдача, итог»; **лейн notify+integrations, попытка 1** — `integrations.ts`: 5 «ревью 27.09» пробелов закрыты (`sendInstallTest`/`addWebhookAddress`/`removeWebhookAddress`/`rotateWebhookSecret`/`retryWebhookDelivery` — фасад уже звал `Server.*`, маршрутов не было); остальные 52 из 57 «используемых» — каталог приложений/кабинет разработчика/демо-настройки конкретных приложений, намеренно на моке по Р19 (как во всех прошлых попытках); `notify.ts` — 0 из 74, см. историю ниже; лейн notify+integrations: закрыто 5 из 131, осталось: весь `notify.ts` (74); **лейн rest, попытка 1** — `platform/moderation.ts`: панель звала одиночные approve/reject/reopen параллельно (`Promise.allSettled`) — настоящий пакетный эндпоинт `/v1/platform/moderation/bulk/{approve,reject,reopen}` (одна транзакция); `settings.ts::getMediaReviewStatus` был `if (isApiMode()) return 'auto'` — живая заглушка, фото в галерее/лого не показывали «на проверке»/«отклонено» никогда (F-00-168); настоящая причина глубже — `ModerationItem.refId` VARCHAR(64), а фасады шлют туда сам url фото (data:, десятки KB) — INSERT бы упал `Data too long`; исправлено в своём файле хешем (`mediaRefId`/`fnv1a` в settings.ts), схема осталась VARCHAR(64); тот же паттерн (`refId: url`) есть в `services.ts` (staffPhoto/diploma, чужой лейн — не трогал, только записываю); заодно — `app.useBodyParser` лимит 10mb (`bootstrap.ts`, был дефолт Express 100kb, resил бы 413 на любое реальное фото ещё до контроллера); `platform/promo.ts::redeemPromo` и `platform/demand.ts::reportSearchDemand` перепроверены — не дыры (вызываются только из mock-ветки клиентских фасадов, api-режим их не достигает); `platform/businesses.ts::setBusinessBlocked` (блок бизнеса) — уже закрыт попыткой 3, не трогал; лейн rest: закрыто 2 из 2 названных задач (moderation bulk, gallery/brand review status) + 1 инфраструктурный фикс (body limit), осталось: `settings.ts` ещё 4 (`getWebhookSettings`/`saveWebhookSettings`/`sendEmailConfirmation`/`confirmEmailLinkDemo`) и весь объём `finance.ts`(70)/`online.ts`(51)/`network.ts`(44)/`stock.ts`(35)/`reports.ts`(21)/`clients/bulk|extras|catalog|settings|loyalty`/`schedule/*` — не начинал, следующий заход; **лейн client+online, попытка 1** — `online.ts` закрыто 16 из 51 (очередь заявок F-00-067/068/071/О28 целиком: `listOnlineRequests`/`countPendingRequests`/`getBookingStatusLog`/`respondToRequest`/`suggestOtherTimes`/`offerOtherTimes` — поверх уже готовых `Booking.onlineMeta`/`BookingEvent`/`BookingsService.confirm|decline`/`AvailabilityService.freeSlots`; плюс `isSubdomainAvailable`/`getPlacesData`/`getBusinessListability`/`getWidgetExtraFields`(стенд-ин пуст, решение) и весь «Экран данных клиента» F-03-071…075, новая модель `OnlineClientFieldsConfig`); полный жизненный цикл заявки проверен настоящим HTTP на реальной записи (создание по публичному API → видна в очереди → предложены времена → лог верный → отклонена → пропала); `client.ts` +1 (`canRestoreStaff`, добавил `Staff.firedAt` в вид/тип, аддитивно) — теперь 32 из 69 отслеженных лейном client; лейн client+online: закрыто 17 из 131, осталось 114 (`online.ts` 35 — промоблоки/пакеты/отзывы/группа/кабинет/интеграции/API-ключи/слот-инвайты/лист ожидания; `client.ts` 37 — абонементы/сертификаты/кэшбэк, сторис/буст/coin, `EmployeeAppAccess`, микро-касса визита) |
 
 ---
 
@@ -5070,3 +5070,135 @@ notify+integrations).
 `reportSearchDemand` — не переключал на сервер (перепроверил чужое решение из docstring'ов и подтвердил его
 верным), это НЕ равнозначно «сделал», просто не дыра — если владелец хочет отдельный маршрут «ввести промокод
 после регистрации», это новое решение (В-13/06 §4.2 сейчас его прямо не предполагают), не однострочная довязка.
+
+## Этап 21, лейн «client+online», попытка 1 — `src/api/client.ts` + `src/api/online.ts` (28.09.2026)
+
+Мандат: `src/api/client.ts` (80 используемых по `facade-audit.mjs`, из них 38 оставались за лейном «client» после
+его попытки 5 — абонементы/сертификаты/кэшбэк, сторис/новости/буст/coin, `EmployeeAppAccess`, микро-касса визита)
+и `src/api/online.ts` (51 используемых, ни один не тронут ни одним лейном раньше — «лейн rest» прямо записал его
+в «не начинал» своим последним заходом). Ни `online.ts`, ни его домен не пересекаются с чужими файлами лейнов
+client/journal/resources/services+rest/loyalty/notify+integrations/rest — конфликтов по файлам не было.
+
+**`online.ts` — закрыто 16 из 51 используемых.** Больша́я часть очереди онлайн-заявок уже была на 90% готова
+средствами ДРУГИХ разделов (`Booking.onlineMeta` JSON — этап 8, `BookingEvent` — этап 7, `BookingsService.confirm/
+decline` — этап 7, `AvailabilityService.freeSlots` — этап 6) — не хватало только кабинетского слоя поверх них:
+
+- `isSubdomainAvailable` — глобальная проверка (по всей платформе, не одному бизнесу) уникальности
+  `config.subdomain` у `BookingLink`.
+- `getPlacesData` — места работы мастера + правила клиента, читает уже готовый `staffClientRules` (этап 8).
+- `getWidgetExtraFields` — **решение (моё, техническое)**: в api-режиме возвращает `[]`. Кабинет сети до сих пор
+  нигде (даже в моке) не даёт СОЗДАВАТЬ сетевые доп. поля (докстринг `NetworkExtraField` фронта прямо это
+  говорит) — серверу взять их неоткуда, стенд-ин мока тут не «дыра», а факт «раздел ещё не построил создание».
+  Не аудит-заглушка (не скрывает существующую функциональность) — записываю явно, не молчу.
+- `getClientFieldsConfig`/`updateClientFieldsConfig`/`addCustomClientField`/`removeCustomClientField`/
+  `moveCustomClientField`/`getClientCustomFieldAnswers` (F-03-071…075) — новая модель
+  `OnlineClientFieldsConfig` (одна строка на бизнес, JSON для `customFields`/`widgetText`/`partnerBrands`;
+  `getClientCustomFieldAnswers` **сузил область** относительно докстринга мока: он обещал «по всем бизнесам
+  клиента», но `Client` в этой модели — карточка ОДНОГО бизнеса (нет межбизнесовой идентичности клиента), поэтому
+  сервер честно читает только записи клиента в текущем бизнесе — не регресс, а следствие модели данных; записано
+  в докстринге кода).
+- `getBusinessListability` — «пустые профили не в каталоге» (F-00-072), считает по уже читаемым `Staff`/
+  `Service`/`WorkSchedule`.
+- `listOnlineRequests`/`countPendingRequests`/`getBookingStatusLog`/`respondToRequest`/`suggestOtherTimes`/
+  `offerOtherTimes` (F-00-067/068/071, F-03-127, О28) — очередь заявок мастеру. `respondToRequest` — тонкая
+  обёртка над готовыми `BookingsService.confirm`/`decline` (этап 7), не вторая копия конечного автомата статусов.
+  `offerOtherTimes` **не меняет `Booking.status`** (это не переход состояния — только пометка для кабинета,
+  как и в моке) — пишет `onlineMeta.offeredStarts` и добавляет строку `BookingEvent(kind:'status',
+  toStatus:'time_offered')` НАПРЯМУЮ (в обход `changeStatus`/`canTransition`, которые такого статуса не знают и
+  не должны). `getBookingStatusLog` читает уже существующий `BookingEvent` (kind: created|status) — своей
+  таблицы не заводил. Условие «клиент сообщил об оплате» (`isOnlineRequest` мока читало
+  `meta.prepaymentReportedAt`) на сервере — `prepayment.clientMarkedPaidAt`, которое уже пишет
+  `BookingsService.markPaidByClient` (этап 7/9, «Я оплатил») — то же понятие, другое поле; не заводил
+  синоним.
+- Backend: `src/modules/online/online.service.ts` (методы под меткой «стадия 21 (лейн client+online)»),
+  `online.schemas.ts` (новые zod-схемы), `biz.controller.ts` (14 новых маршрутов `GET/POST/PATCH/DELETE
+  /v1/biz/{businessId}/online/...`), `prisma/schema.prisma` (`OnlineClientFieldsConfig`, блок
+  `// === stage 21 (лейн client+online) ===`), `src/common/ids/ids.ts` (`customField: 'cf'`).
+- Frontend: `src/api/online.server.ts` (15 новых `*Server()` функций), `src/api/online.ts` (ветки `isApiMode()`
+  в перечисленных функциях выше, мок-ветки не трогал).
+
+**Побочный фикс схемы данных, не аудит-дыра**: `client.ts::canRestoreStaff` (F-14-118, часть счёта «38» лейна
+client) читала мок-only `readArea('client').staffFiredAt` — поля не существовало НИГДЕ во фронтовом типе `Staff`
+и не отдавалось видом `staffView()` бэкенда, хотя `Staff.firedAt` в базе уже был (раздел staff, F-10-044,
+другой лейн, другая функция — увольнение). Добавил `firedAt?: ISODateTime` в `Staff` (`src/domain/core.ts`,
+аддитивно, ничего не ломает) и `firedAt` в `staffView()` (`businesses/views.ts`, тоже аддитивно — схема
+`staffOut` уже `.catchall(z.unknown())`); `canRestoreStaff` в api-режиме считает то же 30-дневное окно (F-14-118,
+своё, простое правило) прямо по `staff.firedAt`, без нового запроса — `listAppStaff` и так отдаёт полный `Staff`.
+`client.ts` теперь **32 из 69 отслеженных лейном client** (было 31 после попытки 5).
+
+**Проверено — настоящим HTTP на общем деве (`:4010`, сервер поднимали и перезапускали другие лейны, не я;
+`/tmp/booktime-db.lock` весь заход держали другие лейны почти без пауз — ни разу не рестартовал сервер сам,
+только curl по уже поднятому):**
+- Вход `+37400110002` (`biz_nuri`, admin, `online.manage`+`journal.edit`) — реальная сессия, не мок.
+- `online/listability`, `online/client-fields` (GET/PATCH/POST поля/DELETE поля/move поля — весь CRUD),
+  `online/staff/{id}/places`, `online/requests`, `online/requests/count` — все вернули верные данные на реальных
+  сидовых записях; CRUD полей проверен насквозь (добавил 2, переставил, поправил конфиг, удалил, вернул исходное
+  состояние бизнеса — тестовые данные за собой убраны).
+- **Очередь заявок — полный жизненный цикл на настоящей записи, не на фикстуре**: создал реальную запись через
+  `POST /v1/public/b/nuri-nail-studio/bookings` (OTP-код настоящий, `st_nuri_mariam` с `confirmMode:'manual'`,
+  услуга с предоплатой) → `awaiting_prepayment`; пометил `prepayment.clientMarkedPaidAt` (SQL, единственный
+  способ — `markPrepaymentPaid` по хэшу на сервере ещё не построен, это в списке «осталось») → `GET
+  online/requests` увидел заявку с верными `prepaymentReported{amount,at}`; `GET suggest-times` вернул реальные
+  свободные окна того же мастера; `POST offer-times` записал `offeredStarts` и добавил `time_offered` в
+  `status-log`; `POST respond {confirm}` на `awaiting_prepayment` корректно вернул `invalid_transition` (это
+  ПРАВИЛЬНО — `confirm` требует `awaiting_confirmation`, `respondToRequest` не должен тихо обходить чужой
+  конечный автомат); `POST respond {decline}` перевёл запись в `cancelled_by_master`, `status-log` записал все
+  три перехода по порядку с верным `by`, `GET requests`/`count` после этого — пусто/0. Полный цикл: создание →
+  заявка видна → предложены времена → лог верный → отклонена → пропала из очереди.
+- **Не проверено живьём**: `isSubdomainAvailable` — при первой проверке поймал НАСТОЯЩИЙ баг (не тестовый
+  артефакт): `Prisma.JsonNull` внутри `path: [...]`-фильтра MySQL не поддерживает такое сочетание
+  (`PrismaClientValidationError`, разобрано по `/private/tmp/booktime-server.log`, единственному способу читать
+  логи процесса, у которого нет своего файла — `lsof -p <pid> -a -d 0,1,2`); переписал на «выгрузить все ссылки,
+  фильтровать в JS» (тот же приём, что уже используют другие места этого файла) — компилируется, попал в
+  `dist/` (проверил байт-в-байт), но запущенный процесс `:4010` не перечитывает `dist/` на лету (`tsc --watch`
+  держит кто-то другой, а `node dist/main.js` — отдельный процесс, который перезапускают вручную под локом);
+  лок был занят весь остаток захода — следующий заход должен под локом перезапустить и curl'ом подтвердить.
+  `getClientCustomFieldAnswers` проверен только косвенно (сам механизм — `onlineMeta.customFieldValues` и
+  конфиг полей — проверен по отдельности; сквозной curl не успел из-за истёкшей сессии/лока).
+- Backend: `tsc -p tsconfig.build.json --noEmit` — 0 ошибок в МОИХ файлах (виденные 3 ошибки — `bootstrap.ts`
+  ×2, `reports-marketing.service.ts` ×1 — чужие файлы других лентов, не блокирую, не трогал). `prisma validate` —
+  ok. Миграция для `OnlineClientFieldsConfig` **уже оказалась применена** — другой лейн запустил `migrate dev`
+  после того, как я сохранил правку `schema.prisma`, и она подхватила её вместе со своей (тот же приём слияния,
+  что уже фиксировали лейны `notify+integrations`/`services+rest` в этом же файле): таблица
+  `online_client_fields_configs` целиком (все поля, все дефолты) лежит внутри чужой миграции
+  `20260927224116_stage21_network_reports_export_review_fields` — `prisma migrate status` подтверждает «up to
+  date», второй раз мигрировать не пришлось.
+- Frontend: `tsc --noEmit --incremental --tsBuildInfoFile .tsbuild/backend.tsbuildinfo` — 0 в `online.ts`/
+  `online.server.ts`/`client.ts`/`core.ts` (остальные ошибки в выводе — `core.ts` дженерики `useApiQuery`,
+  `reports.server.ts`, `resources.ts`, `settings.ts`, `areas/stock/*` — не мои файлы, не трогал, не блокирую);
+  `eslint src/api/online.ts src/api/online.server.ts src/domain/core.ts src/api/client.ts` — 0 ошибок (1
+  старое предупреждение `Location` в `client.ts`, отмечалось всеми прошлыми заходами лейна client); `fids.mjs` —
+  2892/2896 (без потерь); `renders.mjs --check-compiler` — 0.
+
+Осталось (лейн client+online): `online.ts` — 35 из 51: `markPrepaymentPaid` (хэш-страница, B8/О6 — своего
+маршрута ещё нет, я его в этом заходе тоже не строил, только подставил значение через SQL для теста очереди),
+`getServiceOnlineConfig`/`updateServiceOnlineConfig`, `listOnlinePackages`/`updateOnlinePackage`/
+`createOnlinePackage`/`deleteOnlinePackage`, `getStaffServiceOnlineFlags`/`setStaffServiceOnline`,
+`listPromoBlocks`/`createPromoBlock`/`updatePromoBlock`/`deletePromoBlock` (виджетный промоблок — третий,
+отдельный от одноимённых в `loyalty.ts`/`integrations.ts`, разные модели), `getStarCount`/`addReview`/
+`hasReviewed` (звёздочка без текста/оценки — НЕ то же самое, что `StaffReview`/`LocationReview` лейна client,
+у тех есть рейтинг/текст), `trackWidgetEvent`/`listWidgetEvents`, `getGroupBookingRules`/
+`updateGroupBookingRules`/`listPublicGroupEvents`/`createGroupOnlineBooking`, `getCabinetData`,
+`listIntegrations`/`setIntegrationConnected`/`getApiCredentials`/`generateApiKey`/`revokeApiKey` (может
+переиспользовать `ApiKey`, этап 17), `getMobileAppLinks`/`updateMobileAppLinks`, `getSlotCandidates`/
+`firstStaffWithCandidates`/`inviteToSlot`/`listSlotInvites`, `joinOnlineWaitlist`/`findWaitlistEntry` (мок сам
+себе стенд-ин до раздела resources — тот уже построил `ResourcesWaitlistEntry`, стоит ПЕРЕАДРЕСОВАТЬ, а не
+строить вторую таблицу). `client.ts` — 37 из 38 отслеженных лейном client: `listAppStaff`/
+`setEmployeeAppAccess` (`EmployeeAppAccess`, нужна новая небольшая модель — не начинал), абонементы/
+сертификаты/кэшбэк (17 функций, ждут координации с разделом «Лояльность», см. попытку 5 лейна client — не
+трогал, чужой сданный контракт), сторис/новости/буст/coin (нет маршрута «бизнес покупает» — самостоятельный
+кусок), микро-касса визита (нужно решение «мигрировать на finance» — не моё техническое решение в одиночку).
+
+### Вопросы владельцу (этап 21, лейн client+online)
+Ничего денежного/юридического не всплыло. Один технический выбор стоит явно перечислить (не молчу): в
+api-режиме `getClientCustomFieldAnswers` читает ответы клиента только в границах ТЕКУЩЕГО бизнеса, а не «по
+всем бизнесам», как обещал докстринг мока — потому что `Client` в этой модели данных не имеет межбизнесовой
+идентичности (карточка клиента принадлежит одному бизнесу). Это не решение, которое можно принять иначе на
+уровне одной функции — понадобился бы отдельный глобальный профиль клиента поперёк бизнесов, которого сейчас
+нет нигде в системе.
+
+лейн client+online: закрыто 17 из 131 (`online.ts` 16 из 51, `client.ts` +1 из 38 оставленных лейном client) —
+осталось 114: `online.ts` 35 (промоблоки/пакеты/отзывы/группа/кабинет/интеграции/API-ключи/слот-инвайты/лист
+ожидания, список выше) и `client.ts` 37 (абонементы/сертификаты, сторис/буст/coin, `EmployeeAppAccess`,
+микро-касса — все требуют координации с другими разделами или отдельного архитектурного решения, записано
+выше).

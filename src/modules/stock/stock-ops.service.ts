@@ -6,7 +6,7 @@ import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { moneyToJson } from '../../common/money/money.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { localToUtc } from '../../common/time/time.js';
+import { localToUtc, nowLocal } from '../../common/time/time.js';
 import { FinanceCatalogService } from '../finance/finance-catalog.service.js';
 import { FinOpsService } from '../finance/fin-ops.service.js';
 import { StockCatalogService } from './stock-catalog.service.js';
@@ -380,7 +380,8 @@ export class StockOpsService {
         itemId,
         kind: p.kind,
         amount: p.amount,
-        date: new Date().toISOString().slice(0, 16),
+        // UTC-строка как «местное время» сдвигала операцию на 4 часа назад (выручка товара падала во вчера) — этап 21
+        date: nowLocal(),
         method: p.method === 'card' ? 'card' : 'cash',
         partyType: p.clientId ? 'client' : 'none',
         partyId: p.clientId,

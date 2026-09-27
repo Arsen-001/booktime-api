@@ -153,6 +153,10 @@ export const configPatchBody = z
     splitByResourceEnabled: z.boolean(),
     autoWriteoffServiceIds: z.array(id).max(1000),
     hotDiscountPct: z.record(z.string(), z.number().int().min(0).max(100)),
+    // === stage 21 (lane rest) ===
+    zoomMin: z.union([z.literal(5), z.literal(10), z.literal(15)]),
+    hiddenStatuses: z.array(z.string().max(30)).max(20),
+    // === /stage 21 ===
   })
   .partial();
 

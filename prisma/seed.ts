@@ -9,6 +9,7 @@ import { hashPassword } from '../src/modules/auth/passwords.js';
 import { SYSTEM_ITEMS } from '../src/modules/finance/finance-catalog.service.js';
 import { loadMockCore } from './seed/mock-core.js';
 import { seedLoyaltyFromMock } from './seed/loyalty.js';
+import { seedFinanceFromMock } from './seed/finance.js';
 
 /**
  * Сид разработки (npx prisma db seed; его же зовёт prisma migrate reset). Строит те же данные, что демо фронта:
@@ -936,6 +937,9 @@ await prisma.client.createMany({
 
 // ─────────── этап 21, лейн loyalty: срез «loyalty» мока фронта — prisma/seed/loyalty.ts ───────────
 await seedLoyaltyFromMock(prisma, core);
+
+// ─────────── этап 21, лейн finance+stock: настройки «Финансов» и демо-документы онлайн-платежей — prisma/seed/finance.ts ───────────
+await seedFinanceFromMock(prisma, core);
 
 // ─────────── этап 12: финансы и касса — 15 системных статей, кассы «Наличные»/«Карта» на филиал, методы
 // оплаты cash/card, и одна реальная оплата визита на бизнес (чтобы касса дня/отчёты не были пустыми). Идемпотентно
