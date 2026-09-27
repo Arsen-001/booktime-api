@@ -27,6 +27,8 @@ export interface BookingView {
   prepayment?: { amount: number; paid: boolean; holdUntil?: string; refundDue?: number; refundedAt?: string };
   cancelledLate?: boolean;
   cancelReason?: string;
+  /** В-03: до какого момента мастер отвечает на заявку (местное) */
+  confirmDeadline?: string;
   groupEventId?: string;
   seriesId?: string;
   visitId?: string;
@@ -61,6 +63,7 @@ export function bookingView(b: BookingRow, tz: string = DEFAULT_TZ): BookingView
     ...(prepayment ? { prepayment } : {}),
     ...(b.cancelledLate ? { cancelledLate: true } : {}),
     ...(b.cancelReason ? { cancelReason: b.cancelReason } : {}),
+    ...(b.confirmDeadline && b.status === 'awaiting_confirmation' ? { confirmDeadline: utcToLocal(b.confirmDeadline, tz) } : {}),
     ...(b.groupEventId ? { groupEventId: b.groupEventId } : {}),
     ...(b.seriesId ? { seriesId: b.seriesId } : {}),
     ...(b.visitId ? { visitId: b.visitId } : {}),

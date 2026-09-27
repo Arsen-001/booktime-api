@@ -670,6 +670,18 @@ export class JournalService {
     await this.prisma.treatmentPlan.deleteMany({ where: { id: planId, businessId, clientId } });
   }
 
+  // ─────────── метки клиента из окна записи (F-01-070) ───────────
+
+  async setClientTags(ctx: RequestContext, businessId: string, clientId: string, tags: string[]) {
+    await this.prisma.$transaction(async (tx) => {
+      const c = await tx.client.findFirst({ where: { id: clientId, businessId, deletedAt: null }, select: { tags: true } });
+      if (!c) throw new ApiError('not_found', 'Client not found');
+      await tx.client.update({ where: { id: clientId }, data: { tags, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
+      const { AuditService } = await import('../../common/audit/audit.service.js');
+      await new AuditService().record(tx, ctx, { action: 'updated', entityType: 'client', entityId: clientId, businessId, before: { tags: c.tags }, after: { tags } });
+    });
+  }
+
   // ─────────── импорт и выгрузка «Записей» (F-01-182, F-01-183) ───────────
 
   async importRows(
@@ -750,6 +762,10 @@ export class JournalService {
       if (hasExtras(r)) extras[r.id] = extrasView(r, ltz);
     }
     const { groupEventView } = await import('./journal.views.js');
+    // Карточки клиентов этих записей — в форме ядра (не вся CRM: зеркало клиентов ограничено тем, что открыто, K8)
+    const clientIds = [...new Set(rows.map((r) => r.clientId).filter((x): x is string => Boolean(x)))];
+    const clients = clientIds.length ? await this.prisma.client.findMany({ where: { id: { in: clientIds } } }) : [];
+    const { coreClient } = await import('./bookings.service.js');
     return {
       businessIds,
       from,
@@ -758,6 +774,7 @@ export class JournalService {
       extras,
       groupEvents: events.map((e) => groupEventView(e, tz)),
       packageGroups: groups.map((g) => this.packageView(g)),
+      clients: clients.map((c) => ({ ...coreClient(c), ...(c.email ? { email: c.email } : {}), ...(c.note ? { note: c.note } : {}), ...(c.blocked !== null ? { blocked: c.blocked } : {}), ...(c.deletedAt ? { deletedAt: utcToLocal(c.deletedAt) } : {}) })),
     };
   }
 

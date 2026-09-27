@@ -41,6 +41,7 @@ import {
   waitlistBody,
   waitlistCloseBody,
   waitlistPatchBody,
+  windowTagsBody,
 } from './journal.schemas.js';
 import type { BookingStatus } from './rules.js';
 import { SeriesService } from './series.service.js';
@@ -431,6 +432,15 @@ export class JournalController {
     return this.journal.deletePlan(p.businessId, clientId, planId);
   }
 
+  @Put('clients/:clientId/window-tags')
+  @HttpCode(204)
+  @Biz('journal.edit')
+  @ApiOperation({ summary: 'Метки клиента из окна записи (F-01-070) — правят саму карточку, без накладки поверх ядра' })
+  @ZodBody(windowTagsBody)
+  async windowTags(@Ctx() ctx: RequestContext, @Param() p: B, @Param('clientId') clientId: string, @Body(new Zod(windowTagsBody)) body: z.infer<typeof windowTagsBody>) {
+    await this.journal.setClientTags(ctx, p.businessId, clientId, body.tags);
+  }
+
   // ─────────── «Закрыть окно» (F-00-107): выдать ссылку на окно мастера ───────────
 
   @Post('claims')
@@ -448,7 +458,6 @@ export class JournalController {
  */
 @ApiTags('journal')
 @Controller('v1/claims')
-@Authed()
 export class ClaimsController {
   constructor(
     private readonly bookings: BookingsService,
@@ -465,7 +474,7 @@ export class ClaimsController {
   }
 
   @Get(':token')
-  @ApiOperation({ summary: 'Карточка ссылки: ready | wrong_actor | expired | used | taken' })
+  @ApiOperation({ summary: 'Карточка ссылки: ready | wrong_actor | expired | used | taken (без входа — wrong_actor, без деталей)' })
   async get(@Ctx() ctx: RequestContext, @Param('token') token: string) {
     const { claim, member } = await this.actorFor(ctx, token);
     if (!claim || !member) return { status: 'wrong_actor' };
@@ -490,6 +499,7 @@ export class ClaimsController {
 
   @Post(':token/close')
   @HttpCode(200)
+  @Authed()
   @ApiOperation({ summary: '«Закрыть окно»: запись по единому потоку (source phone) — только мастер этого окна' })
   async close(@Ctx() ctx: RequestContext, @Param('token') token: string) {
     const { claim, member } = await this.actorFor(ctx, token);
@@ -549,5 +559,36 @@ export class MeBookingsController {
   async events(@Ctx() ctx: RequestContext, @Query('since') since?: string, @Query('kinds') kinds?: string) {
     const rows = await this.bookings.listEvents({ appUserId: ctx.session!.userId, since, kinds: kinds ? csv(kinds) : ['created', 'status', 'moved', 'deleted', 'delayed'], excludeBy: 'client' });
     return rows.reverse();
+  }
+}
+
+/**
+ * Выдать ссылку «Закрыть окно» на ближайшее окно мастера (F-00-107) — зовёт карточка мастера у клиента (этап 9),
+ * без входа тоже. Ссылка сама ничего не даёт тому, кто её получил: закрыть окно может только мастер этого окна.
+ */
+@ApiTags('journal')
+@Controller('v1/public/claims')
+export class PublicClaimsController {
+  constructor(
+    private readonly journal: JournalService,
+    private readonly bookings: BookingsService,
+  ) {}
+
+  @Post()
+  @HttpCode(200)
+  @ZodBody(claimMintBody)
+  async mint(@Ctx() ctx: RequestContext, @Body(new Zod(claimMintBody)) body: z.infer<typeof claimMintBody>) {
+    const staff = await this.bookings.prisma.staff.findFirst({ where: { id: body.staffId, status: 'active', deletedAt: null }, select: { businessId: true, onlineBookingEnabled: true } });
+    if (!staff || !staff.onlineBookingEnabled) throw new ApiError('not_found', 'Staff not found');
+    const user = ctx.session && !ctx.session.platform ? await this.bookings.prisma.user.findUnique({ where: { id: ctx.session.userId }, select: { name: true, phone: true } }) : null;
+    const token = await this.journal.mintClaim({
+      businessId: staff.businessId,
+      staffId: body.staffId,
+      serviceId: body.serviceId,
+      start: body.start,
+      clientName: user?.name ?? undefined,
+      clientPhone: user?.phone ?? undefined,
+    });
+    return { token };
   }
 }

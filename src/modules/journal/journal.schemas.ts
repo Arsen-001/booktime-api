@@ -111,6 +111,8 @@ export const extrasPatchBody = z.object({
   packageGroupId: id.nullable().optional(),
   payments: z.array(z.object({ id, method: z.string().max(20), amount: money, label: z.string().max(200), cashRegister: z.string().max(80).optional(), refId: z.string().max(40).optional(), at: localDateTime })).max(50).optional(),
   prepaymentDecision: z.object({ kept: z.boolean(), reason: z.enum(['late_reschedule', 'no_show']), decidedBy: z.string().max(160), decidedAt: localDateTime, auto: z.boolean().optional() }).nullable().optional(),
+  /** F-01-032: технический перерыв под записью, мин (0 — без перерыва) */
+  breakOverrideMin: z.number().int().min(0).max(600).nullable().optional(),
 });
 
 export const paymentLinesBody = z.object({
@@ -236,3 +238,5 @@ export const seriesPreviewBody = seriesBody.pick({ staffId: true, locationId: tr
 
 export const clientRescheduleBody = z.object({ start: localDateTime });
 export const claimMintBody = z.object({ staffId: id, serviceId: id.optional(), start: localDateTime, clientName: z.string().max(160).optional(), clientPhone: z.string().max(30).optional() });
+
+export const windowTagsBody = z.object({ tags: z.array(z.string().max(80)).max(50) });

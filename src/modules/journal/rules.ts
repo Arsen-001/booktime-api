@@ -252,6 +252,8 @@ export interface BookingExtras {
   packageGroupId?: string;
   payments?: { id: string; method: string; amount: number; label: string; cashRegister?: string; refId?: string; at: string }[];
   prepaymentDecision?: { kept: boolean; reason: string; decidedBy: string; decidedAt: string; auto?: boolean };
+  /** F-01-032: технический перерыв под записью, мин */
+  breakOverrideMin?: number;
 }
 
 export const EMPTY_EXTRAS: BookingExtras = { categoryIds: [], customFieldValues: {}, goodsLines: [], serviceLineExtras: [], paidAmount: 0 };
