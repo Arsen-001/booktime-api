@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { createHash } from 'node:crypto';
 import { Prisma } from '../src/generated/prisma/client.js';
 import { PrismaService } from '../src/common/prisma.service.js';
+import { weekdayIndex } from '../src/modules/availability/engine.js';
 import { norm } from '../src/common/text.js';
 import { localDayRangeUtc, localToUtc, utcToLocalDate } from '../src/common/time/time.js';
 import { hashPassword } from '../src/modules/auth/passwords.js';
@@ -753,6 +754,48 @@ await prisma.client.createMany({
         createdBy: 'seed',
       })),
   });
+
+  // Этап 21 (лейн «resources»): расписание серии (EventSeriesDef) для событий, у которых мок уже проставил
+  // seriesId (например, ser_arman_func/ser_arman_stretch) — сам GroupEvent.seriesId сеется выше, но модель
+  // EventSeriesDef появилась позже мока (§4.2 не про неё); без неё «Расписание» серии в резолюторе, а не
+  // отдельной таблицей, экран /biz/groups/series показывал бы пусто в режиме api. Правило дня недели — по
+  // ПЕРВОМУ увиденному событию этого дня недели в серии (время/длительность/ресурсы), endDate — по последнему.
+  {
+    const seedEvents = eventsRaw.filter((e) => staffIds.has(String(e.staffId)) && S(e.seriesId));
+    const bySeries = new Map<string, Rec[]>();
+    for (const e of seedEvents) {
+      const sid = String(e.seriesId);
+      if (!bySeries.has(sid)) bySeries.set(sid, []);
+      bySeries.get(sid)!.push(e);
+    }
+    const defs: Prisma.EventSeriesDefCreateManyInput[] = [];
+    for (const [seriesId, evs] of bySeries) {
+      const sorted = [...evs].sort((a, b) => String(a.start).localeCompare(String(b.start)));
+      const source = sorted[0]!;
+      const days = new Map<number, { weekday: number; startTime: string; durationMin: number; resourceIds: string[] }>();
+      for (const e of sorted) {
+        const [date, time] = String(e.start).split('T');
+        const wd = weekdayIndex(date!);
+        if (!days.has(wd)) days.set(wd, { weekday: wd, startTime: time!.slice(0, 5), durationMin: Number(e.durationMin ?? 60), resourceIds: (e.resourceIds ?? []) as string[] });
+      }
+      const endDate = String(sorted[sorted.length - 1]!.start).split('T')[0]!;
+      defs.push({
+        id: seriesId,
+        businessId: String(source.businessId),
+        locationId: String(source.locationId),
+        staffId: String(source.staffId),
+        serviceId: String(source.serviceId),
+        capacity: Number(source.capacity ?? 1),
+        days: [...days.values()] as unknown as Prisma.InputJsonValue,
+        endDate,
+        sourceEventId: String(source.id),
+        uniqueEventIds: [],
+        createdBy: 'seed',
+      });
+    }
+    if (defs.length) await prisma.eventSeriesDef.createMany({ skipDuplicates: true, data: defs });
+    console.log(`seed: расписаний серии (EventSeriesDef) — ${defs.length}`);
+  }
 
   // Настройки журнала бизнеса (business_settings area='journal'): пять демо-полей записи (F-01-053) — как в срезе
   // journal мока; автосписание — первая активная услуга бизнеса (тот же демо-приём, что и в моке)

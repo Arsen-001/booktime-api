@@ -12,7 +12,11 @@ import { ResourcesService } from './resources.service.js';
  */
 @Module({
   imports: [JournalModule],
-  controllers: [ResourcesController, ResourcesEventsController],
+  // ResourcesEventsController СНАЧАЛА: у ResourcesController есть catch-all `@Get(':id')`/`@Patch(':id')`/
+  // `@Delete(':id')` — зарегистрируй его первым, и он перехватит /resources/waitlist, /resources/series/:id и
+  // т.д. раньше, чем Nest дойдёт до литеральных маршрутов этого контроллера (нашёл на этом же прогоне: `GET
+  // .../resources/waitlist` падал `not_found` — ловил чужой `@Get(':id')`, приняв «waitlist» за id ресурса).
+  controllers: [ResourcesEventsController, ResourcesController],
   providers: [ResourcesService, ResourcesEventsService],
   exports: [ResourcesService],
 })

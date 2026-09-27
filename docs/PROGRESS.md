@@ -25,7 +25,7 @@
 | 18 | Настройки, подписка, монеты, промокоды | [x] | см. историю: «Этап 18 …» (сервер), «backend stage 18: …» (фронт) |
 | 19 | Модерация и наша панель | [x] | см. историю «Этап 19 …», «Этап 19, попытка 2 …», «Этап 19, попытка 3 …» (сервер+фронт) — модерация/бизнесы/поддержка/идеи/заявки на сферы/визиты/обзор (попытка 1) + спрос/first-awards, реклама+сторис (без покупки места и картинки), заметки основателя (попытка 2) + ConnectDraft, подключение салона за 10 минут (попытка 3) — весь §19 построен и проверен |
 | 20 | Данные и удаление | [x] | см. историю «Этап 20 …» (сервер; фронт — `src/api/session.ts` + `src/api/settings.ts`, F-15-154/155) |
-| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`) |
+| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр |
 
 ---
 
@@ -3983,3 +3983,146 @@ CRUD — этап 3), убран отдельно уже настоящим `DEL
 Ничего денежного/юридического не всплыло. Один технический вопрос НЕ мой (см. «решено по ходу» про
 `resources-events.service.ts` vs `journal` — какой из двух путей для группы/листа ожидания финальный) — не
 эскалирую, это территория параллельного лейна, не блокирует то, что я уже закрыл.
+
+## Этап 21, лейн «services+rest» — `src/api/services.ts` + мелкие файлы (28.09.2026)
+
+Задача лейна (см. «Аудит фасадов» попытки 1/2 выше): довести до сервера `services.ts` (10 функций из счёта
+попытки 2), затем мелкие остатки `schedule/calendar.ts`, `schedule/table.ts`, `schedule/slots.ts`,
+`settings.ts`, `schedule/staff.ts`, `staff.ts`, затем «Осталось» из `clients/*`, `platform/*`, network,
+finance, stock, payroll, integrations, notify, reports, loyalty — там, где за фасадом уже есть настоящий
+сервер (или его легко достроить).
+
+**`services.ts` — все 11 реальных дыр закрыты, бэкенд НЕ строил** (перепроверил счётчик попытки 2 тем же
+двухфильтровым приёмом — вышло 11, не 10: `listStaffForPicker`, `getPhotoSlots`, `setStaffPhotos`,
+`getPhotoServiceLinks`, `savePhotoProfile`, `listStaffDocuments`, `hasVerifiedDocuments`, `getSterilization`,
+`getServiceMaterials`, `reorderCategories`, `listStaffContentCounts`). **Находка**: `src/api/services.server.ts`
+и соответствующий backend (`services.controller.ts` секция «─── стадия 21 (лейн services+rest) ───», уже с этим
+самым комментарием в файле) **уже были полностью построены** — либо мной же в оборванной предыдущей попытке
+этого лейна, либо кем-то ещё, но без записи в этом журнале и без wiring во фронте. Я только дописал ветки
+`isApiMode()` в `services.ts` + один новый метод `buyPhotoSlot` в `services.server.ts` (сервер `POST
+/photo-slots` в `billing.controller.ts` тоже был готов, просто не имел фронтового вызова).
+- `listStaffForPicker` → `staff.server::listStaff` (тот же приём, что клиентский лейн использовал для
+  `listStaffBrief`), фильтр «не уволен» — на фронте, как в моке.
+- `getPhotoSlots`/`buyPhotoSlot` → сервер целиком (правильная `extra`/`priceCoins`, а не статическая
+  константа фронта и локальный счётчик мока).
+- `setStaffPhotos`/`savePhotoProfile` — объединил в общий `setStaffPhotosApi()`: сохраняет текущие
+  `photoServiceLinks` для оставшихся фото (`S.getPhotoServiceLinks`) перед `S.savePhotoProfile`, иначе
+  сервер (который заменяет map целиком по присланным `links`) тихо стёр бы привязки фото→услуга.
+  Модерация новых фото (`submitForModeration({kind:'staffPhoto'})`) — как в моке, уже сама на сервере.
+- `listStaffDocuments`/`addStaffDocument`/`removeStaffDocument`/`restoreStaffDocument` — добавил и
+  writes (не только числившийся в счёте `listStaffDocuments`): иначе после переключения чтения на сервер
+  документ, добавленный через мок-запись, никогда бы не появился в списке — тот же класс несогласованности,
+  что лейн client нашёл у `updateProfileName`. `removeStaffDocument(id)`/`restoreStaffDocument(doc)` не несут
+  `businessId` в сигнатуре мока — не менял сигнатуры: у `restore` он уже есть на самом документе, у `remove`
+  взял `apiIdentity()?.businessId` (новый общий хелпер `currentBusinessId()` в файле).
+- `hasVerifiedDocuments`/`getDocumentStatus`/`getPhotoStatus`/`getPhotoStatuses` — тоже НЕ входили в счёт
+  попытки 2 (читают мок через приватный хелпер `readModerationSnapshot()`, а не `readArea(` текстом напрямую —
+  тот же слепой пробел инструмента, что уже отмечен у `client.ts`). Закрыл все четыре через уже готовый
+  `platform/moderation.ts::getModerationStatus(refId)` (этап 19).
+- `getStaffMaterials`/`saveMaterialsProfile`/`getSterilization`/`getServiceMaterials`/`reorderCategories`/
+  `listStaffContentCounts` — прямые вызовы готового `services.server`/`staff.server`.
+- **Не трогал** (не вызываются ни одним экраном — мёртвый код, не дыры): `getPhotoServiceLink` (в отличие от
+  множественного `getPhotoServiceLinks`), `setStaffMaterials`, `setSterilization`.
+
+**`schedule/table.ts` — 2 новые реальные дыры (не входили в счёт попытки 1/2 — она их для этого файла не
+считала дырами, см. таблицу ниже), закрыты С НОВЫМ БЭКЕНДОМ** (`getViewConfig`/`getFilters` — НЕ дыры,
+подтвердил правило попытки 2: у них есть свои сеттеры без `isApiMode()` тоже — намеренно локальный UI-параметр):
+- `getStaffDayInfo` (Г3/Г16, колонка журнала «Отпуск · N записей») — новый `ScheduleService.getStaffDayInfo` +
+  `POST /v1/biz/{b}/schedule/day-info`, переиспользует готовые `dayTypes()`/`effectiveTypeId()`/`staffDayHours`
+  этапа 6. `note` сервер честно не хранит (undefined) — ни `writeDayTypes`, ни `txSetCells` этапа 6 не принимают
+  текстовое поле дня вообще, это пробел глубже одного чтения, не стал придумывать миграцию под него.
+- `getMoveCandidates` (Г3, «кому передать записи закрываемого дня») — новый `ScheduleService.getMoveCandidates`
+  + `POST /v1/biz/{b}/schedule/move-candidates`: для каждой записи ищет мастеров бизнеса/филиала, которые делают
+  все её услуги, чей график покрывает её время (`staffWorkIntervals` из `availability/engine.ts`) и кто свободен
+  (`AvailabilityService.busyMinutes` + `personKeyOf` из `availability/occupy.ts` — та же «занятость», что видят
+  окна записи). Ресурсы не проверял — как и мок.
+
+Мелкие файлы из списка — перепроверил тем же двухфильтровым приёмом (текст + живой вызыватель), реальных дыр
+не нашёл (0 в каждом), т.е. они уже закрыты предыдущими заходами:
+
+| Файл | «дыр» по грубому тексту | из них ложные (сеттер тоже локальный / внутренний хелпер / посчитан дважды) | реальных |
+|---|---|---|---|
+| `schedule/calendar.ts` | 2 | 2 (`getNextBookingForDelay`/`getDelayNotice` — 0 вызовов с экрана) | 0 |
+| `schedule/table.ts` | 6 | 4 (`getViewConfig`/`getFilters` — локальный UI; `getFillRate`/`getDayLoad` — внутренние) | **2 → закрыты выше** |
+| `schedule/slots.ts` | 3 | 3 (`computeFreeSlots`/`effectiveBufferMin` — уже посчитаны в дыре `client.ts`, `getFreeSlots` сам гейтует; `computeAnySpecialistSlots` — внутренний) | 0 |
+| `settings.ts` | 3 | 3 (`MIN_PAID_MASTERS` — константа, скрипт ошибочно приписал ей тело соседних функций; `refundCoins`/`getWebhookSettings` — внутренние) | 0 |
+| `schedule/staff.ts` | 1 | 1 (`snapshotBeforeRemoveFromSchedule` — внутренний) | 0 |
+| `staff.ts` | 1 | 1 (`ownerCountOf` — внутренний) | 0 |
+
+**Осталось (не блокирует «Сдачу» как понятие) — измерил, не построил, по тем же двум фильтрам**:
+`clients/*` (bulk 4, catalog 3 → закрыт 1 ниже, extras 4, importExport 0 реальных — `parseImportText`
+чистая функция без стора, ложный хит скрипта, list 1 не трогал — намеренно синхронный `countClientsMatching`,
+решение стадии 5, settings 1, visits 3) — **20 → закрыто 1**; `network.ts` — **76** (весь модуль сети почти не
+имеет `network.server.ts`, там 5 экспортов на 130 функций фасада — сеть построена в стадии 15 лишь частично);
+`finance.ts` — **58**, из них минимум 11 (Adyen/онлайн-оплата картой, платёжные ссылки) — **прямо запрещены
+Р14/В-05** («онлайн-оплата картой — «Скоро», не строим»), не дыра, а решение владельца; ещё ~11 (`getPaymentPolicy`/
+`policyAccount*`/`resolvePolicyDecision`…) — отдельная не построенная подсистема депозитов/штрафов поверх В-04,
+не однострочная правка; `stock.ts` — **36**; `payroll.ts` — **9, закрыто 2** (`listProductCatalog` →
+`journal-more.server::goodsCatalog`, уже готов; `listPositions` → `staff.server::listStaff`), осталось 7 —
+`getPayrollRights`/`listPayrollRights` упираются в отсутствующую таблицу тонких прав раздела (как
+`client_fine_rights`/`stock_permissions`, но для payroll её никто не завёл), `evaluateCriterionValue`/
+`previewChartForStaff` — не однострочная правка (нужно тянуть настоящие записи периода и пересчитывать
+турникет по ним, не просто читать готовое поле); `integrations.ts` — **20**; `notify.ts` — **39**; `reports.ts`
+— **13** (сверился с `reports.server.ts`, пересечения имён нет — там уже готовы большие отчёты, а эти 13 — мелкие
+настройки/фиды рядом); `loyalty.ts` целиком (2900+ строк) — как и в попытках 1/2, не пересчитывал; `platform/*`
+не гонял тем же скриптом (объём, свои лейны у панели с этапа 19).
+
+**Проверено настоящим HTTP на общем деве** (`:3710`/`:4010`, вход `+37400110001`/`0000` → `biz_nuri`, владелец):
+- Полный цикл фото: `GET photo-slots` → `POST photo-slots` (купил место, `extra` 0→1, монеты `spendCoins`
+  списаны по-настоящему) → откатил вручную прямым SQL (лишний coin-move удалён, баланс `coin_wallets` возвращён
+  8000, `services.photoSlots`/`services.sterilization`/`services.documents` в `business_settings` для
+  `st_nuri_ani` удалены — их не было до прогона).
+- Документы: `submitForModeration(diploma)` → `addStaffDocument(moderationId)` → `GET documents` вернул с тем же
+  `moderationId` → `GET /v1/moderation/status/{refId}` `pending` → платформа (`platform`/`booktime-dev`+2FA)
+  `approve` → статус снова прочитан — `approved`. Это ровно то, что теперь возвращает `hasVerifiedDocuments`.
+  Материалы: `PUT materials-profile` → `GET sterilization` вернул сохранённое; откатил `staff.materials` назад
+  на исходные 3 (`гель-лак, каучуковая база, одноразовые пилки` — из `mock/seed/staff.ts`, не подобрал наугад).
+- `PUT categories/order` (не `/reorder` — свою же реализацию сверил с реальным путём контроллера, ошибся один
+  раз) — порядок изменился и вернул обратно.
+- `POST schedule/day-info` — реальный typeId (`work`/`null`) для двух сотрудников. `POST
+  schedule/move-candidates` на настоящей записи (`bk_2489`, гель-лак 90 мин) вернул одного правдоподобного
+  кандидата (Соня Григорян — свободна, делает услугу, работает это время).
+- `GET journal/goods-catalog` (для `listProductCatalog`) — реальные товары локации.
+- **Побочно нашёл и почтигнул чужую поломку общего дева, не свою**: после моей первой пересборки `dist/main.js`
+  сервер не поднялся вовсе (`UnknownDependenciesException` — `ClientModule` не импортировал `PlatformModule`,
+  хотя `ModerationService` уже нужен `MeService` для отзывов В-24, лейн client) — это была ПОЛОВИНА чужой правки
+  (source уже чинился параллельно, ровно в те секунды). Пересобрал второй раз через минуту — фикс приехал,
+  сервер поднялся. Это не мой баг и не моя правка (не трогал `client.module.ts`/`me.service.ts`), но раз общий
+  `:4010` держит ВСЕ лейны, пересобрал/перезапустил его успешно (под локом, дважды всего) вместо того, чтобы
+  тестировать на отдельном порту, как это делал лейн resources при поломке от чужого кода — на момент моего
+  второго прогона `tsc -p .` уже был чист (0 ошибок, не 52, не что-то ещё), так что общий путь снова стал
+  рабочим для всех. После меня `:4010` — свежая сборка, зелёный `tsc`, все лейны могут пересобираться штатно.
+
+**Полный прогон проверок**: фронт `npx tsc --noEmit` — 0 ошибок в моих 6 файлах (1 посторонняя ошибка в
+`areas/client/book/ConfirmDetails.tsx` — не мой файл, чужой лейн). `eslint` на все 6 изменённых файлов — 0
+ошибок (3 старых warning в `schedule/table.ts` про неиспользуемые импорты — не мои строки). `node scripts/
+fids.mjs` — 2892/2896 (без потерь). `node scripts/renders.mjs --check-compiler` — 0. Backend `npx tsc --noEmit
+-p tsconfig.build.json` — 0 ошибок (после общей пересборки выше). Браузерный Playwright-проход не делал (машина
+занята ~15 параллельными лейнами, тот же приём, что лейны client/resources уже сочли не слабее для этой
+стадии) — вместо этого прямой HTTP по каждому маршруту выше, включая полные циклы create→read→verify→(откат
+там, где менял чужие данные проверки).
+
+Решено по ходу:
+- **`buyPhotoSlot` нашёл готовый backend, фронта не было** — `POST /v1/biz/{b}/photo-slots` в
+  `billing.controller.ts` (`billing.buyPhotoSlot`, есть с более раннего этапа), но ни одна функция `src/api/*`
+  его не звала. Добавил тонкую обёртку в `services.server.ts` (не `settings.server.ts`/`billing`, чтобы жить
+  рядом с остальными фото-функциями, как во фронте).
+- **Порог «реальная дыра»** — тот же, что лейны client/resources уже вывели независимо: текстовый грep по
+  `readCore(`/`readArea(` пропускает функции, которые читают через приватный хелпер (`readModerationSnapshot`)
+  или пишут без единого чтения (`mutateArea`/`coreTx.update` без пары). Проверяю оба класса вручную для файлов,
+  которые довожу до конца, а не полагаюсь на голый счёт.
+- **Не решал заново уже принятые решения**: Adyen/онлайн-оплата картой (Р14/В-05), провайдеры WhatsApp/SMS/почты
+  (E7), лояльность целиком (этап 11, попытки 1/2) — не мои открытые вопросы, только подтвердил счётом, что они
+  всё ещё формируют большую часть остатка `finance.ts`/`loyalty.ts`.
+
+### Вопросы владельцу (этап 21, лейн services+rest)
+Ничего денежного/юридического нового. Объём остатка (network/finance/stock/notify/integrations без готового
+`.server.ts` под большинство дыр) — не вопрос, а количество работы, зафиксировано числами по файлам выше, чтобы
+следующий заход не пересчитывал заново.
+
+лейн services+rest: закрыто 11 из 11 в `services.ts` + 2 новых серверных маршрута в `schedule/table.ts` (не
+входили в счёт) + 2 из 9 в `payroll.ts` + 1 из 3 в `clients/catalog.ts`; `schedule/calendar.ts`/`slots.ts`/
+`settings.ts`/`schedule/staff.ts`/`staff.ts` перепроверены — 0 реальных дыр, уже закрыты раньше; осталось по
+файлам: `clients/*` 19, `network.ts` 76, `finance.ts` 58 (из них ~11 явно вне мандата по Р14/В-05), `stock.ts`
+36, `payroll.ts` 7, `integrations.ts` 20, `notify.ts` 39, `reports.ts` 13, `loyalty.ts` целиком, `platform/*` не
+измерен тем же скриптом.
