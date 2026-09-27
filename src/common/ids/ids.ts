@@ -197,6 +197,9 @@ export const ID_PREFIX = {
   locationReview: 'lrev',
   // этап 21 (лейн client+online) — своё поле экрана «Данные клиента» (F-03-073, мок newId('cf'))
   customField: 'cf',
+  // этап 21 (лейн client+online), попытка 2 — общая таблица мелких сущностей online (промоблок/пакет/звёздочка/
+  // событие виджета/приглашение в окно/лист ожидания виджета), см. OnlineRecord в schema.prisma
+  onlineRecord: 'orec',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

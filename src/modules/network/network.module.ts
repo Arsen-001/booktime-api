@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { NotifyModule } from '../notify/notify.module.js';
 import { NetworkAccessService } from './network-access.service.js';
 import { NetworkBroadcastController, NetworkBroadcastService } from './network-broadcast.controller.js';
+import { NetworkBusinessController } from './network-business.controller.js';
 import { NetworkCatalogController, NetworkCatalogService } from './network-catalog.controller.js';
 import { NetworkClientsController, NetworkClientsService } from './network-clients.controller.js';
 import { NetworkReportsController, NetworkReportsService } from './network-reports.controller.js';
@@ -12,10 +13,11 @@ import { NetworkUsersController, NetworkUsersService } from './network-users.con
  * аналитика и планы, сетевые каталоги (услуги/товары/должности/поля). Устройство сети/филиалов само (создание
  * сети, добавление/вывод филиала, порядок, мягкое удаление) — этап 3, `NetworkController`/`NetworkService` в
  * `modules/businesses` (не трогается здесь, PLAN §9 «не переписывать чужой рабочий срез»).
+ * `NetworkBusinessController` (этап 21 «network+reports») — сеть с точки зрения ФИЛИАЛА, свой гейт `@Biz`.
  */
 @Module({
   imports: [NotifyModule],
-  controllers: [NetworkUsersController, NetworkClientsController, NetworkBroadcastController, NetworkReportsController, NetworkCatalogController],
+  controllers: [NetworkUsersController, NetworkClientsController, NetworkBroadcastController, NetworkReportsController, NetworkCatalogController, NetworkBusinessController],
   providers: [NetworkAccessService, NetworkUsersService, NetworkClientsService, NetworkBroadcastService, NetworkReportsService, NetworkCatalogService],
 })
 export class NetworkModule {}

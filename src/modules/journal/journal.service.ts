@@ -48,7 +48,9 @@ export class JournalService {
   }
 
   async patchConfig(ctx: RequestContext, businessId: string, patch: Partial<JournalArea>) {
-    const personal = Object.keys(patch).every((k) => k === 'staffMarkupMin');
+    // zoomMin/hiddenStatuses (F-01-014/015, этап 21 «Сдача»): переключатели прямо в сетке журнала, не форма
+    // настроек — доступны любому, у кого есть доступ к журналу, как и staffMarkupMin
+    const personal = Object.keys(patch).every((k) => k === 'staffMarkupMin' || k === 'zoomMin' || k === 'hiddenStatuses');
     if (!personal && !ctx.member!.permissions.has('settings.manage') && ctx.member!.role !== 'owner') throw new ApiError('forbidden', 'settings.manage required');
     return this.bookings.settings.update(
       businessId,

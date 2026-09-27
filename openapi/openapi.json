@@ -23042,6 +23042,30 @@
                       "minimum": 0,
                       "maximum": 100
                     }
+                  },
+                  "zoomMin": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 5
+                      },
+                      {
+                        "type": "number",
+                        "const": 10
+                      },
+                      {
+                        "type": "number",
+                        "const": 15
+                      }
+                    ]
+                  },
+                  "hiddenStatuses": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 30
+                    }
                   }
                 }
               }
@@ -36481,6 +36505,34 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/stock/bookings/{bookingId}/goods-sale/sync": {
+      "post": {
+        "operationId": "StockExtController_goodsSaleSync",
+        "parameters": [
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "stock"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/stock/stock-ops/{id}/receipt": {
       "get": {
         "operationId": "StockExtController_receipt",
@@ -39117,6 +39169,14 @@
                               "type": "string",
                               "minLength": 1,
                               "maxLength": 32
+                            },
+                            "loyaltyAccountId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 32
+                            },
+                            "debt": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
@@ -39327,6 +39387,932 @@
           },
           {
             "name": "paymentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/settings/{key}": {
+      "get": {
+        "operationId": "FinanceExtController_getSetting",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      },
+      "put": {
+        "operationId": "FinanceExtController_putSetting",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "value": {}
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/records": {
+      "get": {
+        "operationId": "FinanceExtController_listRecords",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "refId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      },
+      "post": {
+        "operationId": "FinanceExtController_createRecord",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "paymentLink",
+                      "policySnapshot",
+                      "policyEntry",
+                      "adyenTxn",
+                      "manualOrder"
+                    ]
+                  },
+                  "refId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "data": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "kind",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/records/{id}": {
+      "patch": {
+        "operationId": "FinanceExtController_patchRecord",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/bookings/{bookingId}/payments/discount": {
+      "post": {
+        "operationId": "FinanceExtController_discount",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "exactLabel": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "label",
+                  "amount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/bookings/{bookingId}/payments/account": {
+      "post": {
+        "operationId": "FinanceExtController_payFromAccount",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "loyaltyAccountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "debt": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "clientId",
+                  "amount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/bookings/{bookingId}/receipt-data": {
+      "get": {
+        "operationId": "FinanceExtController_receiptData",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/bookings/{bookingId}/payment-link": {
+      "get": {
+        "operationId": "FinanceExtController_linkForBooking",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/payment-links": {
+      "post": {
+        "operationId": "FinanceExtController_createLink",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "targetKind": {
+                    "type": "string",
+                    "enum": [
+                      "booking",
+                      "sale"
+                    ]
+                  },
+                  "bookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "saleLabel": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "remainingBefore": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  }
+                },
+                "required": [
+                  "targetKind",
+                  "amount",
+                  "remainingBefore"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/payment-links/{id}/paid": {
+      "post": {
+        "operationId": "FinanceExtController_markLinkPaid",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/payment-links/{id}/cancel": {
+      "post": {
+        "operationId": "FinanceExtController_cancelLink",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/clients/{clientId}/account": {
+      "get": {
+        "operationId": "FinanceExtController_clientAccount",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/clients/{clientId}/account/topup": {
+      "post": {
+        "operationId": "FinanceExtController_topUp",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "cash",
+                      "card",
+                      "other"
+                    ]
+                  },
+                  "clientName": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "amount",
+                  "method"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/account-topups/{opId}/cancel": {
+      "post": {
+        "operationId": "FinanceExtController_cancelTopUp",
+        "parameters": [
+          {
+            "name": "opId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/clients/{clientId}/account/refund": {
+      "post": {
+        "operationId": "FinanceExtController_refundAccount",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accountId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 400
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "amount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/client-accounts/in-use": {
+      "get": {
+        "operationId": "FinanceExtController_accountsInUse",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/clients/{clientId}/money": {
+      "get": {
+        "operationId": "FinanceExtController_clientMoney",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/clients/{clientId}/debt-visits": {
+      "get": {
+        "operationId": "FinanceExtController_debtVisits",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/reports/day-money": {
+      "get": {
+        "operationId": "FinanceExtController_dayMoney",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/finance/salary-payouts/{entryId}/cancel": {
+      "post": {
+        "operationId": "FinanceExtController_cancelPayout",
+        "parameters": [
+          {
+            "name": "entryId",
             "required": true,
             "in": "path",
             "schema": {
@@ -53874,6 +54860,261 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/notify/web-popup": {
+      "get": {
+        "operationId": "NotifyController_getWebPopup",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "operationId": "NotifyController_setWebPopup",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/email": {
+      "get": {
+        "operationId": "NotifyController_getEmailSettings",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "operationId": "NotifyController_setEmailSettings",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/banners": {
+      "get": {
+        "operationId": "NotifyController_listBanners",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/banners/dismiss": {
+      "post": {
+        "operationId": "NotifyController_dismissBanner",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/channels/overview": {
+      "get": {
+        "operationId": "NotifyController_listChannelsOverview",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "operationId": "NotifyController_setChannelOverview",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff/{staffId}/notify-invite": {
+      "post": {
+        "operationId": "NotifyController_sendStaffInvite",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Обёртка над реальным приглашением сотрудника (staff.reissueInvite) под форму нотифай-фасада",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/payroll/settings": {
       "get": {
         "operationId": "PayrollController_getSettings",
@@ -61790,6 +63031,174 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/reports/stock-balance": {
+      "get": {
+        "operationId": "ReportsController_stockBalance",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/stock-order": {
+      "get": {
+        "operationId": "ReportsController_stockOrder",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/stock-sales-analysis": {
+      "get": {
+        "operationId": "ReportsController_stockSalesAnalysis",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/stock-usage-analysis": {
+      "get": {
+        "operationId": "ReportsController_stockUsageAnalysis",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/stock-write-off": {
+      "get": {
+        "operationId": "ReportsController_stockWriteOff",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/stock-turnover": {
+      "get": {
+        "operationId": "ReportsController_stockTurnover",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/reports/{name}": {
       "get": {
         "operationId": "ReportsController_run",
@@ -63783,6 +65192,180 @@
             "cookie": []
           }
         ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/company/webhooks": {
+      "get": {
+        "operationId": "SettingsController_webhooks",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Для разработчиков» — вебхуки (F-15-119): демо-форма, реально ничего не шлёт",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_saveWebhooks",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "url": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "entities": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "location",
+                        "staff",
+                        "goods",
+                        "services",
+                        "serviceCategories",
+                        "clients",
+                        "bookings",
+                        "loyaltyEvents",
+                        "goodsSales"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "entities"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/me/email": {
+      "get": {
+        "operationId": "SettingsController_emailStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Статус подтверждения почты (F-15-150)",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/me/email/send-confirmation": {
+      "post": {
+        "operationId": "SettingsController_sendEmailConfirmation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 160,
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Отправить письмо для подтверждения» (F-15-150) — демо, письмо реально не уходит",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/me/email/confirm-demo": {
+      "post": {
+        "operationId": "SettingsController_confirmEmailDemo",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Демо-имитация перехода по ссылке из письма (F-15-150)",
         "tags": [
           "settings"
         ]

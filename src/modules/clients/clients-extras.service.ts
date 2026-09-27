@@ -199,6 +199,13 @@ export class ClientsExtrasService {
     return (await patchClientsBizSettings(this.prisma, businessId, { lostAfterDays: Math.round(days) })).lostAfterDays;
   }
 
+  /** «⋯ Ещё» в окне записи (F-04-093, этап 21 «Сдача»): закрепить/открепить плитку — общий для всех, кто видит клиентов */
+  async toggleBookingWindowFavorite(businessId: string, section: ClientsBizSettings['bookingWindowFavorites'][number]): Promise<ClientsBizSettings['bookingWindowFavorites']> {
+    const current = await getClientsBizSettings(this.prisma, businessId);
+    const next = current.bookingWindowFavorites.includes(section) ? current.bookingWindowFavorites.filter((s) => s !== section) : [...current.bookingWindowFavorites, section];
+    return (await patchClientsBizSettings(this.prisma, businessId, { bookingWindowFavorites: next })).bookingWindowFavorites;
+  }
+
   /** Что делает хук чата, когда кто-то впервые напишет (F-04-016 «Готово, когда») — демонстрационная кнопка */
   async simulateChatLead(ctx: RequestContext, businessId: string) {
     const settings = await getClientsBizSettings(this.prisma, businessId);

@@ -10,6 +10,7 @@ import { Zod } from '../../common/http/validation.js';
 import { newId } from '../../common/ids/ids.js';
 import { money, moneyToJson } from '../../common/money/money.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { networkView } from '../businesses/views.js';
 import { NetworkAccessService } from './network-access.service.js';
 import {
   businessIdsBody,
@@ -382,6 +383,47 @@ export class NetworkCatalogService {
     const row = await this.prisma.networkField.findFirst({ where: { id, networkId } });
     if (!row) throw new ApiError('not_found', 'Field not found');
     await this.prisma.networkField.delete({ where: { id } });
+  }
+
+  /**
+   * Этап 21 «network+reports»: `src/api/network.ts::listMyNetworks` — сеть ЭТОГО бизнеса, если есть, БЕЗ
+   * гейта на владельца сети (в отличие от `NetworkService.own()`/`view()` модуля `businesses`, который этот
+   * файл сознательно не импортирует — риск цикла `network` ↔ `businesses`, PLAN §9 «не переписывать чужой
+   * рабочий срез»; повторяет `networkView()` напрямую, та же чистая функция). Зовёт любой сотрудник кабинета
+   * (переключатель сети, «Данные сети» окна записи), не только владелец. Business.networkId один — 0 или 1
+   * элемент, мок несёт массив «на будущее».
+   */
+  async myNetwork(businessId: string) {
+    const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { networkId: true } });
+    if (!biz?.networkId) return [];
+    const n = await this.prisma.network.findUnique({ where: { id: biz.networkId }, include: { businesses: { select: { id: true }, where: { leftAt: null }, orderBy: { createdAt: 'asc' } } } });
+    if (!n || n.deletedAt) return [];
+    return [{ ...networkView(n, n.businesses.map((b) => b.id)), deleted: Boolean(n.deletedAt) }];
+  }
+
+  /**
+   * Этап 21 «network+reports»: `src/api/network.ts::listPriceLockedServiceIds` — обратная сторона
+   * `NetworkServiceLock.priceLocked` (F-11-082) для экрана «Услуги» ФИЛИАЛА (не панели сети — `network-business.controller.ts`,
+   * гейт обычный `services.view`, не `NetworkAccessService`). Ключ — тот же `nameKeyOf`, что у самого лока
+   * выше (НЕ мокового `serviceKeyOf`, который не приводит регистр — иначе свои же локи не совпали бы).
+   * «≥2 тёзок в сети» повторяет мок 1:1: одиночная услуга с тем же именем не считается сетевой, лок на неё не действует.
+   */
+  async listPriceLockedServiceIdsForBusiness(businessId: string): Promise<string[]> {
+    const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { networkId: true } });
+    if (!biz?.networkId) return [];
+    const locks = await this.prisma.networkServiceLock.findMany({ where: { networkId: biz.networkId, priceLocked: true }, select: { key: true } });
+    if (!locks.length) return [];
+    const lockedKeys = new Set(locks.map((l) => l.key));
+    const network = await this.prisma.network.findUnique({ where: { id: biz.networkId }, include: { businesses: { where: { leftAt: null }, select: { id: true } } } });
+    const networkBusinessIds = network?.businesses.map((b) => b.id) ?? [];
+    if (!networkBusinessIds.length) return [];
+    const services = await this.prisma.service.findMany({ where: { businessId: { in: networkBusinessIds } }, select: { id: true, businessId: true, name: true } });
+    const siblingCount = new Map<string, number>();
+    for (const s of services) {
+      const key = nameKeyOf(s.name);
+      siblingCount.set(key, (siblingCount.get(key) ?? 0) + 1);
+    }
+    return services.filter((s) => s.businessId === businessId && lockedKeys.has(nameKeyOf(s.name)) && (siblingCount.get(nameKeyOf(s.name)) ?? 0) >= 2).map((s) => s.id);
   }
 }
 

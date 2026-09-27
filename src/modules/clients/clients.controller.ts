@@ -12,6 +12,7 @@ import {
   addFileBody,
   adConsentBody,
   autoSaveChatLeadsBody,
+  bookingWindowFavoriteBody,
   bulkCategoryBody,
   bulkIdsBody,
   categoryUpsertBody,
@@ -385,6 +386,14 @@ export class ClientsController {
   @ZodBody(lostAfterDaysBody)
   setLostAfterDays(@Param('businessId') businessId: string, @Body(new Zod(lostAfterDaysBody)) body: z.infer<typeof lostAfterDaysBody>) {
     return this.extras.setLostAfterDays(businessId, body.days);
+  }
+
+  @Put('clients/settings/booking-window-favorites/toggle')
+  @Biz('clients.view')
+  @ApiOperation({ summary: '«⋯ Ещё» в окне записи (F-04-093) — закрепить/открепить плитку, общее на бизнес' })
+  @ZodBody(bookingWindowFavoriteBody)
+  toggleBookingWindowFavorite(@Param('businessId') businessId: string, @Body(new Zod(bookingWindowFavoriteBody)) body: z.infer<typeof bookingWindowFavoriteBody>) {
+    return this.extras.toggleBookingWindowFavorite(businessId, body.section);
   }
 
   @Post('clients/simulate-chat-lead')

@@ -21,10 +21,19 @@ export interface ClientsBizSettings {
   showFullNameFields: boolean;
   customFieldDefs: CustomFieldDef[];
   showLoyaltySearchInBookingWindow: boolean;
+  /** «⋯ Ещё» в мини-карточке окна записи (F-04-093, этап 21 «Сдача», лейн rest) — какие плитки закреплены сверху */
+  bookingWindowFavorites: ('profile' | 'history' | 'loyalty' | 'stats' | 'messages' | 'invoices' | 'files')[];
 }
 
 export function defaultClientsBizSettings(): ClientsBizSettings {
-  return { autoSaveChatLeads: false, lostAfterDays: 60, showFullNameFields: true, customFieldDefs: [], showLoyaltySearchInBookingWindow: false };
+  return {
+    autoSaveChatLeads: false,
+    lostAfterDays: 60,
+    showFullNameFields: true,
+    customFieldDefs: [],
+    showLoyaltySearchInBookingWindow: false,
+    bookingWindowFavorites: ['profile', 'history'],
+  };
 }
 
 const AREA = 'clients';

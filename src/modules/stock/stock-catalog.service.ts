@@ -177,7 +177,8 @@ export class StockCatalogService {
   async ensureSettings(businessId: string) {
     const row = await this.prisma.stockSettings.findUnique({ where: { businessId } });
     if (row) return row;
-    return this.prisma.stockSettings.create({ data: { businessId } });
+    // upsert, не create: два первых чтения раздела параллельно (каталог + настройки) ловили duplicate key → 500 (этап 21)
+    return this.prisma.stockSettings.upsert({ where: { businessId }, create: { businessId }, update: {} });
   }
 
   // ─────────────────────────── Остатки ───────────────────────────

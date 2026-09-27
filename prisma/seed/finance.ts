@@ -94,3 +94,12 @@ export async function seedFinanceFromMock(prisma: PrismaService, core: MockCore)
   }
   console.log(`seed: финансы из мока — настроек ${settings}, демо-документов ${rows.length}`);
 }
+
+if (process.argv[1]?.endsWith('seed/finance.ts')) {
+  const { PrismaService } = await import('../../src/common/prisma.service.js');
+  const { loadMockCore } = await import('./mock-core.js');
+  await import('dotenv/config');
+  const prisma = new PrismaService();
+  await seedFinanceFromMock(prisma, loadMockCore());
+  await prisma.$disconnect();
+}

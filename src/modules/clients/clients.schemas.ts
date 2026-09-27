@@ -180,6 +180,8 @@ export const showFullNameBody = z.object({ value: z.boolean() });
 export const showLoyaltySearchBody = z.object({ value: z.boolean() });
 export const autoSaveChatLeadsBody = z.object({ value: z.boolean() });
 export const lostAfterDaysBody = z.object({ days: z.number().int().min(7).max(365) });
+/** F-04-093, этап 21 «Сдача» */
+export const bookingWindowFavoriteBody = z.object({ section: z.enum(['profile', 'history', 'loyalty', 'stats', 'messages', 'invoices', 'files']) });
 
 // ─────────── тонкие права (F-04-194…204) ───────────
 

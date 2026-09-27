@@ -3920,6 +3920,33 @@ model OnlineClientFieldsConfig {
   @@map("online_client_fields_configs")
 }
 
+// === stage 21 (лейн client+online), попытка 2 ===
+// Продолжение того же лейна (см. докстринг выше): остаток `online.ts` — 35 функций, тем же приёмом, что уже
+// применил лейн finance+stock у FinRecord ниже (одна общая таблица вместо шести маленьких): промоблок
+// (F-03-106), пакет услуг (F-03-130), звёздочка-отзыв (F-00-116/117), событие виджета (F-03-121), приглашение
+// в окно (F-03-052), лист ожидания виджета (F-03-086, стенд-ин — см. WaitlistRequest в domain/online.ts).
+// Фильтрация по полям внутри `data` — в JS, не JSON-путём MySQL (тот же приём, что уже у isSubdomainAvailable
+// этого файла и у FinRecord) — масштаб Р20 (500 бизнесов) это позволяет.
+
+model OnlineRecord {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// promoBlock | package | review | widgetEvent | slotInvite | waitlist | serviceConfig
+  kind       String   @db.VarChar(20)
+  /// widgetEvent: BookingLink.id — фильтр «журнал этой ссылки»
+  linkId     String?  @map("link_id") @db.VarChar(32)
+  /// review: Booking.id (дедуп «уже поставил звёздочку»); serviceConfig: Service.id
+  refId      String?  @map("ref_id") @db.VarChar(32)
+  data       Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([businessId, kind])
+  @@index([linkId, kind])
+  @@index([refId, kind])
+  @@map("online_records")
+}
+
 // === end stage 21 (лейн client+online) ===
 
 // === stage 21 (лейн finance+stock) ===
