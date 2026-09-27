@@ -107,6 +107,17 @@ export const ID_PREFIX = {
   finCounterparty: 'fcp',
   financeDocument: 'fdoc',
   paymentMethod: 'fpm',
+  // этап 13 — склад: только на сервере (мок хранит id произвольными строками) — склад wh, категория gcat,
+  // товар gd, документ операции sop, техкарта tc, инвентаризация sinv, оборудование equ, напоминание srem
+  warehouse: 'wh',
+  stockCategory: 'gcat',
+  product: 'gd',
+  stockOp: 'sop',
+  stockOpLine: 'sol',
+  techCard: 'tc',
+  inventory: 'sinv',
+  equipment: 'equ',
+  stockReminder: 'srem',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

@@ -961,6 +961,107 @@ await prisma.client.createMany({
   console.log(`seed: финансы — статей ${itemsCreated}, касс ${registersCreated}, методов оплаты ${methodsCreated}, оплат визита ${paymentsCreated}`);
 }
 
+// ─────────── этап 13: склад — 2 склада на филиал (как ensureDefaultWarehouses самого раздела), категория
+// «Основные товары» + представительный набор из 3 товаров по сфере бизнеса, с приходом начального остатка,
+// чтобы «Каталог» и «Остатки» не были пустыми экранами. Бизнесы-черновики (F-00-133) остаются без склада —
+// как EMPTY_BUSINESS_IDS мока (src/mock/slices/stock.ts). Идемпотентно: детерминированные id + «уже есть?». ───
+{
+  const STOCK_CATALOG_BY_SPHERE: Record<string, { name: string; unit: string; sale: number; cost: number }[]> = {
+    nails: [
+      { name: 'Гель-лак «Розовый нюд»', unit: 'bottle', sale: 3000, cost: 1500 },
+      { name: 'Топовое покрытие', unit: 'bottle', sale: 3500, cost: 1700 },
+      { name: 'Пилка одноразовая 180/240', unit: 'pcs', sale: 300, cost: 120 },
+    ],
+    barber: [
+      { name: 'Воск для укладки', unit: 'jar', sale: 4500, cost: 2200 },
+      { name: 'Одноразовые бритвы', unit: 'pack', sale: 1500, cost: 700 },
+      { name: 'Полотенце одноразовое', unit: 'pack', sale: 2500, cost: 1200 },
+    ],
+    dental: [
+      { name: 'Анестетик (карпула)', unit: 'ampoule', sale: 0, cost: 900 },
+      { name: 'Пломбировочный материал', unit: 'g', sale: 0, cost: 1400 },
+      { name: 'Перчатки нитриловые', unit: 'pack', sale: 0, cost: 3500 },
+    ],
+    fitness: [
+      { name: 'Изотонический напиток', unit: 'bottle', sale: 1500, cost: 700 },
+      { name: 'Протеиновый батончик', unit: 'pcs', sale: 1200, cost: 600 },
+      { name: 'Полотенце спортивное', unit: 'pcs', sale: 2000, cost: 900 },
+    ],
+  };
+  const DEFAULT_CATALOG = STOCK_CATALOG_BY_SPHERE.barber!;
+  const EMPTY_BUSINESS_IDS = new Set(['biz_empty', 'biz_empty_solo']);
+  let warehousesCreated = 0;
+  let categoriesCreated = 0;
+  let productsCreated = 0;
+  let incomeOpsCreated = 0;
+  for (const b of businesses) {
+    const bId = String(b.id);
+    if (EMPTY_BUSINESS_IDS.has(bId)) continue;
+    const sphere = Array.isArray(b.sphereIds) && b.sphereIds.length ? String(b.sphereIds[0]) : '';
+    const catalog = STOCK_CATALOG_BY_SPHERE[sphere] ?? DEFAULT_CATALOG;
+    const bizLocations = locations.filter((l) => String(l.businessId) === bId);
+    for (const loc of bizLocations) {
+      const locId = String(loc.id);
+      const hasWarehouse = (await prisma.warehouse.count({ where: { locationId: locId } })) > 0;
+      const whWriteoffId = `wh_${locId}_wo`.slice(0, 32);
+      const whSaleId = `wh_${locId}_sale`.slice(0, 32);
+      if (!hasWarehouse) {
+        await prisma.warehouse.createMany({
+          data: [
+            { id: whWriteoffId, businessId: bId, locationId: locId, name: 'Расходники', type: 'writeoff', comment: 'Для учёта расходных материалов', order: 0, createdBy: 'seed', updatedBy: 'seed' },
+            { id: whSaleId, businessId: bId, locationId: locId, name: 'Товары', type: 'sale', comment: 'Для учёта продаж в магазине', order: 1, createdBy: 'seed', updatedBy: 'seed' },
+          ],
+        });
+        warehousesCreated += 2;
+      }
+      const hasCategory = (await prisma.stockCategory.count({ where: { locationId: locId } })) > 0;
+      const catId = `gcat_${locId}_root`.slice(0, 32);
+      if (!hasCategory) {
+        await prisma.stockCategory.create({ data: { id: catId, businessId: bId, locationId: locId, name: 'Основные товары', createdBy: 'seed', updatedBy: 'seed' } });
+        categoriesCreated++;
+      }
+      const hasGoods = (await prisma.product.count({ where: { locationId: locId } })) > 0;
+      if (hasGoods) continue;
+      const goodIds: string[] = [];
+      for (let i = 0; i < catalog.length; i++) {
+        const item = catalog[i]!;
+        const id = `gd_${locId}_${i}`.slice(0, 32);
+        await prisma.product.create({
+          data: {
+            id,
+            businessId: bId,
+            locationId: locId,
+            categoryId: catId,
+            name: item.name,
+            saleUnit: item.unit,
+            writeoffUnit: item.unit,
+            unitRatio: 1,
+            salePrice: BigInt(item.sale),
+            costPrice: BigInt(item.cost),
+            criticalStock: 5,
+            desiredStock: 30,
+            createdBy: 'seed',
+            updatedBy: 'seed',
+          },
+        });
+        goodIds.push(id);
+        productsCreated++;
+      }
+      // Приход начального остатка — один документ на филиал, без движения кассы (paid: false), как
+      // «получено на баланс при переходе с бумаги», а не настоящая закупка сегодня.
+      const opId = `sop_${locId}_seed`.slice(0, 32);
+      await prisma.stockOp.create({
+        data: { id: opId, businessId: bId, locationId: locId, number: '100000', type: 'income', date: localDate('2026-08-01T10:00'), warehouseId: whSaleId, counterpartyName: 'Начальный остаток', paid: false, comment: 'Сид: начальный остаток при открытии склада', createdBy: 'seed', updatedBy: 'seed' },
+      });
+      await prisma.stockOpLine.createMany({
+        data: goodIds.map((goodId, i) => ({ id: `sol_${locId}_${i}`.slice(0, 32), opId, businessId: bId, goodId, qtySale: 25, unitPrice: BigInt(catalog[i]!.cost), costTotal: BigInt(catalog[i]!.cost * 25) })),
+      });
+      incomeOpsCreated++;
+    }
+  }
+  console.log(`seed: склад — складов ${warehousesCreated}, категорий ${categoriesCreated}, товаров ${productsCreated}, приходов начального остатка ${incomeOpsCreated}`);
+}
+
 console.log(
   `seed: людей ${users.length} (клиентов ${core.appUsers.length}), логинов администраторов ${admins.length}, команда платформы 1; ` +
     `сетей ${networks.length}, бизнесов ${businesses.length}, филиалов ${locations.length}, сотрудников ${core.staff.length}, ` +

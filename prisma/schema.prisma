@@ -1709,27 +1709,27 @@ model BizInboxRead {
 
 /// Типы карт (F-06-020…030)
 model LoyaltyCardType {
-  id                   String    @id @db.VarChar(32)
-  ownerId              String    @map("owner_id") @db.VarChar(32)
-  businessId           String    @map("business_id") @db.VarChar(32)
-  name                 String    @db.VarChar(160)
+  id                   String   @id @db.VarChar(32)
+  ownerId              String   @map("owner_id") @db.VarChar(32)
+  businessId           String   @map("business_id") @db.VarChar(32)
+  name                 String   @db.VarChar(160)
   /// Работает во всех бизнесах сети, не только там, где выдана (В-09, по отметке владельца)
-  networkWide          Boolean   @default(false) @map("network_wide")
+  networkWide          Boolean  @default(false) @map("network_wide")
   /// Автосписание бонусов ограничено % от чека при оплате; 0 = без ограничения (F-06-027)
-  paymentLimitPercent  Int       @default(0) @map("payment_limit_percent")
-  paymentLimitFixed    BigInt    @default(0) @map("payment_limit_fixed")
+  paymentLimitPercent  Int      @default(0) @map("payment_limit_percent")
+  paymentLimitFixed    BigInt   @default(0) @map("payment_limit_fixed")
   /// Кэшбэк виден клиенту в приложении (F-06-028)
-  cashbackVisibleInApp Boolean   @default(true) @map("cashback_visible_in_app")
+  cashbackVisibleInApp Boolean  @default(true) @map("cashback_visible_in_app")
   /// Сгорание баланса без визита N дней; null — не применяется (F-06-025)
-  burnDays             Int?      @map("burn_days")
+  burnDays             Int?     @map("burn_days")
   /// В-40: «В архив» вместо удаления — не выдаётся/не продаётся, выданные карты продолжают работать;
   /// жёсткое удаление (delete()) отказывает, если есть хоть одна выданная карта (has_issued_cards)
-  archived             Boolean   @default(false)
-  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt            DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy            String?   @map("created_by") @db.VarChar(32)
-  updatedBy            String?   @map("updated_by") @db.VarChar(32)
-  version              Int       @default(1)
+  archived             Boolean  @default(false)
+  createdAt            DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy            String?  @map("created_by") @db.VarChar(32)
+  updatedBy            String?  @map("updated_by") @db.VarChar(32)
+  version              Int      @default(1)
 
   cards LoyaltyCard[]
 
@@ -2006,22 +2006,22 @@ model ClientAccountOp {
 
 /// Касса/счёт бизнеса (F-07-001…006, 01 §12 cash_registers)
 model CashRegister {
-  id              String    @id @db.VarChar(32)
-  businessId      String    @map("business_id") @db.VarChar(32)
-  locationId      String    @map("location_id") @db.VarChar(32)
-  name            String    @db.VarChar(120)
+  id              String   @id @db.VarChar(32)
+  businessId      String   @map("business_id") @db.VarChar(32)
+  locationId      String   @map("location_id") @db.VarChar(32)
+  name            String   @db.VarChar(120)
   /// cash | card | other
-  kind            String    @default("cash") @db.VarChar(8)
-  openingBalance  BigInt    @default(0) @map("opening_balance")
-  note            String?   @db.VarChar(400)
-  order           Int       @default(0)
+  kind            String   @default("cash") @db.VarChar(8)
+  openingBalance  BigInt   @default(0) @map("opening_balance")
+  note            String?  @db.VarChar(400)
+  order           Int      @default(0)
   /// Заведена автосидом филиала (F-07-002) — экран не предлагает «Удалить»
-  systemGenerated Boolean   @default(false) @map("system_generated")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy       String?   @map("created_by") @db.VarChar(32)
-  updatedBy       String?   @map("updated_by") @db.VarChar(32)
-  version         Int       @default(1)
+  systemGenerated Boolean  @default(false) @map("system_generated")
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy       String?  @map("created_by") @db.VarChar(32)
+  updatedBy       String?  @map("updated_by") @db.VarChar(32)
+  version         Int      @default(1)
 
   @@index([businessId, order])
   @@index([locationId])
@@ -2198,4 +2198,273 @@ model BookingPayment {
   @@index([businessId, bookingId])
   @@index([finOpId])
   @@map("booking_payments")
+}
+
+// ─────────────────────────── Этап 13 — Склад (docs/backend/02-api.md §13, PLAN §6 №13) ───────────────────────────
+
+/// Склад (F-08-004…009): «для списания расходников» / «для продажи» — минимум один на филиал
+model Warehouse {
+  id           String   @id @db.VarChar(32)
+  businessId   String   @map("business_id") @db.VarChar(32)
+  locationId   String   @map("location_id") @db.VarChar(32)
+  name         String   @db.VarChar(120)
+  /// writeoff | sale
+  type         String   @db.VarChar(8)
+  comment      String?  @db.VarChar(400)
+  order        Int      @default(0)
+  /// ⭐ F-08-005: склад, выданный мастеру лично (не строим в этом проходе — поле зарезервировано)
+  ownerStaffId String?  @map("owner_staff_id") @db.VarChar(32)
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy    String?  @map("created_by") @db.VarChar(32)
+  updatedBy    String?  @map("updated_by") @db.VarChar(32)
+  version      Int      @default(1)
+
+  @@index([businessId, locationId, order])
+  @@map("warehouses")
+}
+
+/// Категория товаров, дерево (F-08-010…014)
+model StockCategory {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  locationId String   @map("location_id") @db.VarChar(32)
+  name       String   @db.VarChar(160)
+  parentId   String?  @map("parent_id") @db.VarChar(32)
+  sku        String?  @db.VarChar(60)
+  comment    String?  @db.VarChar(400)
+  archived   Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  @@index([businessId, locationId, archived])
+  @@index([parentId])
+  @@map("product_categories")
+}
+
+/// Товар/расходник (F-08-015…027, F-00-134, F-00-140, F-00-144) — «Good» фронта
+model Product {
+  id                     String    @id @db.VarChar(32)
+  businessId             String    @map("business_id") @db.VarChar(32)
+  locationId             String    @map("location_id") @db.VarChar(32)
+  categoryId             String    @map("category_id") @db.VarChar(32)
+  name                   String    @db.VarChar(200)
+  /// «Название в чеке» — пусто ⇒ берётся name
+  receiptName            String?   @map("receipt_name") @db.VarChar(200)
+  sku                    String?   @db.VarChar(60)
+  barcode                String?   @db.VarChar(64)
+  markingCode            String?   @map("marking_code") @db.VarChar(64)
+  saleUnit               String    @map("sale_unit") @db.VarChar(16)
+  writeoffUnit           String    @map("writeoff_unit") @db.VarChar(16)
+  /// Единиц списания в одной единице продажи (F-08-020)
+  unitRatio              Float     @default(1) @map("unit_ratio")
+  massNetG               Int?      @map("mass_net_g")
+  massGrossG             Int?      @map("mass_gross_g")
+  salePrice              BigInt    @default(0) @map("sale_price")
+  costPrice              BigInt    @default(0) @map("cost_price")
+  /// default | general
+  taxSystem              String    @default("default") @map("tax_system") @db.VarChar(10)
+  /// default | rate20 | none
+  taxRate                String    @default("default") @map("tax_rate") @db.VarChar(10)
+  /// В единицах продажи, 0 = выключено (F-08-024)
+  criticalStock          Float     @default(0) @map("critical_stock")
+  /// В единицах продажи, 0 = выключено (F-08-025)
+  desiredStock           Float     @default(0) @map("desired_stock")
+  brand                  String?   @db.VarChar(120)
+  shade                  String?   @db.VarChar(80)
+  shadeColorIndex        Int?      @map("shade_color_index")
+  expiryDate             DateTime? @map("expiry_date") @db.DateTime(3)
+  purchaseDate           DateTime? @map("purchase_date") @db.DateTime(3)
+  shelfLifeAfterOpenDays Int?      @map("shelf_life_after_open_days")
+  /// ⭐ F-00-144: показывать в приложении клиента
+  showToClients          Boolean   @default(false) @map("show_to_clients")
+  /// ⭐ F-00-172: LocalizedText, только когда showToClients
+  clientName             Json?     @map("client_name")
+  /// F-08-130/135: сетевая копия — общий id у всех филиалов, редактируется в филиале только NETWORK_LOCAL_FIELDS
+  networkGroupId         String?   @map("network_group_id") @db.VarChar(32)
+  isNetworkSource        Boolean   @default(false) @map("is_network_source")
+  comment                String?   @db.VarChar(400)
+  archived               Boolean   @default(false)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy              String?   @map("created_by") @db.VarChar(32)
+  updatedBy              String?   @map("updated_by") @db.VarChar(32)
+  version                Int       @default(1)
+
+  @@index([businessId, locationId, archived])
+  @@index([categoryId])
+  @@index([businessId, barcode])
+  @@index([networkGroupId])
+  @@map("products")
+}
+
+/// Документ складской операции (F-08-046…061, F-00-135/137/138) — «OperationDoc» фронта
+model StockOp {
+  id                 String    @id @db.VarChar(32)
+  businessId         String    @map("business_id") @db.VarChar(32)
+  locationId         String    @map("location_id") @db.VarChar(32)
+  number             String    @db.VarChar(20)
+  /// income | sale | writeoffService | writeoffProduct | move
+  type               String    @db.VarChar(16)
+  date               DateTime  @db.DateTime(3)
+  warehouseId        String    @map("warehouse_id") @db.VarChar(32)
+  /// Только для move
+  toWarehouseId      String?   @map("to_warehouse_id") @db.VarChar(32)
+  counterpartyName   String?   @map("counterparty_name") @db.VarChar(160)
+  clientId           String?   @map("client_id") @db.VarChar(32)
+  staffId            String?   @map("staff_id") @db.VarChar(32)
+  serviceId          String?   @map("service_id") @db.VarChar(32)
+  bookingId          String?   @map("booking_id") @db.VarChar(32)
+  paid               Boolean   @default(true)
+  /// Только для sale: cash | card | loyalty | unpaid
+  paymentMethod      String?   @map("payment_method") @db.VarChar(10)
+  /// F-08-075…077: SaleExtraLine[] — абонементы/сертификаты этой продажи (ссылка на loyalty)
+  extraLines         Json?     @map("extra_lines")
+  /// F-08-041/042: документ — автосписание по норме техкарты; идемпотентность по bookingId
+  autoWriteoff       Boolean   @default(false) @map("auto_writeoff")
+  cancelledAt        DateTime? @map("cancelled_at") @db.DateTime(3)
+  /// Операция finance, которую создал этот документ (оплаченный приход/продажа)
+  financeOperationId String?   @map("finance_operation_id") @db.VarChar(32)
+  /// norm | manual | defect | expired
+  reason             String?   @db.VarChar(10)
+  comment            String?   @db.VarChar(400)
+  /// Проведена этой инвентаризацией
+  inventoryId        String?   @map("inventory_id") @db.VarChar(32)
+  /// move: ссылка на документ-разворот отмены
+  cancelledByDocId   String?   @map("cancelled_by_doc_id") @db.VarChar(32)
+  /// move: этот документ — разворот отменённого (или откат автосписания)
+  cancelsDocId       String?   @map("cancels_doc_id") @db.VarChar(32)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy          String?   @map("created_by") @db.VarChar(32)
+  updatedBy          String?   @map("updated_by") @db.VarChar(32)
+  version            Int       @default(1)
+
+  @@index([businessId, locationId, date])
+  @@index([businessId, number])
+  @@index([bookingId])
+  @@index([warehouseId])
+  @@index([inventoryId])
+  @@map("stock_ops")
+}
+
+/// Строка складского документа — количество в единицах продажи, расход отрицательный (F-08-047)
+model StockOpLine {
+  id          String @id @db.VarChar(32)
+  opId        String @map("op_id") @db.VarChar(32)
+  businessId  String @map("business_id") @db.VarChar(32)
+  goodId      String @map("good_id") @db.VarChar(32)
+  qtySale     Float  @map("qty_sale")
+  unitPrice   BigInt @map("unit_price")
+  discountPct Int?   @map("discount_pct")
+  costTotal   BigInt @map("cost_total")
+
+  @@index([opId])
+  @@index([businessId, goodId])
+  @@map("stock_op_lines")
+}
+
+/// Технологическая карта услуги — у каждого мастера своя (F-08-036…045, F-08-136, F-00-136)
+model TechCard {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  locationId String   @map("location_id") @db.VarChar(32)
+  serviceId  String   @map("service_id") @db.VarChar(32)
+  staffId    String   @map("staff_id") @db.VarChar(32)
+  /// TechCardLine[]: { goodId, warehouseId, qtyWriteoff }
+  lines      Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  @@unique([businessId, serviceId, staffId])
+  @@index([businessId, locationId])
+  @@map("tech_cards")
+}
+
+/// Инвентаризация (F-08-079…089, F-00-135)
+model Inventory {
+  id            String   @id @db.VarChar(32)
+  businessId    String   @map("business_id") @db.VarChar(32)
+  locationId    String   @map("location_id") @db.VarChar(32)
+  number        String   @db.VarChar(20)
+  warehouseId   String   @map("warehouse_id") @db.VarChar(32)
+  /// Пусто = «Все категории»
+  categoryId    String?  @map("category_id") @db.VarChar(32)
+  date          DateTime @db.DateTime(3)
+  comment       String?  @db.VarChar(400)
+  /// draft | done
+  status        String   @default("draft") @db.VarChar(8)
+  /// InventoryLine[]: { goodId, calcQty, actualQty? }
+  lines         Json
+  writeoffDocId String?  @map("writeoff_doc_id") @db.VarChar(32)
+  incomeDocId   String?  @map("income_doc_id") @db.VarChar(32)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy     String?  @map("created_by") @db.VarChar(32)
+  updatedBy     String?  @map("updated_by") @db.VarChar(32)
+  version       Int      @default(1)
+
+  @@index([businessId, locationId, date])
+  @@index([warehouseId])
+  @@map("inventories")
+}
+
+/// Оборудование (⭐ F-00-141)
+model Equipment {
+  id                    String    @id @db.VarChar(32)
+  businessId            String    @map("business_id") @db.VarChar(32)
+  locationId            String    @map("location_id") @db.VarChar(32)
+  name                  String    @db.VarChar(160)
+  category              String?   @db.VarChar(80)
+  purchaseDate          DateTime  @map("purchase_date") @db.DateTime(3)
+  warrantyUntil         DateTime? @map("warranty_until") @db.DateTime(3)
+  serviceIntervalMonths Int?      @map("service_interval_months")
+  lastServiceDate       DateTime? @map("last_service_date") @db.DateTime(3)
+  replaceReminderDate   DateTime? @map("replace_reminder_date") @db.DateTime(3)
+  comment               String?   @db.VarChar(400)
+  archived              Boolean   @default(false)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy             String?   @map("created_by") @db.VarChar(32)
+  updatedBy             String?   @map("updated_by") @db.VarChar(32)
+  version               Int       @default(1)
+
+  @@index([businessId, locationId, archived])
+  @@map("equipment")
+}
+
+/// ⭐ F-00-142: «своими словами» — единственный персистентный вид напоминания (остальные виды считаются на лету)
+model StockReminder {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  locationId String   @map("location_id") @db.VarChar(32)
+  staffId    String?  @map("staff_id") @db.VarChar(32)
+  text       String   @db.VarChar(500)
+  date       DateTime @db.DateTime(3)
+  done       Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+
+  @@index([businessId, locationId, date])
+  @@map("stock_reminders")
+}
+
+/// Настройки склада (F-08-096…100), одна строка на бизнес
+model StockSettings {
+  businessId        String   @id @map("business_id") @db.VarChar(32)
+  /// lastPurchase | average | fromGoodSettings
+  costMethod        String   @default("lastPurchase") @map("cost_method") @db.VarChar(20)
+  forbidOnShortage  Boolean  @default(false) @map("forbid_on_shortage")
+  expiryWarningDays Int      @default(14) @map("expiry_warning_days")
+  adsOptIn          Boolean  @default(false) @map("ads_opt_in")
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy         String?  @map("updated_by") @db.VarChar(32)
+
+  @@map("stock_settings")
 }

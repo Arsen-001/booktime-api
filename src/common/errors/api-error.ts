@@ -112,6 +112,18 @@ export const ERROR_STATUS = {
   system_item: HttpStatus.CONFLICT,
   already_cancelled: HttpStatus.CONFLICT,
   over_refund: HttpStatus.UNPROCESSABLE_ENTITY,
+  // склад (этап 13) — как в моке фронта (src/api/stock.ts)
+  last_warehouse: HttpStatus.CONFLICT,
+  warehouse_has_stock: HttpStatus.CONFLICT,
+  last_category: HttpStatus.CONFLICT,
+  category_not_empty: HttpStatus.CONFLICT,
+  category_archived: HttpStatus.CONFLICT,
+  parent_archived: HttpStatus.CONFLICT,
+  barcode_in_use: HttpStatus.CONFLICT,
+  good_in_use: HttpStatus.CONFLICT,
+  insufficient_stock: HttpStatus.CONFLICT,
+  not_editable: HttpStatus.CONFLICT,
+  already_completed: HttpStatus.CONFLICT,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

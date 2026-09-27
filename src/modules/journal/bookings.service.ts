@@ -19,6 +19,7 @@ import { notifyKindOf } from '../notify/kinds.js';
 import { isStaffEventEnabled } from '../notify/notify-staff-prefs.service.js';
 import { enqueueClientNotification, enqueueOutbox } from '../notify/outbox.js';
 import { LoyaltyProgramService } from '../loyalty/loyalty-program.service.js';
+import { TechCardsService } from '../stock/tech-cards.service.js';
 import { JournalSettingsService } from './journal-settings.js';
 import { bookingView, eventView, extrasView, type BookingView } from './journal.views.js';
 import {
@@ -253,6 +254,7 @@ export class BookingsService {
     private readonly live: LiveService,
     readonly settings: JournalSettingsService,
     private readonly loyaltyProgram: LoyaltyProgramService,
+    private readonly techCards: TechCardsService,
   ) {}
 
   // ─────────── пояса ───────────
@@ -1188,9 +1190,11 @@ export class BookingsService {
   /** Сменить статус по правилам (F-00-068, F-01-075…084): допустимый переход, последствия, событие */
   async changeStatus(actor: BookingActor, businessIds: string[], id: string, status: BookingStatus, who: StatusActor = 'business', extra: { reason?: string } = {}): Promise<BookingView> {
     const t = touched();
+    let prevStatus: string | null = null;
     const row = await this.prisma.$transaction(
       async (tx) => {
         const prev = await this.find(tx, businessIds, id);
+        prevStatus = prev.status;
         if (prev.status === status) return prev;
         if (!canTransition(prev.status as BookingStatus, status, who)) throw new ApiError('invalid_transition', `Cannot change ${prev.status} → ${status}`);
         if (who === 'business' && actor.ctx?.member) assertJournal(actor.ctx, 'journal.edit', prev.staffId);
@@ -1214,6 +1218,15 @@ export class BookingsService {
     // null, если правила выключены (по умолчанию), поэтому обычный визит не платит лишним запросом впустую.
     if ((status === 'arrived' || status === 'no_show') && row.clientId) {
       await this.loyaltyProgram.recalcOne(actor.ctx ?? null, row.businessId, row.clientId, status === 'arrived' ? 'statusArrived' : 'statusNoShow').catch(() => undefined);
+    }
+    // F-08-041/042, ⭐ F-00-136: автосписание расходников по техкарте на «Пришёл», откат при уходе с «Пришёл».
+    // Best-effort, тем же приёмом, что пересчёт лояльности строкой выше — сама смена статуса не должна падать
+    // из-за отсутствующей техкарты или занятого склада.
+    if (status === 'arrived' && prevStatus !== 'arrived') {
+      const services = (row.services as { serviceId: string; staffId: string; qty: number }[]) ?? [];
+      await this.techCards.deductForBooking(row.businessId, row.id, row.staffId, services);
+    } else if (prevStatus === 'arrived' && status !== 'arrived') {
+      await this.techCards.revertForBooking(row.businessId, row.id);
     }
     return this.view(this.prisma, row);
   }
