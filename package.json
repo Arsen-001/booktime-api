@@ -19,7 +19,8 @@
     "prisma:generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
-    "commit": "node scripts/commit.mjs"
+    "commit": "node scripts/commit.mjs",
+    "check:permissions": "node scripts/check-permissions.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.1.0",
@@ -30,12 +31,14 @@
     "@prisma/adapter-mariadb": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "bullmq": "^6.3.9",
+    "dayjs": "^1.11.23",
     "dotenv": "^18.0.4",
     "ioredis": "^6.0.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "ulid": "^3.0.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {

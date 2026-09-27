@@ -23,3 +23,31 @@ model SystemSetting {
 
   @@map("system_settings")
 }
+
+/// Журнал изменений «кто, когда, что» (docs/backend/01-data-model.md §11). Не правится и не чистится из интерфейса.
+/// Добавление — в той же транзакции, что и сама правка (AuditService.record(tx, …)).
+model AuditEvent {
+  id         String   @id @db.VarChar(32)
+  businessId String?  @map("business_id") @db.VarChar(32)
+  networkId  String?  @map("network_id") @db.VarChar(32)
+  /// staff | client | link_holder | system | platform
+  actorType  String   @map("actor_type") @db.VarChar(16)
+  actorId    String?  @map("actor_id") @db.VarChar(32)
+  /// Имя на момент действия (снимок)
+  actorName  String   @map("actor_name") @db.VarChar(191)
+  /// create | update | delete | restore | status | login | export | …
+  action     String   @db.VarChar(32)
+  entityType String   @map("entity_type") @db.VarChar(40)
+  entityId   String   @map("entity_id") @db.VarChar(32)
+  /// Только изменённые поля: { поле: [было, стало] }
+  diff       Json?
+  requestId  String?  @map("request_id") @db.VarChar(64)
+  ip         String?  @db.VarChar(64)
+  device     String?  @db.VarChar(200)
+  at         DateTime @default(now()) @db.DateTime(3)
+
+  @@index([businessId, at])
+  @@index([entityType, entityId, at])
+  @@index([actorId, at])
+  @@map("audit_events")
+}
