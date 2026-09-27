@@ -1295,6 +1295,9 @@ model GroupEvent {
   resourceIds Json     @map("resource_ids")
   onlineUrl   String?  @map("online_url") @db.VarChar(1000)
   seriesId    String?  @map("series_id") @db.VarChar(32)
+  /// stage 21: EventExtra + EventJoinInfo фронта — { colorIndex?, categoryIds, comment?, joinInstructions?,
+  /// joinSentAt?: ISODateTime[] } (F-16-039, F-16-081/082); url самого «присоединиться» — уже есть onlineUrl выше
+  extras      Json?
   /// scheduled | cancelled
   status      String   @default("scheduled") @db.VarChar(10)
   createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
@@ -1369,6 +1372,9 @@ model WaitlistEntry {
   bookingId   String?   @map("booking_id") @db.VarChar(32)
   /// Когда предложено освободившееся окно (В-18, первая волна)
   notifiedAt  DateTime? @map("notified_at") @db.DateTime(3)
+  /// stage 21: история отметок «Проверить лист ожидания» (resources.ts notifyWaitlistForFreedSlot — свой
+  /// ручной путь, отдельный от волн В-18 выше) — ISODateTime[]
+  notifiedTimes Json?   @map("notified_times")
   createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
   createdBy   String?   @map("created_by") @db.VarChar(32)
@@ -3666,3 +3672,55 @@ model AccountDataExport {
 }
 
 // === end stage 20 ===
+
+// === stage 21 ===
+// Аудит фасадов, лейн «resources» (PLAN §6 строка 21): src/api/resources.ts зовёт readCore/readArea мимо
+// сервера в 40 функциях (docs/PROGRESS.md, этап 21 попытка 2). Групповые события/участники/лист ожидания уже
+// на сервере (этап 7, GroupEvent/Booking/WaitlistEntry) — здесь только то, чего там нет: расписание серии
+// событий по дням недели (F-16-067…077, отдельно от BookingSeries — та серия про ОДНУ повторяющуюся запись
+// клиента, не про правило нескольких дней недели группового события) и расписание посещений клиента (F-16-078…080).
+// Ассистенты/автосписание/товары участника/оплата участника (F-16-059…062, 136…147) хранятся в Booking.extras
+// (уже JSON, уже общий для всех разделов) — без своей таблицы. Настройки-списки (шаблоны повтора, категории
+// событий, настройки ассистентов, «несколько мест», тонкие права) — в BusinessSetting(area='resources'),
+// тот же приём, что splitByResource этапа 4.
+
+/// Расписание (серия) группового события по дням недели (F-16-067…077) — надстройка над GroupEvent.seriesId:
+/// правило по дням, дата окончания, какие события серии стали «уникальными» (правились отдельно, F-16-074/075).
+model EventSeriesDef {
+  id             String   @id @db.VarChar(32)
+  businessId     String   @map("business_id") @db.VarChar(32)
+  locationId     String   @map("location_id") @db.VarChar(32)
+  staffId        String   @map("staff_id") @db.VarChar(32)
+  serviceId      String   @map("service_id") @db.VarChar(32)
+  capacity       Int
+  /// SeriesDayRule[]: { weekday, startTime, durationMin, resourceIds }
+  days           Json
+  /// Местная дата 'YYYY-MM-DD'
+  endDate        String   @map("end_date") @db.VarChar(10)
+  sourceEventId  String   @map("source_event_id") @db.VarChar(32)
+  /// Id событий серии, изменённых отдельно — правки серии их больше не трогают (F-16-074/075)
+  uniqueEventIds Json     @map("unique_event_ids")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy      String?  @map("created_by") @db.VarChar(32)
+
+  @@index([businessId])
+  @@map("event_series_defs")
+}
+
+/// «Абонемент на серию» (F-16-078…080): клиент попадает во все события серии в отмеченные дни недели
+model VisitScheduleEntry {
+  id          String   @id @db.VarChar(32)
+  seriesId    String   @map("series_id") @db.VarChar(32)
+  businessId  String   @map("business_id") @db.VarChar(32)
+  clientId    String?  @map("client_id") @db.VarChar(32)
+  clientName  String   @map("client_name") @db.VarChar(160)
+  clientPhone String   @map("client_phone") @db.VarChar(20)
+  /// 0 = понедельник … 6 = воскресенье
+  weekdays    Json
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([seriesId])
+  @@map("visit_schedule_entries")
+}
+
+// === end stage 21 ===
