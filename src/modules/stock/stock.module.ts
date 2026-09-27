@@ -3,6 +3,8 @@ import { FinanceModule } from '../finance/finance.module.js';
 import { InventoriesService } from './inventories.service.js';
 import { StockCatalogService } from './stock-catalog.service.js';
 import { StockController } from './stock.controller.js';
+import { StockExtController } from './stock-ext.controller.js';
+import { StockExtService } from './stock-ext.service.js';
 import { StockOpsService } from './stock-ops.service.js';
 import { TechCardsService } from './tech-cards.service.js';
 
@@ -16,8 +18,8 @@ import { TechCardsService } from './tech-cards.service.js';
  */
 @Module({
   imports: [FinanceModule],
-  controllers: [StockController],
-  providers: [StockCatalogService, StockOpsService, TechCardsService, InventoriesService],
+  controllers: [StockController, StockExtController],
+  providers: [StockCatalogService, StockOpsService, TechCardsService, InventoriesService, StockExtService],
   exports: [StockCatalogService, StockOpsService, TechCardsService, InventoriesService],
 })
 export class StockModule {}

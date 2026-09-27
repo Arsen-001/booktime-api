@@ -16,7 +16,7 @@ import type { FreeSlot } from '../availability/engine.js';
 import { businessView, locationView, staffView } from '../businesses/views.js';
 import { OtpService } from '../auth/otp.service.js';
 import { categoryView, serviceView } from '../services/services.views.js';
-import { BookingsService, clientActor, coreClient } from '../journal/bookings.service.js';
+import { BookingsService, clientActor, coreClient, staffActor } from '../journal/bookings.service.js';
 import type { BusinessOnlineRulesBody, CreateLinkBody, StaffClientRulesBody, UpdateLinkBody } from './online.schemas.js';
 
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
@@ -503,6 +503,250 @@ export class OnlineService {
     const row = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
     if (!row) throw new ApiError('not_found', 'Booking not found');
     return { bookingId: row.id, source: row.source, device: (row.onlineMeta as Record<string, unknown> | null)?.device, ...((row.onlineMeta as Record<string, unknown> | null) ?? {}) };
+  }
+
+  // ═══════════════════════════ стадия 21 (лейн client+online) ═══════════════════════════
+
+  // ── персональный домен (F-03-037) ──
+
+  /** Глобально: подсайт `<subdomain>.booktime.am` уникален по всей платформе, не только у одного бизнеса */
+  async isSubdomainAvailable(subdomain: string, excludeLinkId?: string): Promise<boolean> {
+    const clean = subdomain.trim().toLowerCase();
+    if (!clean) return false;
+    const rows = await this.prisma.bookingLink.findMany({ where: { config: { path: ['subdomain'], not: Prisma.JsonNull } }, select: { id: true, config: true } });
+    return !rows.some((r) => r.id !== excludeLinkId && String((r.config as Record<string, unknown>).subdomain ?? '').toLowerCase() === clean);
+  }
+
+  // ── места работы и выезд (F-00-073…081) ──
+
+  async placesData(businessId: string, staffId: string, locationId?: string) {
+    const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId }, include: { locations: { select: { locationId: true } } } });
+    if (!staff) throw new ApiError('not_found', 'Staff not found');
+    const locId = locationId ?? staff.locations[0]?.locationId;
+    const location = locId ? await this.prisma.location.findUnique({ where: { id: locId } }) : null;
+    return { staff: sanitizePublicStaff(staff), location: location ? locationView(location) : undefined, rules: await this.staffClientRules(businessId, staffId) };
+  }
+
+  // ── «Экран данных клиента» (F-03-071…075, F-03-104) ──
+
+  private static readonly DEFAULT_CLIENT_FIELDS = { commentHidden: false, commentRequired: false, commentLabel: 'Комментарий к записи', emailHidden: false, emailRequired: false, lastNameEnabled: false, lastNameRequired: false, patronymicEnabled: false, patronymicRequired: false, widgetText: { ru: '', en: '', hy: '' }, partnerBrands: [] as string[] };
+
+  private clientFieldsView(businessId: string, row: Awaited<ReturnType<typeof this.prisma.onlineClientFieldsConfig.findUnique>>) {
+    const d = OnlineService.DEFAULT_CLIENT_FIELDS;
+    return {
+      businessId,
+      commentHidden: row?.commentHidden ?? d.commentHidden,
+      commentRequired: row?.commentRequired ?? d.commentRequired,
+      commentLabel: row?.commentLabel ?? d.commentLabel,
+      emailHidden: row?.emailHidden ?? d.emailHidden,
+      emailRequired: row?.emailRequired ?? d.emailRequired,
+      lastNameEnabled: row?.lastNameEnabled ?? d.lastNameEnabled,
+      lastNameRequired: row?.lastNameRequired ?? d.lastNameRequired,
+      patronymicEnabled: row?.patronymicEnabled ?? d.patronymicEnabled,
+      patronymicRequired: row?.patronymicRequired ?? d.patronymicRequired,
+      customFields: arr<Record<string, unknown>>(row?.customFields),
+      widgetText: row?.widgetText ?? d.widgetText,
+      partnerBrands: arr<string>(row?.partnerBrands),
+    };
+  }
+
+  async clientFieldsConfig(businessId: string) {
+    const row = await this.prisma.onlineClientFieldsConfig.findUnique({ where: { businessId } });
+    return this.clientFieldsView(businessId, row);
+  }
+
+  async updateClientFieldsConfig(ctx: RequestContext, businessId: string, patch: Record<string, unknown>) {
+    const current = await this.clientFieldsConfig(businessId);
+    const next = { ...current, ...patch };
+    await this.prisma.onlineClientFieldsConfig.upsert({
+      where: { businessId },
+      create: { businessId, commentHidden: next.commentHidden, commentRequired: next.commentRequired, commentLabel: next.commentLabel, emailHidden: next.emailHidden, emailRequired: next.emailRequired, lastNameEnabled: next.lastNameEnabled, lastNameRequired: next.lastNameRequired, patronymicEnabled: next.patronymicEnabled, patronymicRequired: next.patronymicRequired, customFields: next.customFields as Prisma.InputJsonValue, widgetText: next.widgetText as Prisma.InputJsonValue, partnerBrands: next.partnerBrands as Prisma.InputJsonValue, updatedBy: ctx.member!.staffId },
+      update: { commentHidden: next.commentHidden, commentRequired: next.commentRequired, commentLabel: next.commentLabel, emailHidden: next.emailHidden, emailRequired: next.emailRequired, lastNameEnabled: next.lastNameEnabled, lastNameRequired: next.lastNameRequired, patronymicEnabled: next.patronymicEnabled, patronymicRequired: next.patronymicRequired, customFields: next.customFields as Prisma.InputJsonValue, widgetText: next.widgetText as Prisma.InputJsonValue, partnerBrands: next.partnerBrands as Prisma.InputJsonValue, updatedBy: ctx.member!.staffId },
+    });
+    return this.clientFieldsConfig(businessId);
+  }
+
+  async addCustomClientField(ctx: RequestContext, businessId: string, field: Record<string, unknown>) {
+    const current = await this.clientFieldsConfig(businessId);
+    const next = { ...field, id: newId('customField'), order: current.customFields.length };
+    return this.updateClientFieldsConfig(ctx, businessId, { customFields: [...current.customFields, next] });
+  }
+
+  async removeCustomClientField(ctx: RequestContext, businessId: string, fieldId: string) {
+    const current = await this.clientFieldsConfig(businessId);
+    return this.updateClientFieldsConfig(ctx, businessId, { customFields: current.customFields.filter((f) => f.id !== fieldId) });
+  }
+
+  async moveCustomClientField(ctx: RequestContext, businessId: string, fieldId: string, direction: -1 | 1) {
+    const current = await this.clientFieldsConfig(businessId);
+    const list = [...current.customFields].sort((a, b) => (a.order as number) - (b.order as number));
+    const i = list.findIndex((f) => f.id === fieldId);
+    const j = i + direction;
+    if (i < 0 || j < 0 || j >= list.length) return current;
+    [list[i], list[j]] = [list[j]!, list[i]!];
+    return this.updateClientFieldsConfig(ctx, businessId, { customFields: list.map((f, idx) => ({ ...f, order: idx })) });
+  }
+
+  /**
+   * Ответы клиента на свои поля с «Сохранять в карточку: Карточка клиента» (F-03-073) — последнее заполненное
+   * значение по каждому такому полю среди записей клиента В ЭТОМ бизнесе (В МОКЕ — «по всем бизнесам»; Client
+   * здесь — карточка одного бизнеса, у неё нет межбизнесовой идентичности, поэтому шире одного businessId
+   * читать нечего — решение лейна client+online, docs/PROGRESS.md).
+   */
+  async clientCustomFieldAnswers(businessId: string, clientId: string): Promise<{ label: string; value: string }[]> {
+    const config = await this.clientFieldsConfig(businessId);
+    const fields = config.customFields.filter((f) => f.target === 'client');
+    if (!fields.length) return [];
+    const bookings = await this.prisma.booking.findMany({ where: { businessId, clientId, onlineMeta: { not: Prisma.JsonNull } }, orderBy: { startAt: 'desc' }, select: { onlineMeta: true } });
+    const byField = new Map<string, string>();
+    for (const b of bookings) {
+      const values = (b.onlineMeta as Record<string, unknown> | null)?.customFieldValues as Record<string, string> | undefined;
+      if (!values) continue;
+      for (const f of fields) {
+        const v = values[f.id as string];
+        if (v && !byField.has(f.label as string)) byField.set(f.label as string, v);
+      }
+    }
+    return [...byField.entries()].map(([label, value]) => ({ label, value }));
+  }
+
+  // ── пустые профили в каталоге (F-00-072) ──
+
+  async businessListability(businessId: string) {
+    const [staffRows, services, schedules] = await Promise.all([
+      this.prisma.staff.findMany({ where: { businessId, status: 'active' }, include: { locations: { select: { locationId: true } } } }),
+      this.prisma.service.findMany({ where: { businessId } }),
+      this.prisma.workSchedule.findMany({ where: { businessId }, select: { staffId: true } }),
+    ]);
+    const scheduledStaff = new Set(schedules.map((s) => s.staffId));
+    return staffRows.map((s) => {
+      const serviceIds = arr<string>(s.serviceIds);
+      const own = services.filter((sv) => serviceIds.includes(sv.id) && sv.active && sv.onlineBookable);
+      const missing: ('services' | 'photo' | 'schedule')[] = [];
+      if (own.length === 0) missing.push('services');
+      if (!s.avatarUrl && arr(s.photos).length === 0) missing.push('photo');
+      if (!scheduledStaff.has(s.id)) missing.push('schedule');
+      return { staff: sanitizePublicStaff(s), check: { listable: missing.length === 0, missing } };
+    });
+  }
+
+  // ── очередь заявок (F-00-067, F-00-071, F-03-127) ──
+
+  private isOnlineRequestWhere(businessId: string, staffId?: string) {
+    return {
+      businessId,
+      deletedAt: null,
+      source: { in: ['link', 'widget'] },
+      ...(staffId ? { staffId } : {}),
+      OR: [{ status: 'awaiting_confirmation' }, { status: 'awaiting_prepayment' }],
+    } satisfies Prisma.BookingWhereInput;
+  }
+
+  async listOnlineRequests(businessId: string, staffId?: string) {
+    const rows = await this.prisma.booking.findMany({ where: this.isOnlineRequestWhere(businessId, staffId), orderBy: { startAt: 'asc' } });
+    const filtered = rows.filter((b) => {
+      if (b.status === 'awaiting_confirmation') return true;
+      const p = (b.prepayment as Record<string, unknown> | null) ?? {};
+      return Boolean(p.clientMarkedPaidAt) && !p.paid;
+    });
+    if (!filtered.length) return [];
+    const clientIds = [...new Set(filtered.map((b) => b.clientId).filter((x): x is string => Boolean(x)))];
+    const [clients, locations, services] = await Promise.all([
+      this.prisma.client.findMany({ where: { id: { in: clientIds } } }),
+      this.prisma.location.findMany({ where: { businessId } }),
+      this.prisma.service.findMany({ where: { businessId } }),
+    ]);
+    const clientById = new Map(clients.map((c) => [c.id, c]));
+    const locById = new Map(locations.map((l) => [l.id, l]));
+    const serviceById = new Map(services.map((s) => [s.id, s]));
+    const arrivedCounts = new Map<string, number>();
+    if (clientIds.length) {
+      const arrived = await this.prisma.booking.findMany({ where: { businessId, deletedAt: null, status: 'arrived', clientId: { in: clientIds } }, select: { clientId: true } });
+      for (const a of arrived) if (a.clientId) arrivedCounts.set(a.clientId, (arrivedCounts.get(a.clientId) ?? 0) + 1);
+    }
+    return filtered
+      .map((b) => {
+        const client = b.clientId ? clientById.get(b.clientId) : undefined;
+        const meta = (b.onlineMeta as Record<string, unknown> | null) ?? {};
+        const p = (b.prepayment as Record<string, unknown> | null) ?? {};
+        return {
+          bookingId: b.id,
+          staffId: b.staffId,
+          clientId: b.clientId ?? undefined,
+          clientName: client?.name ?? '—',
+          clientPhone: client?.phone ?? '',
+          clientNoShowCount: client?.noShowCount ?? 0,
+          clientBlocked: client?.blocked ?? false,
+          start: utcToLocal(b.startAt),
+          durationMin: b.durationMin,
+          serviceNames: arr<{ serviceId: string }>(b.services).map((l) => serviceById.get(l.serviceId)?.name).filter((n): n is Record<string, string> => Boolean(n)).map((n) => n.ru),
+          workplace: b.workplace,
+          district: b.workplace === 'visit' ? locById.get(b.locationId)?.district ?? undefined : undefined,
+          address: undefined,
+          submittedAt: opt(meta.submittedAt as string | undefined),
+          clientVisits: b.clientId ? (arrivedCounts.get(b.clientId) ?? 0) : 0,
+          comment: opt(b.comment ?? undefined),
+          prepaymentReported: p.clientMarkedPaidAt ? { amount: (p as { amount?: number }).amount ?? 0, at: p.clientMarkedPaidAt as string } : undefined,
+          offeredStarts: arr<string>(meta.offeredStarts),
+        };
+      })
+      .sort((a, b) => (a.submittedAt ?? a.start).localeCompare(b.submittedAt ?? b.start));
+  }
+
+  async countPendingRequests(businessId: string, staffId?: string): Promise<number> {
+    return (await this.listOnlineRequests(businessId, staffId)).length;
+  }
+
+  /** История смены статуса (F-00-068) — читаем готовый BookingEvent (kind: created | status) журнала (этап 7) */
+  async bookingStatusLog(businessId: string, bookingId: string): Promise<{ status: string; at: string; by: 'client' | 'staff' }[]> {
+    const booking = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId }, select: { id: true } });
+    if (!booking) throw new ApiError('not_found', 'Booking not found');
+    const events = await this.prisma.bookingEvent.findMany({ where: { bookingId, kind: { in: ['created', 'status'] } }, orderBy: { at: 'asc' } });
+    return events.map((e) => ({ status: e.toStatus ?? 'created', at: utcToLocal(e.at), by: e.byRef === 'client' ? 'client' : 'staff' }));
+  }
+
+  async respondToRequest(ctx: RequestContext, businessId: string, bookingId: string, action: 'confirm' | 'decline') {
+    if (action !== 'confirm' && action !== 'decline') throw new ApiError('validation', 'action must be confirm or decline');
+    const actor = staffActor(ctx);
+    return action === 'confirm' ? this.bookings.confirm(actor, [businessId], bookingId) : this.bookings.decline(actor, [businessId], bookingId);
+  }
+
+  /** О28 «Другое время»: ближайшие свободные окна того же мастера, до `limit`, максимум 2 в один день */
+  async suggestOtherTimes(businessId: string, bookingId: string, limit = 6): Promise<string[]> {
+    const b = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
+    if (!b) throw new ApiError('not_found', 'Booking not found');
+    const services = arr<{ serviceId: string }>(b.services);
+    const startLocal = utcToLocal(b.startAt);
+    const today0 = utcToLocal(new Date()).slice(0, 10);
+    const out: string[] = [];
+    let cursor = today0 > startLocal.slice(0, 10) ? today0 : startLocal.slice(0, 10);
+    const nowIso = utcToLocal(new Date());
+    for (let i = 0; i < 14 && out.length < limit; i++) {
+      const slots = await this.availability.freeSlots(businessId, { staffId: b.staffId, date: cursor, durationMin: b.durationMin, locationId: b.locationId, serviceId: services[0]?.serviceId });
+      let addedToday = 0;
+      for (const sl of slots) {
+        if (addedToday >= 2 || out.length >= limit) break;
+        if (sl.start === startLocal || sl.start < nowIso) continue;
+        out.push(sl.start);
+        addedToday++;
+      }
+      cursor = nextDay(cursor);
+    }
+    return out;
+  }
+
+  /** О28: сохраняем предложенные окна у записи (это не смена Booking.status — только пометка кабинета) */
+  async offerOtherTimes(ctx: RequestContext, businessId: string, bookingId: string, starts: string[]): Promise<string[]> {
+    if (!starts.length) throw new ApiError('validation', 'Выберите хотя бы одно окно');
+    const b = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
+    if (!b) throw new ApiError('not_found', 'Booking not found');
+    const offered = starts.slice(0, 3);
+    const meta = { ...((b.onlineMeta as Record<string, unknown> | null) ?? {}), offeredStarts: offered };
+    await this.prisma.$transaction([
+      this.prisma.booking.update({ where: { id: bookingId }, data: { onlineMeta: meta as Prisma.InputJsonValue } }),
+      this.prisma.bookingEvent.create({ data: { id: newId('bookingEvent'), bookingId, businessId, staffId: b.staffId, clientId: b.clientId, appUserId: b.appUserId, kind: 'status', toStatus: 'time_offered', byRef: ctx.member!.staffId, startLocal: utcToLocal(b.startAt) } }),
+    ]);
+    return offered;
   }
 }
 

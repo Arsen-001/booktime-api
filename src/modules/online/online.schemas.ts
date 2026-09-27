@@ -202,3 +202,84 @@ export const businessOnlineRulesOut = z.object({
 // ─────────────────────────── источник записи для кабинета (F-03-123) ───────────────────────────
 
 export const onlineMetaOut = z.object({ bookingId: z.string(), source: z.string() }).catchall(z.unknown());
+
+// ─────────────────────────── стадия 21 (лейн client+online): кабинет заявок и настроек ───────────────────────────
+
+export const customClientFieldBody = z.object({
+  label: z.string().min(1).max(120),
+  type: z.enum(['text', 'number', 'date', 'select']),
+  target: z.enum(['client', 'booking']),
+  required: z.boolean(),
+  options: z.array(z.string()).optional(),
+});
+export type CustomClientFieldBody = z.infer<typeof customClientFieldBody>;
+
+export const customClientFieldOut = customClientFieldBody.extend({ id: z.string(), order: z.number() });
+
+export const clientFieldsConfigOut = z.object({
+  businessId: z.string(),
+  commentHidden: z.boolean(),
+  commentRequired: z.boolean(),
+  commentLabel: z.string(),
+  emailHidden: z.boolean(),
+  emailRequired: z.boolean(),
+  lastNameEnabled: z.boolean(),
+  lastNameRequired: z.boolean(),
+  patronymicEnabled: z.boolean(),
+  patronymicRequired: z.boolean(),
+  customFields: z.array(customClientFieldOut),
+  widgetText: localized,
+  partnerBrands: z.array(z.string()),
+});
+
+export const clientFieldsConfigBody = z
+  .object({
+    commentHidden: z.boolean(),
+    commentRequired: z.boolean(),
+    commentLabel: z.string().max(60),
+    emailHidden: z.boolean(),
+    emailRequired: z.boolean(),
+    lastNameEnabled: z.boolean(),
+    lastNameRequired: z.boolean(),
+    patronymicEnabled: z.boolean(),
+    patronymicRequired: z.boolean(),
+    widgetText: localized,
+    partnerBrands: z.array(z.string()),
+  })
+  .partial();
+export type ClientFieldsConfigBody = z.infer<typeof clientFieldsConfigBody>;
+
+export const moveFieldBody = z.object({ direction: z.union([z.literal(-1), z.literal(1)]) });
+
+export const listabilityOut = z.array(
+  z.object({ staff: staffOut, check: z.object({ listable: z.boolean(), missing: z.array(z.enum(['services', 'photo', 'schedule'])) }) }),
+);
+
+export const onlineRequestOut = z
+  .object({
+    bookingId: z.string(),
+    staffId: z.string(),
+    clientId: z.string().optional(),
+    clientName: z.string(),
+    clientPhone: z.string(),
+    clientNoShowCount: z.number(),
+    clientBlocked: z.boolean(),
+    start: z.string(),
+    durationMin: z.number(),
+    serviceNames: z.array(z.string()),
+    workplace: z.string(),
+    district: z.string().optional(),
+    address: z.string().optional(),
+    submittedAt: z.string().optional(),
+    clientVisits: z.number(),
+    comment: z.string().optional(),
+  })
+  .catchall(z.unknown());
+
+export const respondBody = z.object({ action: z.enum(['confirm', 'decline']) });
+
+export const offerTimesBody = z.object({ starts: z.array(z.string()).min(1) });
+
+export const statusLogOut = z.array(z.object({ status: z.string(), at: z.string(), by: z.enum(['client', 'staff']) }));
+
+export const placesDataOut = z.object({ staff: staffOut, location: locationOut.optional(), rules: z.record(z.string(), z.unknown()) });

@@ -193,6 +193,8 @@ export const ID_PREFIX = {
   // (service, starRating), поэтому свои префиксы srev/lrev
   staffReview: 'srev',
   locationReview: 'lrev',
+  // этап 21 (лейн client+online) — своё поле экрана «Данные клиента» (F-03-073, мок newId('cf'))
+  customField: 'cf',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

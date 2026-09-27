@@ -8,9 +8,12 @@ import { Zod } from '../../common/http/validation.js';
 import { ApiKeysService } from './api-keys.service.js';
 import { ConnectionsService } from './connections.service.js';
 import {
+  addWebhookAddressBody,
+  addWebhookAddressOut,
   apiKeyOut,
   appInstallOut,
   connectAppBody,
+  installTestOut,
   issueAiTokenBody,
   issueUserTokenBody,
   setWebhookEnabledBody,
@@ -105,6 +108,35 @@ export class IntegrationsController {
     return this.webhooks.listDeliveries(businessId);
   }
 
+  // ─────────── Ревью 27.09 (И13): адреса вебхуков ───────────
+
+  @Post('webhooks/addresses')
+  @Biz('integrations.manage')
+  @ZodBody(addWebhookAddressBody)
+  @ZodOk(addWebhookAddressOut)
+  addWebhookAddress(@Param('businessId') businessId: string, @Body(new Zod(addWebhookAddressBody)) body: z.infer<typeof addWebhookAddressBody>) {
+    return this.webhooks.addAddress(businessId, body.url);
+  }
+
+  @Delete('webhooks/addresses/:id')
+  @Biz('integrations.manage')
+  removeWebhookAddress(@Param('businessId') businessId: string, @Param('id') id: string) {
+    return this.webhooks.removeAddress(businessId, id).then(() => ({ ok: true }));
+  }
+
+  @Post('webhooks/addresses/:id/secret')
+  @Biz('integrations.manage')
+  rotateWebhookSecret(@Param('businessId') businessId: string, @Param('id') id: string) {
+    return this.webhooks.rotateSecret(businessId, id).then((secret) => ({ secret }));
+  }
+
+  @Post('webhooks/deliveries/:id/retry')
+  @Biz('integrations.manage')
+  @ZodOk(webhookDeliveryOut)
+  retryDelivery(@Param('businessId') businessId: string, @Param('id') id: string) {
+    return this.webhooks.retryDelivery(businessId, id);
+  }
+
   // ─────────── Подключения каталожных приложений (Р19: только статус) ───────────
 
   @Get('installs')
@@ -159,5 +191,12 @@ export class IntegrationsController {
   @ZodOk(z.array(systemUserOut))
   listSystemUsers(@Param('businessId') businessId: string, @Query('locationId') locationId: string) {
     return this.connections.listSystemUsers(businessId, locationId);
+  }
+
+  @Post('installs/:id/test')
+  @Biz('integrations.manage')
+  @ZodOk(installTestOut)
+  sendTest(@Param('businessId') businessId: string, @Param('id') id: string) {
+    return this.connections.sendTest(businessId, id);
   }
 }

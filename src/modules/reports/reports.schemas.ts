@@ -96,3 +96,25 @@ export const reportsPermissionsPatchBody = z
   .partial();
 
 export const exportRequestBody = z.object({ format: z.literal('csv').default('csv'), params: z.record(z.string(), z.string()).default({}) });
+
+// ─────────────────────────── Этап 21 «network+reports» ───────────────────────────
+
+/** F-12-056: выгрузка «По клиентам» — визиты одного клиента за диапазон */
+export const clientVisitsQuery = z.object({ from: z.string(), to: z.string() });
+
+/** F-12-074…080: ручной след в журнале выгрузок/загрузок (кнопка «Выгрузить»/«Загрузить» на других экранах) */
+export const manualExportBody = z.object({
+  type: z.string().min(1).max(24),
+  operation: z.enum(['upload', 'copyFromExcel', 'emailLink', 'browserDownload']),
+  fileName: z.string().min(1).max(200),
+  rowCount: z.coerce.number().int().min(0),
+});
+
+export const exportsListQuery = z.object({ staffId: id32.optional(), type: z.string().max(24).optional(), operation: z.string().max(20).optional() });
+
+/** F-12-068…069: 'all' | 'company' | staffId — тот же союз, что `ReviewsSubject` во фронте */
+export const reviewsQuery = z.object({ from: z.string(), to: z.string(), subject: z.string().min(1).max(32) });
+
+export const setReviewHiddenBody = z.object({ hidden: z.boolean() });
+
+export const promotionNotReturnedQuery = z.object({ promotionId: id32 });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Param, Patch, Post, Query, StreamableFile } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, StreamableFile } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { createFileStorage } from '../../adapters/storage/storage.js';
@@ -14,9 +14,19 @@ import { ReportsJournalService } from './reports-journal.service.js';
 import { ReportsMarketingService } from './reports-marketing.service.js';
 import type { ReportServices } from './reports-registry.js';
 import { REPORT_REGISTRY } from './reports-registry.js';
+import { ReportsReviewsService } from './reports-reviews.service.js';
 import { ReportsSalesService } from './reports-sales.service.js';
 import { ReportsSettingsService } from './reports-settings.service.js';
-import { reportsPermissionsPatchBody, workloadIncludedBody } from './reports.schemas.js';
+import {
+  clientVisitsQuery,
+  exportsListQuery,
+  manualExportBody,
+  promotionNotReturnedQuery,
+  reportsPermissionsPatchBody,
+  reviewsQuery,
+  setReviewHiddenBody,
+  workloadIncludedBody,
+} from './reports.schemas.js';
 
 /**
  * Отчёты (docs/backend/02 §16): «один маршрут на отчёт» — `GET /v1/biz/{b}/reports/{name}`, диспетчер
@@ -32,12 +42,13 @@ export class ReportsController {
 
   constructor(
     dashboard: ReportsDashboardService,
-    journal: ReportsJournalService,
+    private readonly journal: ReportsJournalService,
     sales: ReportsSalesService,
-    marketing: ReportsMarketingService,
+    private readonly marketing: ReportsMarketingService,
     audit: ReportsAuditService,
     private readonly settings: ReportsSettingsService,
     private readonly exports: ReportsExportService,
+    private readonly reviews: ReportsReviewsService,
   ) {
     this.services = { dashboard, journal, sales, marketing, audit };
   }
@@ -84,8 +95,16 @@ export class ReportsController {
   @Get('exports')
   @Biz()
   @ApiOperation({ summary: 'Журнал выгрузок отчётов — «Операции с данными» (F-12-074…080)' })
-  listExports(@Param('businessId') businessId: string, @Query('staffId') staffId?: string, @Query('type') type?: string) {
-    return this.exports.list(businessId, { staffId, type });
+  listExports(@Param('businessId') businessId: string, @Query(new Zod(exportsListQuery)) q: z.infer<typeof exportsListQuery>) {
+    return this.exports.list(businessId, q);
+  }
+
+  @Post('exports')
+  @Biz()
+  @ApiOperation({ summary: 'Ручной след в журнале выгрузок/загрузок — кнопка «Выгрузить»/«Загрузить» вне REPORT_REGISTRY (F-12-074…080)' })
+  @ZodBody(manualExportBody)
+  logManualExport(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(manualExportBody)) body: z.infer<typeof manualExportBody>) {
+    return this.exports.logManual(ctx, businessId, body);
   }
 
   @Get('exports/:id')
@@ -109,6 +128,56 @@ export class ReportsController {
   @ApiOperation({ summary: 'Поставить выгрузку отчёта в очередь воркера (PLAN §6 №16)' })
   requestExport(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('name') name: string, @Query() query: Record<string, string>) {
     return this.exports.create(ctx, businessId, name, query);
+  }
+
+  // ─────────────────────────── F-12-056: выгрузка визитов одного клиента ───────────────────────────
+
+  @Get('client-visits/:clientId')
+  @Biz('reports.view')
+  @ApiOperation({ summary: 'Визиты одного клиента за диапазон — данные CSV «По клиентам» (F-12-056)' })
+  clientVisits(@Param('businessId') businessId: string, @Param('clientId') clientId: string, @Query(new Zod(clientVisitsQuery)) q: z.infer<typeof clientVisitsQuery>) {
+    return this.journal.clientVisits(businessId, clientId, { from: q.from, to: q.to });
+  }
+
+  // ─────────────────────────── F-12-070: типы сообщений, встреченные в журнале ───────────────────────────
+
+  @Get('message-types')
+  @Biz('reports.view')
+  messageTypes(@Param('businessId') businessId: string) {
+    return this.marketing.messageTypes(businessId);
+  }
+
+  // ─────────────────────────── F-12-067: «Не вернулись после акции» ───────────────────────────
+
+  @Get('promotion-not-returned')
+  @Biz('reports.view')
+  promotionNotReturned(@Param('businessId') businessId: string, @Query(new Zod(promotionNotReturnedQuery)) q: z.infer<typeof promotionNotReturnedQuery>) {
+    return this.marketing.promotionNotReturned(businessId, q.promotionId);
+  }
+
+  // ─────────────────────────── F-12-068…069: «Отзывы» ───────────────────────────
+
+  @Get('reviews')
+  @Biz('reports.view')
+  reviewsReport(@Param('businessId') businessId: string, @Query(new Zod(reviewsQuery)) q: z.infer<typeof reviewsQuery>) {
+    return this.reviews.report(businessId, { range: { from: q.from, to: q.to }, subject: q.subject });
+  }
+
+  @Delete('reviews/company/:id')
+  @Biz('reports.view')
+  @ApiOperation({ summary: 'Удалить текстовый отзыв о месте (F-12-069, право reviews.delete проверяет экран)' })
+  async deleteCompanyReview(@Param('businessId') businessId: string, @Param('id') id: string) {
+    await this.reviews.deleteCompanyReview(businessId, id);
+    return { ok: true as const };
+  }
+
+  @Patch('reviews/staff/:id')
+  @Biz('reports.view')
+  @ApiOperation({ summary: 'Скрыть/вернуть отзыв мастера из онлайн-записи, не удаляя (В-24, F-12-069)' })
+  @ZodBody(setReviewHiddenBody)
+  async setStaffReviewHidden(@Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(setReviewHiddenBody)) body: z.infer<typeof setReviewHiddenBody>) {
+    await this.reviews.setStaffReviewHidden(businessId, id, body.hidden);
+    return { ok: true as const };
   }
 
   // ─────────────────────────── docs/backend/02 §16: `GET …/reports/{name}` ───────────────────────────

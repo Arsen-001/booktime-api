@@ -199,6 +199,66 @@ export class ModerationService {
     });
   }
 
+  /**
+   * Решение по нескольким материалам одной операцией (этап 21, лейн rest): уже решённые (кто-то успел раньше)
+   * пропускаются, а не роняют всю пачку — тот же контракт, что был у панели при параллельных одиночных вызовах,
+   * но одной транзакцией и без N HTTP-круговоротов.
+   */
+  async bulkApprove(ids: string[]): Promise<string[]> {
+    return this.prisma.$transaction(async (tx) => {
+      const items = await tx.moderationItem.findMany({ where: { id: { in: ids }, status: 'pending' } });
+      if (!items.length) return [];
+      const now = new Date();
+      for (const item of items) {
+        const history = [...((item.history ?? []) as HistoryEvent[]), { id: newId('moderationEvent'), at: utcToLocal(now), kind: 'approved' as const }];
+        await tx.moderationItem.update({ where: { id: item.id }, data: { status: 'approved', decidedAt: now, history: history as unknown as Prisma.InputJsonValue } });
+      }
+      return items.map((i) => i.id);
+    });
+  }
+
+  async bulkReject(ids: string[], reasonId: string, note: string | undefined, by: string): Promise<string[]> {
+    return this.prisma.$transaction(async (tx) => {
+      const reason = await tx.rejectReason.findUnique({ where: { id: reasonId } });
+      if (!reason) throw new ApiError('validation', 'Unknown reason', { reasonId: 'not_found' });
+      const items = await tx.moderationItem.findMany({ where: { id: { in: ids }, status: 'pending' } });
+      if (!items.length) return [];
+      const now = new Date();
+      for (const item of items) {
+        const history = [...((item.history ?? []) as HistoryEvent[]), { id: newId('moderationEvent'), at: utcToLocal(now), kind: 'rejected' as const, note }];
+        if (item.paidCoins) {
+          await grantCoins(tx, { businessId: item.businessId, amount: item.paidCoins, reason: 'moderationReject', area: 'moderation', refId: item.id, by }, 'refund');
+          history.push({ id: newId('moderationEvent'), at: utcToLocal(now), kind: 'refund', coins: item.paidCoins });
+        }
+        await tx.moderationItem.update({
+          where: { id: item.id },
+          data: { status: 'rejected', reasonId, reasonNote: note ?? null, decidedAt: now, history: history as unknown as Prisma.InputJsonValue },
+        });
+      }
+      return items.map((i) => i.id);
+    });
+  }
+
+  async bulkReopen(ids: string[], by: string): Promise<string[]> {
+    return this.prisma.$transaction(async (tx) => {
+      const items = await tx.moderationItem.findMany({ where: { id: { in: ids } } });
+      if (!items.length) return [];
+      const now = new Date();
+      for (const item of items) {
+        if (item.status === 'pending') continue;
+        if (item.status === 'rejected' && item.paidCoins) {
+          await spendCoins(tx, { businessId: item.businessId, amount: item.paidCoins, reason: 'manual', area: 'moderation', refId: item.id, by });
+        }
+        const history = [...((item.history ?? []) as HistoryEvent[]), { id: newId('moderationEvent'), at: utcToLocal(now), kind: 'reopened' as const }];
+        await tx.moderationItem.update({
+          where: { id: item.id },
+          data: { status: 'pending', reasonId: null, reasonNote: null, decidedAt: null, history: history as unknown as Prisma.InputJsonValue },
+        });
+      }
+      return items.filter((i) => i.status !== 'pending').map((i) => i.id);
+    });
+  }
+
   /** null, не undefined: `res.json(undefined)` в Express уходит невалидной строкой "undefined", не пустым телом */
   async getStatus(refId: string) {
     const row = await this.prisma.moderationItem.findFirst({ where: { refId }, orderBy: { submittedAt: 'desc' } });

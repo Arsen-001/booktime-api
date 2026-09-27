@@ -119,4 +119,59 @@ export class ReportsMarketingService {
     const page = items.slice((filters.page - 1) * filters.pageSize, filters.page * filters.pageSize);
     return { items: page, total };
   }
+
+  /** F-12-070: типы, реально встреченные в журнале сообщений бизнеса — выпадающий фильтр, без отдельного реестра */
+  async messageTypes(businessId: string) {
+    const rows = await this.prisma.notifyOutbox.findMany({ where: { businessId, app: 'client' }, distinct: ['kind'], select: { kind: true }, take: 200 });
+    return rows.map((r) => ({ code: r.kind, label: r.kind })).sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  /**
+   * F-12-067 «Не вернулись после акции»: та же приближённость, что `promotions()` выше (клиенты акции —
+   * держатели карты одного из `Promotion.cardTypeIds`), но по клиенту, а не сводкой — 0 или 1 визит ПОСЛЕ
+   * выдачи карты (больше одного — уже «вернулся», не в этой выгрузке), 1:1 с `src/api/reports.ts::getPromotionNotReturned`.
+   */
+  async promotionNotReturned(businessId: string, promotionId: string) {
+    const promo = await this.prisma.promotion.findFirst({ where: { id: promotionId, businessId } });
+    if (!promo) return [];
+    const cardTypeIds = promo.cardTypeIds as string[];
+    if (!cardTypeIds.length) return [];
+    const cards = await this.prisma.loyaltyCard.findMany({ where: { businessId, cardTypeId: { in: cardTypeIds } }, select: { clientId: true, createdAt: true, balance: true } });
+    const clientIds = [...new Set(cards.map((c) => c.clientId).filter((x): x is string => Boolean(x)))];
+    if (!clientIds.length) return [];
+    const clients = await this.prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, name: true, phone: true, email: true, createdAt: true } });
+    const clientMap = new Map(clients.map((c) => [c.id, c] as const));
+    const bookings = await this.prisma.booking.findMany({
+      where: { businessId, status: 'arrived', clientId: { in: clientIds } },
+      select: { clientId: true, startAt: true, total: true },
+      orderBy: { startAt: 'asc' },
+    });
+    const visitsByClient = new Map<string, { startAt: Date; total: unknown }[]>();
+    for (const b of bookings) {
+      if (!b.clientId) continue;
+      const arr = visitsByClient.get(b.clientId) ?? [];
+      arr.push(b);
+      visitsByClient.set(b.clientId, arr);
+    }
+    const rows: { clientId: string; clientName: string; clientPhone?: string; clientEmail?: string; registeredAt?: string; lastVisitAt?: string; paidByPromotion: number; accountBalance: number }[] = [];
+    for (const card of cards) {
+      if (!card.clientId) continue;
+      const client = clientMap.get(card.clientId);
+      if (!client) continue;
+      const visits = visitsByClient.get(card.clientId) ?? [];
+      const afterCard = visits.filter((v) => v.startAt >= card.createdAt);
+      if (afterCard.length > 1) continue;
+      rows.push({
+        clientId: client.id,
+        clientName: client.name,
+        clientPhone: client.phone ?? undefined,
+        clientEmail: client.email ?? undefined,
+        registeredAt: client.createdAt.toISOString().slice(0, 10),
+        lastVisitAt: visits.length ? visits[visits.length - 1]!.startAt.toISOString().slice(0, 10) : undefined,
+        paidByPromotion: afterCard.reduce((s, v) => s + Number(v.total), 0),
+        accountBalance: Number(card.balance),
+      });
+    }
+    return rows;
+  }
 }

@@ -8,6 +8,10 @@ import { ErrorFilter } from './common/errors/error.filter.js';
 /** Собрать приложение API (общая часть для сервера и генерации OpenAPI) */
 export async function createApp(): Promise<{ app: NestExpressApplication; openapi: OpenAPIObject }> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ['error', 'warn'] });
+  // Фото/логотипы/сторис приходят как data: URL в JSON-теле (imageUrl до 4 000 000 симв. в схемах platform/
+  // services/client) — дефолтный лимит Express (100kb) резал их 413 ещё до валидации zod (этап 21, лейн rest).
+  app.useBodyParser('json', { limit: '10mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '10mb' });
   app.enableCors({ origin: env.CORS_ORIGINS, credentials: true });
   app.useGlobalFilters(new ErrorFilter());
   app.enableShutdownHooks();

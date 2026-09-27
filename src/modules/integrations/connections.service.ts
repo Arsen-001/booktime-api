@@ -7,7 +7,7 @@ import type { AppInstallOut, ConnectAppBody, RequestedScope, SystemUserOut } fro
 
 const ACTIVATION_WINDOW_MS = 60 * 60 * 1000;
 
-function view(row: {
+interface ConnectionRow {
   id: string;
   appId: string;
   businessId: string;
@@ -21,7 +21,13 @@ function view(row: {
   paidUntil: Date | null;
   systemUserId: string | null;
   errorText: string | null;
-}): AppInstallOut {
+  lastEventAt?: Date | null;
+  lastEventKind?: string | null;
+  recentErrors?: unknown;
+  lastTest?: unknown;
+}
+
+function view(row: ConnectionRow): AppInstallOut {
   return {
     id: row.id,
     appId: row.appId,
@@ -36,6 +42,10 @@ function view(row: {
     paidUntil: row.paidUntil?.toISOString(),
     systemUserId: row.systemUserId ?? undefined,
     errorText: row.errorText ?? undefined,
+    lastEventAt: row.lastEventAt?.toISOString() ?? undefined,
+    lastEventKind: (row.lastEventKind as AppInstallOut['lastEventKind']) ?? undefined,
+    recentErrors: (row.recentErrors as AppInstallOut['recentErrors']) ?? undefined,
+    lastTest: (row.lastTest as AppInstallOut['lastTest']) ?? undefined,
   };
 }
 
@@ -115,6 +125,28 @@ export class ConnectionsService {
     if (!row) throw new ApiError('not_found', 'Install not found');
     if (row.appId.startsWith('ia_builtin')) throw new ApiError('builtin_locked', 'Built-in app cannot be disconnected');
     await this.prisma.integrationConnection.update({ where: { id }, data: { status: 'disconnected', disconnectedAt: new Date() } });
+  }
+
+  /**
+   * И2 (ревью 27.09, этап 21): «Отправить тест» — проверочное событие партнёру. Настоящего обмена с чужими
+   * каталожными приложениями нет (Р19), поэтому «партнёр отвечает» честно по своему же состоянию: подключение
+   * должно быть `connected`, и нет свежей (24 ч) ошибки `invalidCredentials` — тот же критерий, что раньше
+   * жил в моке (src/api/integrations.ts, sendInstallTest), источник записи теперь БД, а не area-стор.
+   */
+  async sendTest(businessId: string, installId: string): Promise<{ at: string; ok: boolean; reason?: string }> {
+    const row = await this.prisma.integrationConnection.findFirst({ where: { id: installId, businessId } });
+    if (!row) throw new ApiError('not_found', 'Install not found');
+    if (row.status !== 'connected') throw new ApiError('not_connected', 'Проверить можно только подключённое приложение');
+    const now = new Date();
+    const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const recent = (row.recentErrors as Array<{ id: string; at: string; reason: string }> | null) ?? [];
+    const badKey = recent.some((e) => e.reason === 'invalidCredentials' && new Date(e.at) >= dayAgo);
+    const result = badKey ? { at: now.toISOString(), ok: false, reason: 'invalidCredentials' } : { at: now.toISOString(), ok: true };
+    await this.prisma.integrationConnection.update({
+      where: { id: installId },
+      data: result.ok ? { lastTest: result, lastEventAt: now, lastEventKind: 'sync' } : { lastTest: result },
+    });
+    return result;
   }
 
   /** F-13-019/059: живёт, пока install.status === 'connected' — appName достраивает фронт из своего каталога */

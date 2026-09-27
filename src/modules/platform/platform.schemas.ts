@@ -11,6 +11,9 @@ export const MODERATION_STATUSES = ['pending', 'approved', 'rejected', 'auto'] a
 
 export const moderationSubmitBody = z.object({
   kind: z.enum(MODERATION_KINDS),
+  // Ключ вызывающей стороны, НЕ сама картинка (см. комментарий поля в schema.prisma) — колонка VARCHAR(64).
+  // Фасад обязан прислать короткий стабильный ключ (id/хеш), не data: URL целиком (этап 21, лейн rest: было
+  // найдено, что settings.ts::submitMediaForReview слал сам url — чинили в settings.ts, не здесь).
   refId: z.string().min(1).max(64),
   staffId: z.string().max(32).optional(),
   serviceId: z.string().max(32).optional(),
@@ -28,6 +31,17 @@ export const moderationListQuery = z.object({
 });
 
 export const rejectBody = z.object({ reasonId: z.string().min(1).max(32), note: z.string().max(300).optional() });
+
+/** Решение по нескольким материалам сразу (выбор галочками в очереди, этап 21 лейн rest — панель раньше звала одиночные параллельно) */
+export const moderationBulkIdsBody = z.object({ ids: z.array(z.string().min(1).max(32)).min(1).max(200) });
+export const moderationBulkRejectBody = z.object({
+  ids: z.array(z.string().min(1).max(32)).min(1).max(200),
+  reasonId: z.string().min(1).max(32),
+  note: z.string().max(300).optional(),
+});
+
+/** Статус/видимость по refId — тот же refId, что и в submit (может быть длинным data: URL), поэтому телом, не путём */
+export const moderationRefIdBody = z.object({ refId: z.string().min(1).max(4_000_000) });
 
 export const rejectReasonBody = z.object({
   id: z.string().max(32).optional(),

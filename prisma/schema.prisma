@@ -1763,6 +1763,8 @@ model LoyaltyCardType {
   version              Int      @default(1)
 
   cards LoyaltyCard[]
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data  Json?
 
   @@index([ownerId])
   @@map("loyalty_card_types")
@@ -1785,6 +1787,8 @@ model LoyaltyCard {
   version    Int      @default(1)
 
   cardType LoyaltyCardType @relation(fields: [cardTypeId], references: [id])
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data     Json?
 
   @@index([businessId, clientId])
   @@index([appUserId])
@@ -1815,6 +1819,8 @@ model Promotion {
   createdBy    String?  @map("created_by") @db.VarChar(32)
   updatedBy    String?  @map("updated_by") @db.VarChar(32)
   version      Int      @default(1)
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data         Json?
 
   @@index([ownerId])
   @@map("promotions")
@@ -1835,6 +1841,8 @@ model LoyaltyTx {
   note       String?  @db.VarChar(400)
   staffId    String?  @map("staff_id") @db.VarChar(32)
   createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data       Json?
 
   @@index([businessId, createdAt])
   @@index([clientId])
@@ -1873,6 +1881,8 @@ model CertificateType {
   version     Int      @default(1)
 
   certificates Certificate[]
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data         Json?
 
   @@index([ownerId])
   @@map("certificate_types")
@@ -1886,7 +1896,7 @@ model Certificate {
   businessId String   @map("business_id") @db.VarChar(32)
   clientId   String?  @map("client_id") @db.VarChar(32)
   appUserId  String?  @map("app_user_id") @db.VarChar(32)
-  code       String   @unique @db.VarChar(40)
+  code       String   @db.VarChar(40)
   total      BigInt
   balance    BigInt
   /// active | pending_confirmation | rejected | refunded
@@ -1900,7 +1910,10 @@ model Certificate {
   version    Int      @default(1)
 
   type CertificateType @relation(fields: [typeId], references: [id])
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data Json?
 
+  @@unique([businessId, code])
   @@index([businessId, clientId])
   @@index([appUserId])
   @@map("certificates")
@@ -1926,6 +1939,8 @@ model MembershipType {
   version     Int      @default(1)
 
   sales MembershipSale[]
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data  Json?
 
   @@index([ownerId])
   @@map("membership_types")
@@ -1938,7 +1953,7 @@ model MembershipSale {
   businessId      String    @map("business_id") @db.VarChar(32)
   clientId        String?   @map("client_id") @db.VarChar(32)
   appUserId       String?   @map("app_user_id") @db.VarChar(32)
-  code            String    @unique @db.VarChar(40)
+  code            String    @db.VarChar(40)
   totalVisits     Int?      @map("total_visits")
   remainingVisits Int?      @map("remaining_visits")
   /// active | pending_confirmation | rejected | frozen | expired | refunded
@@ -1954,7 +1969,10 @@ model MembershipSale {
 
   type    MembershipType     @relation(fields: [typeId], references: [id])
   freezes MembershipFreeze[]
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data    Json?
 
+  @@unique([businessId, code])
   @@index([businessId, clientId])
   @@index([appUserId])
   @@map("membership_sales")
@@ -1990,6 +2008,8 @@ model ClientAccountType {
   version     Int      @default(1)
 
   accounts ClientAccount[]
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data     Json?
 
   @@index([ownerId])
   @@map("client_account_types")
@@ -2010,6 +2030,8 @@ model ClientAccount {
 
   type ClientAccountType @relation(fields: [typeId], references: [id])
   ops  ClientAccountOp[]
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data Json?
 
   @@index([businessId, clientId])
   @@map("client_accounts")
@@ -2028,6 +2050,8 @@ model ClientAccountOp {
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   account ClientAccount @relation(fields: [accountId], references: [id])
+  /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
+  data    Json?
 
   @@index([accountId])
   @@map("client_account_ops")
@@ -2903,6 +2927,9 @@ model ReportExport {
   storageKey String?   @map("storage_key") @db.VarChar(300)
   rowCount   Int?      @map("row_count")
   error      String?   @db.VarChar(300)
+  /// upload | copyFromExcel | emailLink | browserDownload (F-12-074…080, этап 21 «network+reports»); null на
+  /// старых строках очереди воркера (§16) — читается как 'browserDownload' (reports-export.service.ts::toDto)
+  operation  String?   @db.VarChar(20)
   createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   readyAt    DateTime? @map("ready_at") @db.DateTime(3)
 
@@ -2957,11 +2984,16 @@ model Webhook {
 /// F-13-065: адреса, заданные до блокировки новых, продолжают работать («legacy»); экран не предлагает
 /// добавить новый (WEBHOOK_NEW_ADDRESS_BLOCKED фронта) — сервер тоже не создаёт их вне сида демо-бизнеса.
 model WebhookAddress {
-  id         String   @id @db.VarChar(32)
-  businessId String   @map("business_id") @db.VarChar(32)
-  url        String   @db.VarChar(500)
-  legacy     Boolean  @default(true)
-  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  id            String    @id @db.VarChar(32)
+  businessId    String    @map("business_id") @db.VarChar(32)
+  url           String    @db.VarChar(500)
+  legacy        Boolean   @default(true)
+  /// И13 (этап 21): секрет подписи HMAC — целиком в ответе на создание/поворот; `getConfig` отдаёт его как
+  /// есть, маскирует фронт (`maskWebhookConfig`); легаси-адрес сида без секрета — null
+  signingSecret String?   @map("signing_secret") @db.VarChar(64)
+  /// И13: когда адрес последний раз ответил 2xx на проверочный запрос
+  verifiedAt    DateTime? @map("verified_at") @db.DateTime(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
 
   @@index([businessId])
   @@map("webhook_addresses")
@@ -3013,6 +3045,14 @@ model IntegrationConnection {
   paidUntil      DateTime? @map("paid_until") @db.DateTime(3)
   systemUserId   String?   @map("system_user_id") @db.VarChar(32)
   errorText      String?   @map("error_text") @db.VarChar(200)
+  /// И2 (этап 21, ревью 27.09): «работает ли» — последний обмен данными с партнёром
+  lastEventAt    DateTime? @map("last_event_at") @db.DateTime(3)
+  /// sync | message | booking (InstallEventKind фронта)
+  lastEventKind  String?   @map("last_event_kind") @db.VarChar(10)
+  /// InstallErrorEntry[] — храним 30 дней, экран показывает 7 (recentInstallErrors)
+  recentErrors   Json?     @map("recent_errors")
+  /// InstallTestResult ({ at, ok, reason? }) последнего «Отправить тест»
+  lastTest       Json?     @map("last_test")
 
   @@index([businessId, locationId])
   @@index([appId])
@@ -3741,25 +3781,25 @@ model VisitScheduleEntry {
 /// слотами (slots) для другого экрана (журнал) — их сведение в одну сознательно не входит в этот этап (см.
 /// докстринг src/domain/resources.ts фронта, qa/requests/resources.md).
 model ResourcesWaitlistEntry {
-  id            String    @id @db.VarChar(32)
-  businessId    String    @map("business_id") @db.VarChar(32)
-  locationId    String    @map("location_id") @db.VarChar(32)
-  clientName    String    @map("client_name") @db.VarChar(160)
-  clientPhone   String    @map("client_phone") @db.VarChar(20)
+  id              String   @id @db.VarChar(32)
+  businessId      String   @map("business_id") @db.VarChar(32)
+  locationId      String   @map("location_id") @db.VarChar(32)
+  clientName      String   @map("client_name") @db.VarChar(160)
+  clientPhone     String   @map("client_phone") @db.VarChar(20)
   /// Id услуг, которых клиент ждёт (хотя бы одна)
-  serviceIds    Json      @map("service_ids")
+  serviceIds      Json     @map("service_ids")
   /// Пусто — любой специалист
-  staffIds      Json      @map("staff_ids")
+  staffIds        Json     @map("staff_ids")
   /// WaitlistWish[]: { date, time?, intervals? }
-  wishes        Json
-  comment       String    @default("") @db.VarChar(2000)
-  tags          Json
+  wishes          Json
+  comment         String   @default("") @db.VarChar(2000)
+  tags            Json
   /// Заявка закрыта записью — id созданной брони (F-16-163)
-  closedBookingId String? @map("closed_booking_id") @db.VarChar(32)
+  closedBookingId String?  @map("closed_booking_id") @db.VarChar(32)
   /// История отметок «Проверить лист ожидания» (F-16-166…168) — ISODateTime[]
-  notifiedTimes Json?     @map("notified_times")
-  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  createdBy     String?   @map("created_by") @db.VarChar(32)
+  notifiedTimes   Json?    @map("notified_times")
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy       String?  @map("created_by") @db.VarChar(32)
 
   @@index([businessId, createdAt])
   @@map("resources_waitlist_entries")
@@ -3784,6 +3824,8 @@ model StaffReview {
   bookingId  String   @map("booking_id") @db.VarChar(32)
   rating     Int
   text       String?  @db.VarChar(2000)
+  /// F-12-069 (В-24, 1:1 с Altegio): бизнес прячет отзыв из онлайн-записи, не удаляя (этап 21 «network+reports»)
+  hidden     Boolean  @default(false)
   createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
@@ -3811,3 +3853,55 @@ model LocationReview {
 }
 
 // === end stage 21 ===
+
+// === stage 21 (лейн loyalty) ===
+
+/// Заказ витрины онлайн-продаж сертификатов/абонементов (F-06-151/152) — форма OnlineOrder фронта в data
+model LoyaltyOnlineOrder {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// pendingPayment | confirmed | rejected | refunded
+  status     String   @db.VarChar(20)
+  data       Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  version    Int      @default(1)
+
+  @@index([businessId, createdAt])
+  @@map("loyalty_online_orders")
+}
+
+// === end stage 21 (лейн loyalty) ===
+
+// === stage 21 (лейн client+online) ===
+// Аудит фасадов, лейн «client+online» (PLAN §6 строка 21, docs/PROGRESS.md): src/api/online.ts зовёт
+// readCore/readArea мимо сервера в 51 используемой функции. Бо́льшая часть (заявки на подтверждение,
+// правила отмены/переноса, ссылки, свободные окна) уже читает существующие таблицы (Booking.onlineMeta,
+// BookingEvent, BookingLink.config) — своей таблицы здесь требует только «Экран данных клиента»
+// (F-03-071…075): своих полей у Client/Business для этого нет, и это настройка кабинета, а не срез факта.
+
+/// Настройка экрана «Данные клиента» онлайн-записи (F-03-071…075) — одна строка на бизнес.
+model OnlineClientFieldsConfig {
+  businessId         String   @id @map("business_id") @db.VarChar(32)
+  commentHidden      Boolean  @default(false) @map("comment_hidden")
+  commentRequired    Boolean  @default(false) @map("comment_required")
+  commentLabel       String   @default("Комментарий к записи") @map("comment_label") @db.VarChar(60)
+  emailHidden        Boolean  @default(false) @map("email_hidden")
+  emailRequired      Boolean  @default(false) @map("email_required")
+  lastNameEnabled    Boolean  @default(false) @map("last_name_enabled")
+  lastNameRequired   Boolean  @default(false) @map("last_name_required")
+  patronymicEnabled  Boolean  @default(false) @map("patronymic_enabled")
+  patronymicRequired Boolean  @default(false) @map("patronymic_required")
+  /// CustomClientField[] фронта
+  customFields       Json     @map("custom_fields")
+  /// LocalizedText фронта
+  widgetText         Json     @map("widget_text")
+  /// string[]
+  partnerBrands      Json     @map("partner_brands")
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy          String?  @map("updated_by") @db.VarChar(32)
+
+  @@map("online_client_fields_configs")
+}
+
+// === end stage 21 (лейн client+online) ===

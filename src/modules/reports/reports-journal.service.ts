@@ -357,6 +357,32 @@ export class ReportsJournalService {
     }
     return { rows, totalWorkedHours: Math.round(totalWorkedHours * 10) / 10, totalScheduledHours: Math.round(totalScheduledHours * 10) / 10 };
   }
+
+  // ─────────────────────────── F-12-056: выгрузка «По клиентам» — визиты ОДНОГО клиента ───────────────────────────
+
+  /** Этап 21 «network+reports»: CSV-данные для кнопки «Выгрузить визиты клиента» в отчёте «По клиентам» */
+  async clientVisits(businessId: string, clientId: string, range: ReportRange) {
+    const { from, to } = wideUtcBounds(range);
+    const rows = await this.prisma.booking.findMany({
+      where: { businessId, clientId, status: 'arrived', startAt: { gte: from, lt: to } },
+      orderBy: { startAt: 'asc' },
+      select: { startAt: true, services: true, staffId: true, total: true },
+    });
+    if (!rows.length) return [];
+    const staffMap = await this.staffNames(
+      businessId,
+      rows.map((r) => r.staffId),
+    );
+    const serviceIds = [...new Set(rows.flatMap((r) => (r.services as { serviceId: string }[]).map((l) => l.serviceId)))];
+    const services = serviceIds.length ? await this.prisma.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, name: true } }) : [];
+    const serviceMap = new Map(services.map((s) => [s.id, ruOf(s.name)]));
+    return rows.map((b) => ({
+      date: b.startAt.toISOString(),
+      services: (b.services as { serviceId: string }[]).map((l) => serviceMap.get(l.serviceId) ?? '').join(', '),
+      staffName: staffMap.get(b.staffId)?.name ?? '',
+      amount: Number(b.total),
+    }));
+  }
 }
 
 function isoDaysAgo(days: number): string {

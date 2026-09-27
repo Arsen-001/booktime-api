@@ -51,7 +51,14 @@ export type WebhookEntity = z.infer<typeof webhookEntity>;
 export const setWebhookEnabledBody = z.object({ enabled: z.boolean() });
 export const setWebhookEntitiesBody = z.object({ entities: z.array(webhookEntity).max(16) });
 
-export const webhookAddressOut = z.object({ id: z.string(), url: z.string(), createdAt: z.string(), legacy: z.boolean() });
+export const webhookAddressOut = z.object({
+  id: z.string(),
+  url: z.string(),
+  createdAt: z.string(),
+  legacy: z.boolean(),
+  signingSecret: z.string().optional(),
+  verifiedAt: z.string().optional(),
+});
 export const webhookConfigOut = z.object({
   businessId: z.string(),
   enabled: z.boolean(),
@@ -59,6 +66,12 @@ export const webhookConfigOut = z.object({
   entities: z.array(webhookEntity),
 });
 export type WebhookConfigOut = z.infer<typeof webhookConfigOut>;
+
+// ─────────── Ревью 27.09 (И13): адреса вебхуков ───────────
+
+export const addWebhookAddressBody = z.object({ url: z.string().trim().min(1).max(500) });
+export const addWebhookAddressOut = z.object({ address: webhookAddressOut, secret: z.string() });
+export type AddWebhookAddressOut = z.infer<typeof addWebhookAddressOut>;
 
 export const webhookDeliveryOut = z.object({
   id: z.string(),
@@ -69,6 +82,8 @@ export const webhookDeliveryOut = z.object({
   address: z.string(),
   status: z.enum(['delivered', 'failed']),
   createdAt: z.string(),
+  failReason: z.enum(['timeout', 'http4xx', 'http5xx', 'tls']).optional(),
+  attempts: z.number().optional(),
 });
 export type WebhookDeliveryOut = z.infer<typeof webhookDeliveryOut>;
 
@@ -101,8 +116,17 @@ export const appInstallOut = z.object({
   paidUntil: z.string().optional(),
   systemUserId: z.string().optional(),
   errorText: z.string().optional(),
+  lastEventAt: z.string().optional(),
+  lastEventKind: z.enum(['sync', 'message', 'booking']).optional(),
+  recentErrors: z.array(z.object({ id: z.string(), at: z.string(), reason: z.string() })).optional(),
+  lastTest: z.object({ at: z.string(), ok: z.boolean(), reason: z.string().optional() }).optional(),
 });
 export type AppInstallOut = z.infer<typeof appInstallOut>;
+
+// ─────────── Ревью 27.09 (И2): «Отправить тест» ───────────
+
+export const installTestOut = z.object({ at: z.string(), ok: z.boolean(), reason: z.string().optional() });
+export type InstallTestOut = z.infer<typeof installTestOut>;
 
 export const systemUserOut = z.object({
   id: z.string(),

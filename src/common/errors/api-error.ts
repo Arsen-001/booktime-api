@@ -133,11 +133,17 @@ export const ERROR_STATUS = {
   insufficient_stock: HttpStatus.CONFLICT,
   not_editable: HttpStatus.CONFLICT,
   already_completed: HttpStatus.CONFLICT,
+  // склад, этап 21 лейн finance+stock — коды мока (src/api/stock.ts: расходники визита)
+  invalid_qty: HttpStatus.UNPROCESSABLE_ENTITY,
+  not_arrived: HttpStatus.CONFLICT,
   // зарплата (этап 14) — как в моке фронта (src/api/finance.ts, src/domain/payroll.ts)
   sheet_not_draft: HttpStatus.CONFLICT,
   cannot_pay: HttpStatus.CONFLICT,
   // интеграции (этап 17) — как в моке фронта (src/api/integrations.ts)
   builtin_locked: HttpStatus.CONFLICT,
+  // ревью 27.09, этап 21 — И2/И13 (src/api/integrations.ts: sendInstallTest/addWebhookAddress)
+  not_connected: HttpStatus.CONFLICT,
+  webhook_unreachable: HttpStatus.CONFLICT,
   // подписка, монеты, промокоды, настройки (этап 18) — docs/backend/06 §2–4, коды мока (src/api/settings.ts)
   promo_not_found: HttpStatus.NOT_FOUND,
   payment_failed: HttpStatus.PAYMENT_REQUIRED,
