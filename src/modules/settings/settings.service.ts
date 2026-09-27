@@ -6,6 +6,7 @@ import { newId } from '../../common/ids/ids.js';
 import { LiveService } from '../../common/live/live.service.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { utcToLocal } from '../../common/time/time.js';
+import { nextPlatformNumber } from '../platform/counters.js';
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaService | Tx;
@@ -325,8 +326,12 @@ export class SettingsService {
     return rows.map((r) => this.requestView(r));
   }
 
+  /** kind='help' попадает в единую очередь поддержки нашей панели (этап 19, F-00-182) — номер из общего счётчика */
   async createRequest(ctx: RequestContext, businessId: string, kind: 'help' | 'mobileApp', input: { topic?: string; message?: string }) {
-    const row = await this.prisma.bizRequest.create({ data: { id: newId('bizRequest'), businessId, authorStaffId: ctx.member!.staffId, kind, topic: input.topic ?? null, message: input.message ?? null } });
+    const row = await this.prisma.$transaction(async (tx) => {
+      const number = kind === 'help' ? await nextPlatformNumber(tx, 'support') : null;
+      return tx.bizRequest.create({ data: { id: newId('bizRequest'), businessId, authorStaffId: ctx.member!.staffId, kind, topic: input.topic ?? null, message: input.message ?? null, number } });
+    });
     return this.requestView(row);
   }
 

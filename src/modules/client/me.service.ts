@@ -3,7 +3,7 @@ import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { isLocalDate, nowLocal } from '../../common/time/time.js';
+import { isLocalDate, nowLocal, utcToLocal } from '../../common/time/time.js';
 import { Prisma, type Booking as BookingRow } from '../../generated/prisma/client.js';
 import { businessView, locationView } from '../businesses/views.js';
 import { BookingsService, clientActor, type PlaceInput } from '../journal/bookings.service.js';
@@ -11,6 +11,7 @@ import { canReschedule, clientCancelOutcome, effectiveBookingRules, isCancelled,
 import { MeLoyaltyService } from '../loyalty/me-loyalty.service.js';
 import { sanitizePublicStaff } from '../online/online.service.js';
 import { serviceView } from '../services/services.views.js';
+import { nextPlatformNumber } from '../platform/counters.js';
 
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 
@@ -361,6 +362,26 @@ export class MeService {
   // ─────────────────────────── обращение к нам (F-00-182) ───────────────────────────
 
   async submitSupport(input: { appUserId?: string; phone?: string; subject: string; message: string }): Promise<void> {
-    await this.prisma.supportTicket.create({ data: { id: newId('supportTicket'), appUserId: input.appUserId, phone: input.phone, subject: input.subject.slice(0, 200), message: input.message.slice(0, 4000) } });
+    const now = new Date();
+    const user = input.appUserId ? await this.prisma.user.findUnique({ where: { id: input.appUserId }, select: { name: true } }) : null;
+    const subject = input.subject.slice(0, 200);
+    const message = input.message.slice(0, 4000);
+    await this.prisma.$transaction(async (tx) => {
+      const number = await nextPlatformNumber(tx, 'support');
+      await tx.supportTicket.create({
+        data: {
+          id: newId('supportTicket'),
+          number,
+          appUserId: input.appUserId,
+          name: user?.name ?? null,
+          phone: input.phone,
+          subject,
+          message,
+          channel: 'app',
+          topic: 'other',
+          messages: [{ id: newId('supportTicket'), author: 'them', text: message, at: utcToLocal(now) }] as unknown as Prisma.InputJsonValue,
+        },
+      });
+    });
   }
 }
