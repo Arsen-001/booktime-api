@@ -47264,6 +47264,2984 @@
           "payroll"
         ]
       }
+    },
+    "/v1/net/{networkId}/users": {
+      "get": {
+        "operationId": "NetworkUsersController_list",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "networkId": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "phone": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string"
+                      },
+                      "permissions": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "settings",
+                            "users",
+                            "clients",
+                            "records",
+                            "staff",
+                            "services",
+                            "goods",
+                            "loyalty",
+                            "accounts",
+                            "onlineSales",
+                            "telephony",
+                            "plans",
+                            "analytics",
+                            "fields",
+                            "subdivisions",
+                            "migrations",
+                            "payroll"
+                          ]
+                        }
+                      },
+                      "lastVisitAt": {
+                        "type": "string"
+                      },
+                      "isOwner": {
+                        "type": "boolean"
+                      },
+                      "pending": {
+                        "type": "boolean"
+                      },
+                      "planReportFrequency": {
+                        "type": "string",
+                        "enum": [
+                          "off",
+                          "daily",
+                          "weekly",
+                          "monthly"
+                        ]
+                      },
+                      "version": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "networkId",
+                      "name",
+                      "phone",
+                      "permissions",
+                      "version"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      },
+      "post": {
+        "operationId": "NetworkUsersController_add",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "pattern": "^\\+374\\d{8}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "permissions": {
+                    "default": [],
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "settings",
+                        "users",
+                        "clients",
+                        "records",
+                        "staff",
+                        "services",
+                        "goods",
+                        "loyalty",
+                        "accounts",
+                        "onlineSales",
+                        "telephony",
+                        "plans",
+                        "analytics",
+                        "fields",
+                        "subdivisions",
+                        "migrations",
+                        "payroll"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "phone",
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "settings",
+                          "users",
+                          "clients",
+                          "records",
+                          "staff",
+                          "services",
+                          "goods",
+                          "loyalty",
+                          "accounts",
+                          "onlineSales",
+                          "telephony",
+                          "plans",
+                          "analytics",
+                          "fields",
+                          "subdivisions",
+                          "migrations",
+                          "payroll"
+                        ]
+                      }
+                    },
+                    "lastVisitAt": {
+                      "type": "string"
+                    },
+                    "isOwner": {
+                      "type": "boolean"
+                    },
+                    "pending": {
+                      "type": "boolean"
+                    },
+                    "planReportFrequency": {
+                      "type": "string",
+                      "enum": [
+                        "off",
+                        "daily",
+                        "weekly",
+                        "monthly"
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "networkId",
+                    "name",
+                    "phone",
+                    "permissions",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Добавить нового пользователя сети (F-11-026)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/users/invite": {
+      "post": {
+        "operationId": "NetworkUsersController_invite",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "pattern": "^\\+374\\d{8}$"
+                  },
+                  "permissions": {
+                    "default": [],
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "settings",
+                        "users",
+                        "clients",
+                        "records",
+                        "staff",
+                        "services",
+                        "goods",
+                        "loyalty",
+                        "accounts",
+                        "onlineSales",
+                        "telephony",
+                        "plans",
+                        "analytics",
+                        "fields",
+                        "subdivisions",
+                        "migrations",
+                        "payroll"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "phone"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "settings",
+                          "users",
+                          "clients",
+                          "records",
+                          "staff",
+                          "services",
+                          "goods",
+                          "loyalty",
+                          "accounts",
+                          "onlineSales",
+                          "telephony",
+                          "plans",
+                          "analytics",
+                          "fields",
+                          "subdivisions",
+                          "migrations",
+                          "payroll"
+                        ]
+                      }
+                    },
+                    "lastVisitAt": {
+                      "type": "string"
+                    },
+                    "isOwner": {
+                      "type": "boolean"
+                    },
+                    "pending": {
+                      "type": "boolean"
+                    },
+                    "planReportFrequency": {
+                      "type": "string",
+                      "enum": [
+                        "off",
+                        "daily",
+                        "weekly",
+                        "monthly"
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "networkId",
+                    "name",
+                    "phone",
+                    "permissions",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Пригласить существующего пользователя по телефону (F-11-025)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/users/{id}/permissions": {
+      "patch": {
+        "operationId": "NetworkUsersController_setPermissions",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "permissions": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "settings",
+                        "users",
+                        "clients",
+                        "records",
+                        "staff",
+                        "services",
+                        "goods",
+                        "loyalty",
+                        "accounts",
+                        "onlineSales",
+                        "telephony",
+                        "plans",
+                        "analytics",
+                        "fields",
+                        "subdivisions",
+                        "migrations",
+                        "payroll"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "permissions"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "settings",
+                          "users",
+                          "clients",
+                          "records",
+                          "staff",
+                          "services",
+                          "goods",
+                          "loyalty",
+                          "accounts",
+                          "onlineSales",
+                          "telephony",
+                          "plans",
+                          "analytics",
+                          "fields",
+                          "subdivisions",
+                          "migrations",
+                          "payroll"
+                        ]
+                      }
+                    },
+                    "lastVisitAt": {
+                      "type": "string"
+                    },
+                    "isOwner": {
+                      "type": "boolean"
+                    },
+                    "pending": {
+                      "type": "boolean"
+                    },
+                    "planReportFrequency": {
+                      "type": "string",
+                      "enum": [
+                        "off",
+                        "daily",
+                        "weekly",
+                        "monthly"
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "networkId",
+                    "name",
+                    "phone",
+                    "permissions",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/users/{id}/plan-report-frequency": {
+      "patch": {
+        "operationId": "NetworkUsersController_setFreq",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "frequency": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "daily",
+                      "weekly",
+                      "monthly"
+                    ]
+                  }
+                },
+                "required": [
+                  "frequency"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "settings",
+                          "users",
+                          "clients",
+                          "records",
+                          "staff",
+                          "services",
+                          "goods",
+                          "loyalty",
+                          "accounts",
+                          "onlineSales",
+                          "telephony",
+                          "plans",
+                          "analytics",
+                          "fields",
+                          "subdivisions",
+                          "migrations",
+                          "payroll"
+                        ]
+                      }
+                    },
+                    "lastVisitAt": {
+                      "type": "string"
+                    },
+                    "isOwner": {
+                      "type": "boolean"
+                    },
+                    "pending": {
+                      "type": "boolean"
+                    },
+                    "planReportFrequency": {
+                      "type": "string",
+                      "enum": [
+                        "off",
+                        "daily",
+                        "weekly",
+                        "monthly"
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "networkId",
+                    "name",
+                    "phone",
+                    "permissions",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Как часто присылать письмо о выполнении плана (F-11-030)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/users/{id}": {
+      "delete": {
+        "operationId": "NetworkUsersController_remove",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/clients/search": {
+      "post": {
+        "operationId": "NetworkClientsController_search",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "search": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "businessIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "page": {
+                    "default": 1,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "pageSize": {
+                    "default": 20,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "phone": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "gender": {
+                            "type": "string"
+                          },
+                          "spend": {
+                            "type": "number"
+                          },
+                          "visitsCount": {
+                            "type": "number"
+                          },
+                          "lastVisitAt": {
+                            "type": "string"
+                          },
+                          "locationsCount": {
+                            "type": "number"
+                          },
+                          "memberLocationIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "onlineBooked": {
+                            "type": "boolean"
+                          },
+                          "importance": {
+                            "type": "string",
+                            "enum": [
+                              "gold",
+                              "silver",
+                              "bronze",
+                              "none"
+                            ]
+                          },
+                          "clientIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "phone",
+                          "name",
+                          "gender",
+                          "spend",
+                          "visitsCount",
+                          "locationsCount",
+                          "memberLocationIds",
+                          "onlineBooked",
+                          "importance",
+                          "clientIds"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "page": {
+                      "type": "number"
+                    },
+                    "pageSize": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "rows",
+                    "total",
+                    "page",
+                    "pageSize"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Общая база клиентов сети — по телефону, склеено по филиалам (F-11-040…042)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/clients/{phone}": {
+      "get": {
+        "operationId": "NetworkClientsController_card",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "phone",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "phone": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "totalSpend": {
+                      "type": "number"
+                    },
+                    "totalVisits": {
+                      "type": "number"
+                    },
+                    "locations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "businessName": {
+                            "type": "string"
+                          },
+                          "clientId": {
+                            "type": "string"
+                          },
+                          "spend": {
+                            "type": "number"
+                          },
+                          "visitsCount": {
+                            "type": "number"
+                          },
+                          "lastVisitAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "businessId",
+                          "businessName",
+                          "clientId",
+                          "spend",
+                          "visitsCount"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "phone",
+                    "name",
+                    "totalSpend",
+                    "totalVisits",
+                    "locations"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Карточка клиента сети — сводка по филиалам (F-11-045…050)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/sms-status": {
+      "get": {
+        "operationId": "NetworkBroadcastController_smsStatus",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/broadcasts": {
+      "get": {
+        "operationId": "NetworkBroadcastController_log",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "networkId": {
+                        "type": "string"
+                      },
+                      "channel": {
+                        "type": "string",
+                        "enum": [
+                          "sms",
+                          "push"
+                        ]
+                      },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "selected",
+                          "found"
+                        ]
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "recipients": {
+                        "type": "number"
+                      },
+                      "optedOut": {
+                        "type": "number"
+                      },
+                      "cost": {
+                        "type": "number"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "sent",
+                          "insufficientFunds"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "networkId",
+                      "channel",
+                      "scope",
+                      "text",
+                      "recipients",
+                      "optedOut",
+                      "cost",
+                      "status",
+                      "createdAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      },
+      "post": {
+        "operationId": "NetworkBroadcastController_send",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "sms",
+                      "push"
+                    ]
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "selected",
+                      "found"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 600
+                  },
+                  "businessIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "search": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "clientKeys": {
+                    "maxItems": 5000,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "businessId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        },
+                        "clientId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        }
+                      },
+                      "required": [
+                        "businessId",
+                        "clientId"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "channel",
+                  "scope",
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "channel": {
+                      "type": "string",
+                      "enum": [
+                        "sms",
+                        "push"
+                      ]
+                    },
+                    "scope": {
+                      "type": "string",
+                      "enum": [
+                        "selected",
+                        "found"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "recipients": {
+                      "type": "number"
+                    },
+                    "optedOut": {
+                      "type": "number"
+                    },
+                    "cost": {
+                      "type": "number"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "sent",
+                        "insufficientFunds"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "networkId",
+                    "channel",
+                    "scope",
+                    "text",
+                    "recipients",
+                    "optedOut",
+                    "cost",
+                    "status",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "SMS/Push рассылка по базе сети (F-11-054…061)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/reports/summary": {
+      "get": {
+        "operationId": "NetworkReportsController_summary",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    },
+                    "totalRevenue": {
+                      "type": "number"
+                    },
+                    "totalVisits": {
+                      "type": "number"
+                    },
+                    "totalClients": {
+                      "type": "number"
+                    },
+                    "byLocation": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "businessName": {
+                            "type": "string"
+                          },
+                          "revenue": {
+                            "type": "number"
+                          },
+                          "visits": {
+                            "type": "number"
+                          },
+                          "clients": {
+                            "type": "number"
+                          },
+                          "newClients": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "businessId",
+                          "businessName",
+                          "revenue",
+                          "visits",
+                          "clients",
+                          "newClients"
+                        ]
+                      }
+                    },
+                    "byDay": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string"
+                          },
+                          "revenue": {
+                            "type": "number"
+                          },
+                          "visits": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "date",
+                          "revenue",
+                          "visits"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to",
+                    "totalRevenue",
+                    "totalVisits",
+                    "totalClients",
+                    "byLocation",
+                    "byDay"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сводный отчёт сети — оборот/визиты/клиенты по филиалам и дням (F-11-063…066)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/analytics/settings": {
+      "get": {
+        "operationId": "NetworkReportsController_lostClientDays",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      },
+      "patch": {
+        "operationId": "NetworkReportsController_setLostClientDays",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3650
+                  }
+                },
+                "required": [
+                  "days"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/plans": {
+      "get": {
+        "operationId": "NetworkReportsController_listPlans",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "revenue",
+                          "clients",
+                          "avgCheck"
+                        ]
+                      },
+                      "month": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "businessId",
+                      "kind",
+                      "month",
+                      "value"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      },
+      "post": {
+        "operationId": "NetworkReportsController_setPlan",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "businessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "revenue",
+                      "clients",
+                      "avgCheck"
+                    ]
+                  },
+                  "month": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}$"
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  }
+                },
+                "required": [
+                  "businessId",
+                  "kind",
+                  "month",
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "revenue",
+                        "clients",
+                        "avgCheck"
+                      ]
+                    },
+                    "month": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "businessId",
+                    "kind",
+                    "month",
+                    "value"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Ввод плана по филиалу/месяцу (F-11-077/078)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/plans/execution": {
+      "get": {
+        "operationId": "NetworkReportsController_execution",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "revenue",
+                          "clients",
+                          "avgCheck"
+                        ]
+                      },
+                      "month": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "number"
+                      },
+                      "actual": {
+                        "type": "number"
+                      },
+                      "pct": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "businessId",
+                      "kind",
+                      "month",
+                      "value",
+                      "actual",
+                      "pct"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Выполнение плана (F-11-068)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/service-categories": {
+      "get": {
+        "operationId": "NetworkCatalogController_listServiceCategories",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      },
+      "post": {
+        "operationId": "NetworkCatalogController_saveServiceCategory",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "name": {
+                    "type": "object",
+                    "properties": {
+                      "ru": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "hy": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "en": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "ru"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "onlineName": {
+                    "type": "object",
+                    "properties": {
+                      "ru": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "hy": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "en": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "ru"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "subdivisionId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "businessIds": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "businessIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сохранить сетевую категорию услуг (F-11-080)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/service-categories/{key}": {
+      "get": {
+        "operationId": "NetworkCatalogController_getServiceCategory",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/services/{key}": {
+      "get": {
+        "operationId": "NetworkCatalogController_getService",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/services": {
+      "post": {
+        "operationId": "NetworkCatalogController_saveService",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "name": {
+                    "type": "object",
+                    "properties": {
+                      "ru": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "hy": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "en": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "ru"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "onlineName": {
+                    "type": "object",
+                    "properties": {
+                      "ru": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "hy": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "en": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "ru"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "categoryKey": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "individual",
+                      "group"
+                    ]
+                  },
+                  "description": {
+                    "type": "object",
+                    "properties": {
+                      "ru": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "hy": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "en": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "ru"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "priceMin": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "priceMax": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  },
+                  "capacity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500
+                  },
+                  "priceLocked": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "descriptionLocked": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "businessIds": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "categoryKey",
+                  "kind",
+                  "priceMin",
+                  "durationMin",
+                  "businessIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сохранить сетевую услугу (F-11-081…083)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/services/{key}/sync": {
+      "post": {
+        "operationId": "NetworkCatalogController_sync",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "businessIds": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "businessIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Синхронизировать услугу по филиалам (F-11-090)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/goods-categories": {
+      "get": {
+        "operationId": "NetworkCatalogController_listGoodsCategories",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      },
+      "post": {
+        "operationId": "NetworkCatalogController_saveGoodsCategory",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "parentId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "businessIds": {
+                    "default": [],
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/goods/{groupId}": {
+      "get": {
+        "operationId": "NetworkCatalogController_getGoodsProduct",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/goods": {
+      "post": {
+        "operationId": "NetworkCatalogController_saveGoods",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "groupId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "categoryId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "salePrice": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "costPrice": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000000
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 400
+                  },
+                  "businessIds": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "categoryId",
+                  "salePrice",
+                  "costPrice",
+                  "businessIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сохранить сетевой товар (F-11-113)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/goods/migrate": {
+      "post": {
+        "operationId": "NetworkCatalogController_migrateGoods",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fromBusinessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "goodIds": {
+                    "anyOf": [
+                      {
+                        "maxItems": 2000,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        }
+                      },
+                      {
+                        "type": "string",
+                        "const": "all"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "fromBusinessId",
+                  "goodIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Миграция товаров филиала в сеть (F-11-116)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/positions": {
+      "get": {
+        "operationId": "NetworkCatalogController_listPositions",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      },
+      "post": {
+        "operationId": "NetworkCatalogController_addPosition",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/positions/{id}": {
+      "patch": {
+        "operationId": "NetworkCatalogController_renamePosition",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      },
+      "delete": {
+        "operationId": "NetworkCatalogController_deletePosition",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/staff": {
+      "get": {
+        "operationId": "NetworkCatalogController_listStaff",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сводный список сотрудников сети, только чтение",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/fields": {
+      "get": {
+        "operationId": "NetworkCatalogController_listFields",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      },
+      "post": {
+        "operationId": "NetworkCatalogController_addField",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "booking",
+                      "client"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "dataType": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "number",
+                      "list",
+                      "date",
+                      "datetime"
+                    ]
+                  },
+                  "apiKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60,
+                    "pattern": "^[a-zA-Z0-9._-]+$"
+                  },
+                  "listOptions": {
+                    "default": [],
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 160
+                    }
+                  },
+                  "editableByUser": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "showInAdmin": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "alwaysShowInBookingWindow": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "requiredOnCreate": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "requiredOnArrived": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "alwaysShowInClientCard": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "showInWidget": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "requiredInWidget": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "businessIds": {
+                    "default": [],
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name",
+                  "dataType",
+                  "apiKey"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Поле записи/клиента сети (F-11-126…134)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/fields/{id}": {
+      "patch": {
+        "operationId": "NetworkCatalogController_editField",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "booking",
+                      "client"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "dataType": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "number",
+                      "list",
+                      "date",
+                      "datetime"
+                    ]
+                  },
+                  "apiKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60,
+                    "pattern": "^[a-zA-Z0-9._-]+$"
+                  },
+                  "listOptions": {
+                    "default": [],
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 160
+                    }
+                  },
+                  "editableByUser": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "showInAdmin": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "alwaysShowInBookingWindow": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "requiredOnCreate": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "requiredOnArrived": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "alwaysShowInClientCard": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "showInWidget": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "requiredInWidget": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "businessIds": {
+                    "default": [],
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name",
+                  "dataType",
+                  "apiKey"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      },
+      "delete": {
+        "operationId": "NetworkCatalogController_deleteField",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
     }
   },
   "info": {

@@ -1118,6 +1118,72 @@ await prisma.client.createMany({
   console.log(`seed: зарплата — настроек локации ${settingsCreated}, схем мастеров ${schemesCreated}, типов премий/штрафов ${bonusTypesCreated}`);
 }
 
+// ─────────── этап 15: сеть — пользователь сети (не владелец, ограниченные права), поле, план текущего месяца
+// и баланс SMS на первой сети из ≥2 филиалов, чтобы разделы «Пользователи»/«Поля»/«Планы»/«Рассылки» не были
+// пустыми. Идемпотентно: детерминированные id + «уже есть?», как остальные этапы сида. ───
+{
+  let netUsersCreated = 0;
+  let fieldsCreated = 0;
+  let planCellsCreated = 0;
+  const monthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  for (const n of networks) {
+    const networkId = String(n.id);
+    const businessIds = (n.businessIds as string[] | undefined) ?? [];
+    if (businessIds.length < 2) continue;
+    await prisma.network.update({ where: { id: networkId }, data: { smsBalance: 100_000n } });
+    // Пользователь сети — администратор ВТОРОГО филиала (не владелец сети): проверяет, что права сети и права
+    // бизнеса — разные системы (F-11-024…035)
+    const secondBusinessId = businessIds[1]!;
+    const candidate = staffRecs.find((s) => S(s.businessId) === secondBusinessId && S(s.role) === 'admin') ?? staffRecs.find((s) => S(s.businessId) === secondBusinessId);
+    if (candidate && (await prisma.networkUser.count({ where: { id: `nu_${networkId}`.slice(0, 32) } })) === 0) {
+      const userId = personOf({ id: String(candidate.id), phone: S(candidate.phone) });
+      const exists = (await prisma.networkUser.count({ where: { networkId, userId } })) > 0;
+      if (!exists) {
+        await prisma.networkUser.create({
+          data: {
+            id: `nu_${networkId}`.slice(0, 32),
+            networkId,
+            userId,
+            name: String(candidate.name),
+            phone: S(candidate.phone) ?? '',
+            permissions: ['clients', 'analytics', 'plans'],
+            createdBy: 'seed',
+            updatedBy: 'seed',
+          },
+        });
+        netUsersCreated++;
+      }
+    }
+    const fieldId = `nf_${networkId}`.slice(0, 32);
+    if ((await prisma.networkField.count({ where: { id: fieldId } })) === 0) {
+      await prisma.networkField.create({
+        data: {
+          id: fieldId,
+          networkId,
+          kind: 'client',
+          name: 'VIP',
+          dataType: 'list',
+          apiKey: 'vip_tier',
+          listOptions: ['gold', 'silver', 'bronze'],
+          showInAdmin: true,
+          alwaysShowInClientCard: true,
+          businessIds,
+          createdBy: 'seed',
+          updatedBy: 'seed',
+        },
+      });
+      fieldsCreated++;
+    }
+    for (const businessId of businessIds) {
+      const exists = (await prisma.networkPlanCell.count({ where: { networkId, businessId, kind: 'revenue', month: monthKey } })) > 0;
+      if (exists) continue;
+      await prisma.networkPlanCell.create({ data: { networkId, businessId, kind: 'revenue', month: monthKey, value: 1_000_000n, updatedBy: 'seed' } });
+      planCellsCreated++;
+    }
+  }
+  console.log(`seed: сеть — пользователей сети ${netUsersCreated}, полей ${fieldsCreated}, ячеек плана ${planCellsCreated}`);
+}
+
 console.log(
   `seed: людей ${users.length} (клиентов ${core.appUsers.length}), логинов администраторов ${admins.length}, команда платформы 1; ` +
     `сетей ${networks.length}, бизнесов ${businesses.length}, филиалов ${locations.length}, сотрудников ${core.staff.length}, ` +

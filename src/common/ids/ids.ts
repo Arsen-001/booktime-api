@@ -128,6 +128,12 @@ export const ID_PREFIX = {
   payrollChartAssignment: 'pyca',
   bonusPenaltyType: 'bpt',
   payrollSettlementEntry: 'pyset',
+  // этап 15 — сеть: только на сервере (мок хранит id произвольными строками) — пользователь сети nu,
+  // поле nf, сетевая категория товаров ngcl, рассылка nbc
+  networkUser: 'nu',
+  networkField: 'nf',
+  networkGoodsCategoryLink: 'ngcl',
+  networkBroadcast: 'nbc',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

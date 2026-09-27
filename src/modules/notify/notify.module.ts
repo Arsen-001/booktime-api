@@ -12,6 +12,6 @@ import { NotifyController } from './notify.controller.js';
 @Module({
   controllers: [NotifyController],
   providers: [NotifyTypesService, NotifyNewsService, NotifyStaffPrefsService, NotifyClientPrefsService, NotifyInboxService, NotifyChannelsService, NotifyDispatchService],
-  exports: [NotifyTypesService, NotifyStaffPrefsService, NotifyDispatchService],
+  exports: [NotifyTypesService, NotifyStaffPrefsService, NotifyDispatchService, NotifyChannelsService],
 })
 export class NotifyModule {}

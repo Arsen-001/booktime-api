@@ -86,6 +86,7 @@ model User {
   staff          Staff[]
   networks       Network[]
   masterProfile  MasterProfile?
+  networkUsers   NetworkUser[]
 
   @@map("users")
 }
@@ -289,6 +290,10 @@ model Network {
   ownerStaffId   String?   @map("owner_staff_id") @db.VarChar(32)
   /// Главная локация сети (F-05-118, F-11-017); нет — первый филиал
   mainBusinessId String?   @map("main_business_id") @db.VarChar(32)
+  /// Баланс главной локации для оплаты сетевых SMS-рассылок, драмы (F-11-057) — своей кассы у сети нет
+  smsBalance     BigInt    @default(0) @map("sms_balance")
+  /// Срок «потерянного клиента» сети, дней (F-11-072); умолч. как у бизнеса (60)
+  lostClientDays Int       @default(60) @map("lost_client_days")
   deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
@@ -296,9 +301,16 @@ model Network {
   updatedBy      String?   @map("updated_by") @db.VarChar(32)
   version        Int       @default(1)
 
-  owner      User       @relation(fields: [ownerUserId], references: [id])
-  businesses Business[]
-  positions  Position[]
+  owner                User                         @relation(fields: [ownerUserId], references: [id])
+  businesses           Business[]
+  positions            Position[]
+  networkUsers         NetworkUser[]
+  fields               NetworkField[]
+  serviceCategoryLinks NetworkServiceCategoryLink[]
+  serviceLocks         NetworkServiceLock[]
+  goodsCategoryLinks   NetworkGoodsCategoryLink[]
+  planCells            NetworkPlanCell[]
+  broadcasts           NetworkBroadcast[]
 
   @@index([ownerUserId])
   @@map("networks")
@@ -2648,4 +2660,171 @@ model PayrollStatementApproval {
 
   @@index([businessId])
   @@map("payroll_statement_approvals")
+}
+
+// ─────────────────────────── Этап 15 · Сеть (02 §15, PLAN §6 №15) ───────────────────────────
+// Устройство сети/филиалов — Network/Business (этап 3). Здесь — то, чего у бизнеса нет: пользователи сети
+// без своей строки staff (F-11-024…039), общая клиентская база (F-11-040…053, application-level по businessId
+// IN network — своей таблицы не заводит), рассылки (F-11-054…061), планы (F-11-077/078), поля (F-11-126…134) и
+// сетевые каталоги услуг/товаров. Услуги/товары сети — ПО ИМЕНИ, как в моке (b03 domain/network.ts): группа —
+// это несколько Service/Product с одинаковым именем в разных Business сети, здесь — только то, чего у самой
+// строки нет (запрет правки цены/описания, товарная networkGroupId уже на Product с этапа 13).
+
+/// Доступ к сетевым разделам без своей строки staff (F-11-024…035) — свой список прав `NetworkPermissionKey`,
+/// НЕ пересекается с 39 правами бизнеса (common/permissions). Владелец сети (Network.ownerUserId) видит всё и
+/// строки здесь не имеет — только приглашённые (F-11-024 «Владелец — есть всегда» рисуется на фронте отдельно).
+model NetworkUser {
+  id                  String    @id @db.VarChar(32)
+  networkId           String    @map("network_id") @db.VarChar(32)
+  userId              String    @map("user_id") @db.VarChar(32)
+  name                String    @db.VarChar(160)
+  phone               String    @db.VarChar(16)
+  email               String?   @db.VarChar(160)
+  /// NetworkPermissionKey[] (network.schemas.ts) — плоский список, как ALL_NETWORK_PERMISSIONS мока
+  permissions         Json
+  /// off | daily | weekly | monthly (F-11-030)
+  planReportFrequency String?   @map("plan_report_frequency") @db.VarChar(8)
+  lastVisitAt         DateTime? @map("last_visit_at") @db.DateTime(3)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy           String?   @map("created_by") @db.VarChar(32)
+  updatedBy           String?   @map("updated_by") @db.VarChar(32)
+  version             Int       @default(1)
+
+  network Network @relation(fields: [networkId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([networkId, userId])
+  @@index([userId])
+  @@map("network_users")
+}
+
+/// Поле записи/клиента сети (F-11-126…134) — одна форма для обоих kind, как во фронте (NetworkField)
+model NetworkField {
+  id                        String   @id @db.VarChar(32)
+  networkId                 String   @map("network_id") @db.VarChar(32)
+  /// booking | client
+  kind                      String   @db.VarChar(8)
+  name                      String   @db.VarChar(160)
+  /// text | number | list | date | datetime
+  dataType                  String   @map("data_type") @db.VarChar(10)
+  /// только латиница/цифры/«. - _» (F-11-127)
+  apiKey                    String   @map("api_key") @db.VarChar(60)
+  /// string[] — только у dataType=list
+  listOptions               Json     @map("list_options")
+  editableByUser            Boolean  @default(false) @map("editable_by_user")
+  showInAdmin               Boolean  @default(true) @map("show_in_admin")
+  alwaysShowInBookingWindow Boolean  @default(false) @map("always_show_in_booking_window")
+  requiredOnCreate          Boolean  @default(false) @map("required_on_create")
+  requiredOnArrived         Boolean  @default(false) @map("required_on_arrived")
+  /// только у kind=client (F-11-128)
+  alwaysShowInClientCard    Boolean  @default(false) @map("always_show_in_client_card")
+  /// «Дата и время» никогда не выводится в виджет (F-11-129), даже если true
+  showInWidget              Boolean  @default(false) @map("show_in_widget")
+  requiredInWidget          Boolean  @default(false) @map("required_in_widget")
+  /// Id бизнесов сети, где поле действует
+  businessIds               Json     @map("business_ids")
+  createdAt                 DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy                 String?  @map("created_by") @db.VarChar(32)
+  updatedBy                 String?  @map("updated_by") @db.VarChar(32)
+  version                   Int      @default(1)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@unique([networkId, kind, apiKey])
+  @@index([networkId, kind])
+  @@map("network_fields")
+}
+
+/// Сетевая категория услуг — надстройка сверх ServiceCategory (F-11-079/080): группа — совпадение имени по
+/// нижнему регистру (`key`) среди категорий businessId IN network; здесь — только то, чего у ServiceCategory
+/// нет (подразделение, «имя для онлайн-записи» отдельное от самой категории).
+model NetworkServiceCategoryLink {
+  networkId     String   @map("network_id") @db.VarChar(32)
+  key           String   @db.VarChar(160)
+  subdivisionId String?  @map("subdivision_id") @db.VarChar(32)
+  onlineName    String?  @map("online_name") @db.VarChar(160)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@id([networkId, key])
+  @@map("network_service_category_links")
+}
+
+/// Запрет правки цены/описания сетевой услуги в филиале (F-11-082/083) — ключ по совпадению имени, как выше
+model NetworkServiceLock {
+  networkId         String   @map("network_id") @db.VarChar(32)
+  key               String   @db.VarChar(160)
+  priceLocked       Boolean  @default(false) @map("price_locked")
+  descriptionLocked Boolean  @default(false) @map("description_locked")
+  onlineName        String?  @map("online_name") @db.VarChar(160)
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@id([networkId, key])
+  @@map("network_service_locks")
+}
+
+/// Сетевая категория товаров — надстройка сверх product_categories (F-11-111/112), тот же приём, что услуги
+/// выше: своя строка только хранит имя/родителя сети, состав по филиалам — совпадение имени категории.
+model NetworkGoodsCategoryLink {
+  id        String   @id @db.VarChar(32)
+  networkId String   @map("network_id") @db.VarChar(32)
+  name      String   @db.VarChar(160)
+  parentId  String?  @map("parent_id") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@index([networkId])
+  @@map("network_goods_category_links")
+}
+
+/// План по филиалу/месяцу (F-11-077/078) — ключ месяца 'YYYY-MM'
+model NetworkPlanCell {
+  networkId  String   @map("network_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// revenue | clients | avgCheck
+  kind       String   @db.VarChar(10)
+  month      String   @db.VarChar(7)
+  value      BigInt   @default(0)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@id([networkId, businessId, kind, month])
+  @@map("network_plan_cells")
+}
+
+/// Журнал сетевой рассылки (F-11-054…061) — сама отправка идёт через notify-outbox (push) / BusinessMessenger
+/// (sms, В-08); здесь только факт, для тоста и истории (F-11-060/164)
+model NetworkBroadcast {
+  id         String   @id @db.VarChar(32)
+  networkId  String   @map("network_id") @db.VarChar(32)
+  /// sms | push
+  channel    String   @db.VarChar(6)
+  /// selected | found
+  scope      String   @db.VarChar(10)
+  text       String   @db.VarChar(600)
+  recipients Int
+  /// Исключены по «Не отправлять» / нет согласия (F-11-058)
+  optedOut   Int      @default(0) @map("opted_out")
+  /// Драмы; 0 у push (F-11-057)
+  cost       BigInt   @default(0)
+  /// sent | insufficientFunds
+  status     String   @db.VarChar(20)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@index([networkId, createdAt])
+  @@map("network_broadcasts")
 }
