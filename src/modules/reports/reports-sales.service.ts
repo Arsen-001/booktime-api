@@ -21,7 +21,7 @@ export class ReportsSalesService {
     const { from, to } = wideUtcBounds(range);
     const rows = await this.prisma.booking.findMany({
       where: { businessId, locationId: { in: locations.map((l) => l.id) }, status: 'arrived', startAt: { gte: from, lt: to } },
-      select: { id: true, clientId: true, services: true, startAt: true, locationId: true, total: true },
+      select: { id: true, clientId: true, services: true, startAt: true, locationId: true, total: true, staffId: true, durationMin: true },
     });
     return { rows: rows.filter((b) => inRange(localDateAt(b.startAt, b.locationId, tzMap), range)), tzMap };
   }
@@ -54,7 +54,7 @@ export class ReportsSalesService {
 
   async byStaff(businessId: string, locationIds: string[] | undefined, range: ReportRange, filters: { serviceId?: string; serviceCategoryId?: string; position?: string }) {
     const locations = await locationsOf(this.prisma, businessId, locationIds);
-    const { rows } = await this.arrivedInRange(businessId, locations, range);
+    const { rows, tzMap } = await this.arrivedInRange(businessId, locations, range);
 
     let allowedServiceIds: Set<string> | undefined;
     if (filters.serviceId) allowedServiceIds = new Set([filters.serviceId]);
@@ -63,17 +63,23 @@ export class ReportsSalesService {
       allowedServiceIds = new Set(svc.map((s) => s.id));
     }
 
-    const staffTotals = new Map<string, { servicesAmount: number; servicesCount: number; discount: number }>();
+    const staffTotals = new Map<string, { servicesAmount: number; servicesCount: number; discount: number; byDay: Map<string, number> }>();
     for (const b of rows) {
+      const day = localDateAt(b.startAt, b.locationId, tzMap);
       for (const line of b.services as ServiceLine[]) {
         if (allowedServiceIds && !allowedServiceIds.has(line.serviceId)) continue;
-        const cell = staffTotals.get(line.staffId) ?? { servicesAmount: 0, servicesCount: 0, discount: 0 };
+        const cell = staffTotals.get(line.staffId) ?? { servicesAmount: 0, servicesCount: 0, discount: 0, byDay: new Map<string, number>() };
         cell.servicesAmount += line.price;
         cell.servicesCount += 1;
         cell.discount += this.discountOf(line);
+        cell.byDay.set(day, (cell.byDay.get(day) ?? 0) + line.price);
         staffTotals.set(line.staffId, cell);
       }
     }
+    // F-12-051: часы отработаны считаем по ГЛАВНОМУ мастеру записи (booking.staffId), не по строке услуги —
+    // строка может быть выполнена ассистентом, а слот в календаре занимает основной мастер (01 §4)
+    const workedMinutes = new Map<string, number>();
+    for (const b of rows) workedMinutes.set(b.staffId, (workedMinutes.get(b.staffId) ?? 0) + b.durationMin);
 
     let staffIds = [...staffTotals.keys()];
     if (filters.position) {
@@ -99,15 +105,21 @@ export class ReportsSalesService {
       productsByStaff.set(op.staffId, cell);
     }
     const loyalty = await this.loyaltyByStaff(businessId, staffIds, range);
+    // F-12-051: сумма БУДУЩИХ записей (деньги, не число — в отличие от F-12-042 «Загруженности»)
+    const futureRows = await this.prisma.booking.findMany({ where: { businessId, staffId: { in: staffIds }, deletedAt: null, status: { notIn: ['cancelled_by_client', 'cancelled_by_master'] }, startAt: { gt: to } }, select: { staffId: true, total: true } });
+    const futureByStaff = new Map<string, number>();
+    for (const b of futureRows) futureByStaff.set(b.staffId, (futureByStaff.get(b.staffId) ?? 0) + Number(b.total));
 
     const out = staffIds.map((id) => {
       const s = staffTotals.get(id)!;
       const products = productsByStaff.get(id) ?? { amount: 0, count: 0 };
       const l = loyalty.get(id) ?? { points: 0, memberships: 0, certificates: 0, clientAccounts: 0 };
+      const revenue = s.servicesAmount + products.amount;
+      const workedHours = Math.round(((workedMinutes.get(id) ?? 0) / 60) * 10) / 10;
       return {
         staffId: id,
         staffName: nameMap.get(id) ?? '',
-        revenue: s.servicesAmount + products.amount,
+        revenue,
         servicesAmount: s.servicesAmount,
         servicesCount: s.servicesCount,
         productsAmount: products.amount,
@@ -117,9 +129,18 @@ export class ReportsSalesService {
         memberships: l.memberships,
         certificates: l.certificates,
         clientAccounts: l.clientAccounts,
+        futureBookingsAmount: futureByStaff.get(id) ?? 0,
+        workedHours,
+        // Стоимость часа работы (F-12-051) — начисление ФОТ на час нужно из зарплаты (этап 14, схемы разные
+        // по сотруднику); кросс-модульный расчёт на строку отчёта отдельным проходом, здесь честно null.
+        hourCost: null as number | null,
+        revenueSharePct: 0,
+        byDay: [...s.byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, rev]) => ({ date, revenue: rev })),
       };
     });
-    return { rows: out, grandRevenue: out.reduce((sum, r) => sum + r.revenue, 0) };
+    const grandRevenue = out.reduce((sum, r) => sum + r.revenue, 0);
+    for (const r of out) r.revenueSharePct = grandRevenue ? Math.round((r.revenue / grandRevenue) * 1000) / 10 : 0;
+    return { rows: out, grandRevenue };
   }
 
   // ─────────────────────────── F-12-053…054: «По услугам» ───────────────────────────

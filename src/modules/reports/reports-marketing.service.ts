@@ -14,13 +14,17 @@ import { utcToLocal } from '../../common/time/time.js';
  * «Сообщения» сейчас показывают только push (`notify_outbox`, этап 10) — SMS/WhatsApp бизнеса (В-08) остаются
  * адаптером-заглушкой без своего журнала (см. docs/PROGRESS.md этапа 10); появится свой лог — добавится сюда.
  */
+const NOTIFY_STATUS_TO_SCREEN: Record<string, string> = { queued: 'sending', sent: 'sent', skipped: 'notDelivered', failed: 'rejected' };
+
 @Injectable()
 export class ReportsMarketingService {
   constructor(private readonly prisma: PrismaService) {}
 
   async promotions(businessId: string, promotionId: string, range: ReportRange) {
     const promo = await this.prisma.promotion.findFirst({ where: { id: promotionId, businessId } });
-    if (!promo) return { promotionName: '', clients: { newCount: 0, returningCount: 0, cameByPromotion: 0, cameAgain: 0, notReturned: 0, byDay: [] }, revenue: 0, repeatRevenue: 0, staff: [] };
+    const emptyClients = { newCount: 0, returningCount: 0, cameByPromotion: 0, cameAgain: 0, notReturned: 0, byDay: [] };
+    if (!promo) return { promotionName: '', clients: emptyClients, revenue: 0, repeatRevenue: 0, staff: [] };
+    const promotionName = promo.name;
     const cardTypeIds = promo.cardTypeIds as string[];
     const locations = await locationsOf(this.prisma, businessId);
     const tzMap = tzMapOf(locations);
@@ -28,7 +32,7 @@ export class ReportsMarketingService {
 
     const cards = cardTypeIds.length ? await this.prisma.loyaltyCard.findMany({ where: { businessId, cardTypeId: { in: cardTypeIds } }, select: { clientId: true, createdAt: true } }) : [];
     const promoClientIds = new Set(cards.map((c) => c.clientId).filter((x): x is string => Boolean(x)));
-    if (!promoClientIds.size) return { promotionName: (promo.name as unknown as { ru: string }).ru ?? promo.name, clients: { newCount: 0, returningCount: 0, cameByPromotion: 0, cameAgain: 0, notReturned: 0, byDay: [] }, revenue: 0, repeatRevenue: 0, staff: [] };
+    if (!promoClientIds.size) return { promotionName, clients: emptyClients, revenue: 0, repeatRevenue: 0, staff: [] };
 
     const bookings = await this.prisma.booking.findMany({
       where: { businessId, status: 'arrived', clientId: { in: [...promoClientIds] }, startAt: { gte: from, lt: to } },
@@ -72,7 +76,7 @@ export class ReportsMarketingService {
     const repeatRevenue = inWindow.filter((b) => b.clientId && (perClientVisits.get(b.clientId) ?? 0) > 1).reduce((s, b) => s + Number(b.total), 0);
 
     return {
-      promotionName: (promo.name as unknown as { ru: string }).ru ?? String(promo.name),
+      promotionName,
       clients: { newCount, returningCount: cameByPromotion - newCount, cameByPromotion, cameAgain, notReturned, byDay: [...byDayMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, visits]) => ({ date, visits })) },
       revenue,
       repeatRevenue,
@@ -103,7 +107,10 @@ export class ReportsMarketingService {
       at: utcToLocal(r.createdAt),
       typeLabel: r.kind,
       channel: 'push',
-      status: r.status,
+      // notify_outbox — свой словарь статусов (queued|sent|skipped|failed, этап 10), у экрана словарь SMS-
+      // провайдера (messages.json: sent/delivered/notDelivered/sending/rejected…) — приводим к ближайшему,
+      // а не заводим новые ключи под словарь, рассчитанный на настоящего провайдера (В-08, ещё не подключён)
+      status: NOTIFY_STATUS_TO_SCREEN[r.status] ?? r.status,
       contact: phoneMap.get(r.recipientUserId) ?? '',
       text: r.body,
     }));
