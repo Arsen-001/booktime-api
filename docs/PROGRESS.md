@@ -25,7 +25,7 @@
 | 18 | Настройки, подписка, монеты, промокоды | [x] | см. историю: «Этап 18 …» (сервер), «backend stage 18: …» (фронт) |
 | 19 | Модерация и наша панель | [x] | см. историю «Этап 19 …», «Этап 19, попытка 2 …», «Этап 19, попытка 3 …» (сервер+фронт) — модерация/бизнесы/поддержка/идеи/заявки на сферы/визиты/обзор (попытка 1) + спрос/first-awards, реклама+сторис (без покупки места и картинки), заметки основателя (попытка 2) + ConnectDraft, подключение салона за 10 минут (попытка 3) — весь §19 построен и проверен |
 | 20 | Данные и удаление | [x] | см. историю «Этап 20 …» (сервер; фронт — `src/api/session.ts` + `src/api/settings.ts`, F-15-154/155) |
-| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн client попытка 5 — отчёты вкладки «Приложение» закрыты (4 функции), новый backend-модуль (`AppReportsService`/`Controller`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр; лейн resources попытка 2 — из 41 закрыто 40 (было 20): достроен `ResourcesEventsController`+модуль (`resources-events.*` лежал без контроллера), 3 новых метода листа ожидания (create/close/remove), 8 недостающих кодов ошибок, backfill `EventSeriesDef` под уже сеяные `GroupEvent.seriesId`; осталось 1 — `getBookingAutoCharge` (ждёт лейна «loyalty»); лейн resources попытка 3 — из 41 по-прежнему закрыто 40, но нашёл и починил 2 функции, ошибочно числившиеся закрытыми в попытке 2 (`notifyWaitlistForFreedSlot`/`getWaitlistNotifications` — сервер и обёртка были готовы, в `resources.ts` не хватало строки `isApiMode()`); осталось всё то же 1 — `getBookingAutoCharge`/`chargeBookingAutoDebit`, ждут лейна «loyalty» (на бэкенде до сих пор нет ни `ServiceAutoCharge`, ни правки баланса абонемента); лейн services+rest попытка 2 — `reports.ts` favorites закрыты (2), `payroll.ts` закрыт 5/7 (новая таблица+модуль `PayrollStaffRights`, `getStaffWorkedHours` → готовый `getScheduledMinutes`), осталось 2 (`evaluateCriterionValue`/`previewChartForStaff` — не однострочные); `clients/*` — только аудит (0 закрыто, нашёл более точный реальный список: 19 реальных, не 20/19 из попытки 1), `network`/`finance`/`stock`/`notify`/`integrations`/`loyalty`/`platform/*` не трогал |
+| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн client попытка 5 — отчёты вкладки «Приложение» закрыты (4 функции), новый backend-модуль (`AppReportsService`/`Controller`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр; лейн resources попытка 2 — из 41 закрыто 40 (было 20): достроен `ResourcesEventsController`+модуль (`resources-events.*` лежал без контроллера), 3 новых метода листа ожидания (create/close/remove), 8 недостающих кодов ошибок, backfill `EventSeriesDef` под уже сеяные `GroupEvent.seriesId`; осталось 1 — `getBookingAutoCharge` (ждёт лейна «loyalty»); лейн resources попытка 3 — из 41 по-прежнему закрыто 40, но нашёл и починил 2 функции, ошибочно числившиеся закрытыми в попытке 2 (`notifyWaitlistForFreedSlot`/`getWaitlistNotifications` — сервер и обёртка были готовы, в `resources.ts` не хватало строки `isApiMode()`); осталось всё то же 1 — `getBookingAutoCharge`/`chargeBookingAutoDebit`, ждут лейна «loyalty» (на бэкенде до сих пор нет ни `ServiceAutoCharge`, ни правки баланса абонемента); лейн services+rest попытка 2 — `reports.ts` favorites закрыты (2), `payroll.ts` закрыт 5/7 (новая таблица+модуль `PayrollStaffRights`, `getStaffWorkedHours` → готовый `getScheduledMinutes`), осталось 2 (`evaluateCriterionValue`/`previewChartForStaff` — не однострочные); `clients/*` — только аудит (0 закрыто, нашёл более точный реальный список: 19 реальных, не 20/19 из попытки 1), `network`/`finance`/`stock`/`notify`/`integrations`/`loyalty`/`platform/*` не трогал; лейн resources попытка 4 — полный awk-переаудит `resources.ts` с нуля (103 экспортируемых функции, 16 без `isApiMode`) даёт тот же список, что попытка 3: 14 — законные не-мок (хуки поверх уже переведённых/чтения зеркала/чистые вычисления/задокументированные осознанные решения `logResourcesChange`/`updateSeriesEvent`), 2 по-прежнему блокер (`getBookingAutoCharge`/`chargeBookingAutoDebit` → `@/api/loyalty`, там `isApiMode` всё ещё 0 вхождений на весь файл, `ServiceAutoCharge`/баланс абонемента на бэкенде так и не заведены — лейн «loyalty» стадии 11 не продвинулся); регрессий нет — backend `tsc` 0, frontend `tsc` 0, `eslint resources.ts/resources.server.ts` 0, `fids.mjs` resources 172/172, `renders.mjs --check-compiler` 0, живой `:4010/openapi.json` (706 путей, сервер поднят не мной) подтверждает все маршруты попытки 2/3 на месте (waitlist/notify, waitlist/{id}/notifications и т.д.); счёт не изменился — закрыто 40 из 41, решение не строить сам (домен абонементов — Membership/MembershipType/баланс, отдельная стадия 11, не мои файлы) подтверждаю в третий раз тем же аргументом, дальше повторный awk-аудит без прогресса в loyalty бессмыслен |
 
 ---
 
@@ -4533,3 +4533,62 @@ tsconfig.build.json` и `npm run build` — 0 ошибок. `prisma migrate dev`
 (состав уточнён выше), `network.ts` 76, `finance.ts` 58 (~11 вне мандата, ~11 отдельная подсистема депозитов),
 `stock.ts` 36, `integrations.ts` 20, `notify.ts` 39, `reports.ts` 13 (мелкие отчёты/настройки, не построены
 этапом 16), `loyalty.ts` целиком (2900+ строк, не пересчитывал), `platform/*` не измерен тем же приёмом.
+
+## Этап 21, лейн «resources», попытка 4 — `src/api/resources.ts` (28.09.2026)
+
+Продолжение попыток 2–3 (40 из 41 закрыто, осталось `getBookingAutoCharge`/`chargeBookingAutoDebit`, ждут лейна
+«loyalty»). Начал с проверки лока (`/tmp/booktime-db.lock` свободен) и свежего полного awk-переаудита файла с
+нуля, не доверяя прошлому счёту построчно.
+
+**Переаудит**: 103 `export (async )?function` в `resources.ts`, 16 без `isApiMode()` в теле. Построчно проверил
+все 16 заново (не только по именам из журнала попытки 3):
+- `useCountFutureUsage`, `useWaitlist` — хуки поверх уже переведённых `countFutureUsage`/`listWaitlist`, свою
+  ветку не заводят по конструкции хука.
+- `countFutureUsageByInstance`, `getResourceDayLoad`, `listGroupServices` — читают зеркало (`readCore()`/
+  `coreList()`), которое в режиме `api` синхронизируется `mirror.ts`; отдельного HTTP не требуют, тот же приём,
+  что у соседних функций файла.
+- `seatsTaken`, `isPastEvent`, `toPackageServiceLite`, `computePackageDuration`, `computePackagePrice`,
+  `defaultResourcesFineRights` — чистые синхронные вычисления без сети.
+- `logResourcesChange`/`listResourcesChangelog` — задокументированное решение попытки 1 (журнал на моке).
+- `updateSeriesEvent` — задокументированное решение попытки 2 (сам патч события уже реально долетает до сервера
+  через `withServerWrites`/`replayCoreWrites`; не долетает только пометка «уникальное» в `eventSeriesDefs`,
+  своя area без replay). Перечитал комментарий на месте (строки 1097–1108) — оценка не изменилась: заводить
+  новый маршрут ради одного бита не в мандате «перевести существующие функции», это была бы новая фича.
+- `getBookingAutoCharge`, `chargeBookingAutoDebit` — по-прежнему блокер.
+
+**Проверил блокер заново, не по памяти журнала**: `grep -c isApiMode src/api/loyalty.ts` → `0` (весь файл,
+2900+ строк, ни одной функции не переведено — не только `getServiceAutoCharge`/`getLoyaltyBookingSummary`/
+`adjustMembership`, вообще ничего). На бэкенде `grep -rin AutoCharge` и поиск модели — по-прежнему нет ни
+`ServiceAutoCharge`, ни отдельной таблицы «абонемент клиента с балансом» (`schema.prisma` знает только
+`MembershipType`/`MembershipSale`/`MembershipFreeze` — записи продажи, не тот же по форме объект, что мокового
+`Membership` с `balanceVisits`/`status`/`expiresAt`, которым пользуется `adjustMembership`). Перевод этой пары
+функций без стадии 11 означал бы заново спроектировать доменную модель абонементов на сервере внутри чужого
+файла — то же решение, что попытки 2–3, подтверждаю в третий раз тем же аргументом: домен не мой (правило
+параллельных лейнов «только свои файлы» + риск конфликта, если лейн «loyalty» сейчас правит тот же файл
+одновременно).
+
+**Не трогал**: `src/api/loyalty.ts`, `booktime-backend/src/modules/loyalty/**`, схему в части `Membership*` —
+ни строчки.
+
+**Проверки** (без лока — ничего не писал в общую DB/сид/схему): backend `npx tsc --noEmit -p tsconfig.json` — 0
+ошибок. Frontend `npx tsc --noEmit --incremental --tsBuildInfoFile .tsbuild/backend.tsbuildinfo` — 0 ошибок.
+`eslint src/api/resources.ts src/api/resources.server.ts` — 0. `node scripts/fids.mjs` — `resources 172/172
+100%`, итог `2896/2896` (никто не потерял `data-f`, включая параллельные лейны). `node scripts/renders.mjs
+--check-compiler` — 0. Живой смоук на общем `:4010` (сервер уже поднят, не мной): `GET /openapi.json` — `200`,
+706 путей, все маршруты resources/waitlist/resources-events попытки 2–3 на месте (`.../waitlist/notify`,
+`.../waitlist/{id}/notifications`, `.../resources/series/...` и т.д.) — регрессий от параллельных правок нет.
+
+лейн resources: закрыто **40 из 41**, без изменений к попытке 3 — переаудит не нашёл новых дыр и не нашёл
+прогресса у блокера. Осталось 1 — `getBookingAutoCharge` (и `chargeBookingAutoDebit`), оба всё ещё ждут стадии
+11 «Лояльность» (`loyalty.ts` — 0% на api, `ServiceAutoCharge`/баланс абонемента на бэкенде не заведены).
+**Для лейна/агента loyalty, если он это читает**: чтобы закрыть этот 1 пункт резервно, нужно на бэкенде (а) модель
+и эндпоинт настройки автосписания услуги (`enabled`/`freeCancelHours`, ключ — `serviceId`, F-06-127) и (б) способ
+списать один визит с подходящего клиентского абонемента по businessId+clientId+serviceIds с сортировкой «что
+истекает раньше» (F-16-062) — после этого в `resources.ts` менять нужно только 2 строки (`if (isApiMode())
+return R....`), сервис/схема уже описаны выше по коду (`resources.ts:1819–1873`).
+
+### Вопросы владельцу (этап 21, лейн resources, попытка 4)
+Ничего денежного/юридического. Блокер тот же, что в попытках 2–3, третий раз подряд без изменений на стороне
+loyalty — не эскалирую как новый вопрос, эскалирую как факт для оркестратора: дальше повторный awk-аудит этого
+файла без движения в `loyalty.ts` не даст нового результата, следующий продуктивный шаг — либо стадия 11
+построит недостающее, либо владелец явно расширит мандат лейна resources на эти 2 функции backend loyalty.
