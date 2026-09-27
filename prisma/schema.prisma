@@ -1744,38 +1744,8 @@ model BizInboxRead {
 // === stage 21 (лейн notify+integrations), попытка 3 ===
 // Настройки-«одиночки» раздела notify, которые не зависят от каталога типов Altegio (см. NotifyMiscService
 // докстринг, попытка 2): язык/тихие часы, витрина подарка партнёра, сводки от партнёров, WhatsApp через
-// Altegio, флаги внешнего агента, расписание Open Slots — все на area = 'notify-<name>' той же BusinessSetting,
-// поэтому своих моделей под них не заводим. Ниже — то, для чего area/JSON не хватает: своя таблица нужна.
-
-/// Своё время напоминания (тип 1 реестра, Ув15) для ОТДЕЛЬНОЙ услуги — без полного каталога 29 типов (см.
-/// notify.server.ts докстринг): достаточно узкой пары (businessId, serviceId) → часы. Нет строки — общее время
-/// типа действует (экран notify.ts берёт из типа 1, серверу типа 1 пока негде взять — просто нет строки).
-model ServiceReminderOverride {
-  businessId String @map("business_id") @db.VarChar(32)
-  serviceId  String @map("service_id") @db.VarChar(32)
-  hours      Int
-
-  @@id([businessId, serviceId])
-  @@map("service_reminder_overrides")
-}
-
-/// «Для разработчиков» (F-05-120): вебхук на изменения по entities. ТОЛЬКО хранение и переключатель —
-/// настоящей рассылки событий на url при их изменении нет (out of scope этого захода, см. PROGRESS.md);
-/// это НЕ WebhookAddress (integrations.ts, этап 17 — ключ разработчика с подписью HMAC и настоящей
-/// доставкой jobs/webhooks-dispatch.ts) — разные экраны, разный домен фронта (Webhook/WebhookEntity в
-/// src/domain/notify.ts, без secret).
-model NotifyWebhook {
-  id         String   @id @db.VarChar(32)
-  businessId String   @map("business_id") @db.VarChar(32)
-  url        String   @db.VarChar(500)
-  /// WebhookEntity[] — location|staff|clients|bookings|loyaltyCards|services|products|sales
-  entities   Json
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
-
-  @@index([businessId])
-  @@map("notify_webhooks")
-}
+// Altegio, флаги внешнего агента, расписание Open Slots, время напоминания на услугу, свои вебхуки — все на
+// area = 'notify-<name>' той же BusinessSetting (см. notify-more.service.ts) — своих таблиц под них не заводим.
 // === end stage 21 (лейн notify+integrations), попытка 3 ===
 
 // ═══════════════════════════ Этап 11 — Лояльность (02-api.md §11, F-06-*) ═══════════════════════════
@@ -3112,6 +3082,13 @@ model IntegrationConnection {
   recentErrors   Json?     @map("recent_errors")
   /// InstallTestResult ({ at, ok, reason? }) последнего «Отправить тест»
   lastTest       Json?     @map("last_test")
+  /// Этап 21 (лейн notify+integrations, попытка 3): b03/b04 настройки КОНКРЕТНОГО приложения (AppInstall
+  /// фронта, поля после «b03: настройки конкретных приложений») — authKey/senderName/senderNameStatus,
+  /// whatsappNumberMode/metaTemplatesApproved, cascadeOrder, negativeReviewIntercept, gaStreams,
+  /// kommoSyncMode/kommoDedupe. Один JSON вместо колонки на каждое поле — их набор целиком зависит от appId
+  /// каталога (свой на SMS-агрегатор/чат-бот/GA/Kommo), а каталог сознательно остаётся на фронте (Р19,
+  /// комментарий модели выше) — своя колонка под каждое поле привязала бы схему к содержимому каталога.
+  config         Json?
 
   @@index([businessId, locationId])
   @@index([appId])

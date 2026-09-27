@@ -11,19 +11,33 @@ import { NotifyChannelsService } from './notify-channels.service.js';
 import { NotifyClientPrefsService } from './notify-client-prefs.service.js';
 import { NotifyInboxService } from './notify-inbox.service.js';
 import { NotifyMiscService } from './notify-misc.service.js';
+import { NotifyMoreService } from './notify-more.service.js';
 import { NotifyNewsService } from './notify-news.service.js';
 import { NotifyStaffPrefsService } from './notify-staff-prefs.service.js';
 import { NotifyTypesService } from './notify-types.service.js';
 import {
+  agentFlagsBody,
+  altegioWhatsAppBody,
+  altegioWhatsAppModeBody,
   channelOverviewBody,
   clientNotifyPatchBody,
   connectChannelBody,
   createNewsBody,
+  createWebhookBody,
   dismissBannerBody,
   emailChannelBody,
+  giftShowcaseBody,
   inboxReadBody,
+  notifySettingsBody,
+  openSlotsScheduleBody,
+  partnerSummaryBody,
+  sendDataExportEmailBody,
+  sendFiscalReceiptEmailBody,
+  sendPlanReportEmailBody,
   sendStaffInviteBody,
   sendTestChannelBody,
+  serviceReminderHoursBody,
+  setWebhookActiveBody,
   staffNotifyPatchBody,
   updateTemplatesBody,
   updateTypeBody,
@@ -43,6 +57,7 @@ export class NotifyController {
     private readonly inbox: NotifyInboxService,
     private readonly channels: NotifyChannelsService,
     private readonly misc: NotifyMiscService,
+    private readonly more: NotifyMoreService,
     private readonly staff: StaffService,
   ) {}
 
@@ -286,5 +301,165 @@ export class NotifyController {
       link,
       reachableByPhone: true,
     };
+  }
+
+  // ─────────── этап 21 «notify+integrations», попытка 3 ───────────
+  // ── язык/формат/тихие часы (F-05-010/011) ──
+
+  @Get('notify/settings')
+  @Biz('notify.manage')
+  getSettings(@Param('businessId') businessId: string) {
+    return this.more.getSettings(businessId);
+  }
+
+  @Put('notify/settings')
+  @Biz('notify.manage')
+  setSettings(@Param('businessId') businessId: string, @Body(new Zod(notifySettingsBody)) body: z.infer<typeof notifySettingsBody>) {
+    return this.more.updateSettings(businessId, { ...body, quietHours: body.quietHours ?? { enabled: true, from: '22:00', to: '09:00' } });
+  }
+
+  // ── витрина подарков партнёра (F-05-127) ──
+
+  @Get('notify/gift-showcase')
+  @Biz('notify.manage')
+  getGiftShowcase(@Param('businessId') businessId: string) {
+    return this.more.getGiftShowcase(businessId);
+  }
+
+  @Put('notify/gift-showcase')
+  @Biz('notify.manage')
+  setGiftShowcase(@Param('businessId') businessId: string, @Body(new Zod(giftShowcaseBody)) body: z.infer<typeof giftShowcaseBody>) {
+    return this.more.updateGiftShowcase(businessId, body);
+  }
+
+  // ── Open Slots — расписание (F-05-124) ──
+
+  @Get('notify/open-slots-schedule')
+  @Biz('notify.manage')
+  getOpenSlotsSchedule(@Param('businessId') businessId: string) {
+    return this.more.getOpenSlotsSchedule(businessId);
+  }
+
+  @Put('notify/open-slots-schedule')
+  @Biz('notify.manage')
+  setOpenSlotsSchedule(@Param('businessId') businessId: string, @Body(new Zod(openSlotsScheduleBody)) body: z.infer<typeof openSlotsScheduleBody>) {
+    return this.more.updateOpenSlotsSchedule(businessId, body);
+  }
+
+  // ── сводки и оповещения партнёров (F-05-126) ──
+
+  @Get('notify/partner-summary')
+  @Biz('notify.manage')
+  getPartnerSummary(@Param('businessId') businessId: string) {
+    return this.more.getPartnerSummary(businessId);
+  }
+
+  @Put('notify/partner-summary')
+  @Biz('notify.manage')
+  setPartnerSummary(@Param('businessId') businessId: string, @Body(new Zod(partnerSummaryBody)) body: z.infer<typeof partnerSummaryBody>) {
+    return this.more.updatePartnerSummary(businessId, body);
+  }
+
+  // ── WhatsApp через Altegio (F-05-071…073) — статус/настройки, без реального обмена (Р19) ──
+
+  @Get('notify/altegio-whatsapp')
+  @Biz('notify.manage')
+  getAltegioWhatsApp(@Param('businessId') businessId: string) {
+    return this.more.getAltegioWhatsApp(businessId);
+  }
+
+  @Put('notify/altegio-whatsapp')
+  @Biz('notify.manage')
+  setAltegioWhatsApp(@Param('businessId') businessId: string, @Body(new Zod(altegioWhatsAppBody)) body: z.infer<typeof altegioWhatsAppBody>) {
+    return this.more.updateAltegioWhatsApp(businessId, body);
+  }
+
+  @Post('notify/altegio-whatsapp/mode')
+  @Biz('notify.manage')
+  setAltegioWhatsAppMode(@Param('businessId') businessId: string, @Body(new Zod(altegioWhatsAppModeBody)) body: z.infer<typeof altegioWhatsAppModeBody>) {
+    return this.more.setAltegioWhatsAppMode(businessId, body.mode);
+  }
+
+  @Post('notify/altegio-whatsapp/approve-templates')
+  @Biz('notify.manage')
+  approveWhatsAppTemplates(@Param('businessId') businessId: string) {
+    return this.more.approveWhatsAppTemplates(businessId);
+  }
+
+  // ── флаги внешнего агента (F-05-121) ──
+
+  @Get('notify/agent-flags')
+  @Biz('notify.manage')
+  getAgentFlags(@Param('businessId') businessId: string) {
+    return this.more.getAgentFlags(businessId);
+  }
+
+  @Put('notify/agent-flags')
+  @Biz('notify.manage')
+  setAgentFlags(@Param('businessId') businessId: string, @Body(new Zod(agentFlagsBody)) body: z.infer<typeof agentFlagsBody>) {
+    return this.more.updateAgentFlags(businessId, body);
+  }
+
+  // ── своё время напоминания на услугу (Ув15) ──
+
+  @Get('notify/service-reminder-hours/:serviceId')
+  @Biz('notify.manage')
+  async getServiceReminderHours(@Param('businessId') businessId: string, @Param('serviceId') serviceId: string) {
+    return { hours: await this.more.getServiceReminderHours(businessId, serviceId) };
+  }
+
+  @Put('notify/service-reminder-hours/:serviceId')
+  @Biz('notify.manage')
+  async setServiceReminderHours(@Param('businessId') businessId: string, @Param('serviceId') serviceId: string, @Body(new Zod(serviceReminderHoursBody)) body: z.infer<typeof serviceReminderHoursBody>) {
+    await this.more.setServiceReminderHours(businessId, serviceId, body.hours);
+    return { ok: true };
+  }
+
+  // ── свои вебхуки (F-05-120) ──
+
+  @Get('notify/webhooks')
+  @Biz('notify.manage')
+  listWebhooks(@Param('businessId') businessId: string) {
+    return this.more.listWebhooks(businessId);
+  }
+
+  @Post('notify/webhooks')
+  @Biz('notify.manage')
+  createWebhook(@Param('businessId') businessId: string, @Body(new Zod(createWebhookBody)) body: z.infer<typeof createWebhookBody>) {
+    return this.more.createWebhook(businessId, body.url, [...body.entities]);
+  }
+
+  @Put('notify/webhooks/:webhookId/active')
+  @Biz('notify.manage')
+  async setWebhookActive(@Param('businessId') businessId: string, @Param('webhookId') webhookId: string, @Body(new Zod(setWebhookActiveBody)) body: z.infer<typeof setWebhookActiveBody>) {
+    await this.more.setWebhookActive(businessId, webhookId, body.active);
+    return { ok: true };
+  }
+
+  @Post('notify/webhooks/:webhookId/delete')
+  @Biz('notify.manage')
+  async deleteWebhook(@Param('businessId') businessId: string, @Param('webhookId') webhookId: string) {
+    await this.more.deleteWebhook(businessId, webhookId);
+    return { ok: true };
+  }
+
+  // ── письма от разделов-хозяев (F-05-129/131/134) ──
+
+  @Post('notify/send/fiscal-receipt')
+  @Biz()
+  sendFiscalReceiptEmail(@Param('businessId') businessId: string, @Body(new Zod(sendFiscalReceiptEmailBody)) body: z.infer<typeof sendFiscalReceiptEmailBody>) {
+    return this.more.sendFiscalReceiptEmail(body.email, body.receiptUrl);
+  }
+
+  @Post('notify/send/data-export')
+  @Biz()
+  sendDataExportEmail(@Param('businessId') businessId: string, @Body(new Zod(sendDataExportEmailBody)) body: z.infer<typeof sendDataExportEmailBody>) {
+    return this.more.sendDataExportEmail(body.toEmail, body.reportLabel.ru, body.downloadUrl);
+  }
+
+  @Post('notify/send/plan-report')
+  @Biz()
+  sendPlanReportEmail(@Param('businessId') businessId: string, @Body(new Zod(sendPlanReportEmailBody)) body: z.infer<typeof sendPlanReportEmailBody>) {
+    return this.more.sendPlanReportEmail(body.toEmail, body.downloadUrl, body.frequency);
   }
 }

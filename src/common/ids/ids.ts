@@ -202,7 +202,8 @@ export const ID_PREFIX = {
   // событие виджета/приглашение в окно/лист ожидания виджета), см. OnlineRecord в schema.prisma
   onlineRecord: 'orec',
   // этап 21 (лейн notify+integrations), попытка 3 — свой список вебхуков notify (F-05-120, мок newId('wh'));
-  // 'wh' занят warehouse на сервере, поэтому свой префикс. Хранится в BusinessSetting (JSON), не своя таблица.
+  // 'wh' занят warehouse на сервере, поэтому свой префикс. Хранится в BusinessSetting (JSON, area
+  // 'notify-webhooks'), не своя таблица — см. notify-more.service.ts.
   notifyWebhook: 'nwh',
 } as const;
 

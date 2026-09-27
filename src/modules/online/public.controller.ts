@@ -8,8 +8,10 @@ import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import { Zod } from '../../common/http/validation.js';
 import {
   addReviewBody,
+  cabinetDataOut,
   cancelWindowOut,
   codeSentOut,
+  createGroupOnlineBookingBody,
   createOnlineBookingBody,
   freeSlotOut,
   groupBookingRulesOut,
@@ -18,6 +20,7 @@ import {
   onlineBookingResultOut,
   onlineBookingViewOut,
   publicBusinessOut,
+  publicGroupEventOut,
   reviewOut,
   sendBookingCodeBody,
   trackWidgetEventBody,
@@ -200,5 +203,30 @@ export class PublicOnlineController {
   @ZodOk(waitlistRequestOut)
   joinWaitlist(@Param('businessId') businessId: string, @Body(new Zod(joinWaitlistBody)) body: z.infer<typeof joinWaitlistBody>) {
     return this.svc.joinOnlineWaitlist({ businessId, ...body });
+  }
+
+  @Get('businesses/:businessId/group-events')
+  @RateLimit({ bucket: 'public-slots', limit: 300, windowSec: 60, by: 'ip' })
+  @ApiOperation({ summary: 'Групповые события, доступные клиенту в виджете (F-03-101)' })
+  @ZodOk(z.array(publicGroupEventOut))
+  groupEvents(@Param('businessId') businessId: string, @Query('serviceId') serviceId?: string) {
+    return this.svc.listPublicGroupEvents(businessId, serviceId);
+  }
+
+  @Post('businesses/:businessId/group-bookings')
+  @RateLimit({ bucket: 'public-booking-create', limit: 20, windowSec: 3600, by: 'ip' })
+  @ApiOperation({ summary: 'Запись на групповое событие с местами (F-03-076, F-03-101)' })
+  @ZodBody(createGroupOnlineBookingBody)
+  @ZodOk(onlineBookingResultOut)
+  createGroupBooking(@Param('businessId') businessId: string, @Body(new Zod(createGroupOnlineBookingBody)) body: z.infer<typeof createGroupOnlineBookingBody>) {
+    return this.svc.createGroupOnlineBooking(businessId, body);
+  }
+
+  @Get('businesses/:businessId/cabinet')
+  @RateLimit({ bucket: 'public-booking-hash', limit: 60, windowSec: 60, by: 'ip' })
+  @ApiOperation({ summary: 'Личный кабинет клиента в виджете по номеру (F-03-109…112)' })
+  @ZodOk(cabinetDataOut)
+  cabinet(@Param('businessId') businessId: string, @Query('phone') phone: string) {
+    return this.svc.cabinetData(businessId, phone ?? '');
   }
 }

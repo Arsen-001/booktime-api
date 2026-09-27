@@ -16,11 +16,23 @@ import { NotifyController } from './notify.controller.js';
  * Этап 21 «notify+integrations»: + NotifyMiscService (web-popup/email/banners/channels-overview) и
  * BusinessesModule (StaffService.reissueInvite — «Приглашение сотрудника с доступом» F-05-063 переиспользует
  * настоящее приглашение этапа 3, а не заводит второе).
+ * Попытка 3: + NotifyMoreService (настройки/тихие часы, витрина подарков, Open Slots расписание, сводки
+ * партнёров, WhatsApp через Altegio, флаги агента, время напоминания на услугу, свои вебхуки, письма).
  */
 @Module({
   imports: [BusinessesModule],
   controllers: [NotifyController],
-  providers: [NotifyTypesService, NotifyNewsService, NotifyStaffPrefsService, NotifyClientPrefsService, NotifyInboxService, NotifyChannelsService, NotifyDispatchService, NotifyMiscService],
+  providers: [
+    NotifyTypesService,
+    NotifyNewsService,
+    NotifyStaffPrefsService,
+    NotifyClientPrefsService,
+    NotifyInboxService,
+    NotifyChannelsService,
+    NotifyDispatchService,
+    NotifyMiscService,
+    NotifyMoreService,
+  ],
   exports: [NotifyTypesService, NotifyStaffPrefsService, NotifyDispatchService, NotifyChannelsService],
 })
 export class NotifyModule {}

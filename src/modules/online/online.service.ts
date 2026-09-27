@@ -8,7 +8,7 @@ import { newId } from '../../common/ids/ids.js';
 import type { Locale } from '../../common/i18n/i18n.js';
 import { normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { DEFAULT_TZ, localDayRangeUtc, utcToLocal } from '../../common/time/time.js';
+import { DEFAULT_TZ, localDayRangeUtc, localToUtc, utcToLocal } from '../../common/time/time.js';
 import type { Business, BookingLink } from '../../generated/prisma/client.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { AvailabilityService } from '../availability/availability.service.js';
@@ -1041,6 +1041,226 @@ export class OnlineService {
     const data = { locationId: input.locationId, staffId: input.staffId, serviceId: input.serviceId, date: input.date, clientName: input.clientName.trim(), clientPhone: phone, comment: input.comment, status: 'pending' as const };
     const row = await this.prisma.onlineRecord.create({ data: { id: newId('onlineRecord'), businessId: input.businessId, kind: 'waitlist', refId: input.staffId, data: pruneUndefined(data) as Prisma.InputJsonValue } });
     return this.orView(row);
+  }
+
+  // ── «Кого позвать» (F-03-052) ──
+
+  private async slotCandidatesOf(businessId: string, staffId: string, days: number) {
+    type Candidate = { slotStart: string; staffId: string; clientId: string; clientName: string; clientPhone: string; reason: 'regular' | 'dueAgain'; serviceId?: string };
+    const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
+    if (!staff) return [] as Candidate[];
+    const bookings = await this.prisma.booking.findMany({ where: { businessId, staffId, deletedAt: null } });
+    const clients = await this.prisma.client.findMany({ where: { businessId, blocked: false, deletedAt: null } });
+    const clientsById = new Map(clients.map((c) => [c.id, c] as const));
+    const out: Candidate[] = [];
+    let cursor = utcToLocal(new Date()).slice(0, 10);
+    for (let d = 0; d < days && out.length < 8; d++) {
+      const slots = await this.availability.freeSlots(businessId, { staffId, date: cursor, durationMin: 30 });
+      for (const slot of slots) {
+        if (out.length >= 8) break;
+        const hour = Number(slot.start.slice(11, 13));
+        const regular = bookings.find((b) => {
+          if (!b.clientId || !clientsById.has(b.clientId)) return false;
+          const bh = Number(utcToLocal(b.startAt).slice(11, 13));
+          return Math.abs(bh - hour) <= 1;
+        });
+        if (regular?.clientId) {
+          const c = clientsById.get(regular.clientId);
+          if (c) {
+            out.push({ slotStart: slot.start, staffId, clientId: c.id, clientName: c.name, clientPhone: c.phone, reason: 'regular', serviceId: arr<{ serviceId: string }>(regular.services)[0]?.serviceId });
+            continue;
+          }
+        }
+      }
+      cursor = nextDay(cursor);
+    }
+    if (out.length < 8) {
+      const lastVisit = new Map<string, string>();
+      const nowLocalStr = utcToLocal(new Date());
+      for (const b of bookings) {
+        if (!b.clientId) continue;
+        const startLocal = utcToLocal(b.startAt);
+        if (startLocal >= nowLocalStr) continue;
+        const prev = lastVisit.get(b.clientId);
+        if (!prev || startLocal > prev) lastVisit.set(b.clientId, startLocal);
+      }
+      const dueAgain = [...lastVisit.entries()]
+        .filter(([id, last]) => clientsById.has(id) && (Date.now() - localToUtc(last).getTime()) / 60_000 >= 21 * 24 * 60 && !out.some((o) => o.clientId === id))
+        .map(([id]) => clientsById.get(id)!);
+      const used = new Set(out.map((o) => o.slotStart));
+      let cursor2 = utcToLocal(new Date()).slice(0, 10);
+      outer: for (let d = 0; d < days; d++) {
+        const slots = await this.availability.freeSlots(businessId, { staffId, date: cursor2, durationMin: 30 });
+        for (const slot of slots) {
+          if (out.length >= 8) break outer;
+          if (used.has(slot.start)) continue;
+          const c = dueAgain.shift();
+          if (!c) break outer;
+          out.push({ slotStart: slot.start, staffId, clientId: c.id, clientName: c.name, clientPhone: c.phone, reason: 'dueAgain' });
+          used.add(slot.start);
+        }
+        cursor2 = nextDay(cursor2);
+      }
+    }
+    return out;
+  }
+
+  async slotCandidates(businessId: string, staffId: string, days = 3) {
+    return this.slotCandidatesOf(businessId, staffId, days);
+  }
+
+  async firstStaffWithCandidates(businessId: string, staffIds: string[]): Promise<string | undefined> {
+    for (const id of staffIds) if ((await this.slotCandidatesOf(businessId, id, 3)).length > 0) return id;
+    return staffIds[0];
+  }
+
+  async inviteToSlot(businessId: string, candidate: { slotStart: string; staffId: string; clientId: string; clientName: string; clientPhone: string; serviceId?: string }, message: string) {
+    const data = { staffId: candidate.staffId, clientId: candidate.clientId, clientName: candidate.clientName, slotStart: candidate.slotStart, serviceId: candidate.serviceId, message };
+    const row = await this.prisma.onlineRecord.create({ data: { id: newId('onlineRecord'), businessId, kind: 'slotInvite', refId: candidate.staffId, data: pruneUndefined(data) as Prisma.InputJsonValue } });
+    return { id: row.id, businessId, sentAt: utcToLocal(row.createdAt), ...(row.data as Record<string, unknown>) };
+  }
+
+  async listSlotInvites(businessId: string) {
+    const rows = await this.prisma.onlineRecord.findMany({ where: { businessId, kind: 'slotInvite' }, orderBy: { createdAt: 'desc' } });
+    return rows.map((r) => ({ id: r.id, businessId, sentAt: utcToLocal(r.createdAt), ...(r.data as Record<string, unknown>) }));
+  }
+
+  // ── групповые события в виджете (F-03-101) и запись на них (F-03-076, F-03-101) ──
+
+  private groupEventView(e: { id: string; businessId: string; locationId: string; serviceId: string; staffId: string; startAt: Date; durationMin: number; capacity: number; resourceIds: unknown; onlineUrl: string | null; seriesId: string | null; status: string; createdAt: Date }) {
+    return {
+      id: e.id,
+      businessId: e.businessId,
+      locationId: e.locationId,
+      serviceId: e.serviceId,
+      staffId: e.staffId,
+      start: utcToLocal(e.startAt),
+      durationMin: e.durationMin,
+      capacity: e.capacity,
+      resourceIds: arr<string>(e.resourceIds),
+      onlineUrl: opt(e.onlineUrl ?? undefined),
+      seriesId: opt(e.seriesId ?? undefined),
+      status: e.status as 'scheduled' | 'cancelled',
+      createdAt: utcToLocal(e.createdAt),
+    };
+  }
+
+  private static readonly GROUP_ACTIVE_STATUSES = ['scheduled', 'awaiting_confirmation', 'client_confirmed', 'arrived'] as const;
+
+  async listPublicGroupEvents(businessId: string, serviceId?: string) {
+    const events = await this.prisma.groupEvent.findMany({ where: { businessId, status: 'scheduled', startAt: { gte: new Date() }, ...(serviceId ? { serviceId } : {}) }, orderBy: { startAt: 'asc' } });
+    if (!events.length) return [];
+    const serviceIds = [...new Set(events.map((e) => e.serviceId))];
+    const staffIds = [...new Set(events.map((e) => e.staffId))];
+    const [services, staffRows] = await Promise.all([
+      this.prisma.service.findMany({ where: { id: { in: serviceIds } } }),
+      this.prisma.staff.findMany({ where: { id: { in: staffIds } } }),
+    ]);
+    const svcById = new Map(services.map((s) => [s.id, s]));
+    const staffById = new Map(staffRows.map((s) => [s.id, s]));
+    const out: { event: ReturnType<OnlineService['groupEventView']>; service?: ReturnType<typeof serviceView>; staff?: ReturnType<typeof sanitizePublicStaff>; seatsTaken: number; seatsLeft: number }[] = [];
+    for (const e of events) {
+      const svc = svcById.get(e.serviceId);
+      if (!svc || !svc.active || !svc.onlineBookable) continue;
+      const seatsTaken = await this.prisma.booking.count({ where: { groupEventId: e.id, deletedAt: null, status: { in: [...OnlineService.GROUP_ACTIVE_STATUSES] } } });
+      const staff = staffById.get(e.staffId);
+      out.push({ event: this.groupEventView(e), service: serviceView(svc), staff: staff ? sanitizePublicStaff(staff) : undefined, seatsTaken, seatsLeft: Math.max(0, e.capacity - seatsTaken) });
+    }
+    return out;
+  }
+
+  /**
+   * Запись на групповое событие с местами (F-03-076, F-03-101) — тот же путь, что `addParticipant` раздела
+   * resources (`this.bookings.place()` с `groupEventId`, замок не мешает нескольким одновременным местам того же
+   * события), но без сессии сотрудника: клиентский актёр, свой accessHash (как у `createBooking` выше). Проверку
+   * кода сервером здесь НЕ делаем — виджет группового мастера сам генерирует демо-код и сверяет его локально
+   * (`GroupBookingFlow.tsx`, `src/areas/**`, не наш файл трогать нельзя) и передаёт `phoneVerified: true` — тот же
+   * уровень доверия, что был у мока; решение лейна client+online, docs/PROGRESS.md.
+   */
+  async createGroupOnlineBooking(businessId: string, input: { locationId: string; groupEventId: string; seats: number; clientName: string; clientPhone: string; comment?: string; linkId?: string; formId?: string; source: string; device: string; phoneVerified: boolean; payByMembership?: boolean }) {
+    if (!input.phoneVerified) throw new ApiError('phone_not_verified', 'Подтвердите номер телефона кодом');
+    const phone = normalizePhone(input.clientPhone);
+    if (!phone) throw new ApiError('invalid_phone', 'Проверьте номер телефона');
+    const event = await this.prisma.groupEvent.findFirst({ where: { id: input.groupEventId, businessId, status: 'scheduled' } });
+    if (!event) throw new ApiError('not_found', 'Событие не найдено');
+    const seatsTaken = await this.prisma.booking.count({ where: { groupEventId: event.id, deletedAt: null, status: { in: [...OnlineService.GROUP_ACTIVE_STATUSES] } } });
+    if (seatsTaken + input.seats > event.capacity) throw new ApiError('slot_taken', 'Свободных мест не осталось');
+
+    const result = await this.bookings.place(clientActor(null, 'client'), {
+      source: input.source,
+      businessId,
+      locationId: input.locationId,
+      staffId: event.staffId,
+      start: utcToLocal(event.startAt),
+      services: [{ serviceId: event.serviceId, qty: Math.max(1, input.seats), unitPrice: input.payByMembership ? 0 : undefined }],
+      groupEventId: event.id,
+      client: { phone, name: input.clientName },
+      comment: input.comment,
+    });
+
+    const raw = randomBytes(16).toString('hex');
+    const row = await this.prisma.booking.findUniqueOrThrow({ where: { id: result.booking.id } });
+    const expiresAt = new Date(row.endAt.getTime() + 7 * 86_400_000);
+    const meta = { linkId: input.linkId, formId: input.formId, widgetGen: 'new' as const, device: input.device, phoneVerified: true, paidByMembership: input.payByMembership };
+    await this.prisma.booking.update({ where: { id: row.id }, data: { accessHash: hashOf(raw), accessHashExpiresAt: expiresAt, onlineMeta: pruneUndefined(meta) as Prisma.InputJsonValue } });
+
+    let client = result.client as Record<string, unknown> | undefined;
+    if (!client && row.clientId) {
+      const c = await this.prisma.client.findUnique({ where: { id: row.clientId } });
+      if (c) client = coreClient(c);
+    }
+    return { booking: result.booking, client, accessHash: raw };
+  }
+
+  // ── личный кабинет клиента в виджете (F-03-109…112) ──
+
+  /**
+   * Вход по номеру и коду (демо — F-03-077, тот же уровень доверия, что у виджета: код сверяется в `CabinetScreen.tsx`,
+   * не здесь). «Раздача ссылки „управлять записью“» (accessHashes) — `accessHash` в базе хранится ХЕШЕМ (никогда не
+   * восстановить сырой токен), поэтому новый токен выдаём только записям, у которых своего ещё не было (созданным
+   * сотрудником вручную) — у записей из онлайн-потока уже есть свой рабочий токен с момента создания, его не трогаем.
+   * Лояльность (сертификаты/абонементы клиента) — заглушка `[]`: своего клиентского обзора у карт/абонементов ещё
+   * нет (см. docs/PROGRESS.md, лейн client — тот же блокер, что у `listMemberships`/`listCertificates`).
+   */
+  async cabinetData(businessId: string, phone: string) {
+    const normalized = normalizePhone(phone);
+    if (!normalized) throw new ApiError('invalid_phone', 'Проверьте номер телефона');
+    const client = await this.prisma.client.findFirst({ where: { businessId, phone: normalized } });
+    if (!client) throw new ApiError('not_found', 'С этим номером ещё нет записей');
+    const now = new Date();
+    const all = await this.prisma.booking.findMany({ where: { businessId, clientId: client.id, deletedAt: null }, orderBy: { startAt: 'desc' } });
+    const upcoming = all.filter((b) => b.startAt >= now && b.status !== 'cancelled_by_client' && b.status !== 'cancelled_by_master').sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+    const past = all.filter((b) => b.startAt < now || b.status === 'arrived' || b.status === 'no_show');
+    const serviceIds = new Set<string>();
+    const staffIds = new Set<string>();
+    for (const b of all) {
+      for (const l of arr<{ serviceId: string }>(b.services)) serviceIds.add(l.serviceId);
+      staffIds.add(b.staffId);
+    }
+    const [services, staffRows] = await Promise.all([
+      this.prisma.service.findMany({ where: { id: { in: [...serviceIds] } } }),
+      this.prisma.staff.findMany({ where: { id: { in: [...staffIds] } } }),
+    ]);
+    const servicesMap = Object.fromEntries(services.map((s) => [s.id, serviceView(s)]));
+    const staffNames = Object.fromEntries(staffRows.map((s) => [s.id, s.name]));
+    const missing = all.filter((b) => !b.accessHash);
+    const accessHashes: Record<string, string> = {};
+    for (const b of missing) {
+      const raw = randomBytes(16).toString('hex');
+      const expiresAt = new Date(b.endAt.getTime() + 7 * 86_400_000);
+      await this.prisma.booking.update({ where: { id: b.id }, data: { accessHash: hashOf(raw), accessHashExpiresAt: expiresAt } });
+      accessHashes[b.id] = raw;
+    }
+    const viewOf = (b: (typeof all)[number]) => this.bookings.view(this.prisma, b);
+    return {
+      client: coreClient(client),
+      upcoming: await Promise.all(upcoming.map(viewOf)),
+      past: await Promise.all(past.map(viewOf)),
+      services: servicesMap,
+      staffNames,
+      loyalty: { certificates: [] as unknown[], subscriptions: [] as unknown[] },
+      accessHashes,
+    };
   }
 }
 

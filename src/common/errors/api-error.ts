@@ -179,6 +179,7 @@ export const ERROR_STATUS = {
   already_rated: HttpStatus.CONFLICT,
   integration_unavailable: HttpStatus.UNPROCESSABLE_ENTITY,
   invalid_input: HttpStatus.UNPROCESSABLE_ENTITY,
+  phone_not_verified: HttpStatus.UNPROCESSABLE_ENTITY,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

@@ -83,6 +83,25 @@ export interface AgentFlagsOut {
 }
 const DEFAULT_AGENT_FLAGS: AgentFlagsOut = { sendToClient: true, sendToAdmin: true };
 
+export interface BookingNotifyOverrideOut {
+  sendOnSave: boolean;
+  pushEnabled: boolean;
+  pushTimingHours: number;
+  smsEnabled: boolean;
+  smsTimingHours: number;
+  emailEnabled: boolean;
+  emailTimingHours: number;
+}
+const DEFAULT_BOOKING_NOTIFY_OVERRIDE: BookingNotifyOverrideOut = {
+  sendOnSave: true,
+  pushEnabled: true,
+  pushTimingHours: 1,
+  smsEnabled: false,
+  smsTimingHours: 1,
+  emailEnabled: false,
+  emailTimingHours: 12,
+};
+
 export type NotifyWebhookEntity = 'location' | 'staff' | 'clients' | 'bookings' | 'loyaltyCards' | 'services' | 'products' | 'sales';
 export interface NotifyWebhookOut {
   id: string;
@@ -119,6 +138,23 @@ export class NotifyMoreService {
       update: { data: J(settings), version: { increment: 1 } },
     });
     return settings;
+  }
+
+  // ─────────── ручная правка уведомлений ОДНОЙ записи (F-05-009/082) ───────────
+  // Booking.notifyOverride (JSON, аддитивное поле, этап 21 «notify+integrations» попытка 3) — нет строки →
+  // DEFAULT_BOOKING_NOTIFY_OVERRIDE действует (запись создана до этой правки или её никто не трогал).
+
+  async getBookingOverride(businessId: string, bookingId: string): Promise<BookingNotifyOverrideOut> {
+    const row = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId }, select: { notifyOverride: true } });
+    if (!row) throw new ApiError('not_found', 'Booking not found');
+    return { ...DEFAULT_BOOKING_NOTIFY_OVERRIDE, ...((row.notifyOverride as Partial<BookingNotifyOverrideOut> | null) ?? {}) };
+  }
+
+  async updateBookingOverride(businessId: string, bookingId: string, override: BookingNotifyOverrideOut): Promise<BookingNotifyOverrideOut> {
+    const row = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId }, select: { id: true } });
+    if (!row) throw new ApiError('not_found', 'Booking not found');
+    await this.prisma.booking.update({ where: { id: bookingId }, data: { notifyOverride: J(override) } });
+    return override;
   }
 
   // ─────────── витрина подарков партнёра (F-05-127) ───────────

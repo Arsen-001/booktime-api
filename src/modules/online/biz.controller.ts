@@ -21,6 +21,7 @@ import {
   groupBookingRulesBody,
   groupBookingRulesOut,
   integrationConnectionOut,
+  inviteToSlotBody,
   listabilityOut,
   mobileAppLinksBody,
   mobileAppLinksOut,
@@ -36,6 +37,8 @@ import {
   serviceOnlineConfigOut,
   setIntegrationConnectedBody,
   setStaffServiceOnlineBody,
+  slotCandidateOut,
+  slotInviteOut,
   staffClientRulesBody,
   staffClientRulesOut,
   staffServiceFlagsOut,
@@ -458,5 +461,36 @@ export class BizOnlineController {
   async revokeApiKey(@Param('businessId') businessId: string) {
     await this.svc.revokeApiKey(businessId);
     return { ok: true };
+  }
+
+  // ── «Кого позвать» (F-03-052) — литеральный `/first` регистрируем ДО `/:staffId`, иначе его перехватит параметр ──
+
+  @Get('online/slot-candidates/first')
+  @Biz()
+  @ZodOk(z.object({ staffId: z.string().optional() }))
+  async firstStaffWithCandidates(@Param('businessId') businessId: string, @Query('staffIds') staffIds: string) {
+    return { staffId: await this.svc.firstStaffWithCandidates(businessId, (staffIds ?? '').split(',').filter(Boolean)) };
+  }
+
+  @Get('online/slot-candidates/:staffId')
+  @Biz()
+  @ZodOk(z.array(slotCandidateOut))
+  slotCandidates(@Param('businessId') businessId: string, @Param('staffId') staffId: string, @Query('days') days?: string) {
+    return this.svc.slotCandidates(businessId, staffId, days ? Number(days) : undefined);
+  }
+
+  @Post('online/slot-invites')
+  @Biz('journal.edit')
+  @ZodBody(inviteToSlotBody)
+  @ZodOk(slotInviteOut)
+  inviteToSlot(@Param('businessId') businessId: string, @Body(new Zod(inviteToSlotBody)) body: z.infer<typeof inviteToSlotBody>) {
+    return this.svc.inviteToSlot(businessId, body.candidate, body.message);
+  }
+
+  @Get('online/slot-invites')
+  @Biz()
+  @ZodOk(z.array(slotInviteOut))
+  slotInvites(@Param('businessId') businessId: string) {
+    return this.svc.listSlotInvites(businessId);
   }
 }
