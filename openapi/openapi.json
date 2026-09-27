@@ -52335,8 +52335,15 @@
                       "type": "string"
                     },
                     "additionalProperties": {
-                      "type": "string",
-                      "maxLength": 300
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
                     }
                   }
                 },

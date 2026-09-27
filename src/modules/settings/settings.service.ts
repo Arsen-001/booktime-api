@@ -182,8 +182,9 @@ export class SettingsService {
     };
   }
 
-  async saveContacts(ctx: RequestContext, businessId: string, input: { addressRu: string; yandexMapsUrl?: string; hoursText?: string; phones: string[]; socials: Record<string, string | undefined> }) {
-    if (input.socials.telegramUrl && !TELEGRAM_RE.test(input.socials.telegramUrl.trim())) throw new ApiError('bad_telegram_url', 'Telegram link must be https://t.me/username', { telegramUrl: 'format' });
+  async saveContacts(ctx: RequestContext, businessId: string, input: { addressRu: string; yandexMapsUrl?: string; hoursText?: string; phones: string[]; socials: Record<string, unknown> }) {
+    const tg = input.socials.telegramUrl;
+    if (typeof tg === 'string' && tg && !TELEGRAM_RE.test(tg.trim())) throw new ApiError('bad_telegram_url', 'Telegram link must be https://t.me/username', { telegramUrl: 'format' });
     const [first, ...rest] = input.phones.map((p) => p.trim()).filter(Boolean);
     await this.prisma.$transaction(async (tx) => {
       const b = await tx.business.findUniqueOrThrow({ where: { id: businessId }, select: { phone: true } });
@@ -196,7 +197,7 @@ export class SettingsService {
         });
         await this.log(tx, ctx, businessId, 'contacts', 'address', addr.ru ?? '', input.addressRu);
       }
-      const socials = Object.fromEntries(Object.entries(input.socials).filter(([, v]) => v && v.trim()));
+      const socials = Object.fromEntries(Object.entries(input.socials).filter(([, v]) => (typeof v === 'string' ? v.trim() : v !== undefined && v !== null))) as Prisma.InputJsonValue;
       await tx.business.update({ where: { id: businessId }, data: { phone: first ?? b.phone, socials, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
       await this.log(tx, ctx, businessId, 'contacts', 'phone', b.phone, first ?? b.phone);
     });

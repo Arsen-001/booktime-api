@@ -85,7 +85,7 @@ export class SettingsController {
   @ApiOperation({ summary: 'Контакты (F-15-104…110): Telegram — https://t.me/username (bad_telegram_url)' })
   @ZodBody(contactsBody)
   saveContacts(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(contactsBody)) body: z.infer<typeof contactsBody>) {
-    return this.s.saveContacts(ctx, b, { ...body, socials: body.socials as Record<string, string | undefined> });
+    return this.s.saveContacts(ctx, b, body);
   }
 
   @Get('company/gallery')

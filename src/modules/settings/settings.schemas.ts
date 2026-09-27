@@ -25,7 +25,7 @@ export const contactsBody = z.object({
   yandexMapsUrl: z.string().max(1000).optional(),
   hoursText: z.string().max(200).optional(),
   phones: z.array(z.string().max(40)).max(10),
-  socials: z.record(z.string(), z.string().max(300).optional()),
+  socials: z.record(z.string(), z.union([z.string().max(300), z.boolean()]).optional()),
 });
 export const galleryBody = z.object({ photos: z.array(z.string().max(4_000_000)).max(6) });
 export const categoryBody = z.object({ name: z.string().max(80), colorIndex: z.number().int().min(1).max(8), icon: z.string().max(40).optional() });
