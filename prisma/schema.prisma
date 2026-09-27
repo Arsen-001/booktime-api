@@ -3749,4 +3749,49 @@ model ResourcesWaitlistEntry {
   @@map("resources_waitlist_entries")
 }
 
+// Аудит фасадов, лейн «client» (PLAN §6 строка 21, docs/PROGRESS.md «этап 21, лейн client»): отзывы (В-24,
+// F-14-013/F-14-014) — единственная часть исходного счёта «63», для которой на сервере не было вообще
+// никакого модуля (StaffReview заменяет StarRating, когда online.reviewMode='text'; LocationReview — отзыв о
+// месте, без модерации). Обе — новые таблицы, читают/пишут только src/modules/client/me.service.ts +
+// catalog.service.ts, не трогают ничего из блока «resources» выше.
+
+/// Отзыв о мастере — оценка 1–5 и необязательный текст (В-24, F-14-013 1:1 с Altegio), заменяет StarRating для
+/// бизнеса с online.reviewMode='text'. Одна запись на клиента на мастера (можно менять, пока не удалил визит —
+/// правило проверяет me.service.ts по каждому submit, а не хранится здесь). Текст (если есть) уходит на
+/// модерацию платформы отдельным ModerationItem(kind='review', refId=этот id) — рейтинг виден сразу, текст —
+/// только после ModerationService.isVisibleToClients(refId).
+model StaffReview {
+  id         String   @id @db.VarChar(32)
+  appUserId  String   @map("app_user_id") @db.VarChar(32)
+  staffId    String   @map("staff_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  bookingId  String   @map("booking_id") @db.VarChar(32)
+  rating     Int
+  text       String?  @db.VarChar(2000)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@unique([appUserId, staffId])
+  @@index([staffId])
+  @@index([businessId])
+  @@map("staff_reviews")
+}
+
+/// Отзыв о месте (F-14-014) — свободный текст, один на визит «пришёл» (не один на бизнес — разные визиты
+/// можно оценить отдельно). Публичный список — GET /v1/public/places/:businessId/reviews; фронтовый мок не
+/// зовёт submitForModeration для этого отзыва (в отличие от StaffReview.text), поэтому здесь тоже без очереди.
+model LocationReview {
+  id         String   @id @db.VarChar(32)
+  appUserId  String   @map("app_user_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  bookingId  String   @map("booking_id") @db.VarChar(32)
+  text       String   @db.VarChar(2000)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@unique([appUserId, bookingId])
+  @@index([businessId])
+  @@map("location_reviews")
+}
+
 // === end stage 21 ===

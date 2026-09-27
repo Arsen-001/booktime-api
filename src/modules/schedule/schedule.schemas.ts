@@ -53,6 +53,12 @@ export const restoreCellsBody = z.object({ snapshot: z.array(cellSnapshot).max(2
 export const affectedBody = z.object({ staffIds, dates, newHours: dayHours.optional() });
 export const hasSavedBody = z.object({ staffIds: z.array(id32).max(200) });
 
+// === stage 21 (лейн services+rest) ===
+/** Тип и заметка дня мастера для колонки журнала (Г3, Г16) */
+export const dayInfoBody = z.object({ staffIds: z.array(id32).min(1).max(200), date: isoDate });
+/** Кому можно передать записи закрываемого дня (Г3) */
+export const moveCandidatesBody = z.object({ bookingIds: z.array(id32).min(1).max(200) });
+
 export const copyBody = z.object({
   fromStaffId: id32,
   toStaffIds: staffIds,

@@ -49,6 +49,15 @@ export const ERROR_STATUS = {
   rate_limited: HttpStatus.TOO_MANY_REQUESTS,
   // каталог (этап 4) — как в моке фронта (src/api/resources.ts)
   last_instance: HttpStatus.CONFLICT,
+  // ресурсы: группа/лист ожидания/серии (этап 21) — как в моке фронта (src/api/resources.ts)
+  no_join_link: HttpStatus.UNPROCESSABLE_ENTITY,
+  already_series: HttpStatus.CONFLICT,
+  invalid_end_date: HttpStatus.UNPROCESSABLE_ENTITY,
+  multi_seat_no_schedule: HttpStatus.UNPROCESSABLE_ENTITY,
+  weekday_required: HttpStatus.UNPROCESSABLE_ENTITY,
+  waitlist_entry_closed: HttpStatus.CONFLICT,
+  service_required: HttpStatus.UNPROCESSABLE_ENTITY,
+  no_membership: HttpStatus.UNPROCESSABLE_ENTITY,
   // клиенты / CRM (этап 5) — как в моке фронта (src/api/clients/*)
   duplicate_phone: HttpStatus.CONFLICT,
   invalid_national_id: HttpStatus.UNPROCESSABLE_ENTITY,

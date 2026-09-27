@@ -5,6 +5,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
+import { normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { localToUtc, utcToLocal, utcToLocalDate, type LocalDateTime } from '../../common/time/time.js';
 import { addDays, eachDay, weekdayIndex } from '../availability/engine.js';
@@ -698,6 +699,55 @@ export class ResourcesEventsService {
     return rows.map((e) => this.waitlistView(e));
   }
 
+  /** F-16-149…154 «+ Создать»: базовая заявка листа ожидания своего экрана */
+  async createWaitlistEntry(
+    ctx: RequestContext,
+    businessId: string,
+    input: { locationId: string; clientName: string; clientPhone: string; serviceIds: string[]; staffIds?: string[]; wishes: unknown[]; comment?: string },
+  ) {
+    if (!input.clientName.trim()) throw new ApiError('name_required', 'Name required');
+    const phone = normalizePhone(input.clientPhone);
+    if (!phone) throw new ApiError('invalid_phone', 'Invalid phone');
+    if (!input.serviceIds.length) throw new ApiError('service_required', 'Service required');
+    const row = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.resourcesWaitlistEntry.create({
+        data: {
+          id: newId('resourcesWaitlistEntry'),
+          businessId,
+          locationId: input.locationId,
+          clientName: input.clientName.trim(),
+          clientPhone: phone,
+          serviceIds: input.serviceIds,
+          staffIds: input.staffIds ?? [],
+          wishes: input.wishes as Prisma.InputJsonValue,
+          comment: input.comment?.trim() ?? '',
+          tags: [],
+          createdBy: ctx.member?.staffId,
+        },
+      });
+      await this.audit.record(tx, ctx, { action: 'create', entityType: 'waitlist', entityId: created.id, businessId, after: { clientName: created.clientName } });
+      return created;
+    });
+    return this.waitlistView(row);
+  }
+
+  /** F-16-163: заявка закрыта — по ней создана запись */
+  async closeWaitlistEntry(ctx: RequestContext, businessId: string, id: string, bookingId: string) {
+    const row = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.resourcesWaitlistEntry.findFirst({ where: { id, businessId } });
+      if (!existing) throw new ApiError('not_found', 'Waitlist entry not found');
+      const updated = await tx.resourcesWaitlistEntry.update({ where: { id }, data: { closedBookingId: bookingId } });
+      await this.audit.record(tx, ctx, { action: 'update', entityType: 'waitlist', entityId: id, businessId, before: { closedBookingId: null }, after: { closedBookingId: bookingId } });
+      return updated;
+    });
+    return this.waitlistView(row);
+  }
+
+  /** F-16-163/165: закрытую заявку можно только удалить; безвозвратно, в аудит не пишется (как в моке, 344140) */
+  async removeWaitlistEntry(businessId: string, id: string): Promise<void> {
+    await this.prisma.resourcesWaitlistEntry.deleteMany({ where: { id, businessId } });
+  }
+
   async updateWaitlistEntry(
     ctx: RequestContext,
     businessId: string,
@@ -795,7 +845,8 @@ export class ResourcesEventsService {
     const extras = bookingExtrasOf(b.extras);
     const lines = [...(extras.serviceLineExtras ?? [])];
     while (lines.length <= serviceIndex) lines.push({ discountPct: 0 });
-    lines[serviceIndex] = { ...lines[serviceIndex], assistants: normalized.map((a) => ({ staffId: a.staffId, sharePct: a.sharePercent })) };
+    const current = lines[serviceIndex] ?? { discountPct: 0 };
+    lines[serviceIndex] = { ...current, assistants: normalized.map((a) => ({ staffId: a.staffId, sharePct: a.sharePercent })) };
     await this.prisma.booking.update({ where: { id: bookingId }, data: { extras: { ...extras, serviceLineExtras: lines } as Prisma.InputJsonValue, version: { increment: 1 } } });
     return normalized;
   }

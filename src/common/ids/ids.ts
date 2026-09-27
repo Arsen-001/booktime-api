@@ -189,6 +189,10 @@ export const ID_PREFIX = {
   // этап 21 (лейн services+rest) — дипломы/сертификаты мастера (F-00-088, StaffDocument фронта, мок newId('doc'));
   // хранятся в business_settings (area 'services.documents'), не своей таблицей — id всё равно должен быть уникален
   staffDocument: 'sdoc',
+  // этап 21 (лейн client) — отзывы (В-24, F-14-013/014, мок newId('srv')/newId('lrv')): 'sv'/'str' заняты
+  // (service, starRating), поэтому свои префиксы srev/lrev
+  staffReview: 'srev',
+  locationReview: 'lrev',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

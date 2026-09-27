@@ -77,3 +77,17 @@ export const supportBody = z.object({
 // ─────────────────────────── лояльность (В-17, этап 11) ───────────────────────────
 
 export const buyRequestBody = z.object({ businessId: id32, typeId: id32 });
+
+// ─────────────────────────── отзывы (В-24, F-14-013/014) — этап 21, лейн client ───────────────────────────
+
+export const staffReviewBody = z.object({
+  businessId: id32,
+  bookingId: id32,
+  rating: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+  text: z.string().max(2000).optional(),
+});
+
+export const locationReviewBody = z.object({
+  businessId: id32,
+  text: z.string().min(1).max(2000),
+});

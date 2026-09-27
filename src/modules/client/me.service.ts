@@ -12,6 +12,7 @@ import { MeLoyaltyService } from '../loyalty/me-loyalty.service.js';
 import { sanitizePublicStaff } from '../online/online.service.js';
 import { serviceView } from '../services/services.views.js';
 import { nextPlatformNumber } from '../platform/counters.js';
+import { ModerationService } from '../platform/moderation.service.js';
 
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 
@@ -41,6 +42,7 @@ export class MeService {
     private readonly prisma: PrismaService,
     private readonly bookings: BookingsService,
     private readonly loyalty: MeLoyaltyService,
+    private readonly moderation: ModerationService,
   ) {}
 
   // ─────────────────────────── лояльность (F-06-156…163, В-17, этап 11) ───────────────────────────
@@ -282,6 +284,51 @@ export class MeService {
 
   async unrateStaff(appUserId: string, staffId: string): Promise<void> {
     await this.prisma.starRating.deleteMany({ where: { appUserId, staffId } });
+  }
+
+  // ─────────────────────────── оценка 1–5 + текст (В-24, F-14-013 1:1) — этап 21, лейн client ───────────────────────────
+
+  async getMyStaffReview(appUserId: string, staffId: string) {
+    return this.prisma.staffReview.findUnique({ where: { appUserId_staffId: { appUserId, staffId } } });
+  }
+
+  /**
+   * Одна оценка на клиента на мастера, как ★ (F-14-013). Текст (если есть) отдельным шагом уходит на модерацию
+   * платформы — рейтинг виден автору/бизнесу сразу, текст публично только после одобрения (мок-докстринг
+   * client.ts::submitStaffReview, повторяет то же решение).
+   */
+  async submitStaffReview(appUserId: string, staffId: string, businessId: string, bookingId: string, rating: 1 | 2 | 3 | 4 | 5, text?: string) {
+    const booking = await this.prisma.booking.findFirst({ where: { id: bookingId, appUserId, status: 'arrived' } });
+    if (!booking) throw new ApiError('not_allowed', 'Оценить можно только визит со статусом «пришёл»');
+    const trimmed = text?.trim() || undefined;
+    const review = await this.prisma.staffReview.upsert({
+      where: { appUserId_staffId: { appUserId, staffId } },
+      update: { rating, text: trimmed ?? null },
+      create: { id: newId('staffReview'), appUserId, staffId, businessId, bookingId, rating, text: trimmed ?? null },
+    });
+    if (trimmed) {
+      const staff = await this.prisma.staff.findUnique({ where: { id: staffId }, select: { name: true } });
+      await this.moderation.submit({ kind: 'review', businessId, staffId, refId: review.id, text: trimmed, label: staff?.name });
+    }
+    return review;
+  }
+
+  // ─────────────────────────── отзыв о месте (F-14-014) ───────────────────────────
+
+  async getMyLocationReview(appUserId: string, bookingId: string) {
+    return this.prisma.locationReview.findUnique({ where: { appUserId_bookingId: { appUserId, bookingId } } });
+  }
+
+  async submitLocationReview(appUserId: string, businessId: string, bookingId: string, text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) throw new ApiError('validation', 'Текст отзыва не может быть пустым');
+    const booking = await this.prisma.booking.findFirst({ where: { id: bookingId, appUserId, status: 'arrived' } });
+    if (!booking) throw new ApiError('not_allowed', 'Отзыв о месте можно оставить только после визита со статусом «пришёл»');
+    return this.prisma.locationReview.upsert({
+      where: { appUserId_bookingId: { appUserId, bookingId } },
+      update: { text: trimmed },
+      create: { id: newId('locationReview'), appUserId, businessId, bookingId, text: trimmed },
+    });
   }
 
   // ─────────────────────────── дневник (F-00-122) ───────────────────────────

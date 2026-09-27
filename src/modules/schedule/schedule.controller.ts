@@ -12,9 +12,11 @@ import {
   affectedBody,
   copyBody,
   copyLastWeekBody,
+  dayInfoBody,
   deleteCellsBody,
   hasSavedBody,
   journalViewBody,
+  moveCandidatesBody,
   oneDateBody,
   removeFromScheduleBody,
   restoreAfterRemoveBody,
@@ -65,6 +67,26 @@ export class ScheduleController {
   @ZodBody(affectedBody)
   affected(@Param('businessId') businessId: string, @Body(new Zod(affectedBody)) body: z.infer<typeof affectedBody>) {
     return this.svc.findAffected(this.svc.prisma, businessId, body.staffIds, body.dates, body.newHours);
+  }
+
+  // === stage 21 (лейн services+rest) ===
+
+  @Post('schedule/day-info')
+  @HttpCode(200)
+  @Biz('journal.view')
+  @ApiOperation({ summary: 'Тип и заметка дня сотрудников на дату — колонка журнала (Г3, Г16)' })
+  @ZodBody(dayInfoBody)
+  dayInfo(@Param('businessId') businessId: string, @Body(new Zod(dayInfoBody)) body: z.infer<typeof dayInfoBody>) {
+    return this.svc.getStaffDayInfo(businessId, body.staffIds, body.date);
+  }
+
+  @Post('schedule/move-candidates')
+  @HttpCode(200)
+  @Biz('journal.edit')
+  @ApiOperation({ summary: 'Кому передать записи закрываемого дня (Г3)' })
+  @ZodBody(moveCandidatesBody)
+  moveCandidates(@Param('businessId') businessId: string, @Body(new Zod(moveCandidatesBody)) body: z.infer<typeof moveCandidatesBody>) {
+    return this.svc.getMoveCandidates(businessId, body.bookingIds);
   }
 
   @Put('schedule/cells')

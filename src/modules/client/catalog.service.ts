@@ -283,6 +283,11 @@ export class CatalogService {
     };
   }
 
+  /** Отзывы о месте для карточки бизнеса (F-14-028), этап 21 лейн client — новые сверху, без модерации */
+  async listReviews(businessId: string) {
+    return this.prisma.locationReview.findMany({ where: { businessId }, orderBy: { createdAt: 'desc' } });
+  }
+
   // ─────────────────────────── дни/окна для потока записи (F-00-092, F-14-012) ───────────────────────────
 
   async bookingDays(staffId: string, serviceId: string, workplace?: string, days = 14): Promise<{ date: string; slots: FreeSlot[] }[]> {

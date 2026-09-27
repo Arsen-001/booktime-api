@@ -5,9 +5,10 @@ import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { DEFAULT_TZ, localDayRangeUtc, nowLocal, utcToLocal } from '../../common/time/time.js';
+import { DEFAULT_TZ, localDayRangeUtc, nowLocal, utcToLocal, utcToLocalDate } from '../../common/time/time.js';
 import { staffViewWithLogin } from '../businesses/views.js';
 import { AvailabilityService, DEFAULT_SCHEDULE_SETTINGS, type ScheduleSettings } from '../availability/availability.service.js';
+import { personKeyOf } from '../availability/occupy.js';
 import {
   addDays,
   eachDay,
@@ -18,6 +19,7 @@ import {
   rangesToIntervals,
   scheduleHours,
   staffDayHours,
+  staffWorkIntervals,
   stripBreaks,
   toMinutes,
   weekStart,
@@ -124,6 +126,69 @@ export class ScheduleService {
     const explicit = types.get(`${staffId}|${date}`);
     if (explicit) return explicit.typeId;
     return hours.length > 0 ? 'work' : null;
+  }
+
+  // === stage 21 (лейн services+rest): для журнала (Г3, Г16) ===
+
+  /**
+   * Тип и заметка дня у сотрудников на дату (F-01-013 соседняя часть, colонка журнала «Отпуск · N записей»).
+   * `note` сервер пока не хранит нигде (writeDayTypes/txSetCells не принимают текстовое поле дня — тот же
+   * пробел есть и у записи, не только у этого чтения) — честно undefined, а не выдумка.
+   */
+  async getStaffDayInfo(businessId: string, staffIds: string[], date: string): Promise<Record<string, { typeId: string | null; note?: string }>> {
+    await this.staffMap(this.prisma, businessId, staffIds);
+    const schedules = await this.availability.schedules(this.prisma, staffIds, date, date);
+    const types = await this.dayTypes(this.prisma, staffIds, date, date);
+    const out: Record<string, { typeId: string | null }> = {};
+    for (const staffId of staffIds) {
+      const hours = staffDayHours(schedules, staffId, date);
+      out[staffId] = { typeId: this.effectiveTypeId(types, staffId, date, hours) };
+    }
+    return out;
+  }
+
+  /**
+   * Кому передать записи закрываемого дня (Г3): мастера того же бизнеса/филиала, что делают все услуги записи,
+   * работают всё её время по графику и свободны (без пересечения с их busy_blocks). Ресурсы не проверяются — как
+   * и во фронте (computeMoveCandidates мока смотрит только на мастера).
+   */
+  async getMoveCandidates(businessId: string, bookingIds: string[]): Promise<Record<string, { staffId: string; name: string }[]>> {
+    const bookings = await this.prisma.booking.findMany({
+      where: { id: { in: bookingIds }, businessId },
+      select: { id: true, staffId: true, locationId: true, startAt: true, endAt: true, services: true },
+    });
+    if (!bookings.length) return {};
+    const locationIds = [...new Set(bookings.map((b) => b.locationId))];
+    const locations = await this.prisma.location.findMany({ where: { id: { in: locationIds } }, select: { id: true, tz: true } });
+    const tzOf = new Map(locations.map((l) => [l.id, l.tz || DEFAULT_TZ]));
+    const staff = await this.availability.staffRows(this.prisma, { businessId, deletedAt: null, status: { notIn: ['fired', 'disabled'] } });
+    const dates = [...new Set(bookings.map((b) => utcToLocalDate(b.startAt, tzOf.get(b.locationId) ?? DEFAULT_TZ)))].sort();
+    const staffIds = staff.map((s) => s.id);
+    const [schedules, marks] = await Promise.all([
+      this.availability.schedules(this.prisma, staffIds, dates[0], dates[dates.length - 1]),
+      this.availability.marks(this.prisma, staffIds, dates[0]!, dates[dates.length - 1]!),
+    ]);
+    const out: Record<string, { staffId: string; name: string }[]> = {};
+    for (const b of bookings) {
+      const tz = tzOf.get(b.locationId) ?? DEFAULT_TZ;
+      const date = utcToLocalDate(b.startAt, tz);
+      const fromMin = toMinutes(utcToLocal(b.startAt, tz).slice(11, 16));
+      const toMin = toMinutes(utcToLocal(b.endAt, tz).slice(11, 16));
+      const serviceIds = (b.services as { serviceId: string }[]).map((l) => l.serviceId);
+      const candidates: { staffId: string; name: string }[] = [];
+      for (const s of staff) {
+        if (s.id === b.staffId) continue;
+        if (!s.locations.some((l) => l.locationId === b.locationId)) continue;
+        if (!serviceIds.every((sid) => (s.serviceIds as string[]).includes(sid))) continue;
+        const work = staffWorkIntervals(this.availability.toStaffLike(s), schedules, marks, date, { locationId: b.locationId });
+        if (!work.some((w) => w.from <= fromMin && toMin <= w.to)) continue;
+        const busy = await this.availability.busyMinutes(this.prisma, personKeyOf(s), date, tz);
+        if (busy.some((bm) => bm.from < toMin && fromMin < bm.to)) continue;
+        candidates.push({ staffId: s.id, name: s.name });
+      }
+      out[b.id] = candidates;
+    }
+    return out;
   }
 
   /** График для чтения одного места: в филиале — его (салон первым), без филиала — салонный */

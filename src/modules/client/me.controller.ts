@@ -5,7 +5,7 @@ import type { RequestContext } from '../../common/http/context.js';
 import { Authed, Ctx } from '../../common/http/guards.js';
 import { ZodBody } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
-import { buyRequestBody, createMyBookingBody, diaryEntryBody, favoriteBody, favoriteMuteBody, myWaitlistBody, rateStaffBody, supportBody } from './client.schemas.js';
+import { buyRequestBody, createMyBookingBody, diaryEntryBody, favoriteBody, favoriteMuteBody, locationReviewBody, myWaitlistBody, rateStaffBody, staffReviewBody, supportBody } from './client.schemas.js';
 import { MeService } from './me.service.js';
 
 /**
@@ -118,6 +118,36 @@ export class MeController {
   @ApiOperation({ summary: 'Снять свою ★' })
   async unrateStaff(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string) {
     await this.svc.unrateStaff(ctx.session!.userId, staffId);
+  }
+
+  // ─────────────────────────── оценка 1–5 + текст (В-24, F-14-013) — этап 21, лейн client ───────────────────────────
+
+  @Get('reviews/staff/:staffId')
+  @ApiOperation({ summary: 'Моя оценка+текст этому мастеру, если оставлена' })
+  getMyStaffReview(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string) {
+    return this.svc.getMyStaffReview(ctx.session!.userId, staffId);
+  }
+
+  @Put('reviews/staff/:staffId')
+  @ApiOperation({ summary: 'Поставить/изменить оценку 1–5 и текст (текст уходит на модерацию)' })
+  @ZodBody(staffReviewBody)
+  submitStaffReview(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Body(new Zod(staffReviewBody)) body: z.infer<typeof staffReviewBody>) {
+    return this.svc.submitStaffReview(ctx.session!.userId, staffId, body.businessId, body.bookingId, body.rating, body.text);
+  }
+
+  // ─────────────────────────── отзыв о месте (F-14-014) — этап 21, лейн client ───────────────────────────
+
+  @Get('reviews/location/:bookingId')
+  @ApiOperation({ summary: 'Мой отзыв об этом визите, если оставлен' })
+  getMyLocationReview(@Ctx() ctx: RequestContext, @Param('bookingId') bookingId: string) {
+    return this.svc.getMyLocationReview(ctx.session!.userId, bookingId);
+  }
+
+  @Put('reviews/location/:bookingId')
+  @ApiOperation({ summary: 'Оставить/изменить отзыв о месте — только у своего визита «пришёл», один на визит' })
+  @ZodBody(locationReviewBody)
+  submitLocationReview(@Ctx() ctx: RequestContext, @Param('bookingId') bookingId: string, @Body(new Zod(locationReviewBody)) body: z.infer<typeof locationReviewBody>) {
+    return this.svc.submitLocationReview(ctx.session!.userId, body.businessId, bookingId, body.text);
   }
 
   // ─────────────────────────── дневник (F-00-122) ───────────────────────────

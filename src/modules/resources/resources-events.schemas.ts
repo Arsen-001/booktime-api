@@ -91,6 +91,7 @@ export const seriesIdsBody = z.object({ ids: z.array(id).max(200) });
 // ─────────── расписание посещений клиента (F-16-078…080) ───────────
 
 export const createVisitScheduleBody = z.object({
+  seriesId: id,
   clientId: id.optional(),
   clientName: z.string().max(160),
   clientPhone: z.string().max(30),
@@ -98,6 +99,32 @@ export const createVisitScheduleBody = z.object({
   seats: z.number().int().min(1).max(50),
 });
 export const updateVisitScheduleBody = z.object({ weekdays: z.array(weekday).max(7) });
+
+// ─────────── лист ожидания СВОЕГО экрана — CRUD (F-16-149…165) ───────────
+
+const waitlistWishBody = z.object({
+  date: localDate,
+  time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  intervals: z.array(z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) })).max(10).optional(),
+});
+export const createWaitlistEntryBody = z.object({
+  locationId: id,
+  clientName: z.string().max(160),
+  clientPhone: z.string().max(30),
+  serviceIds: z.array(id).min(1).max(50),
+  staffIds: z.array(id).max(50).optional(),
+  wishes: z.array(waitlistWishBody).max(20),
+  comment: z.string().max(2000).optional(),
+});
+export const updateWaitlistEntryBody = z.object({
+  clientName: z.string().max(160).optional(),
+  clientPhone: z.string().max(30).optional(),
+  serviceIds: z.array(id).max(50).optional(),
+  staffIds: z.array(id).max(50).optional(),
+  wishes: z.array(waitlistWishBody).max(20).optional(),
+  comment: z.string().max(2000).optional(),
+});
+export const closeWaitlistEntryBody = z.object({ bookingId: id });
 
 // ─────────── лист ожидания — уведомления ручного пути (F-16-166…168) ───────────
 

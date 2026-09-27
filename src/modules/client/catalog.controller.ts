@@ -60,6 +60,13 @@ export class PublicCatalogController {
     return this.svc.placeCard(businessId);
   }
 
+  @Get('places/:businessId/reviews')
+  @RateLimit({ bucket: 'public-master-card', limit: 300, windowSec: 60, by: 'ip' })
+  @ApiOperation({ summary: 'Отзывы о месте (F-14-028), этап 21 лейн client — без модерации' })
+  placeReviews(@Param('businessId') businessId: string) {
+    return this.svc.listReviews(businessId);
+  }
+
   @Get('masters/:staffId/days')
   @RateLimit({ bucket: 'public-slots', limit: 300, windowSec: 60, by: 'ip' })
   @ApiOperation({ summary: 'Окна мастера на N дней по услуге (F-00-092)' })
