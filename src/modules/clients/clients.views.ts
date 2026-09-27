@@ -27,7 +27,7 @@ export function clientRowView(c: Client) {
     tags: arr<string>(c.tags),
     appUserId: c.appUserId ?? undefined,
     noShowCount: c.noShowCount,
-    // Отмены считаются из bookings — этап 7; до тех пор 0 (см. комментарий выше)
+    // Визиты, отмены и деньги из записей дописывает clients.visits.ts (withVisits)
     cancelCount: 0,
     blocked: c.blocked ?? undefined,
     createdAt: c.createdAt.toISOString(),

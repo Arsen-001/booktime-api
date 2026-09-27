@@ -12,6 +12,7 @@ import type { ClientFormBody, FilterState, QuickPick } from './clients.schemas.j
 import { emptyContext, matchesFilters, matchesPick, matchesSearch, sortClientRows } from './clients.filters.js';
 import { clientRowView, maskClientPhones, type ClientRowView } from './clients.views.js';
 import { getClientsBizSettings } from './clients-settings.helper.js';
+import { bookingIndex, clientBookings, withVisits } from './clients.visits.js';
 
 const QUICK_PICKS: QuickPick[] = ['new', 'repeat', 'lost', 'subscriptionEnding', 'noShow', 'chatLeads'];
 
@@ -59,8 +60,15 @@ export class ClientsService {
   }
 
   private async rowsFor(businessIds: string[]): Promise<ClientRowView[]> {
-    const rows = await this.prisma.client.findMany({ where: { businessId: { in: businessIds }, deletedAt: null }, orderBy: { createdAt: 'desc' } });
-    return rows.map(clientRowView);
+    return (await this.rowsWithIndex(businessIds)).rows;
+  }
+
+  /** Строки клиентов с визитами и деньгами из записей (этап 7) + индекс записей для фильтров */
+  private async rowsWithIndex(businessIds: string[]) {
+    const clients = await this.prisma.client.findMany({ where: { businessId: { in: businessIds }, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+    const bookings = await clientBookings(this.prisma, businessIds);
+    const rows = withVisits(clients.map(clientRowView), bookings, new Map());
+    return { rows, index: bookingIndex(bookings) };
   }
 
   private today(): string {
@@ -90,10 +98,14 @@ export class ClientsService {
   ) {
     const businessIds = await this.businessIdsFor(businessId, input.locationIds);
     const ctxFilter = emptyContext(await this.lostAfterDays(businessId), this.today());
-    let base = await this.rowsFor(businessIds);
-    // F-04-199: без права seeAllClients (тонкое право раздела) мастер видит только визиты к себе — bookings ещё
-    // нет (этап 7), поэтому пока честно 0 клиентов вместо выдуманного списка (тот же приём, что и filters.ts)
-    if (input.onlyStaffId) base = [];
+    const loaded = await this.rowsWithIndex(businessIds);
+    ctxFilter.bookings = loaded.index;
+    let base = loaded.rows;
+    // F-04-199: без права seeAllClients (тонкое право раздела) мастер видит только клиентов с визитом к себе
+    if (input.onlyStaffId) {
+      const mine = new Set(loaded.index.filter((b) => b.staffId === input.onlyStaffId).map((b) => b.clientId));
+      base = base.filter((r) => mine.has(r.id));
+    }
     const mask = !ctx.member!.permissions.has('clients.phones');
     const pickCounts = Object.fromEntries(QUICK_PICKS.map((p) => [p, base.filter((r) => matchesPick(r, p, ctxFilter)).length])) as Record<QuickPick, number>;
     let found = base;
@@ -117,7 +129,9 @@ export class ClientsService {
   async countMatching(businessId: string, input: { locationIds?: string[]; filters?: FilterState }): Promise<number> {
     const businessIds = await this.businessIdsFor(businessId, input.locationIds);
     const ctxFilter = emptyContext(await this.lostAfterDays(businessId), this.today());
-    const base = await this.rowsFor(businessIds);
+    const loaded = await this.rowsWithIndex(businessIds);
+    ctxFilter.bookings = loaded.index;
+    const base = loaded.rows;
     if (!input.filters) return base.length;
     return base.filter((r) => matchesFilters(r, input.filters!, ctxFilter)).length;
   }
@@ -176,10 +190,10 @@ export class ClientsService {
     const allowed = businessIds?.length ? [businessId, ...businessIds] : [businessId];
     const client = await this.prisma.client.findFirst({ where: { id, businessId: { in: allowed }, deletedAt: null } });
     if (!client) throw new ApiError('not_found', 'Client not found');
-    // F-04-199: без права «все клиенты» карточку открывают только клиенту с визитом к этому мастеру — bookings
-    // ещё нет (этап 7), поэтому честно 404, а не выдуманный доступ (тот же приём, что и в search())
-    if (onlyStaffId) throw new ApiError('not_found', 'Client not found');
-    const row = clientRowView(client);
+    // F-04-199: без права «все клиенты» карточку открывают только клиенту с визитом к этому мастеру
+    const bookings = await clientBookings(this.prisma, allowed, [client.id]);
+    if (onlyStaffId && !bookings.some((b) => b.staffId === onlyStaffId)) throw new ApiError('not_found', 'Client not found');
+    const row = withVisits([clientRowView(client)], bookings, new Map())[0]!;
     return ctx.member!.permissions.has('clients.phones') ? row : maskClientPhones(row);
   }
 
@@ -209,7 +223,7 @@ export class ClientsService {
       discountPercent: input.discountPercent ?? before.discountPercent,
       importanceClass: input.importanceClass ?? null,
       cardNumber: input.cardNumber?.trim() || null,
-      // «Оплачено» в форме — оплаты визитов (0, этап 7) + внесённое сверх них; сохраняем только добавку
+      // «Оплачено» в форме — оплаты визитов + внесённое сверх них; экран шлёт только добавку (extraPaidFromTotal)
       paidAmount: input.paidAmount !== undefined ? BigInt(input.paidAmount) : before.paidAmount,
       nationalId: validateNationalId(input.nationalId) ?? before.nationalId,
       birthdayGreetingOptOut: input.birthdayGreetingOptOut ?? null,
@@ -433,8 +447,14 @@ export class ClientsService {
       const keep = await tx.client.findFirst({ where: { id: keepId, businessId, deletedAt: null } });
       const dup = await tx.client.findFirst({ where: { id: duplicateId, businessId, deletedAt: null } });
       if (!keep || !dup) throw new ApiError('not_found', 'Client not found');
-      // Визиты дубля переезжают на оставшуюся карточку — этап 7 (bookings ещё нет); пока переносятся только суммы
-      await tx.client.update({ where: { id: keepId }, data: { importedSold: keep.importedSold + dup.importedSold, paidAmount: keep.paidAmount + dup.paidAmount } });
+      // Визиты, события и заявки дубля переезжают на оставшуюся карточку (этап 7), суммы и неявки складываются
+      await tx.booking.updateMany({ where: { clientId: duplicateId }, data: { clientId: keepId } });
+      await tx.bookingEvent.updateMany({ where: { clientId: duplicateId }, data: { clientId: keepId } });
+      await tx.waitlistEntry.updateMany({ where: { clientId: duplicateId }, data: { clientId: keepId } });
+      await tx.client.update({
+        where: { id: keepId },
+        data: { importedSold: keep.importedSold + dup.importedSold, paidAmount: keep.paidAmount + dup.paidAmount, noShowCount: keep.noShowCount + dup.noShowCount },
+      });
       await tx.client.update({ where: { id: duplicateId }, data: { deletedAt: new Date(), deletedBy: ctx.member!.staffId, version: { increment: 1 } } });
       await this.audit.record(tx, ctx, { action: 'merged', entityType: 'client', entityId: duplicateId, businessId, before: { name: dup.name }, after: { mergedInto: keep.name } });
     });
