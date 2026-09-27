@@ -605,6 +605,210 @@ await prisma.client.createMany({
   );
 }
 
+// ─────────── этап 7: записи, групповые события, настройки журнала, лист ожидания ───────────
+// Записи мока — с теми же id (их занятость уже лежит в busy_blocks с этапа 6). Участники групповых событий время
+// мастера не держат (его держит само событие) — их блоки с этапа 6 гасятся.
+{
+  const TZ = 'Asia/Yerevan';
+  const bookingsRaw = (core.bookings ?? []) as Rec[];
+  const eventsRaw = (core.groupEvents ?? []) as Rec[];
+  const staffIds = new Set(core.staff.map((s) => s.id));
+  const atLocal = (dt: string) => localToUtc(dt, TZ);
+  const addMinutes = (d: Date, m: number) => new Date(d.getTime() + m * 60000);
+  const seedNow = Date.now();
+  const rows: Prisma.BookingCreateManyInput[] = [];
+  for (const b of bookingsRaw) {
+    if (!staffIds.has(String(b.staffId))) continue;
+    const start = atLocal(String(b.start));
+    const dur = Number(b.durationMin ?? 0);
+    const status = String(b.status);
+    const online = ['app', 'link', 'widget'].includes(String(b.source));
+    const prepayment = (b.prepayment ?? null) as Rec | null;
+    const holdUntil = status === 'awaiting_prepayment' && prepayment && !prepayment.paid && S(prepayment.holdUntil) ? atLocal(String(prepayment.holdUntil)) : null;
+    // В-03: у будущих заявок онлайн — срок ответа мастера от момента сида; прошлые остаются как есть (история)
+    const confirmDeadline =
+      status === 'awaiting_confirmation' && online && start.getTime() > seedNow
+        ? new Date(Math.max(seedNow, Math.min(seedNow + 2 * 3600000, start.getTime() - 3600000)))
+        : null;
+    const lines = (b.services ?? []) as Rec[];
+    rows.push({
+      id: String(b.id),
+      businessId: String(b.businessId),
+      locationId: String(b.locationId),
+      staffId: String(b.staffId),
+      clientId: S(b.clientId) ?? null,
+      appUserId: S(b.appUserId) ?? null,
+      startAt: start,
+      endAt: addMinutes(start, dur),
+      durationMin: dur,
+      status,
+      services: lines as Prisma.InputJsonValue,
+      total: BigInt(Math.round(Number(b.total ?? 0))),
+      resourceIds: (b.resourceIds ?? []) as Prisma.InputJsonValue,
+      workplace: String(b.workplace ?? 'salon'),
+      source: String(b.source ?? 'journal'),
+      createdByRef: String(b.createdBy ?? 'client'),
+      forWhom: String(b.forWhom ?? 'self'),
+      visitorName: S(b.visitorName) ?? null,
+      comment: S(b.comment) ?? null,
+      prepayment: J(prepayment),
+      holdUntil: holdUntil ?? confirmDeadline,
+      confirmDeadline,
+      cancelledLate: Boolean(b.cancelledLate),
+      cancelReason: S(b.cancelReason) ?? null,
+      cancelledBy: status === 'cancelled_by_client' ? 'client' : status === 'cancelled_by_master' ? 'staff' : null,
+      groupEventId: S(b.groupEventId) ?? null,
+      seriesId: S(b.seriesId) ?? null,
+      visitId: S(b.visitId) ?? null,
+      staffAssignment: S(b.staffAssignment) ?? null,
+      extras: {},
+      deletedAt: S(b.deletedAt) ? atLocal(String(b.deletedAt).slice(0, 16)) : null,
+      createdAt: local(S(b.createdAt)),
+      createdBy: 'seed',
+      updatedBy: 'seed',
+    });
+  }
+  for (let i = 0; i < rows.length; i += 1000) await prisma.booking.createMany({ data: rows.slice(i, i + 1000), skipDuplicates: true });
+  const participants = rows.filter((r) => r.groupEventId).map((r) => r.id);
+
+  // Занятость записей — проекция таблицы bookings (01 §7.2): пересобирается из неё целиком. Снимок мока зависит от
+  // даты сида, поэтому блоки этапа 6 на рабочей базе могли разойтись с записями по времени; здесь они выводятся из
+  // самих записей (и тех, что созданы через API), а не из мока. Участники групповых событий время не держат.
+  {
+    const all = await prisma.booking.findMany({
+      where: { deletedAt: null, groupEventId: null, status: { notIn: ['cancelled_by_client', 'cancelled_by_master'] } },
+      select: { id: true, businessId: true, locationId: true, staffId: true, startAt: true, endAt: true, durationMin: true, workplace: true, services: true, resourceIds: true, status: true, holdUntil: true },
+    });
+    const staffRows = await prisma.staff.findMany({ select: { id: true, userId: true } });
+    const personOfStaff = new Map(staffRows.map((st) => [st.id, st.userId ?? st.id]));
+    const svcBuffer = new Map((await prisma.service.findMany({ select: { id: true, bufferAfterMin: true } })).map((x) => [x.id, x.bufferAfterMin ?? 0]));
+    const resRows = await prisma.resource.findMany({ select: { id: true, instances: true } });
+    const resOf = (rid: string) => {
+      const direct = resRows.find((r) => r.id === rid);
+      if (direct) return { resourceId: direct.id, instanceId: null as string | null };
+      const owner = resRows.find((r) => ((r.instances ?? []) as { id: string }[]).some((i) => i.id === rid));
+      return owner ? { resourceId: owner.id, instanceId: rid } : null;
+    };
+    await prisma.busyBlock.deleteMany({ where: { source: 'booking' } });
+    await prisma.resourceBusy.deleteMany({ where: { source: 'booking' } });
+    const blocks: Prisma.BusyBlockCreateManyInput[] = [];
+    const resBusy: Prisma.ResourceBusyCreateManyInput[] = [];
+    let k = 0;
+    for (const b of all) {
+      const lines = (b.services ?? []) as { staffId?: string; serviceId: string }[];
+      const buffer = Math.max(0, ...lines.map((l) => svcBuffer.get(l.serviceId) ?? 0));
+      const end = addMinutes(b.startAt, b.durationMin + buffer);
+      const label = b.workplace === 'home' ? 'home' : b.workplace === 'visit' ? 'visit' : 'salon';
+      for (const staffId of [...new Set([b.staffId, ...lines.map((l) => l.staffId).filter((x): x is string => Boolean(x))])]) {
+        const personKey = personOfStaff.get(staffId);
+        if (!personKey) continue;
+        blocks.push({
+          id: `bb_bk${String(++k).padStart(7, '0')}`,
+          personKey,
+          staffId,
+          businessId: b.businessId,
+          locationId: b.locationId,
+          workplace: b.workplace,
+          startAt: b.startAt,
+          endAt: end,
+          serviceEndAt: b.endAt,
+          source: 'booking',
+          sourceId: b.id,
+          visibilityLabel: label,
+          noShow: b.status === 'no_show',
+          holdUntil: b.holdUntil,
+        });
+      }
+      for (const rid of (b.resourceIds ?? []) as string[]) {
+        const r = resOf(rid);
+        if (!r) continue;
+        resBusy.push({ id: `rbz_bk${String(resBusy.length + 1).padStart(7, '0')}`, resourceId: r.resourceId, instanceId: r.instanceId, businessId: b.businessId, startAt: b.startAt, endAt: end, source: 'booking', sourceId: b.id, noShow: b.status === 'no_show', holdUntil: b.holdUntil });
+      }
+    }
+    for (let i = 0; i < blocks.length; i += 1000) await prisma.busyBlock.createMany({ data: blocks.slice(i, i + 1000) });
+    for (let i = 0; i < resBusy.length; i += 1000) await prisma.resourceBusy.createMany({ data: resBusy.slice(i, i + 1000) });
+    await prisma.personLock.createMany({ skipDuplicates: true, data: [...new Set(blocks.map((b) => b.personKey))].map((personKey) => ({ personKey })) });
+    console.log(`seed: занятость записей пересобрана из bookings — блоков ${blocks.length}, ресурсов ${resBusy.length}`);
+  }
+
+  await prisma.groupEvent.createMany({
+    skipDuplicates: true,
+    data: eventsRaw
+      .filter((e) => staffIds.has(String(e.staffId)))
+      .map((e) => ({
+        id: String(e.id),
+        businessId: String(e.businessId),
+        locationId: String(e.locationId),
+        serviceId: String(e.serviceId),
+        staffId: String(e.staffId),
+        startAt: atLocal(String(e.start)),
+        durationMin: Number(e.durationMin ?? 60),
+        capacity: Number(e.capacity ?? 1),
+        resourceIds: (e.resourceIds ?? []) as Prisma.InputJsonValue,
+        onlineUrl: S(e.onlineUrl) ?? null,
+        seriesId: S(e.seriesId) ?? null,
+        status: String(e.status ?? 'scheduled'),
+        createdAt: local(S(e.createdAt)),
+        createdBy: 'seed',
+      })),
+  });
+
+  // Настройки журнала бизнеса (business_settings area='journal'): пять демо-полей записи (F-01-053) — как в срезе
+  // journal мока; автосписание — первая активная услуга бизнеса (тот же демо-приём, что и в моке)
+  const demoFields = [
+    { id: 'cf_seed_contract', key: 'contractNo', label: 'Номер договора', type: 'text', alwaysShow: false, requiredOnCreate: false, requiredOnArrived: false, editableByUser: true },
+    { id: 'cf_seed_external', key: 'externalId', label: 'ID во внешней CRM', type: 'number', alwaysShow: false, requiredOnCreate: false, requiredOnArrived: false, editableByUser: true },
+    { id: 'cf_seed_channel', key: 'channel', label: 'Откуда узнали', type: 'select', options: ['Инстаграм', 'Рекомендация', 'Прошёл мимо', 'Сайт'], alwaysShow: true, requiredOnCreate: false, requiredOnArrived: false, editableByUser: true },
+    { id: 'cf_seed_consent', key: 'consentDate', label: 'Дата согласия на обработку данных', type: 'date', alwaysShow: false, requiredOnCreate: false, requiredOnArrived: true, editableByUser: true },
+    { id: 'cf_seed_checkup', key: 'nextCheckupAt', label: 'Следующий осмотр', type: 'datetime', alwaysShow: false, requiredOnCreate: false, requiredOnArrived: false, editableByUser: false },
+  ];
+  const servicesAll = (core.services ?? []) as Rec[];
+  const clientsAll = (core.clients ?? []) as Rec[];
+  const locationsAll = (core.locations ?? []) as Rec[];
+  const today = utcToLocalDate(now);
+  const plus2 = utcToLocalDate(new Date(now.getTime() + 2 * 86400000));
+  let waitlist = 0;
+  for (const b of core.businesses) {
+    const firstService = servicesAll.find((s) => s.businessId === b.id && s.active !== false);
+    const data = {
+      settings: {},
+      visitIntervalMin: 15,
+      customFieldDefs: demoFields,
+      autoWriteoffServiceIds: firstService ? [String(firstService.id)] : [],
+    };
+    await prisma.businessSetting.upsert({
+      where: { businessId_area: { businessId: b.id, area: 'journal' } },
+      create: { businessId: b.id, area: 'journal', data },
+      update: {},
+    });
+    const location = locationsAll.find((l) => l.businessId === b.id);
+    const client = clientsAll.find((c) => c.businessId === b.id);
+    if (!location || !client || !firstService) continue;
+    const wid = `wl_seed_${b.id}`;
+    const res = await prisma.waitlistEntry.createMany({
+      skipDuplicates: true,
+      data: [
+        {
+          id: wid.slice(0, 32),
+          businessId: b.id,
+          locationId: String(location.id),
+          clientName: String(client.name),
+          clientPhone: String(client.phone),
+          clientId: String(client.id),
+          serviceIds: [String(firstService.id)],
+          staffIds: [],
+          slots: [{ date: plus2, anyTime: true, intervals: [] }],
+          comment: '',
+          createdBy: 'seed',
+        },
+      ],
+    });
+    waitlist += res.count;
+  }
+  void today;
+  console.log(`seed: журнал — записей ${rows.length} (участников групповых ${participants.length}), групповых событий ${eventsRaw.length}, лист ожидания ${waitlist}`);
+}
+
 console.log(
   `seed: людей ${users.length} (клиентов ${core.appUsers.length}), логинов администраторов ${admins.length}, команда платформы 1; ` +
     `сетей ${networks.length}, бизнесов ${businesses.length}, филиалов ${locations.length}, сотрудников ${core.staff.length}, ` +

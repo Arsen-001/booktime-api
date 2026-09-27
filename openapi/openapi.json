@@ -24181,6 +24181,5049 @@
           "slots"
         ]
       }
+    },
+    "/v1/biz/{businessId}/bookings": {
+      "get": {
+        "operationId": "BookingsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Записи по фильтру (BookingQuery фронта); ?businessIds= — «Все филиалы» сети",
+        "tags": [
+          "journal"
+        ]
+      },
+      "post": {
+        "operationId": "BookingsController_createRaw",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "businessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "appUserId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "awaiting_confirmation",
+                      "awaiting_prepayment",
+                      "scheduled",
+                      "client_confirmed",
+                      "arrived",
+                      "no_show",
+                      "cancelled_by_client",
+                      "cancelled_by_master"
+                    ]
+                  },
+                  "services": {
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "staffId": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "price": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000000
+                        },
+                        "durationMin": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1440
+                        },
+                        "qty": {
+                          "default": 1,
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
+                        "unitPrice": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "discountPct": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "resourceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "price",
+                        "durationMin"
+                      ]
+                    }
+                  },
+                  "resourceIds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "workplace": {
+                    "type": "string",
+                    "maxLength": 8
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "journal",
+                      "app",
+                      "link",
+                      "widget",
+                      "phone",
+                      "import",
+                      "external"
+                    ]
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "forWhom": {
+                    "type": "string",
+                    "maxLength": 6
+                  },
+                  "visitorName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 5000
+                  },
+                  "prepayment": {
+                    "type": "object",
+                    "properties": {
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000000000
+                      },
+                      "paid": {
+                        "type": "boolean"
+                      },
+                      "holdUntil": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                      }
+                    },
+                    "required": [
+                      "amount",
+                      "paid"
+                    ]
+                  },
+                  "groupEventId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "seriesId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "visitId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "staffAssignment": {
+                    "type": "string",
+                    "enum": [
+                      "specific",
+                      "any"
+                    ]
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "staffId",
+                  "start",
+                  "status",
+                  "services",
+                  "source"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "createBooking «как есть» (строки посчитаны окном); занятость — под замком на мастера",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/place": {
+      "post": {
+        "operationId": "BookingsController_place",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "journal",
+                      "app",
+                      "link",
+                      "widget",
+                      "phone",
+                      "import",
+                      "external"
+                    ]
+                  },
+                  "businessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "services": {
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "staffId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "qty": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
+                        "discountPct": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "unitPrice": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "serviceId"
+                      ]
+                    }
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "workplace": {
+                    "type": "string",
+                    "maxLength": 8
+                  },
+                  "client": {
+                    "type": "object",
+                    "properties": {
+                      "clientId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "appUserId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "phone": {
+                        "type": "string",
+                        "maxLength": 30
+                      },
+                      "name": {
+                        "type": "string",
+                        "maxLength": 160
+                      }
+                    }
+                  },
+                  "forWhom": {
+                    "type": "string",
+                    "maxLength": 6
+                  },
+                  "visitorName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 5000
+                  },
+                  "groupEventId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "resourceIds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "staffAssignment": {
+                    "type": "string",
+                    "enum": [
+                      "specific",
+                      "any"
+                    ]
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "awaiting_confirmation",
+                      "awaiting_prepayment",
+                      "scheduled",
+                      "client_confirmed",
+                      "arrived",
+                      "no_show",
+                      "cancelled_by_client",
+                      "cancelled_by_master"
+                    ]
+                  },
+                  "seriesId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "visitId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "source",
+                  "staffId",
+                  "start",
+                  "services"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Единый поток записи (rules/booking-flow): проверки, клиент по номеру, статус, предоплата",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/external": {
+      "post": {
+        "operationId": "BookingsController_external",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Запись от бота/CRM (F-01-036): «любой свободный», клиент по номеру",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/extras": {
+      "post": {
+        "operationId": "BookingsController_extrasMany",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "maxItems": 2000,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Доп. данные визитов пачкой (цвет, категории, оплаты) — одним запросом на сетку дня",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}": {
+      "get": {
+        "operationId": "BookingsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "patch": {
+        "operationId": "BookingsController_patch",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "services": {
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "staffId": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "price": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000000
+                        },
+                        "durationMin": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1440
+                        },
+                        "qty": {
+                          "default": 1,
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
+                        "unitPrice": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "discountPct": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "resourceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "price",
+                        "durationMin"
+                      ]
+                    }
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  },
+                  "resourceIds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "workplace": {
+                    "type": "string",
+                    "maxLength": 8
+                  },
+                  "comment": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 5000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "visitorName": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 160
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "forWhom": {
+                    "type": "string",
+                    "maxLength": 6
+                  },
+                  "visitId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "seriesId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "groupEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "staffAssignment": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "specific",
+                          "any"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "awaiting_confirmation",
+                      "awaiting_prepayment",
+                      "scheduled",
+                      "client_confirmed",
+                      "arrived",
+                      "no_show",
+                      "cancelled_by_client",
+                      "cancelled_by_master"
+                    ]
+                  },
+                  "prepayment": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "amount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 1000000000
+                          },
+                          "paid": {
+                            "type": "boolean"
+                          },
+                          "holdUntil": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                          }
+                        },
+                        "required": [
+                          "amount",
+                          "paid"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expectedUpdatedAt": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Правка/перенос (F-01-109…117); expectedUpdatedAt или If-Match — «побеждает первое» (F-01-033)",
+        "tags": [
+          "journal"
+        ]
+      },
+      "delete": {
+        "operationId": "BookingsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "byName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "byClient": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Мягкое удаление с автором (F-01-118…120): деньги/расходники снимаются, время освобождается",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/status": {
+      "post": {
+        "operationId": "BookingsController_status",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "awaiting_confirmation",
+                      "awaiting_prepayment",
+                      "scheduled",
+                      "client_confirmed",
+                      "arrived",
+                      "no_show",
+                      "cancelled_by_client",
+                      "cancelled_by_master"
+                    ]
+                  },
+                  "actor": {
+                    "type": "string",
+                    "enum": [
+                      "business",
+                      "client",
+                      "system"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Смена статуса по правилам (переход, неявки, занятость, подтверждение)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/arrived": {
+      "post": {
+        "operationId": "BookingsController_arrived",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Пришёл · сумма» (F-00-127, В-39)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/restore": {
+      "post": {
+        "operationId": "BookingsController_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Вернуть удалённую (F-01-121: 7 дней, если время свободно) — и «Отменить» 5 с",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/deletion-impact": {
+      "get": {
+        "operationId": "BookingsController_impact",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/confirm": {
+      "post": {
+        "operationId": "BookingsController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Подтвердить заявку (В-03, F-00-067)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/decline": {
+      "post": {
+        "operationId": "BookingsController_decline",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/prepayment-received": {
+      "post": {
+        "operationId": "BookingsController_prepaymentReceived",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Ручная предоплата получена (В-05, F-00-097)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/refund-done": {
+      "post": {
+        "operationId": "BookingsController_refundDone",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Предоплата возвращена клиенту (F-00-100)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/finished-early": {
+      "post": {
+        "operationId": "BookingsController_finishEarly",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "actualDurationMin": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Закончил раньше» (F-00-058): остаток становится окном",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/delay": {
+      "post": {
+        "operationId": "BookingsController_delay",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "delayMin": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 600
+                  }
+                },
+                "required": [
+                  "delayMin"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Задерживаюсь» (F-00-059): событие delayed клиенту и кабинету",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/duplicate": {
+      "post": {
+        "operationId": "BookingsController_duplicate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Копия записи без оплаты и депозита (F-01-192)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/extras": {
+      "get": {
+        "operationId": "BookingsController_extras",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "put": {
+        "operationId": "BookingsController_setExtras",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "categoryIds": {
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "colorIndex": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "customFieldValues": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 2000
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "goodsLines": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "itemId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "qty": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        },
+                        "price": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000000
+                        },
+                        "discountPct": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "sellerId": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "code": {
+                          "type": "string",
+                          "maxLength": 80
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "qty",
+                        "price",
+                        "discountPct",
+                        "sellerId",
+                        "id"
+                      ]
+                    }
+                  },
+                  "serviceLineExtras": {
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "discountPct": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "assistants": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "staffId": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "sharePct": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 100
+                              }
+                            },
+                            "required": [
+                              "staffId",
+                              "sharePct"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "discountPct"
+                      ]
+                    }
+                  },
+                  "paidAmount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "autoWriteoff": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "written_off",
+                              "not_written_off"
+                            ]
+                          },
+                          "amountDue": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 1000000000
+                          },
+                          "subscriptionId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          }
+                        },
+                        "required": [
+                          "status",
+                          "amountDue"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "consumablesDeducted": {
+                    "type": "boolean"
+                  },
+                  "techCardOverrides": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "packageGroupId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "payments": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "method": {
+                          "type": "string",
+                          "maxLength": 20
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000000
+                        },
+                        "label": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "cashRegister": {
+                          "type": "string",
+                          "maxLength": 80
+                        },
+                        "refId": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "at": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "method",
+                        "amount",
+                        "label",
+                        "at"
+                      ]
+                    }
+                  },
+                  "prepaymentDecision": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kept": {
+                            "type": "boolean"
+                          },
+                          "reason": {
+                            "type": "string",
+                            "enum": [
+                              "late_reschedule",
+                              "no_show"
+                            ]
+                          },
+                          "decidedBy": {
+                            "type": "string",
+                            "maxLength": 160
+                          },
+                          "decidedAt": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                          },
+                          "auto": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "kept",
+                          "reason",
+                          "decidedBy",
+                          "decidedAt"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Доп. данные визита (F-01-050…053, 058…061): категории, цвет, поля, товары, скидки строк",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/payments": {
+      "post": {
+        "operationId": "BookingsController_pay",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "lines": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "maxLength": 20
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000000
+                        },
+                        "label": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "cashRegister": {
+                          "type": "string",
+                          "maxLength": 80
+                        },
+                        "refId": {
+                          "type": "string",
+                          "maxLength": 40
+                        }
+                      },
+                      "required": [
+                        "method",
+                        "amount",
+                        "label"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "lines"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Оплата визита (F-01-138/139): строки оплаты, paidAmount — их сумма",
+        "tags": [
+          "journal"
+        ]
+      },
+      "delete": {
+        "operationId": "BookingsController_cancelPayments",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Снять отметку оплаты (F-01-079)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/payments/instant": {
+      "post": {
+        "operationId": "BookingsController_instant",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  }
+                },
+                "required": [
+                  "total"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Мгновенная оплата всей суммы (F-01-141)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/payments/{lineId}": {
+      "delete": {
+        "operationId": "BookingsController_cancelLine",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Удалить ошибочную строку оплаты (F-01-143)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/payments/{lineId}/refund": {
+      "post": {
+        "operationId": "BookingsController_refund",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  }
+                },
+                "required": [
+                  "amount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Частичный возврат по строке оплаты (F-01-212)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/prepayment-decision": {
+      "post": {
+        "operationId": "BookingsController_decide",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kept": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "late_reschedule",
+                      "no_show"
+                    ]
+                  },
+                  "decidedBy": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "auto": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "kept",
+                  "reason",
+                  "decidedBy"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Удержать / Простить» предоплату при позднем переносе или неявке (В-04, F-01-116/124)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/goods-lines": {
+      "post": {
+        "operationId": "BookingsController_addGoods",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "itemId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "qty": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "price": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "discountPct": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "sellerId": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "code": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "itemId",
+                  "qty",
+                  "price",
+                  "discountPct",
+                  "sellerId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/goods-lines/{lineId}": {
+      "patch": {
+        "operationId": "BookingsController_patchGoods",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "itemId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "qty": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "price": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "discountPct": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "sellerId": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "code": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "delete": {
+        "operationId": "BookingsController_removeGoods",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/history": {
+      "get": {
+        "operationId": "BookingsController_history",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "post": {
+        "operationId": "BookingsController_logHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "authorName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "created",
+                      "updated",
+                      "statusChanged",
+                      "deleted",
+                      "restored"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "authorName",
+                  "action",
+                  "summary"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/config": {
+      "get": {
+        "operationId": "JournalController_config",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Настройки «Цифрового журнала», категории, свои поля, шаблоны повтора, права блоков, разметка",
+        "tags": [
+          "journal"
+        ]
+      },
+      "patch": {
+        "operationId": "JournalController_patchConfig",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "settings": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "visitIntervalMin": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  },
+                  "bookingCategories": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "name": {
+                          "type": "string",
+                          "maxLength": 80
+                        },
+                        "labelKey": {
+                          "type": "string",
+                          "maxLength": 60
+                        },
+                        "colorIndex": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "system": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "colorIndex",
+                        "system"
+                      ]
+                    }
+                  },
+                  "customFieldDefs": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  "recurrenceTemplates": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "name": {
+                          "type": "string",
+                          "maxLength": 120
+                        },
+                        "rule": {}
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "rule"
+                      ]
+                    }
+                  },
+                  "staffJournalRights": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "staffWindowRights": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "staffMarkupMin": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 240
+                    }
+                  },
+                  "breakCombineMode": {
+                    "type": "string",
+                    "enum": [
+                      "longest",
+                      "sum"
+                    ]
+                  },
+                  "splitByResourceEnabled": {
+                    "type": "boolean"
+                  },
+                  "autoWriteoffServiceIds": {
+                    "maxItems": 1000,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "hotDiscountPct": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/categories": {
+      "post": {
+        "operationId": "JournalController_addCategory",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "colorIndex": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 40
+                  }
+                },
+                "required": [
+                  "name",
+                  "colorIndex"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/recurrence-templates": {
+      "post": {
+        "operationId": "JournalController_addTemplate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "rule": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "name",
+                  "rule"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/check": {
+      "post": {
+        "operationId": "JournalController_check",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  },
+                  "excludeBookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "resourceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "instanceId": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "start",
+                  "durationMin"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Занято ли время человека во всех его бизнесах / экземпляр ресурса; внутри ли часов (F-01-034, F-01-215)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/visit-id": {
+      "post": {
+        "operationId": "JournalController_visitId",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "excludeBookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "start",
+                  "durationMin"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/visits/{visitId}/status": {
+      "post": {
+        "operationId": "JournalController_visitStatus",
+        "parameters": [
+          {
+            "name": "visitId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "awaiting_confirmation",
+                      "awaiting_prepayment",
+                      "scheduled",
+                      "client_confirmed",
+                      "arrived",
+                      "no_show",
+                      "cancelled_by_client",
+                      "cancelled_by_master"
+                    ]
+                  },
+                  "excludeId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "status",
+                  "excludeId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Статус сразу на весь визит (F-01-041)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/mirror": {
+      "get": {
+        "operationId": "JournalController_mirror",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "businessIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Записи, доп. данные, групповые события и пакеты за период — зеркало экранов, считающих у себя (до этапа 21)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/booking-events": {
+      "get": {
+        "operationId": "JournalController_bookingEvents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Журнал событий записей (создана/статус/перенос/удалена/задерживается), старые → новые",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings-import": {
+      "post": {
+        "operationId": "JournalController_import",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "rows": {
+                    "maxItems": 5000,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "dateTime": {
+                          "type": "string",
+                          "maxLength": 20
+                        },
+                        "staffId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "clientPhone": {
+                          "type": "string",
+                          "maxLength": 30
+                        },
+                        "clientName": {
+                          "type": "string",
+                          "maxLength": 160
+                        },
+                        "durationMin": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1440
+                        },
+                        "serviceName": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "price": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "discountPct": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "comment": {
+                          "type": "string",
+                          "maxLength": 2000
+                        },
+                        "statusRaw": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "paidAmount": {
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "dateTime",
+                        "staffId",
+                        "clientPhone",
+                        "serviceName",
+                        "price",
+                        "statusRaw"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "createdBy",
+                  "rows"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Импорт визитов (F-01-182): строки после разбора файла, до 5000",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/data-ops": {
+      "post": {
+        "operationId": "JournalController_logDataOp",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "import",
+                      "export"
+                    ]
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "kind",
+                  "count"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "get": {
+        "operationId": "JournalController_dataOps",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/recurrence": {
+      "post": {
+        "operationId": "JournalController_recurrence",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rule": {
+                    "type": "object",
+                    "properties": {
+                      "time": {
+                        "type": "string",
+                        "pattern": "^\\d{2}:\\d{2}$"
+                      },
+                      "withClient": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "time",
+                      "withClient"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "dates": {
+                    "maxItems": 366,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    }
+                  }
+                },
+                "required": [
+                  "rule",
+                  "dates"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/series/{seriesId}/bookings": {
+      "get": {
+        "operationId": "JournalController_seriesBookings",
+        "parameters": [
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/series/{seriesId}/delete-bookings": {
+      "post": {
+        "operationId": "JournalController_deleteSeriesBookings",
+        "parameters": [
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "authorName": {
+                    "type": "string",
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "authorName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/series": {
+      "get": {
+        "operationId": "JournalController_listSeries",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "post": {
+        "operationId": "JournalController_createSeries",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "serviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "weekly",
+                      "every_n_days"
+                    ]
+                  },
+                  "intervalDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 60
+                  },
+                  "weekday": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  },
+                  "time": {
+                    "type": "string",
+                    "pattern": "^\\d{2}:\\d{2}$"
+                  },
+                  "startDate": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "createdByName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "staffId",
+                  "serviceId",
+                  "durationMin",
+                  "kind",
+                  "time",
+                  "startDate"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Серия записей: правило + записи на 8 недель вперёд (выходной/занято — ближайший свободный день)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/series/preview": {
+      "post": {
+        "operationId": "JournalController_previewSeries",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "weekly",
+                      "every_n_days"
+                    ]
+                  },
+                  "intervalDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 60
+                  },
+                  "weekday": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  },
+                  "time": {
+                    "type": "string",
+                    "pattern": "^\\d{2}:\\d{2}$"
+                  },
+                  "startDate": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
+                  }
+                },
+                "required": [
+                  "staffId",
+                  "locationId",
+                  "kind",
+                  "time",
+                  "startDate",
+                  "durationMin"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/series/extend-due": {
+      "post": {
+        "operationId": "JournalController_extendDue",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/series/{seriesId}/occurrences": {
+      "get": {
+        "operationId": "JournalController_occurrences",
+        "parameters": [
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/series/{seriesId}/extend": {
+      "post": {
+        "operationId": "JournalController_extend",
+        "parameters": [
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ifNeeded",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/series/{seriesId}/stop": {
+      "post": {
+        "operationId": "JournalController_stop",
+        "parameters": [
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/series/{seriesId}/resume": {
+      "post": {
+        "operationId": "JournalController_resume",
+        "parameters": [
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/booking-packages": {
+      "post": {
+        "operationId": "JournalController_createPackage",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "order": {
+                    "type": "string",
+                    "enum": [
+                      "parallel",
+                      "sequential_one"
+                    ]
+                  },
+                  "steps": {
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "staffId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "durationMin": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1440
+                        },
+                        "bufferAfterMin": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 600
+                        },
+                        "name": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "price": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000000
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "staffId",
+                        "durationMin",
+                        "price"
+                      ]
+                    }
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 5000
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "start",
+                  "order",
+                  "steps",
+                  "createdBy"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/booking-packages/{groupId}": {
+      "get": {
+        "operationId": "JournalController_getPackage",
+        "parameters": [
+          {
+            "name": "groupId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/package-siblings": {
+      "get": {
+        "operationId": "JournalController_siblings",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/package-transfer": {
+      "post": {
+        "operationId": "JournalController_transfer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deltaMin": {
+                    "type": "integer",
+                    "minimum": -1440,
+                    "maximum": 1440
+                  },
+                  "authorName": {
+                    "type": "string",
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "deltaMin",
+                  "authorName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/package-delete": {
+      "post": {
+        "operationId": "JournalController_deletePackage",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "authorName": {
+                    "type": "string",
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "authorName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/booking-packages/check-linked": {
+      "post": {
+        "operationId": "JournalController_checkLinked",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "plans": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "staffId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "start": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                        },
+                        "lines": {
+                          "maxItems": 20,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "serviceId": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "price": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000000000
+                              },
+                              "durationMin": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1440
+                              }
+                            },
+                            "required": [
+                              "serviceId",
+                              "price",
+                              "durationMin"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "staffId",
+                        "start",
+                        "lines"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "plans"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/booking-packages/attach": {
+      "post": {
+        "operationId": "JournalController_attach",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mainBookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "order": {
+                    "type": "string",
+                    "enum": [
+                      "parallel",
+                      "sequential_one"
+                    ]
+                  },
+                  "plans": {
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "staffId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "start": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                        },
+                        "lines": {
+                          "maxItems": 20,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "serviceId": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "price": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000000000
+                              },
+                              "durationMin": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1440
+                              }
+                            },
+                            "required": [
+                              "serviceId",
+                              "price",
+                              "durationMin"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "staffId",
+                        "start",
+                        "lines"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "mainBookingId",
+                  "locationId",
+                  "createdBy",
+                  "order",
+                  "plans"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/waitlist": {
+      "get": {
+        "operationId": "JournalController_waitlist",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "post": {
+        "operationId": "JournalController_addWaitlist",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "serviceIds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "staffIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "slots": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "date": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "anyTime": {
+                          "type": "boolean"
+                        },
+                        "intervals": {
+                          "maxItems": 10,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "from": {
+                                "type": "string",
+                                "pattern": "^\\d{2}:\\d{2}$"
+                              },
+                              "to": {
+                                "type": "string",
+                                "pattern": "^\\d{2}:\\d{2}$"
+                              }
+                            },
+                            "required": [
+                              "from",
+                              "to"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "anyTime",
+                        "intervals"
+                      ]
+                    }
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "clientName",
+                  "clientPhone",
+                  "serviceIds",
+                  "staffIds",
+                  "slots"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/waitlist/{id}": {
+      "patch": {
+        "operationId": "JournalController_patchWaitlist",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "serviceIds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "staffIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "slots": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "date": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "anyTime": {
+                          "type": "boolean"
+                        },
+                        "intervals": {
+                          "maxItems": 10,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "from": {
+                                "type": "string",
+                                "pattern": "^\\d{2}:\\d{2}$"
+                              },
+                              "to": {
+                                "type": "string",
+                                "pattern": "^\\d{2}:\\d{2}$"
+                              }
+                            },
+                            "required": [
+                              "from",
+                              "to"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "anyTime",
+                        "intervals"
+                      ]
+                    }
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "delete": {
+        "operationId": "JournalController_deleteWaitlist",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/waitlist/{id}/close": {
+      "post": {
+        "operationId": "JournalController_closeWaitlist",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "bookingId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/events": {
+      "get": {
+        "operationId": "JournalController_listEvents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "post": {
+        "operationId": "JournalController_createEvent",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "serviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
+                  },
+                  "capacity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000
+                  },
+                  "resourceIds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "onlineUrl": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "seriesId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "scheduled",
+                      "cancelled"
+                    ]
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "serviceId",
+                  "staffId",
+                  "start",
+                  "durationMin",
+                  "capacity"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/events/{id}": {
+      "patch": {
+        "operationId": "JournalController_patchEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "serviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
+                  },
+                  "capacity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000
+                  },
+                  "resourceIds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "onlineUrl": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "seriesId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "scheduled",
+                      "cancelled"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/bookings/{id}/medical": {
+      "get": {
+        "operationId": "JournalController_medical",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "put": {
+        "operationId": "JournalController_setMedical",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "patch": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 10000
+                    }
+                  },
+                  "authorName": {
+                    "type": "string",
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "patch",
+                  "authorName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/clients/{clientId}/medical-card": {
+      "get": {
+        "operationId": "JournalController_card",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "put": {
+        "operationId": "JournalController_setCard",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/clients/{clientId}/treatment-plans": {
+      "get": {
+        "operationId": "JournalController_plans",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      },
+      "post": {
+        "operationId": "JournalController_addPlan",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "serviceIds": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  }
+                },
+                "required": [
+                  "title",
+                  "serviceIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/clients/{clientId}/treatment-plans/refresh-prices": {
+      "post": {
+        "operationId": "JournalController_refreshPlans",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/clients/{clientId}/treatment-plans/{planId}/duplicate": {
+      "post": {
+        "operationId": "JournalController_duplicatePlan",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "planId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/clients/{clientId}/treatment-plans/{planId}": {
+      "delete": {
+        "operationId": "JournalController_deletePlan",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "planId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/claims": {
+      "post": {
+        "operationId": "JournalController_mintClaim",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "serviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "clientName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "staffId",
+                  "start"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/claims/{token}": {
+      "get": {
+        "operationId": "ClaimsController_get",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Карточка ссылки: ready | wrong_actor | expired | used | taken",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/claims/{token}/close": {
+      "post": {
+        "operationId": "ClaimsController_close",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Закрыть окно»: запись по единому потоку (source phone) — только мастер этого окна",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/me/bookings/{id}/cancel": {
+      "post": {
+        "operationId": "MeBookingsController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Отмена клиентом (В-04): позже срока — «поздно» и +1 неявка у этого бизнеса",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/me/bookings/{id}/reschedule": {
+      "post": {
+        "operationId": "MeBookingsController_reschedule",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  }
+                },
+                "required": [
+                  "start"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/me/bookings/{id}/confirm": {
+      "post": {
+        "operationId": "MeBookingsController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/me/bookings/{id}/paid": {
+      "post": {
+        "operationId": "MeBookingsController_paid",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/me/booking-events": {
+      "get": {
+        "operationId": "MeBookingsController_events",
+        "parameters": [
+          {
+            "name": "since",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kinds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Лента событий моих записей (новые → старые), кроме моих собственных действий",
+        "tags": [
+          "journal"
+        ]
+      }
     }
   },
   "info": {

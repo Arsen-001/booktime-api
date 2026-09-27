@@ -1118,6 +1118,8 @@ model ResourceBusy {
   endAt      DateTime  @map("end_at") @db.DateTime(3)
   source     String    @db.VarChar(12)
   sourceId   String    @map("source_id") @db.VarChar(32)
+  /// Конкретный экземпляр (кресло 2), если запись выбрала его (F-16-013, Booking.resourceIds); нет — любой свободный
+  instanceId String?   @map("instance_id") @db.VarChar(40)
   active     Boolean   @default(true)
   noShow     Boolean   @default(false) @map("no_show")
   holdUntil  DateTime? @map("hold_until") @db.DateTime(3)
@@ -1126,4 +1128,320 @@ model ResourceBusy {
   @@index([resourceId, active, startAt, endAt])
   @@index([source, sourceId])
   @@map("resource_busy")
+}
+
+// ─────────────────────────── Этап 7: журнал и записи (docs/backend/01 §7, 02 §4, 04 §4) ───────────────────────────
+
+/// Запись (Booking ядра + срез journal.extras). Время — UTC; в API — местное время филиала.
+/// Строки услуг (`services`) и доп. данные визита (`extras`) — JSON на строке, как Resource.instances (этап 4):
+/// правятся всегда вместе с записью; денежные агрегаты, по которым ищут, вынесены колонками (total, paid_amount).
+model Booking {
+  id               String    @id @db.VarChar(32)
+  businessId       String    @map("business_id") @db.VarChar(32)
+  locationId       String    @map("location_id") @db.VarChar(32)
+  /// Главный мастер записи
+  staffId          String    @map("staff_id") @db.VarChar(32)
+  clientId         String?   @map("client_id") @db.VarChar(32)
+  appUserId        String?   @map("app_user_id") @db.VarChar(32)
+  startAt          DateTime  @map("start_at") @db.DateTime(3)
+  /// Конец услуги (без запаса) = start + duration
+  endAt            DateTime  @map("end_at") @db.DateTime(3)
+  durationMin      Int       @map("duration_min")
+  /// awaiting_confirmation | awaiting_prepayment | scheduled | client_confirmed | arrived | no_show | cancelled_by_client | cancelled_by_master
+  status           String    @db.VarChar(24)
+  /// BookingServiceLine[]
+  services         Json
+  total            BigInt    @default(0)
+  /// Экземпляры/ресурсы (Booking.resourceIds)
+  resourceIds      Json      @map("resource_ids")
+  /// salon | home | visit | hall | online
+  workplace        String    @default("salon") @db.VarChar(8)
+  /// journal | app | link | widget | phone | import | external
+  source           String    @db.VarChar(10)
+  /// id сотрудника или 'client'
+  createdByRef     String    @map("created_by_ref") @db.VarChar(32)
+  /// self | child | pet | other
+  forWhom          String    @default("self") @map("for_whom") @db.VarChar(6)
+  visitorName      String?   @map("visitor_name") @db.VarChar(160)
+  comment          String?   @db.Text
+  /// { amount, paid, holdUntil? } (F-00-097)
+  prepayment       Json?
+  /// Держит окно до этого момента: «ждёт предоплату» (В-05, 30 мин) или «ждёт подтверждения» (В-03)
+  holdUntil        DateTime? @map("hold_until") @db.DateTime(3)
+  /// Срок ответа мастера на заявку (В-03): min(создание + 2 ч, начало − 1 ч)
+  confirmDeadline  DateTime? @map("confirm_deadline") @db.DateTime(3)
+  /// Отмена клиентом позже срока (В-04, F-00-098)
+  cancelledLate    Boolean   @default(false) @map("cancelled_late")
+  /// prepayment_expired | confirmation_expired
+  cancelReason     String?   @map("cancel_reason") @db.VarChar(24)
+  /// client | staff | system
+  cancelledBy      String?   @map("cancelled_by") @db.VarChar(8)
+  groupEventId     String?   @map("group_event_id") @db.VarChar(32)
+  seriesId         String?   @map("series_id") @db.VarChar(32)
+  visitId          String?   @map("visit_id") @db.VarChar(32)
+  /// specific | any (F-01-028)
+  staffAssignment  String?   @map("staff_assignment") @db.VarChar(8)
+  /// BookingExtras без deletion: категории, цвет, доп. поля, товары, скидки строк, оплаты, автосписание, пакет…
+  extras           Json
+  /// Сумма оплат визита (extras.payments) — для «оплаченная запись» и сводки дня
+  paidAmount       BigInt    @default(0) @map("paid_amount")
+  /// Технический перерыв под записью, мин (F-01-032); null — по услуге/настройке
+  breakOverrideMin Int?      @map("break_override_min")
+  deletedAt        DateTime? @map("deleted_at") @db.DateTime(3)
+  deletedBy        String?   @map("deleted_by") @db.VarChar(32)
+  deletedByName    String?   @map("deleted_by_name") @db.VarChar(160)
+  deletedByClient  Boolean   @default(false) @map("deleted_by_client")
+  /// Что удаление обнулило (деньги, расходники, посещение) — возвращается при «Восстановить» (F-01-120/121)
+  deletionRestore  Json?     @map("deletion_restore")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy        String?   @map("created_by") @db.VarChar(32)
+  updatedBy        String?   @map("updated_by") @db.VarChar(32)
+  version          Int       @default(1)
+
+  @@index([businessId, startAt])
+  @@index([staffId, startAt])
+  @@index([clientId, startAt])
+  @@index([appUserId, startAt])
+  @@index([locationId, startAt])
+  @@index([status, holdUntil])
+  @@index([groupEventId])
+  @@index([seriesId])
+  @@index([visitId])
+  @@map("bookings")
+}
+
+/// Журнал событий записей (BookingEvent ядра): создана / статус / перенесена / удалена / мастер задерживается.
+/// Лента клиента, колокольчик, лист ожидания («окно освободилось», F-00-101) и история статусов (F-00-068).
+model BookingEvent {
+  id          String   @id @db.VarChar(32)
+  bookingId   String   @map("booking_id") @db.VarChar(32)
+  businessId  String   @map("business_id") @db.VarChar(32)
+  staffId     String   @map("staff_id") @db.VarChar(32)
+  clientId    String?  @map("client_id") @db.VarChar(32)
+  appUserId   String?  @map("app_user_id") @db.VarChar(32)
+  /// created | status | moved | deleted | delayed
+  kind        String   @db.VarChar(8)
+  fromStatus  String?  @map("from_status") @db.VarChar(24)
+  toStatus    String?  @map("to_status") @db.VarChar(24)
+  /// Местное 'YYYY-MM-DDTHH:mm'
+  prevStart   String?  @map("prev_start") @db.VarChar(16)
+  prevStaffId String?  @map("prev_staff_id") @db.VarChar(32)
+  /// { staffId, locationId, start, durationMin } — освободившееся время
+  freed       Json?
+  /// id сотрудника | client | system
+  byRef       String   @map("by_ref") @db.VarChar(32)
+  late        Boolean?
+  reason      String?  @db.VarChar(24)
+  delayMin    Int?     @map("delay_min")
+  /// Начало записи в момент события (местное)
+  startLocal  String   @map("start_local") @db.VarChar(16)
+  at          DateTime @default(now()) @db.DateTime(3)
+
+  @@index([businessId, at])
+  @@index([appUserId, at])
+  @@index([bookingId, at])
+  @@index([staffId, at])
+  @@map("booking_events")
+}
+
+/// История изменений записи (F-01-096) — строки «кто, что стало», пишет окно записи и сервер
+model BookingHistory {
+  id         String   @id @db.VarChar(32)
+  bookingId  String   @map("booking_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  authorName String   @map("author_name") @db.VarChar(160)
+  /// created | updated | statusChanged | deleted | restored
+  action     String   @db.VarChar(16)
+  summary    String   @db.VarChar(1000)
+  at         DateTime @default(now()) @db.DateTime(3)
+
+  @@index([bookingId, at])
+  @@index([businessId, at])
+  @@map("booking_history")
+}
+
+/// Групповое событие (GroupEvent ядра, F-01-035, F-16-036…). Участники — записи с group_event_id.
+model GroupEvent {
+  id          String   @id @db.VarChar(32)
+  businessId  String   @map("business_id") @db.VarChar(32)
+  locationId  String   @map("location_id") @db.VarChar(32)
+  serviceId   String   @map("service_id") @db.VarChar(32)
+  staffId     String   @map("staff_id") @db.VarChar(32)
+  startAt     DateTime @map("start_at") @db.DateTime(3)
+  durationMin Int      @map("duration_min")
+  capacity    Int
+  resourceIds Json     @map("resource_ids")
+  onlineUrl   String?  @map("online_url") @db.VarChar(1000)
+  seriesId    String?  @map("series_id") @db.VarChar(32)
+  /// scheduled | cancelled
+  status      String   @default("scheduled") @db.VarChar(10)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy   String?  @map("created_by") @db.VarChar(32)
+  updatedBy   String?  @map("updated_by") @db.VarChar(32)
+  version     Int      @default(1)
+
+  @@index([businessId, startAt])
+  @@index([staffId, startAt])
+  @@index([seriesId])
+  @@map("group_events")
+}
+
+/// Серия записей: правило «каждые N дней / по дню недели» (kind=rule, F-00-064 — 6 недель вперёд, продление ночью)
+/// или повтор записи из окна (kind=recurrence, F-01-100…107 — даты считаются сразу, копии самостоятельны)
+model BookingSeries {
+  id            String   @id @db.VarChar(32)
+  businessId    String   @map("business_id") @db.VarChar(32)
+  locationId    String   @map("location_id") @db.VarChar(32)
+  staffId       String   @map("staff_id") @db.VarChar(32)
+  /// rule | recurrence
+  kind          String   @db.VarChar(10)
+  /// SeriesRule (kind=rule) | { rule: RecurrenceRule, sourceBookingId } (kind=recurrence)
+  rule          Json
+  active        Boolean  @default(true)
+  /// Последняя дата, до которой записи уже созданы (местная)
+  createdUntil  String?  @map("created_until") @db.VarChar(10)
+  createdByName String   @default("") @map("created_by_name") @db.VarChar(160)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy     String?  @map("created_by") @db.VarChar(32)
+  version       Int      @default(1)
+
+  @@index([businessId])
+  @@index([active, kind])
+  @@index([staffId])
+  @@map("booking_series")
+}
+
+/// Пакет (комплекс) связанных записей (F-01-113, F-01-134…136)
+model PackageGroup {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// parallel | sequential_one
+  orderMode  String   @map("order_mode") @db.VarChar(16)
+  bookingIds Json     @map("booking_ids")
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("package_groups")
+}
+
+/// Лист ожидания — одна таблица и для журнала (F-01-156…162), и для приложения клиента (F-00-102, этап 9)
+model WaitlistEntry {
+  id          String    @id @db.VarChar(32)
+  businessId  String    @map("business_id") @db.VarChar(32)
+  locationId  String?   @map("location_id") @db.VarChar(32)
+  clientName  String    @map("client_name") @db.VarChar(160)
+  clientPhone String    @map("client_phone") @db.VarChar(20)
+  clientId    String?   @map("client_id") @db.VarChar(32)
+  /// Встал сам из приложения (F-00-102)
+  appUserId   String?   @map("app_user_id") @db.VarChar(32)
+  serviceIds  Json      @map("service_ids")
+  /// Пусто — любой специалист
+  staffIds    Json      @map("staff_ids")
+  /// WaitlistPreferredSlot[]
+  slots       Json
+  comment     String    @default("") @db.VarChar(2000)
+  /// Закрыта: из заявки создана запись (F-01-159)
+  bookingId   String?   @map("booking_id") @db.VarChar(32)
+  /// Когда предложено освободившееся окно (В-18, первая волна)
+  notifiedAt  DateTime? @map("notified_at") @db.DateTime(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy   String?   @map("created_by") @db.VarChar(32)
+  version     Int       @default(1)
+
+  @@index([businessId, createdAt])
+  @@index([appUserId])
+  @@map("waitlist_entries")
+}
+
+/// Освободившееся окно и его раздача (В-18): лист ожидания сразу → через 30 мин подписчики → за 3 ч «горящее»
+model FreedSlot {
+  id              String    @id @db.VarChar(32)
+  businessId      String    @map("business_id") @db.VarChar(32)
+  staffId         String    @map("staff_id") @db.VarChar(32)
+  locationId      String?   @map("location_id") @db.VarChar(32)
+  startAt         DateTime  @map("start_at") @db.DateTime(3)
+  endAt           DateTime  @map("end_at") @db.DateTime(3)
+  durationMin     Int       @map("duration_min")
+  /// Какая запись освободила
+  sourceBookingId String    @map("source_booking_id") @db.VarChar(32)
+  /// waitlist | subscribers | hot | taken | expired
+  stage           String    @db.VarChar(12)
+  /// id заявок листа ожидания, которым окно предложено первой волной
+  waitlistIds     Json      @map("waitlist_ids")
+  subscribersAt   DateTime? @map("subscribers_at") @db.DateTime(3)
+  hotAt           DateTime? @map("hot_at") @db.DateTime(3)
+  /// Скидка «горящего» окна, % — настройка мастера, по умолчанию 0 (В-18)
+  discountPct     Int       @default(0) @map("discount_pct")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([stage, startAt])
+  @@index([businessId, startAt])
+  @@index([staffId, startAt])
+  @@map("freed_slots")
+}
+
+/// «Закрыть окно» ссылкой из переписки (F-00-107): срабатывает только для вошедшего мастера этого окна
+model SlotClaim {
+  token         String   @id @db.VarChar(40)
+  businessId    String   @map("business_id") @db.VarChar(32)
+  staffId       String   @map("staff_id") @db.VarChar(32)
+  serviceId     String?  @map("service_id") @db.VarChar(32)
+  /// Местное 'YYYY-MM-DDTHH:mm'
+  startLocal    String   @map("start_local") @db.VarChar(16)
+  startAt       DateTime @map("start_at") @db.DateTime(3)
+  clientName    String?  @map("client_name") @db.VarChar(160)
+  clientPhone   String?  @map("client_phone") @db.VarChar(20)
+  /// pending | used
+  status        String   @default("pending") @db.VarChar(8)
+  usedBookingId String?  @map("used_booking_id") @db.VarChar(32)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([staffId, startAt])
+  @@map("slot_claims")
+}
+
+/// «Текущий приём» — заключение по визиту (F-01-189), медицинские сферы
+model MedicalVisitNote {
+  bookingId  String   @id @map("booking_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// Поля заключения (MedicalVisitNote фронта без bookingId/updatedAt)
+  data       Json
+  authorName String   @map("author_name") @db.VarChar(160)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("medical_visit_notes")
+}
+
+/// «Медкарта» пациента (F-01-190)
+model MedicalCard {
+  clientId   String   @id @map("client_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  data       Json
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("medical_cards")
+}
+
+/// «План лечения» (F-01-191)
+model TreatmentPlan {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  clientId   String   @map("client_id") @db.VarChar(32)
+  title      String   @db.VarChar(300)
+  /// TreatmentPlanItem[]
+  items      Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([clientId])
+  @@index([businessId])
+  @@map("treatment_plans")
 }

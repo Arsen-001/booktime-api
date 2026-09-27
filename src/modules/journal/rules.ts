@@ -1,0 +1,262 @@
+/**
+ * Правила записи на сервере — перенос чистых функций фронта один в один (booking-platform/src/domain/rules/
+ * booking-status.ts, booking-policy.ts, pricing.ts), чтобы экран и сервер решали одинаково. Решения владельца поверх
+ * них (PLAN.md §3): В-03 срок подтверждения, В-04 сроки отмены/переноса и предоплата при поздней отмене, В-05 окно
+ * «ждёт предоплату» 30 минут.
+ */
+import { addMinutesLocal } from '../availability/engine.js';
+
+export type BookingStatus =
+  | 'awaiting_confirmation'
+  | 'awaiting_prepayment'
+  | 'scheduled'
+  | 'client_confirmed'
+  | 'arrived'
+  | 'no_show'
+  | 'cancelled_by_client'
+  | 'cancelled_by_master';
+
+export const BOOKING_STATUSES: readonly BookingStatus[] = [
+  'awaiting_confirmation',
+  'awaiting_prepayment',
+  'scheduled',
+  'client_confirmed',
+  'arrived',
+  'no_show',
+  'cancelled_by_client',
+  'cancelled_by_master',
+];
+
+export type BookingSource = 'journal' | 'app' | 'link' | 'widget' | 'phone' | 'import' | 'external';
+export const BOOKING_SOURCES: readonly BookingSource[] = ['journal', 'app', 'link', 'widget', 'phone', 'import', 'external'];
+
+export const CANCELLED_STATUSES: readonly BookingStatus[] = ['cancelled_by_client', 'cancelled_by_master'];
+export const ACTIVE_STATUSES: readonly BookingStatus[] = ['awaiting_confirmation', 'awaiting_prepayment', 'scheduled', 'client_confirmed'];
+
+export const isCancelled = (s: string) => (CANCELLED_STATUSES as readonly string[]).includes(s);
+export const isActiveStatus = (s: string) => (ACTIVE_STATUSES as readonly string[]).includes(s);
+/** Запись держит время мастера: всё, кроме отменённых и удалённых */
+export const occupiesTime = (b: { status: string; deletedAt?: unknown }) => !b.deletedAt && !isCancelled(b.status);
+
+export function isOnlineSource(source: string): boolean {
+  return source === 'app' || source === 'link' || source === 'widget';
+}
+
+export type StatusActor = 'business' | 'client' | 'system';
+
+const CLIENT_TRANSITIONS: Partial<Record<BookingStatus, readonly BookingStatus[]>> = {
+  awaiting_confirmation: ['cancelled_by_client'],
+  awaiting_prepayment: ['cancelled_by_client'],
+  scheduled: ['client_confirmed', 'cancelled_by_client'],
+  client_confirmed: ['cancelled_by_client'],
+};
+
+const SYSTEM_TRANSITIONS: Partial<Record<BookingStatus, readonly BookingStatus[]>> = {
+  awaiting_prepayment: ['cancelled_by_client'],
+  awaiting_confirmation: ['cancelled_by_master'],
+};
+
+/** Сотрудник — любой статус в любой, кроме «ждёт предоплату»; клиент — подтвердить/отменить; система — снять по сроку */
+export function canTransition(from: BookingStatus, to: BookingStatus, actor: StatusActor): boolean {
+  if (from === to) return false;
+  if (actor === 'business') return to !== 'awaiting_prepayment';
+  const map = actor === 'client' ? CLIENT_TRANSITIONS : SYSTEM_TRANSITIONS;
+  return map[from]?.includes(to) ?? false;
+}
+
+/** Вошли в «не пришёл» → +1 к неявкам, вышли → −1 (F-00-071) */
+export function noShowDelta(from: string, to: string): -1 | 0 | 1 {
+  if (from !== 'no_show' && to === 'no_show') return 1;
+  if (from === 'no_show' && to !== 'no_show') return -1;
+  return 0;
+}
+
+// ─────────────────────────── Правила отмены и переноса (В-04) ───────────────────────────
+
+export interface BookingRules {
+  allowCancel?: boolean;
+  allowReschedule?: boolean;
+  cancelWindowMin?: number;
+  rescheduleWindowMin?: number;
+  allowCancelPrepaid?: boolean;
+  allowReschedulePrepaid?: boolean;
+  /** В-04: предоплата при поздней отмене остаётся мастеру (галочка мастера, по умолчанию да) */
+  keepPrepaymentOnLateCancel?: boolean;
+}
+
+export type EffectiveBookingRules = Required<BookingRules>;
+
+/** В-04: отдельные сроки отмены и переноса, по умолчанию 3 ч; предоплата при поздней отмене — мастеру */
+export const DEFAULT_BOOKING_RULES: EffectiveBookingRules = {
+  allowCancel: true,
+  allowReschedule: true,
+  cancelWindowMin: 180,
+  rescheduleWindowMin: 180,
+  allowCancelPrepaid: false,
+  allowReschedulePrepaid: false,
+  keepPrepaymentOnLateCancel: true,
+};
+
+/** В-04: срок 0…48 ч */
+export const MAX_POLICY_WINDOW_MIN = 48 * 60;
+
+export function effectiveBookingRules(business: BookingRules | null | undefined, staff: BookingRules | null | undefined): EffectiveBookingRules {
+  const out: EffectiveBookingRules = { ...DEFAULT_BOOKING_RULES };
+  for (const layer of [business, staff]) {
+    if (!layer) continue;
+    for (const key of Object.keys(layer) as (keyof BookingRules)[]) {
+      const value = layer[key];
+      if (value !== undefined && value !== null) (out as Record<string, unknown>)[key] = value;
+    }
+  }
+  out.cancelWindowMin = Math.min(MAX_POLICY_WINDOW_MIN, Math.max(0, out.cancelWindowMin));
+  out.rescheduleWindowMin = Math.min(MAX_POLICY_WINDOW_MIN, Math.max(0, out.rescheduleWindowMin));
+  return out;
+}
+
+export interface PolicyBooking {
+  start: string;
+  status: string;
+  deletedAt?: unknown;
+  prepayment?: { paid?: boolean } | null;
+}
+
+export type ClientActionDenied = 'not_active' | 'started' | 'not_allowed' | 'prepaid_locked' | 'too_late';
+
+export function clientCancelOutcome(
+  b: PolicyBooking,
+  rules: EffectiveBookingRules,
+  now: string,
+): { allowed: false; reason: ClientActionDenied } | { allowed: true; late: boolean; freeUntil: string } {
+  if (b.deletedAt || !isActiveStatus(b.status)) return { allowed: false, reason: 'not_active' };
+  if (b.start <= now) return { allowed: false, reason: 'started' };
+  if (!rules.allowCancel) return { allowed: false, reason: 'not_allowed' };
+  if (b.prepayment?.paid && !rules.allowCancelPrepaid) return { allowed: false, reason: 'prepaid_locked' };
+  const freeUntil = addMinutesLocal(b.start, -rules.cancelWindowMin);
+  return { allowed: true, late: now >= freeUntil, freeUntil };
+}
+
+export function canReschedule(b: PolicyBooking, rules: EffectiveBookingRules, now: string): { allowed: true } | { allowed: false; reason: ClientActionDenied } {
+  const until = addMinutesLocal(b.start, -rules.rescheduleWindowMin);
+  if (b.deletedAt || !isActiveStatus(b.status)) return { allowed: false, reason: 'not_active' };
+  if (b.start <= now) return { allowed: false, reason: 'started' };
+  if (!rules.allowReschedule) return { allowed: false, reason: 'not_allowed' };
+  if (b.prepayment?.paid && !rules.allowReschedulePrepaid) return { allowed: false, reason: 'prepaid_locked' };
+  if (now >= until) return { allowed: false, reason: 'too_late' };
+  return { allowed: true };
+}
+
+// ─────────────────────────── Статус новой записи (В-03, F-00-079, F-00-097, F-00-065) ───────────────────────────
+
+export interface PrepaymentRule {
+  amount: number;
+  timeoutMin?: number;
+  requisites?: string;
+}
+
+/** В-05: окно «ждёт предоплату» держится 30 минут (если мастер не задал своё) */
+export const PREPAYMENT_HOLD_MIN = 30;
+
+export function requiresPrepayment(source: string, prepayment: PrepaymentRule | null | undefined, prepaymentPaid = false): boolean {
+  return isOnlineSource(source) && Boolean(prepayment && prepayment.amount > 0) && !prepaymentPaid;
+}
+
+export function newBookingStatus(input: {
+  source: string;
+  staff: { confirmMode: string; prepayment: PrepaymentRule | null; calendarVisibility: string };
+  workplace: string;
+  isOwnClient?: boolean;
+  prepaymentPaid?: boolean;
+}): BookingStatus {
+  if (!isOnlineSource(input.source)) return 'scheduled';
+  if (input.workplace === 'visit') return 'awaiting_confirmation';
+  if (requiresPrepayment(input.source, input.staff.prepayment, input.prepaymentPaid)) return 'awaiting_prepayment';
+  if (input.staff.calendarVisibility === 'mine' && input.isOwnClient === false) return 'awaiting_confirmation';
+  if (input.staff.confirmMode === 'manual') return 'awaiting_confirmation';
+  return 'scheduled';
+}
+
+export function prepaymentAmount(rule: PrepaymentRule | null | undefined, total: number): number {
+  if (!rule || rule.amount <= 0) return 0;
+  return total > 0 ? Math.min(rule.amount, total) : rule.amount;
+}
+
+/** В-03: мастер отвечает на заявку 2 ч, но не позже чем за час до начала (моменты — UTC) */
+export const CONFIRM_WAIT_MIN = 120;
+export const CONFIRM_BEFORE_START_MIN = 60;
+
+export function confirmDeadlineOf(createdAt: Date, startAt: Date): Date {
+  const a = createdAt.getTime() + CONFIRM_WAIT_MIN * 60_000;
+  const b = startAt.getTime() - CONFIRM_BEFORE_START_MIN * 60_000;
+  return new Date(Math.max(createdAt.getTime(), Math.min(a, b)));
+}
+
+// ─────────────────────────── Цена и длительность (F-00-057) ───────────────────────────
+
+export interface ServiceLine {
+  serviceId: string;
+  staffId: string;
+  price: number;
+  durationMin: number;
+  qty: number;
+  unitPrice?: number;
+  discountPct?: number;
+  resourceId?: string;
+}
+
+export function bookedDuration(s: { durationMin: number; durationMax: number | null }): number {
+  return s.durationMax && s.durationMax > s.durationMin ? s.durationMax : s.durationMin;
+}
+
+export function clampPct(pct: number | undefined): number {
+  if (!pct || !Number.isFinite(pct)) return 0;
+  return Math.min(100, Math.max(0, pct));
+}
+
+export function applyDiscount(amount: number, pct?: number): number {
+  return Math.round((amount * (100 - clampPct(pct))) / 100);
+}
+
+export function makeServiceLine(
+  s: { id: string; durationMin: number; durationMax: number | null; priceMin: number },
+  staffId: string,
+  opts: { qty?: number; discountPct?: number; unitPrice?: number; durationMin?: number } = {},
+): ServiceLine {
+  const unit = opts.unitPrice ?? s.priceMin;
+  const pct = clampPct(opts.discountPct);
+  return {
+    serviceId: s.id,
+    staffId,
+    durationMin: opts.durationMin ?? bookedDuration(s),
+    qty: Math.max(1, opts.qty ?? 1),
+    price: applyDiscount(unit, pct),
+    ...(pct > 0 ? { unitPrice: unit, discountPct: pct } : {}),
+  };
+}
+
+export const linesDuration = (lines: readonly { durationMin: number; qty: number }[]) => lines.reduce((sum, l) => sum + l.durationMin * l.qty, 0);
+export const linesTotal = (lines: readonly { price: number; qty: number }[]) => lines.reduce((sum, l) => sum + l.price * l.qty, 0);
+
+// ─────────────────────────── Доп. данные визита (срез journal.extras) ───────────────────────────
+
+export interface BookingExtras {
+  categoryIds: string[];
+  colorIndex?: number;
+  customFieldValues: Record<string, string | number | null>;
+  goodsLines: { id: string; itemId: string; qty: number; price: number; discountPct: number; sellerId: string; code?: string }[];
+  serviceLineExtras: { discountPct: number; assistants?: { staffId: string; sharePct: number }[] }[];
+  paidAmount: number;
+  autoWriteoff?: { status: string; amountDue: number; subscriptionId?: string };
+  consumablesDeducted?: boolean;
+  techCardOverrides?: Record<number, string>;
+  packageGroupId?: string;
+  payments?: { id: string; method: string; amount: number; label: string; cashRegister?: string; refId?: string; at: string }[];
+  prepaymentDecision?: { kept: boolean; reason: string; decidedBy: string; decidedAt: string; auto?: boolean };
+}
+
+export const EMPTY_EXTRAS: BookingExtras = { categoryIds: [], customFieldValues: {}, goodsLines: [], serviceLineExtras: [], paidAmount: 0 };
+
+export function extrasOf(raw: unknown): BookingExtras {
+  const e = (raw && typeof raw === 'object' ? raw : {}) as Partial<BookingExtras>;
+  return { ...EMPTY_EXTRAS, ...e };
+}

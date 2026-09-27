@@ -52,6 +52,23 @@ export const ID_PREFIX = {
   unavailableRange: 'scun',
   busyBlock: 'bb',
   resourceBusy: 'rbz',
+  // этап 7 — журнал и записи: как в срезе journal / ядре фронта (визит vis, событие bev, история bh, пакет pkg,
+  // лист ожидания wl, серия scser/ser, заявка «закрыть окно» clm, план лечения tplan/tpi, оплата pay, товар gl)
+  visit: 'vis',
+  bookingEvent: 'bev',
+  bookingHistory: 'bh',
+  packageGroup: 'pkg',
+  waitlistEntry: 'wl',
+  seriesRule: 'scser',
+  recurrenceSeries: 'ser',
+  freedSlot: 'fs',
+  slotClaim: 'clm',
+  treatmentPlan: 'tplan',
+  treatmentPlanItem: 'tpi',
+  payment: 'pay',
+  goodsLine: 'gl',
+  bookingCategory: 'bc',
+  recurrenceTemplate: 'rt',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

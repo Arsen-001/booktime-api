@@ -47,6 +47,8 @@ export interface ResourceBlockInput {
   source: BlockInput['source'];
   sourceId: string;
   holdUntil?: Date | null;
+  /** Конкретный экземпляр (выбран вручную или подобран, F-16-013): он не должен быть занят сам по себе */
+  instanceId?: string | null;
 }
 
 export interface OccupyInput {
@@ -99,6 +101,12 @@ export class OccupyService {
     return [...new Set(rows.map((r) => r.personKey))];
   }
 
+  /** Держать до (подтверждение/предоплата) — снять или продлить удержание без пересчёта блоков */
+  async setHold(tx: Tx, source: BlockInput['source'], sourceId: string, holdUntil: Date | null): Promise<void> {
+    await tx.busyBlock.updateMany({ where: { source, sourceId, active: true }, data: { holdUntil } });
+    await tx.resourceBusy.updateMany({ where: { source, sourceId, active: true }, data: { holdUntil } });
+  }
+
   /** Пометить «не пришёл» у занятости источника (F-02-066) */
   async setNoShow(tx: Tx, source: BlockInput['source'], sourceId: string, noShow: boolean): Promise<void> {
     await tx.busyBlock.updateMany({ where: { source, sourceId, active: true }, data: { noShow } });
@@ -143,7 +151,21 @@ export class OccupyService {
             ...(input.ignoreNoShow ? { noShow: false } : {}),
           },
         });
-        if (used >= r.instances) throw new ApiError('slot_taken', 'Resource is busy at this time');
+        if (used >= r.instances) throw new ApiError('resource_unavailable', 'Resource is busy at this time');
+        if (r.instanceId) {
+          const same = await tx.resourceBusy.count({
+            where: {
+              resourceId: r.resourceId,
+              instanceId: r.instanceId,
+              active: true,
+              startAt: { lt: r.endAt },
+              endAt: { gt: r.startAt },
+              OR: [{ holdUntil: null }, { holdUntil: { gt: now } }],
+              ...(input.ignoreNoShow ? { noShow: false } : {}),
+            },
+          });
+          if (same > 0) throw new ApiError('resource_unavailable', 'Resource instance is busy at this time');
+        }
       }
     }
 
@@ -176,6 +198,7 @@ export class OccupyService {
           endAt: r.endAt,
           source: r.source,
           sourceId: r.sourceId,
+          instanceId: r.instanceId ?? null,
           holdUntil: r.holdUntil ?? null,
         })),
       });
