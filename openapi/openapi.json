@@ -15182,6 +15182,2422 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/resources/events/{eventId}/participants": {
+      "get": {
+        "operationId": "ResourcesEventsController_listParticipants",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "post": {
+        "operationId": "ResourcesEventsController_addParticipant",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "seats": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  },
+                  "visitorName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "staffId",
+                  "start",
+                  "name",
+                  "phone",
+                  "seats"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/participants/{bookingId}": {
+      "delete": {
+        "operationId": "ResourcesEventsController_removeParticipant",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/events/repeat": {
+      "post": {
+        "operationId": "ResourcesEventsController_repeatEvent",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "eventId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "freq": {
+                    "type": "string",
+                    "enum": [
+                      "daily",
+                      "weekdays",
+                      "monWedFri",
+                      "tueThu",
+                      "weekly",
+                      "monthly",
+                      "yearly"
+                    ]
+                  },
+                  "weekIntervalWeeks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 52
+                  },
+                  "startDate": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "end": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "count"
+                          },
+                          "count": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 500
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "count"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "date"
+                          },
+                          "date": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "date"
+                        ]
+                      }
+                    ]
+                  },
+                  "withClients": {
+                    "type": "boolean"
+                  },
+                  "saveAsTemplateName": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "eventId",
+                  "freq",
+                  "startDate",
+                  "end",
+                  "withClients"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/events/bulk-delete": {
+      "post": {
+        "operationId": "ResourcesEventsController_bulkDelete",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "eventIds": {
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  }
+                },
+                "required": [
+                  "eventIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/events/bulk-restore": {
+      "post": {
+        "operationId": "ResourcesEventsController_bulkRestore",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "eventIds": {
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  }
+                },
+                "required": [
+                  "eventIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/events/{eventId}/params": {
+      "patch": {
+        "operationId": "ResourcesEventsController_saveEventParams",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
+                  },
+                  "serviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "capacity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500
+                  }
+                },
+                "required": [
+                  "staffId",
+                  "start",
+                  "durationMin",
+                  "serviceId",
+                  "capacity"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/events/count-future/{serviceId}": {
+      "get": {
+        "operationId": "ResourcesEventsController_countFutureForService",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serviceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/events/{eventId}/extra": {
+      "get": {
+        "operationId": "ResourcesEventsController_getEventExtra",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "put": {
+        "operationId": "ResourcesEventsController_saveEventExtra",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "colorIndex": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8
+                  },
+                  "categoryIds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "categoryIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/events/{eventId}/join": {
+      "get": {
+        "operationId": "ResourcesEventsController_getEventJoin",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "put": {
+        "operationId": "ResourcesEventsController_saveEventJoin",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "instructions": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "url",
+                  "instructions"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/events/{eventId}/join/notify": {
+      "post": {
+        "operationId": "ResourcesEventsController_sendEventJoinNotifications",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/series/{seriesId}": {
+      "get": {
+        "operationId": "ResourcesEventsController_getSeriesDef",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "delete": {
+        "operationId": "ResourcesEventsController_deleteSeries",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/series/by-ids": {
+      "post": {
+        "operationId": "ResourcesEventsController_listSeriesDefsByIds",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/series/{seriesId}/events": {
+      "get": {
+        "operationId": "ResourcesEventsController_listSeriesEvents",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/series": {
+      "post": {
+        "operationId": "ResourcesEventsController_createEventSeries",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sourceEventId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "days": {
+                    "minItems": 1,
+                    "maxItems": 7,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "weekday": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        },
+                        "startTime": {
+                          "type": "string",
+                          "pattern": "^\\d{2}:\\d{2}$"
+                        },
+                        "durationMin": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1440
+                        },
+                        "resourceIds": {
+                          "maxItems": 20,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40
+                          }
+                        }
+                      },
+                      "required": [
+                        "weekday",
+                        "startTime",
+                        "durationMin",
+                        "resourceIds"
+                      ]
+                    }
+                  },
+                  "endDate": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "addClientsFromSource": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "sourceEventId",
+                  "days",
+                  "endDate",
+                  "addClientsFromSource"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/series/{seriesId}/extend": {
+      "post": {
+        "operationId": "ResourcesEventsController_extendOrShortenSeries",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "newEndDate": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "required": [
+                  "newEndDate"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/series/{seriesId}/weekday": {
+      "post": {
+        "operationId": "ResourcesEventsController_addSeriesWeekday",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "weekday": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  },
+                  "startTime": {
+                    "type": "string",
+                    "pattern": "^\\d{2}:\\d{2}$"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
+                  },
+                  "resourceIds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  }
+                },
+                "required": [
+                  "weekday",
+                  "startTime",
+                  "durationMin",
+                  "resourceIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/series/{seriesId}/weekday/{weekday}": {
+      "delete": {
+        "operationId": "ResourcesEventsController_removeSeriesWeekday",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "weekday",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/series/{seriesId}/day-rule/{weekday}": {
+      "patch": {
+        "operationId": "ResourcesEventsController_editSeriesDayRule",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "weekday",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "patch": {
+                    "type": "object",
+                    "properties": {
+                      "startTime": {
+                        "type": "string",
+                        "pattern": "^\\d{2}:\\d{2}$"
+                      },
+                      "durationMin": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1440
+                      },
+                      "resourceIds": {
+                        "maxItems": 20,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40
+                        }
+                      }
+                    }
+                  },
+                  "applyToUnique": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "patch",
+                  "applyToUnique"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/visit-schedules/{seriesId}": {
+      "get": {
+        "operationId": "ResourcesEventsController_listVisitSchedules",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seriesId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/visit-schedules": {
+      "post": {
+        "operationId": "ResourcesEventsController_createVisitSchedule",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "seriesId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "weekdays": {
+                    "maxItems": 7,
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  },
+                  "seats": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  }
+                },
+                "required": [
+                  "seriesId",
+                  "clientName",
+                  "clientPhone",
+                  "weekdays",
+                  "seats"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/visit-schedules/{id}": {
+      "patch": {
+        "operationId": "ResourcesEventsController_updateVisitSchedule",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "weekdays": {
+                    "maxItems": 7,
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "weekdays"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "delete": {
+        "operationId": "ResourcesEventsController_deleteVisitSchedule",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/waitlist": {
+      "get": {
+        "operationId": "ResourcesEventsController_listWaitlist",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "post": {
+        "operationId": "ResourcesEventsController_createWaitlistEntry",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "serviceIds": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "staffIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "wishes": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "date": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "time": {
+                          "type": "string",
+                          "pattern": "^\\d{2}:\\d{2}$"
+                        },
+                        "intervals": {
+                          "maxItems": 10,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "from": {
+                                "type": "string",
+                                "pattern": "^\\d{2}:\\d{2}$"
+                              },
+                              "to": {
+                                "type": "string",
+                                "pattern": "^\\d{2}:\\d{2}$"
+                              }
+                            },
+                            "required": [
+                              "from",
+                              "to"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "date"
+                      ]
+                    }
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "clientName",
+                  "clientPhone",
+                  "serviceIds",
+                  "wishes"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/waitlist/{id}": {
+      "patch": {
+        "operationId": "ResourcesEventsController_updateWaitlistEntry",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "serviceIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "staffIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "wishes": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "date": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "time": {
+                          "type": "string",
+                          "pattern": "^\\d{2}:\\d{2}$"
+                        },
+                        "intervals": {
+                          "maxItems": 10,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "from": {
+                                "type": "string",
+                                "pattern": "^\\d{2}:\\d{2}$"
+                              },
+                              "to": {
+                                "type": "string",
+                                "pattern": "^\\d{2}:\\d{2}$"
+                              }
+                            },
+                            "required": [
+                              "from",
+                              "to"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "date"
+                      ]
+                    }
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "delete": {
+        "operationId": "ResourcesEventsController_removeWaitlistEntry",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/waitlist/{id}/close": {
+      "post": {
+        "operationId": "ResourcesEventsController_closeWaitlistEntry",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "bookingId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/waitlist/notify": {
+      "post": {
+        "operationId": "ResourcesEventsController_notifyWaitlistForFreedSlot",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "serviceId",
+                  "date"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/waitlist/{id}/notifications": {
+      "get": {
+        "operationId": "ResourcesEventsController_getWaitlistNotifications",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/transfer-targets": {
+      "get": {
+        "operationId": "ResourcesEventsController_listTransferTargets",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serviceId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "excludeEventId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/participants/{bookingId}/transfer": {
+      "post": {
+        "operationId": "ResourcesEventsController_transferParticipant",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "targetEventId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "targetEventId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/bookings/{bookingId}/assistants/{serviceIndex}": {
+      "get": {
+        "operationId": "ResourcesEventsController_getBookingAssistants",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serviceIndex",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "put": {
+        "operationId": "ResourcesEventsController_setBookingAssistants",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serviceIndex",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "assistants": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "staffId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "sharePercent": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        }
+                      },
+                      "required": [
+                        "staffId",
+                        "sharePercent"
+                      ]
+                    }
+                  },
+                  "shareRule": {
+                    "type": "string",
+                    "enum": [
+                      "full",
+                      "split"
+                    ]
+                  }
+                },
+                "required": [
+                  "assistants",
+                  "shareRule"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/bookings/{bookingId}/extras": {
+      "get": {
+        "operationId": "ResourcesEventsController_listParticipantExtras",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "post": {
+        "operationId": "ResourcesEventsController_addParticipantExtra",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "product",
+                      "membership",
+                      "certificate"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "price": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name",
+                  "price"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/bookings/{bookingId}/extras/{itemId}": {
+      "delete": {
+        "operationId": "ResourcesEventsController_removeParticipantExtra",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/bookings/{bookingId}/payment": {
+      "get": {
+        "operationId": "ResourcesEventsController_getParticipantPayment",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "post": {
+        "operationId": "ResourcesEventsController_payParticipant",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "membership",
+                      "card",
+                      "cash",
+                      "other"
+                    ]
+                  }
+                },
+                "required": [
+                  "method"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "delete": {
+        "operationId": "ResourcesEventsController_cancelParticipantPayment",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/resources/split-by-resource": {
       "get": {
         "operationId": "ResourcesController_getSplit",
@@ -18200,2422 +20616,6 @@
                 }
               }
             }
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/events/{eventId}/participants": {
-      "get": {
-        "operationId": "ResourcesEventsController_listParticipants",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "eventId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "post": {
-        "operationId": "ResourcesEventsController_addParticipant",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "eventId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "locationId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "staffId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "start": {
-                    "type": "string",
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
-                  },
-                  "name": {
-                    "type": "string",
-                    "maxLength": 160
-                  },
-                  "phone": {
-                    "type": "string",
-                    "maxLength": 30
-                  },
-                  "seats": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 50
-                  },
-                  "visitorName": {
-                    "type": "string",
-                    "maxLength": 160
-                  },
-                  "comment": {
-                    "type": "string",
-                    "maxLength": 2000
-                  }
-                },
-                "required": [
-                  "locationId",
-                  "staffId",
-                  "start",
-                  "name",
-                  "phone",
-                  "seats"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/participants/{bookingId}": {
-      "delete": {
-        "operationId": "ResourcesEventsController_removeParticipant",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bookingId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/events/repeat": {
-      "post": {
-        "operationId": "ResourcesEventsController_repeatEvent",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "eventId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "freq": {
-                    "type": "string",
-                    "enum": [
-                      "daily",
-                      "weekdays",
-                      "monWedFri",
-                      "tueThu",
-                      "weekly",
-                      "monthly",
-                      "yearly"
-                    ]
-                  },
-                  "weekIntervalWeeks": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 52
-                  },
-                  "startDate": {
-                    "type": "string",
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-                  },
-                  "end": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "const": "count"
-                          },
-                          "count": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "maximum": 500
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "count"
-                        ]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "const": "date"
-                          },
-                          "date": {
-                            "type": "string",
-                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "date"
-                        ]
-                      }
-                    ]
-                  },
-                  "withClients": {
-                    "type": "boolean"
-                  },
-                  "saveAsTemplateName": {
-                    "type": "string",
-                    "maxLength": 120
-                  }
-                },
-                "required": [
-                  "eventId",
-                  "freq",
-                  "startDate",
-                  "end",
-                  "withClients"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/events/bulk-delete": {
-      "post": {
-        "operationId": "ResourcesEventsController_bulkDelete",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "eventIds": {
-                    "maxItems": 500,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 40
-                    }
-                  }
-                },
-                "required": [
-                  "eventIds"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/events/bulk-restore": {
-      "post": {
-        "operationId": "ResourcesEventsController_bulkRestore",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "eventIds": {
-                    "maxItems": 500,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 40
-                    }
-                  }
-                },
-                "required": [
-                  "eventIds"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/events/{eventId}/params": {
-      "patch": {
-        "operationId": "ResourcesEventsController_saveEventParams",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "eventId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "staffId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "start": {
-                    "type": "string",
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
-                  },
-                  "durationMin": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 1440
-                  },
-                  "serviceId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "capacity": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 500
-                  }
-                },
-                "required": [
-                  "staffId",
-                  "start",
-                  "durationMin",
-                  "serviceId",
-                  "capacity"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/events/count-future/{serviceId}": {
-      "get": {
-        "operationId": "ResourcesEventsController_countFutureForService",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "serviceId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/events/{eventId}/extra": {
-      "get": {
-        "operationId": "ResourcesEventsController_getEventExtra",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "eventId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "put": {
-        "operationId": "ResourcesEventsController_saveEventExtra",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "eventId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "colorIndex": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 8
-                  },
-                  "categoryIds": {
-                    "maxItems": 20,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 40
-                    }
-                  },
-                  "comment": {
-                    "type": "string",
-                    "maxLength": 2000
-                  }
-                },
-                "required": [
-                  "categoryIds"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/events/{eventId}/join": {
-      "get": {
-        "operationId": "ResourcesEventsController_getEventJoin",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "eventId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "put": {
-        "operationId": "ResourcesEventsController_saveEventJoin",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "eventId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "url": {
-                    "type": "string",
-                    "maxLength": 1000
-                  },
-                  "instructions": {
-                    "type": "string",
-                    "maxLength": 2000
-                  }
-                },
-                "required": [
-                  "url",
-                  "instructions"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/events/{eventId}/join/notify": {
-      "post": {
-        "operationId": "ResourcesEventsController_sendEventJoinNotifications",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "eventId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/series/{seriesId}": {
-      "get": {
-        "operationId": "ResourcesEventsController_getSeriesDef",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "seriesId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "delete": {
-        "operationId": "ResourcesEventsController_deleteSeries",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "seriesId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/series/by-ids": {
-      "post": {
-        "operationId": "ResourcesEventsController_listSeriesDefsByIds",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "ids": {
-                    "maxItems": 200,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 40
-                    }
-                  }
-                },
-                "required": [
-                  "ids"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/series/{seriesId}/events": {
-      "get": {
-        "operationId": "ResourcesEventsController_listSeriesEvents",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "seriesId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/series": {
-      "post": {
-        "operationId": "ResourcesEventsController_createEventSeries",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "sourceEventId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "days": {
-                    "minItems": 1,
-                    "maxItems": 7,
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "weekday": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 6
-                        },
-                        "startTime": {
-                          "type": "string",
-                          "pattern": "^\\d{2}:\\d{2}$"
-                        },
-                        "durationMin": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 1440
-                        },
-                        "resourceIds": {
-                          "maxItems": 20,
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "maxLength": 40
-                          }
-                        }
-                      },
-                      "required": [
-                        "weekday",
-                        "startTime",
-                        "durationMin",
-                        "resourceIds"
-                      ]
-                    }
-                  },
-                  "endDate": {
-                    "type": "string",
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-                  },
-                  "addClientsFromSource": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "sourceEventId",
-                  "days",
-                  "endDate",
-                  "addClientsFromSource"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/series/{seriesId}/extend": {
-      "post": {
-        "operationId": "ResourcesEventsController_extendOrShortenSeries",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "seriesId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "newEndDate": {
-                    "type": "string",
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-                  }
-                },
-                "required": [
-                  "newEndDate"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/series/{seriesId}/weekday": {
-      "post": {
-        "operationId": "ResourcesEventsController_addSeriesWeekday",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "seriesId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "weekday": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 6
-                  },
-                  "startTime": {
-                    "type": "string",
-                    "pattern": "^\\d{2}:\\d{2}$"
-                  },
-                  "durationMin": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 1440
-                  },
-                  "resourceIds": {
-                    "maxItems": 20,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "maxLength": 40
-                    }
-                  }
-                },
-                "required": [
-                  "weekday",
-                  "startTime",
-                  "durationMin",
-                  "resourceIds"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/series/{seriesId}/weekday/{weekday}": {
-      "delete": {
-        "operationId": "ResourcesEventsController_removeSeriesWeekday",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "seriesId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "weekday",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/series/{seriesId}/day-rule/{weekday}": {
-      "patch": {
-        "operationId": "ResourcesEventsController_editSeriesDayRule",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "seriesId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "weekday",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "patch": {
-                    "type": "object",
-                    "properties": {
-                      "startTime": {
-                        "type": "string",
-                        "pattern": "^\\d{2}:\\d{2}$"
-                      },
-                      "durationMin": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 1440
-                      },
-                      "resourceIds": {
-                        "maxItems": 20,
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "maxLength": 40
-                        }
-                      }
-                    }
-                  },
-                  "applyToUnique": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "patch",
-                  "applyToUnique"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/visit-schedules/{seriesId}": {
-      "get": {
-        "operationId": "ResourcesEventsController_listVisitSchedules",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "seriesId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/visit-schedules": {
-      "post": {
-        "operationId": "ResourcesEventsController_createVisitSchedule",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "seriesId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "clientId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "clientName": {
-                    "type": "string",
-                    "maxLength": 160
-                  },
-                  "clientPhone": {
-                    "type": "string",
-                    "maxLength": 30
-                  },
-                  "weekdays": {
-                    "maxItems": 7,
-                    "type": "array",
-                    "items": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 6
-                    }
-                  },
-                  "seats": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 50
-                  }
-                },
-                "required": [
-                  "seriesId",
-                  "clientName",
-                  "clientPhone",
-                  "weekdays",
-                  "seats"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/visit-schedules/{id}": {
-      "patch": {
-        "operationId": "ResourcesEventsController_updateVisitSchedule",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "weekdays": {
-                    "maxItems": 7,
-                    "type": "array",
-                    "items": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 6
-                    }
-                  }
-                },
-                "required": [
-                  "weekdays"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "delete": {
-        "operationId": "ResourcesEventsController_deleteVisitSchedule",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/waitlist": {
-      "get": {
-        "operationId": "ResourcesEventsController_listWaitlist",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "post": {
-        "operationId": "ResourcesEventsController_createWaitlistEntry",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "locationId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "clientName": {
-                    "type": "string",
-                    "maxLength": 160
-                  },
-                  "clientPhone": {
-                    "type": "string",
-                    "maxLength": 30
-                  },
-                  "serviceIds": {
-                    "minItems": 1,
-                    "maxItems": 50,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 40
-                    }
-                  },
-                  "staffIds": {
-                    "maxItems": 50,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 40
-                    }
-                  },
-                  "wishes": {
-                    "maxItems": 20,
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "date": {
-                          "type": "string",
-                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-                        },
-                        "time": {
-                          "type": "string",
-                          "pattern": "^\\d{2}:\\d{2}$"
-                        },
-                        "intervals": {
-                          "maxItems": 10,
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "from": {
-                                "type": "string",
-                                "pattern": "^\\d{2}:\\d{2}$"
-                              },
-                              "to": {
-                                "type": "string",
-                                "pattern": "^\\d{2}:\\d{2}$"
-                              }
-                            },
-                            "required": [
-                              "from",
-                              "to"
-                            ]
-                          }
-                        }
-                      },
-                      "required": [
-                        "date"
-                      ]
-                    }
-                  },
-                  "comment": {
-                    "type": "string",
-                    "maxLength": 2000
-                  }
-                },
-                "required": [
-                  "locationId",
-                  "clientName",
-                  "clientPhone",
-                  "serviceIds",
-                  "wishes"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/waitlist/{id}": {
-      "patch": {
-        "operationId": "ResourcesEventsController_updateWaitlistEntry",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "clientName": {
-                    "type": "string",
-                    "maxLength": 160
-                  },
-                  "clientPhone": {
-                    "type": "string",
-                    "maxLength": 30
-                  },
-                  "serviceIds": {
-                    "maxItems": 50,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 40
-                    }
-                  },
-                  "staffIds": {
-                    "maxItems": 50,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 40
-                    }
-                  },
-                  "wishes": {
-                    "maxItems": 20,
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "date": {
-                          "type": "string",
-                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-                        },
-                        "time": {
-                          "type": "string",
-                          "pattern": "^\\d{2}:\\d{2}$"
-                        },
-                        "intervals": {
-                          "maxItems": 10,
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "from": {
-                                "type": "string",
-                                "pattern": "^\\d{2}:\\d{2}$"
-                              },
-                              "to": {
-                                "type": "string",
-                                "pattern": "^\\d{2}:\\d{2}$"
-                              }
-                            },
-                            "required": [
-                              "from",
-                              "to"
-                            ]
-                          }
-                        }
-                      },
-                      "required": [
-                        "date"
-                      ]
-                    }
-                  },
-                  "comment": {
-                    "type": "string",
-                    "maxLength": 2000
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "delete": {
-        "operationId": "ResourcesEventsController_removeWaitlistEntry",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/waitlist/{id}/close": {
-      "post": {
-        "operationId": "ResourcesEventsController_closeWaitlistEntry",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "bookingId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  }
-                },
-                "required": [
-                  "bookingId"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/waitlist/notify": {
-      "post": {
-        "operationId": "ResourcesEventsController_notifyWaitlistForFreedSlot",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "serviceId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  },
-                  "date": {
-                    "type": "string",
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-                  },
-                  "staffId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  }
-                },
-                "required": [
-                  "serviceId",
-                  "date"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/waitlist/{id}/notifications": {
-      "get": {
-        "operationId": "ResourcesEventsController_getWaitlistNotifications",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/transfer-targets": {
-      "get": {
-        "operationId": "ResourcesEventsController_listTransferTargets",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "serviceId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "excludeEventId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/participants/{bookingId}/transfer": {
-      "post": {
-        "operationId": "ResourcesEventsController_transferParticipant",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bookingId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "targetEventId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 40
-                  }
-                },
-                "required": [
-                  "targetEventId"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/bookings/{bookingId}/assistants/{serviceIndex}": {
-      "get": {
-        "operationId": "ResourcesEventsController_getBookingAssistants",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bookingId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "serviceIndex",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "put": {
-        "operationId": "ResourcesEventsController_setBookingAssistants",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bookingId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "serviceIndex",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "assistants": {
-                    "maxItems": 10,
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "staffId": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 40
-                        },
-                        "sharePercent": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 100
-                        }
-                      },
-                      "required": [
-                        "staffId",
-                        "sharePercent"
-                      ]
-                    }
-                  },
-                  "shareRule": {
-                    "type": "string",
-                    "enum": [
-                      "full",
-                      "split"
-                    ]
-                  }
-                },
-                "required": [
-                  "assistants",
-                  "shareRule"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/bookings/{bookingId}/extras": {
-      "get": {
-        "operationId": "ResourcesEventsController_listParticipantExtras",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bookingId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "post": {
-        "operationId": "ResourcesEventsController_addParticipantExtra",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bookingId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "product",
-                      "membership",
-                      "certificate"
-                    ]
-                  },
-                  "name": {
-                    "type": "string",
-                    "maxLength": 160
-                  },
-                  "price": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 1000000000
-                  }
-                },
-                "required": [
-                  "kind",
-                  "name",
-                  "price"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/bookings/{bookingId}/extras/{itemId}": {
-      "delete": {
-        "operationId": "ResourcesEventsController_removeParticipantExtra",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bookingId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "itemId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/resources/bookings/{bookingId}/payment": {
-      "get": {
-        "operationId": "ResourcesEventsController_getParticipantPayment",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bookingId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "post": {
-        "operationId": "ResourcesEventsController_payParticipant",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bookingId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "method": {
-                    "type": "string",
-                    "enum": [
-                      "membership",
-                      "card",
-                      "cash",
-                      "other"
-                    ]
-                  }
-                },
-                "required": [
-                  "method"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "tags": [
-          "resources"
-        ]
-      },
-      "delete": {
-        "operationId": "ResourcesEventsController_cancelParticipantPayment",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bookingId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
           }
         },
         "security": [
@@ -48192,6 +48192,186 @@
           }
         ],
         "summary": "Обращение к нам из приложения",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/apps/reports/daily": {
+      "get": {
+        "operationId": "AppReportsController_daily",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "F-14-123: сегодня/вчера — 6 показателей",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/apps/reports/period": {
+      "get": {
+        "operationId": "AppReportsController_period",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "F-14-124: произвольный период",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/apps/reports/my-analytics": {
+      "get": {
+        "operationId": "AppReportsController_myAnalytics",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "F-14-126: «Моя аналитика» — своя без reports.view, чужая — только с ним",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/apps/reports/network": {
+      "get": {
+        "operationId": "AppReportsController_network",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "F-14-129: показатели дня по филиалам сети (locationIds = businessId филиалов)",
         "tags": [
           "client"
         ]

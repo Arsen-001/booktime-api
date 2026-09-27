@@ -3,6 +3,8 @@ import { JournalModule } from '../journal/journal.module.js';
 import { LoyaltyModule } from '../loyalty/loyalty.module.js';
 import { PlatformModule } from '../platform/platform.module.js';
 import { ScheduleModule } from '../schedule/schedule.module.js';
+import { AppReportsController } from './app-reports.controller.js';
+import { AppReportsService } from './app-reports.service.js';
 import { CatalogService } from './catalog.service.js';
 import { PublicCatalogController } from './catalog.controller.js';
 import { MeController } from './me.controller.js';
@@ -16,10 +18,15 @@ import { MeService } from './me.service.js';
  * этап 11: GET /v1/me/loyalty и заявки В-17 живут в этом контроллере (все /v1/me — одна поверхность, PLAN §2),
  * саму логику несёт `MeLoyaltyService`. `PlatformModule` — этап 21 (лейн client): отзывы (В-24) шлют текст на
  * модерацию через `ModerationService` (уже строит очередь платформы, этап 19) — не дублируем её здесь.
+ * `AppReportsController/Service` — этап 21 (лейн client, попытка 5): отчёты вкладки «Приложение»
+ * (`GET /v1/biz/{b}/apps/reports/…`, F-14-123…129) — своя лёгкая форма, не реестр `reports.controller.ts`
+ * (см. докстринг `app-reports.service.ts`). Только `reports-common.ts` (чистые функции) и
+ * `loyalty.owner.ts::resolveScopeBusinessIds` (тоже чистая функция) — не тянет ни `ReportsModule`, ни второй раз
+ * `LoyaltyModule` (он уже в импортах строкой выше).
  */
 @Module({
   imports: [ScheduleModule, JournalModule, LoyaltyModule, PlatformModule],
-  controllers: [PublicCatalogController, MeController],
-  providers: [CatalogService, MeService],
+  controllers: [PublicCatalogController, MeController, AppReportsController],
+  providers: [CatalogService, MeService, AppReportsService],
 })
 export class ClientModule {}

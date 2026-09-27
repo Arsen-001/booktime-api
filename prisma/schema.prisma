@@ -2681,6 +2681,22 @@ model PayrollStatementApproval {
   @@map("payroll_statement_approvals")
 }
 
+// === stage 21 (лейн services+rest) ===
+/// Права на раздел «Зарплата» на сотрудника (F-09-085…089) — тонкие права раздела, как StaffReportsPermission
+/// у reports (этап 16) и client_fine_rights у clients (этап 5): без права `staff.manage` их не меняет никто,
+/// кроме владельца/тех, кому дали schemesAccess (сама точка входа проверяется на сервисе, не здесь).
+model PayrollStaffRights {
+  staffId    String   @id @map("staff_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// { schemesAccess, calcAccess, accrueAccess, ownOnlyStaffId? } — PayrollStaffRights мока минус staffId/updatedAt
+  data       Json
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+
+  @@index([businessId])
+  @@map("payroll_staff_rights")
+}
+
 // ─────────────────────────── Этап 15 · Сеть (02 §15, PLAN §6 №15) ───────────────────────────
 // Устройство сети/филиалов — Network/Business (этап 3). Здесь — то, чего у бизнеса нет: пользователи сети
 // без своей строки staff (F-11-024…039), общая клиентская база (F-11-040…053, application-level по businessId
