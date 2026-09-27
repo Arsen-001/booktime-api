@@ -25043,6 +25043,35 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/bookings/{id}/remind-text": {
+      "get": {
+        "operationId": "BookingsController_remindText",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Готовый текст + wa.me для клиента без приложения (F-00-121, 05 §1 «мастер напоминает сам»)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/bookings/{id}/status": {
       "post": {
         "operationId": "BookingsController_status",
@@ -34089,6 +34118,711 @@
         "summary": "Обращение к нам из приложения",
         "tags": [
           "client"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/types": {
+      "get": {
+        "operationId": "NotifyController_listTypes",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "operationId": "NotifyController_updateType",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/templates/{kind}": {
+      "get": {
+        "operationId": "NotifyController_getTemplates",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "operationId": "NotifyController_updateTemplates",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/templates/{kind}/preview": {
+      "post": {
+        "operationId": "NotifyController_preview",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/log": {
+      "get": {
+        "operationId": "NotifyController_log",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/channels": {
+      "get": {
+        "operationId": "NotifyController_getChannel",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "operationId": "NotifyController_connectChannel",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/channels/disconnect": {
+      "post": {
+        "operationId": "NotifyController_disconnectChannel",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/channels/test": {
+      "post": {
+        "operationId": "NotifyController_sendTestChannel",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/news": {
+      "post": {
+        "operationId": "NotifyController_createNews",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Не больше 3 в неделю на бизнес (§5) — 409 weekly_push_limit сверх лимита",
+        "tags": [
+          "notify"
+        ]
+      },
+      "get": {
+        "operationId": "NotifyController_listNews",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/news/quota": {
+      "get": {
+        "operationId": "NotifyController_newsQuota",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/news/suggestions": {
+      "get": {
+        "operationId": "NotifyController_newsSuggestions",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff/{staffId}/notify": {
+      "get": {
+        "operationId": "NotifyController_getStaffNotify",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "operationId": "NotifyController_updateStaffNotify",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/inbox": {
+      "get": {
+        "operationId": "NotifyController_listInbox",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "preview",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/inbox/unread-count": {
+      "get": {
+        "operationId": "NotifyController_unreadCount",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/inbox/{id}/read": {
+      "post": {
+        "operationId": "NotifyController_markOneRead",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/inbox/read": {
+      "post": {
+        "operationId": "NotifyController_markManyRead",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/inbox/read-all": {
+      "post": {
+        "operationId": "NotifyController_markAllRead",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/clients/{clientId}/notify": {
+      "get": {
+        "operationId": "NotifyController_getClientNotify",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "operationId": "NotifyController_updateClientNotify",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
         ]
       }
     }

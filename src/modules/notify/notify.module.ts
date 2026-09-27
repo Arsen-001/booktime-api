@@ -1,0 +1,17 @@
+import { Module } from '@nestjs/common';
+import { NotifyChannelsService } from './notify-channels.service.js';
+import { NotifyClientPrefsService } from './notify-client-prefs.service.js';
+import { NotifyDispatchService } from './notify-dispatch.service.js';
+import { NotifyInboxService } from './notify-inbox.service.js';
+import { NotifyNewsService } from './notify-news.service.js';
+import { NotifyStaffPrefsService } from './notify-staff-prefs.service.js';
+import { NotifyTypesService } from './notify-types.service.js';
+import { NotifyController } from './notify.controller.js';
+
+/** Этап 10: уведомления — очередь/пуш, новости, колокольчик, настройки (docs/backend/05, PLAN.md §6 №10) */
+@Module({
+  controllers: [NotifyController],
+  providers: [NotifyTypesService, NotifyNewsService, NotifyStaffPrefsService, NotifyClientPrefsService, NotifyInboxService, NotifyChannelsService, NotifyDispatchService],
+  exports: [NotifyTypesService, NotifyStaffPrefsService, NotifyDispatchService],
+})
+export class NotifyModule {}

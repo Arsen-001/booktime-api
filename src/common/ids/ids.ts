@@ -80,6 +80,9 @@ export const ID_PREFIX = {
   supportTicket: 'sup',
   /// Лента /v1/me/inbox (F-14-055) — тот же смысл, что зарезервированный на этапе 2 'ntf' (уведомление)
   inboxItem: 'ntf',
+  // этап 10 — уведомления: очередь/журнал отправок, новости
+  notifyOutbox: 'nto',
+  newsPost: 'nws',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

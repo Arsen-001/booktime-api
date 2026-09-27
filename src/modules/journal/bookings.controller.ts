@@ -8,7 +8,10 @@ import { Zod } from '../../common/http/validation.js';
 import { ifMatch } from '../../common/http/version.js';
 import { Idempotent } from '../../common/idempotency/idempotency.js';
 import { newId } from '../../common/ids/ids.js';
-import { nowLocal } from '../../common/time/time.js';
+import { isLocale, t } from '../../common/i18n/i18n.js';
+import { DEFAULT_TZ, utcToLocal, nowLocal } from '../../common/time/time.js';
+import { ApiError } from '../../common/errors/api-error.js';
+import { waLink } from '../notify/wa-link.js';
 import { JournalAccess, csv } from './access.js';
 import { BookingsService, staffActor, type BookingPatch, type RawInput } from './bookings.service.js';
 import { JournalService } from './journal.service.js';
@@ -109,6 +112,24 @@ export class BookingsController {
   @Biz('journal.view')
   async get(@Ctx() ctx: RequestContext, @Param('id') id: string) {
     return this.svc.view(this.svc.prisma, await this.svc.find(this.svc.prisma, [ctx.member!.businessId], id));
+  }
+
+  @Get(':id/remind-text')
+  @Biz('journal.view')
+  @ApiOperation({ summary: 'Готовый текст + wa.me для клиента без приложения (F-00-121, 05 §1 «мастер напоминает сам»)' })
+  async remindText(@Ctx() ctx: RequestContext, @Param('id') id: string): Promise<{ phone: string; text: string; whatsappUrl: string }> {
+    const b = await this.svc.find(this.svc.prisma, [ctx.member!.businessId], id);
+    const client = b.clientId ? await this.svc.prisma.client.findUnique({ where: { id: b.clientId } }) : null;
+    if (!client || !client.phone) throw new ApiError('not_found', 'No client phone for this booking');
+    const business = await this.svc.prisma.business.findUnique({ where: { id: b.businessId }, select: { name: true } });
+    const serviceId = (b.services as { serviceId?: string }[] | null)?.[0]?.serviceId;
+    const service = serviceId ? await this.svc.prisma.service.findUnique({ where: { id: serviceId }, select: { name: true } }) : null;
+    const serviceName = (service?.name as Record<string, string> | undefined)?.ru;
+    const tz = await this.svc.tzOfLocation(this.svc.prisma, b.locationId);
+    const time = utcToLocal(b.startAt, tz).slice(11, 16);
+    const locale = isLocale(ctx.session?.locale) ? ctx.session!.locale : 'ru';
+    const text = t(locale, 'booking.remindTemplate', { name: client.name, time, service: serviceName ?? '', business: business?.name ?? 'BookTime' });
+    return { phone: client.phone, text, whatsappUrl: waLink(client.phone, text) };
   }
 
   @Patch(':id')

@@ -1136,57 +1136,57 @@ model ResourceBusy {
 /// Строки услуг (`services`) и доп. данные визита (`extras`) — JSON на строке, как Resource.instances (этап 4):
 /// правятся всегда вместе с записью; денежные агрегаты, по которым ищут, вынесены колонками (total, paid_amount).
 model Booking {
-  id               String    @id @db.VarChar(32)
-  businessId       String    @map("business_id") @db.VarChar(32)
-  locationId       String    @map("location_id") @db.VarChar(32)
+  id                  String    @id @db.VarChar(32)
+  businessId          String    @map("business_id") @db.VarChar(32)
+  locationId          String    @map("location_id") @db.VarChar(32)
   /// Главный мастер записи
-  staffId          String    @map("staff_id") @db.VarChar(32)
-  clientId         String?   @map("client_id") @db.VarChar(32)
-  appUserId        String?   @map("app_user_id") @db.VarChar(32)
-  startAt          DateTime  @map("start_at") @db.DateTime(3)
+  staffId             String    @map("staff_id") @db.VarChar(32)
+  clientId            String?   @map("client_id") @db.VarChar(32)
+  appUserId           String?   @map("app_user_id") @db.VarChar(32)
+  startAt             DateTime  @map("start_at") @db.DateTime(3)
   /// Конец услуги (без запаса) = start + duration
-  endAt            DateTime  @map("end_at") @db.DateTime(3)
-  durationMin      Int       @map("duration_min")
+  endAt               DateTime  @map("end_at") @db.DateTime(3)
+  durationMin         Int       @map("duration_min")
   /// awaiting_confirmation | awaiting_prepayment | scheduled | client_confirmed | arrived | no_show | cancelled_by_client | cancelled_by_master
-  status           String    @db.VarChar(24)
+  status              String    @db.VarChar(24)
   /// BookingServiceLine[]
-  services         Json
-  total            BigInt    @default(0)
+  services            Json
+  total               BigInt    @default(0)
   /// Экземпляры/ресурсы (Booking.resourceIds)
-  resourceIds      Json      @map("resource_ids")
+  resourceIds         Json      @map("resource_ids")
   /// salon | home | visit | hall | online
-  workplace        String    @default("salon") @db.VarChar(8)
+  workplace           String    @default("salon") @db.VarChar(8)
   /// journal | app | link | widget | phone | import | external
-  source           String    @db.VarChar(10)
+  source              String    @db.VarChar(10)
   /// id сотрудника или 'client'
-  createdByRef     String    @map("created_by_ref") @db.VarChar(32)
+  createdByRef        String    @map("created_by_ref") @db.VarChar(32)
   /// self | child | pet | other
-  forWhom          String    @default("self") @map("for_whom") @db.VarChar(6)
-  visitorName      String?   @map("visitor_name") @db.VarChar(160)
-  comment          String?   @db.Text
+  forWhom             String    @default("self") @map("for_whom") @db.VarChar(6)
+  visitorName         String?   @map("visitor_name") @db.VarChar(160)
+  comment             String?   @db.Text
   /// { amount, paid, holdUntil? } (F-00-097)
-  prepayment       Json?
+  prepayment          Json?
   /// Держит окно до этого момента: «ждёт предоплату» (В-05, 30 мин) или «ждёт подтверждения» (В-03)
-  holdUntil        DateTime? @map("hold_until") @db.DateTime(3)
+  holdUntil           DateTime? @map("hold_until") @db.DateTime(3)
   /// Срок ответа мастера на заявку (В-03): min(создание + 2 ч, начало − 1 ч)
-  confirmDeadline  DateTime? @map("confirm_deadline") @db.DateTime(3)
+  confirmDeadline     DateTime? @map("confirm_deadline") @db.DateTime(3)
   /// Отмена клиентом позже срока (В-04, F-00-098)
-  cancelledLate    Boolean   @default(false) @map("cancelled_late")
+  cancelledLate       Boolean   @default(false) @map("cancelled_late")
   /// prepayment_expired | confirmation_expired
-  cancelReason     String?   @map("cancel_reason") @db.VarChar(24)
+  cancelReason        String?   @map("cancel_reason") @db.VarChar(24)
   /// client | staff | system
-  cancelledBy      String?   @map("cancelled_by") @db.VarChar(8)
-  groupEventId     String?   @map("group_event_id") @db.VarChar(32)
-  seriesId         String?   @map("series_id") @db.VarChar(32)
-  visitId          String?   @map("visit_id") @db.VarChar(32)
+  cancelledBy         String?   @map("cancelled_by") @db.VarChar(8)
+  groupEventId        String?   @map("group_event_id") @db.VarChar(32)
+  seriesId            String?   @map("series_id") @db.VarChar(32)
+  visitId             String?   @map("visit_id") @db.VarChar(32)
   /// specific | any (F-01-028)
-  staffAssignment  String?   @map("staff_assignment") @db.VarChar(8)
+  staffAssignment     String?   @map("staff_assignment") @db.VarChar(8)
   /// BookingExtras без deletion: категории, цвет, доп. поля, товары, скидки строк, оплаты, автосписание, пакет…
-  extras           Json
+  extras              Json
   /// Сумма оплат визита (extras.payments) — для «оплаченная запись» и сводки дня
-  paidAmount       BigInt    @default(0) @map("paid_amount")
+  paidAmount          BigInt    @default(0) @map("paid_amount")
   /// Технический перерыв под записью, мин (F-01-032); null — по услуге/настройке
-  breakOverrideMin Int?      @map("break_override_min")
+  breakOverrideMin    Int?      @map("break_override_min")
   /// Неугадываемый хэш для «моя запись без входа» (B19: 128 бит, в базе — sha256); только у онлайн-записи
   accessHash          String?   @unique @map("access_hash") @db.Char(64)
   /// Срок ссылки (B8: до конца визита + 7 дней); истёк — ссылка мертва, сама запись остаётся
@@ -1194,17 +1194,17 @@ model Booking {
   /// OnlineBookingMeta без bookingId/accessHash (этап 8, F-03-091…139): откуда пришла запись — ссылка/форма,
   /// устройство, e-mail/фамилия/отчество, свои поля виджета, «специалист не важен», адрес выезда
   onlineMeta          Json?     @map("online_meta")
-  deletedAt        DateTime? @map("deleted_at") @db.DateTime(3)
-  deletedBy        String?   @map("deleted_by") @db.VarChar(32)
-  deletedByName    String?   @map("deleted_by_name") @db.VarChar(160)
-  deletedByClient  Boolean   @default(false) @map("deleted_by_client")
+  deletedAt           DateTime? @map("deleted_at") @db.DateTime(3)
+  deletedBy           String?   @map("deleted_by") @db.VarChar(32)
+  deletedByName       String?   @map("deleted_by_name") @db.VarChar(160)
+  deletedByClient     Boolean   @default(false) @map("deleted_by_client")
   /// Что удаление обнулило (деньги, расходники, посещение) — возвращается при «Восстановить» (F-01-120/121)
-  deletionRestore  Json?     @map("deletion_restore")
-  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy        String?   @map("created_by") @db.VarChar(32)
-  updatedBy        String?   @map("updated_by") @db.VarChar(32)
-  version          Int       @default(1)
+  deletionRestore     Json?     @map("deletion_restore")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy           String?   @map("created_by") @db.VarChar(32)
+  updatedBy           String?   @map("updated_by") @db.VarChar(32)
+  version             Int       @default(1)
 
   @@index([businessId, startAt])
   @@index([staffId, startAt])
@@ -1600,4 +1600,101 @@ model InboxItem {
 
   @@index([appUserId, createdAt])
   @@map("inbox_items")
+}
+
+// ─────────────────────────── Этап 10 · Уведомления (05) ───────────────────────────
+
+/// Очередь/журнал отправок (05 §4): событие пишет строку здесь же (в своей транзакции); notify.dispatch
+/// (воркер) берёт готовые (send_at ≤ now) и шлёт push. dedupe_key уникален — повторная попытка того же
+/// события (перезапуск задачи, повторный вызов) не создаёт вторую строку (createMany skipDuplicates / upsert).
+model NotifyOutbox {
+  id              String    @id @db.VarChar(32)
+  /// Чей это разговор — для журнала `GET /v1/biz/{b}/notify/log`; пусто у чисто личных системных пушей (нет пока)
+  businessId      String?   @map("business_id") @db.VarChar(32)
+  /// client | business — тот же признак, что PushToken.app: чьи токены слать
+  app             String    @db.VarChar(10)
+  /// Ключ типа — свой словарь этого раздела (05 §3), не Altegio-нумерация: reminder24h, reminder2h,
+  /// booking_created, salon_confirmed, salon_moved, salon_deleted, cancelled_by_master, prepayment_expired,
+  /// waitlist_available, news, staff_new_booking, staff_client_cancelled, staff_client_rescheduled,
+  /// staff_empty_week
+  kind            String    @db.VarChar(24)
+  recipientUserId String    @map("recipient_user_id") @db.VarChar(32)
+  title           String    @db.VarChar(200)
+  body            String    @db.VarChar(600)
+  /// Куда ведёт тап — путь сайта (PushMessage.url)
+  url             String?   @db.VarChar(300)
+  dedupeKey       String    @unique @map("dedupe_key") @db.VarChar(160)
+  sendAt          DateTime  @map("send_at") @db.DateTime(3)
+  /// queued | sent | skipped | failed
+  status          String    @default("queued") @db.VarChar(8)
+  attempts        Int       @default(0)
+  lastError       String?   @map("last_error") @db.VarChar(300)
+  /// Параметры для журнала/отладки (businessId/staffId/bookingId и т.п.) — не персональные данные сверх нужного
+  meta            Json?
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  sentAt          DateTime? @map("sent_at") @db.DateTime(3)
+
+  @@index([status, sendAt])
+  @@index([businessId, createdAt])
+  @@index([recipientUserId, createdAt])
+  @@map("notify_outbox")
+}
+
+/// Новость подписчикам (F-00-114) — своя строка на отправку; лимит считает NewsQuota той же неделей
+model NewsPost {
+  id              String   @id @db.VarChar(32)
+  businessId      String   @map("business_id") @db.VarChar(32)
+  /// Календарная неделя по Еревану, 'YYYY-\'W\'ww' (§5: лимит на бизнес, не на мастера)
+  weekKey         String   @map("week_key") @db.VarChar(8)
+  /// LocalizedText
+  text            Json
+  recipientsCount Int      @default(0) @map("recipients_count")
+  createdBy       String?  @map("created_by") @db.VarChar(32)
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId, createdAt])
+  @@index([businessId, weekKey])
+  @@map("news_posts")
+}
+
+/// Счётчик недели — строка с блокировкой (SELECT … FOR UPDATE), чтобы два администратора не отправили 4-ю
+/// одновременно (§5, тот же приём «замка», что PersonLock у availability, PLAN.md §4.2)
+model NewsQuota {
+  businessId String @map("business_id") @db.VarChar(32)
+  weekKey    String @map("week_key") @db.VarChar(8)
+  sent       Int    @default(0)
+
+  @@id([businessId, weekKey])
+  @@map("news_quota")
+}
+
+/// Что приходит сотруднику (F-05-055…060) — минимальная матрица «событие → включено», по умолчанию всё включено
+model StaffNotifyPref {
+  staffId   String   @id @map("staff_id") @db.VarChar(32)
+  /// Record<событие, boolean> — new_booking | client_cancelled | client_rescheduled | empty_week
+  events    Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("staff_notify_prefs")
+}
+
+/// Настройки уведомлений на клиента (F-04-087…090) — отказ от маркетинга, каналы
+model ClientNotifyPref {
+  clientId        String   @id @map("client_id") @db.VarChar(32)
+  marketingOptOut Boolean  @default(false) @map("marketing_opt_out")
+  /// {push, sms, email} — какие каналы разрешены этому клиенту
+  channels        Json
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("client_notify_prefs")
+}
+
+/// Колокольчик кабинета (F-05-061) — общий на бизнес (как в моке `s.inboxRead[businessId]`), не персональный на
+/// сотрудника; сама лента считается на лету из booking_events (та же логика, что мок), тут только «прочитано»
+model BizInboxRead {
+  businessId String @map("business_id") @db.VarChar(32)
+  eventId    String @map("event_id") @db.VarChar(32)
+
+  @@id([businessId, eventId])
+  @@map("biz_inbox_read")
 }

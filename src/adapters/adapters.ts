@@ -3,12 +3,12 @@ import { env } from '../common/config/env.js';
 import { FakeCodeSender, TelegramGatewaySender, type CodeChannel, type CodeSender } from './code-sender/code-sender.js';
 import { FakeMailSender, type MailSender } from './mail/mail.js';
 import { FakePaymentProvider, type PaymentProvider } from './payments/payments.js';
-import { FakePushSender, type PushSender } from './push/push.js';
+import { createPushSenders, type PushSenders } from './push/push.js';
 import { createFileStorage, type FileStorage } from './storage/storage.js';
 
 /** «Розетки» внешних сервисов (PLAN.md Р14): внедряются по токенам, этапы заменяют заглушки настоящими */
 export const CODE_SENDERS = Symbol('CODE_SENDERS');
-export const PUSH_SENDER = Symbol('PUSH_SENDER');
+export const PUSH_SENDERS = Symbol('PUSH_SENDERS');
 export const MAIL_SENDER = Symbol('MAIL_SENDER');
 export const PAYMENTS = Symbol('PAYMENTS');
 export const BUSINESS_MESSENGER = Symbol('BUSINESS_MESSENGER');
@@ -25,7 +25,7 @@ export const adapterProviders = [
       sms: new FakeCodeSender('sms'),
     }),
   },
-  { provide: PUSH_SENDER, useFactory: (): PushSender => new FakePushSender() },
+  { provide: PUSH_SENDERS, useFactory: (): PushSenders => createPushSenders() },
   { provide: MAIL_SENDER, useFactory: (): MailSender => new FakeMailSender() },
   { provide: PAYMENTS, useFactory: (): PaymentProvider => new FakePaymentProvider() },
   { provide: BUSINESS_MESSENGER, useFactory: (): BusinessMessenger => new FakeBusinessMessenger() },

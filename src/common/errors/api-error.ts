@@ -99,6 +99,8 @@ export const ERROR_STATUS = {
   bad_date: HttpStatus.UNPROCESSABLE_ENTITY,
   validation: HttpStatus.BAD_REQUEST,
   internal: HttpStatus.INTERNAL_SERVER_ERROR,
+  // уведомления (этап 10) — как в моке фронта (src/api/notify.ts: 'notify/weekly-push-limit')
+  weekly_push_limit: HttpStatus.CONFLICT,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

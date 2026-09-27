@@ -30,6 +30,17 @@ const schema = z.object({
   /** Сколько дней живёт сессия без захода (продлевается при каждом заходе) */
   SESSION_TTL_DAYS: z.coerce.number().int().positive().default(60),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
+  // Уведомления (этап 10, PLAN.md Р14): Web Push и FCM настоящие — есть ключи, шлём по-настоящему; нет — заглушка в лог
+  /** Пара VAPID (сгенерировать один раз: `npx web-push generate-vapid-keys`) */
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  /** 'mailto:ops@booktime.am' — по спецификации Web Push, контакт для провайдера */
+  VAPID_SUBJECT: z.string().default('mailto:ops@booktime.am'),
+  /** Firebase-сервисный аккаунт (Project Settings → Service accounts → Generate key) для FCM HTTP v1 */
+  FCM_PROJECT_ID: z.string().optional(),
+  FCM_CLIENT_EMAIL: z.string().optional(),
+  /** Как в JSON-файле сервисного аккаунта — с настоящими переводами строк (\n экранированный тоже принимается) */
+  FCM_PRIVATE_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

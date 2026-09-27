@@ -6,6 +6,9 @@ import { PrismaService } from './common/prisma.service.js';
 import { authHousekeeping } from './jobs/auth-housekeeping.js';
 import { scheduleEmptyWeek } from './jobs/schedule-empty-week.js';
 import { journalHolds, journalSeries, journalServices } from './jobs/journal-jobs.js';
+import { notifyServices } from './jobs/notify-jobs.js';
+import { notifyBookingReminders } from './jobs/notify-reminders.js';
+import { notifyEmptyWeek } from './modules/notify/notify-empty-week.js';
 
 /**
  * Воркер: очереди BullMQ и расписания (PLAN.md Р10) — напоминания, снятие заявок по сроку, списания, выгрузки.
@@ -22,8 +25,12 @@ await queue.upsertJobScheduler('schedule-empty-week', { pattern: '0 18 * * 0', t
 // Этап 7: снятие заявок по сроку и раздача окна — каждую минуту; продление серий — ночью
 await queue.upsertJobScheduler('journal-holds', { every: 60_000 }, { name: 'journal.holds', data: {} });
 await queue.upsertJobScheduler('journal-series', { pattern: '0 3 * * *', tz: 'Asia/Yerevan' }, { name: 'journal.series', data: {} });
+// Этап 10: отправитель очереди пушей — часто (сообщение должно уйти за секунды, не минуты); напоминания — раз в 5 мин
+await queue.upsertJobScheduler('notify-dispatch', { every: 20_000 }, { name: 'notify.dispatch', data: {} });
+await queue.upsertJobScheduler('notify-reminders', { every: 300_000 }, { name: 'notify.reminders', data: {} });
 const prisma = new PrismaService();
 const journal = journalServices(prisma, createRedis('worker-journal'));
+const notify = notifyServices(prisma);
 
 const worker = new Worker(
   SYSTEM,
@@ -38,7 +45,8 @@ const worker = new Worker(
     }
     if (job.name === 'schedule.empty-week') {
       const res = await scheduleEmptyWeek(prisma);
-      logger.info({ ...res, count: res.staffIds.length }, 'schedule: пустая неделя у мастеров «всё занято»');
+      const sent = await notifyEmptyWeek(prisma, res.staffIds);
+      logger.info({ ...res, count: res.staffIds.length, sent }, 'schedule: пустая неделя у мастеров «всё занято»');
       return;
     }
     if (job.name === 'journal.holds') {
@@ -49,6 +57,16 @@ const worker = new Worker(
     }
     if (job.name === 'journal.series') {
       logger.info(await journalSeries(journal), 'journal: серии продлены');
+      return;
+    }
+    if (job.name === 'notify.dispatch') {
+      const res = await notify.dispatch.processDue();
+      if (res.sent || res.failed) logger.info(res, 'notify.dispatch');
+      return;
+    }
+    if (job.name === 'notify.reminders') {
+      const res = await notifyBookingReminders(prisma);
+      if (res.sent) logger.info(res, 'notify.reminders');
       return;
     }
     logger.warn({ job: job.name }, 'unknown system job');

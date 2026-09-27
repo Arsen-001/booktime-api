@@ -13,6 +13,11 @@ import { DEFAULT_TZ, localDayRangeUtc, localToUtc, nowLocal, utcToLocal, utcToLo
 import { AvailabilityService } from '../availability/availability.service.js';
 import { toMinutes } from '../availability/engine.js';
 import { OccupyService, personKeyOf, visibilityOf, type BlockInput, type ResourceBlockInput } from '../availability/occupy.js';
+import { isLocale, t, type Locale } from '../../common/i18n/i18n.js';
+import { customTemplateOf } from '../notify/notify-types.service.js';
+import { notifyKindOf } from '../notify/kinds.js';
+import { isStaffEventEnabled } from '../notify/notify-staff-prefs.service.js';
+import { enqueueClientNotification, enqueueOutbox } from '../notify/outbox.js';
 import { JournalSettingsService } from './journal-settings.js';
 import { bookingView, eventView, extrasView, type BookingView } from './journal.views.js';
 import {
@@ -48,6 +53,9 @@ type Db = PrismaService | Tx;
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const J = (v: unknown) => (v === undefined || v === null ? Prisma.DbNull : (v as Prisma.InputJsonValue));
 const addMin = (d: Date, m: number) => new Date(d.getTime() + m * 60_000);
+/** ru-заглушка для LocalizedText (этап 10: пуш всегда несёт хоть какое-то название услуги) */
+const pickRu = (v: unknown): string | undefined => (v as Record<string, string> | null | undefined)?.ru;
+const renderTemplate = (template: string, params: Record<string, string>): string => template.replace(/\{(\w+)\}/g, (_, name: string) => params[name] ?? `{${name}}`);
 
 // ─────────────────────────── права журнала (docs/backend/03 §2, rules/permissions фронта) ───────────────────────────
 
@@ -466,7 +474,8 @@ export class BookingsService {
       }
     }
     if (rows.length) await tx.bookingEvent.createMany({ data: rows });
-    if (next.appUserId) await this.pushInbox(tx, rows, next.appUserId, by);
+    if (next.appUserId) await this.pushInbox(tx, next, rows, next.appUserId, by);
+    await this.notifyStaff(tx, next, rows, by);
   }
 
   /**
@@ -475,8 +484,9 @@ export class BookingsService {
    * Своё же действие клиента (`by === 'client'`, F-00-130-соседнее: не уведомлять человека о его собственном клике)
    * не заводит запись «создано»/«перенесено»; статусы, которые может выставить только бизнес/система, — заводят всегда.
    */
-  private async pushInbox(tx: Tx, events: Prisma.BookingEventCreateManyInput[], appUserId: string, by: string): Promise<void> {
+  private async pushInbox(tx: Tx, next: BookingRow, events: Prisma.BookingEventCreateManyInput[], appUserId: string, by: string): Promise<void> {
     const rows: Prisma.InboxItemCreateManyInput[] = [];
+    const pushable: { eventId: string; kind: string; startLocal: string }[] = [];
     for (const e of events) {
       let kind: string | undefined;
       let bookingId: string | undefined = e.bookingId;
@@ -492,6 +502,7 @@ export class BookingsService {
       }
       if (!kind) continue;
       rows.push({ id: newId('inboxItem'), appUserId, kind, businessId: e.businessId, staffId: e.staffId, bookingId, params: { start: e.startLocal } as Prisma.InputJsonValue });
+      pushable.push({ eventId: e.id as string, kind, startLocal: e.startLocal as string });
     }
     // Пишем в той же транзакции, что и booking_events (атомарно); живой пуш «есть новое» через SSE — сюда
     // не добавляем намеренно: сама transaction ещё не закоммичена, публикация раньше коммита рискует прийти на
@@ -499,6 +510,90 @@ export class BookingsService {
     // `$transaction`, см. touched()/t.businessIds ниже). Колокольчик ленты обновится при следующем открытии
     // экрана; постоянный SSE-канал для inbox — доработка следующего среза, не блокирует этап 9.
     if (rows.length) await tx.inboxItem.createMany({ data: rows });
+    // Этап 10 (05 §3.1): те же переходы шлют настоящий push, а не только тихую строку в ленте — closes
+    // ровно тот разрыв, что зафиксировала PROGRESS.md этапа 9 («лента… не пуш»). Один и тот же dedupeKey
+    // на bookingEvent.id — повторный вызов транзакции (не бывает, но дёшево подстраховаться) не задвоит.
+    if (pushable.length) {
+      const [business, user] = await Promise.all([
+        tx.business.findUnique({ where: { id: next.businessId }, select: { name: true } }),
+        tx.user.findUnique({ where: { id: appUserId }, select: { locale: true } }),
+      ]);
+      const locale: Locale = isLocale(user?.locale) ? user!.locale : 'ru';
+      const serviceId = arr<ServiceLine>(next.services)[0]?.serviceId;
+      const service = serviceId ? await tx.service.findUnique({ where: { id: serviceId }, select: { name: true } }) : null;
+      const serviceName = pickRu(service?.name) ?? '';
+      const businessName = business?.name ?? 'BookTime';
+      for (const p of pushable) {
+        const def = notifyKindOf(p.kind);
+        if (!def) continue;
+        const time = p.startLocal.slice(11, 16);
+        const custom = await customTemplateOf(this.prisma, next.businessId, p.kind, locale);
+        const body = custom ? renderTemplate(custom, { service: serviceName, time, place: businessName }) : t(locale, def.messageKey, { service: serviceName, time, place: businessName });
+        await enqueueClientNotification(tx, {
+          businessId: next.businessId,
+          kind: p.kind,
+          appUserId,
+          title: businessName,
+          body,
+          dedupeKey: `client:${p.kind}:${p.eventId}`,
+        });
+      }
+    }
+  }
+
+  /**
+   * Бизнесу (05 §3.2): новая онлайн-запись клиента + клиент сам отменил/перенёс — мастеру и админам салона.
+   * Только события, где действующее лицо — клиент или сам онлайн-канал; правку персонала себе не шлём.
+   */
+  private async notifyStaff(tx: Tx, next: BookingRow, events: Prisma.BookingEventCreateManyInput[], by: string): Promise<void> {
+    let eventKey: 'new_booking' | 'client_cancelled' | 'client_rescheduled' | undefined;
+    let eventId: string | undefined;
+    for (const e of events) {
+      if (e.kind === 'created' && isOnlineSource(next.source)) {
+        eventKey = 'new_booking';
+        eventId = e.id as string;
+      } else if (e.kind === 'status' && by === 'client' && e.toStatus && isCancelled(e.toStatus)) {
+        eventKey = 'client_cancelled';
+        eventId = e.id as string;
+      } else if (e.kind === 'moved' && by === 'client') {
+        eventKey = 'client_rescheduled';
+        eventId = e.id as string;
+      }
+    }
+    if (!eventKey || !eventId) return;
+    const [staff, admins, client] = await Promise.all([
+      tx.staff.findUnique({ where: { id: next.staffId }, select: { id: true, userId: true } }),
+      tx.staff.findMany({ where: { businessId: next.businessId, role: { in: ['owner', 'admin'] }, status: 'active', userId: { not: null } }, select: { id: true, userId: true } }),
+      next.clientId ? tx.client.findUnique({ where: { id: next.clientId }, select: { name: true } }) : Promise.resolve(null),
+    ]);
+    const recipients = new Map<string, string>(); // userId -> staffId (для проверки StaffNotifyPref)
+    if (staff?.userId) recipients.set(staff.userId, staff.id);
+    for (const a of admins) if (a.userId) recipients.set(a.userId, a.id);
+    if (recipients.size === 0) return;
+    const def = notifyKindOf(`staff_${eventKey}`);
+    if (!def) return;
+    const tz = await this.tzOfLocation(tx, next.locationId);
+    const time = utcToLocal(next.startAt, tz).slice(11, 16);
+    const serviceId = arr<ServiceLine>(next.services)[0]?.serviceId;
+    const [service, users] = await Promise.all([
+      serviceId ? tx.service.findUnique({ where: { id: serviceId }, select: { name: true } }) : Promise.resolve(null),
+      tx.user.findMany({ where: { id: { in: [...recipients.keys()] } }, select: { id: true, locale: true } }),
+    ]);
+    const localeByUser = new Map(users.map((u) => [u.id, isLocale(u.locale) ? u.locale : ('ru' as Locale)]));
+    const params = { client: client?.name ?? 'Client', service: pickRu(service?.name) ?? '', time };
+    for (const [userId, staffId] of recipients) {
+      if (!(await isStaffEventEnabled(this.prisma, staffId, eventKey))) continue;
+      const locale = localeByUser.get(userId) ?? 'ru';
+      await enqueueOutbox(tx, {
+        businessId: next.businessId,
+        app: 'business',
+        kind: def.kind,
+        recipientUserId: userId,
+        title: 'BookTime',
+        body: t(locale, def.messageKey, params),
+        dedupeKey: `staff:${def.kind}:${eventId}:${userId}`,
+      });
+    }
   }
 
   /** Освободилось время в будущем → раздача окна (В-18): сначала лист ожидания */
@@ -508,7 +603,7 @@ export class BookingsService {
     const date = utcToLocalDate(prev.startAt, tz);
     const startMin = toMinutes(utcToLocal(prev.startAt, tz).slice(11, 16));
     const serviceIds = arr<ServiceLine>(prev.services).map((l) => l.serviceId);
-    const entries = await tx.waitlistEntry.findMany({ where: { businessId: prev.businessId, bookingId: null }, select: { id: true, staffIds: true, serviceIds: true, slots: true } });
+    const entries = await tx.waitlistEntry.findMany({ where: { businessId: prev.businessId, bookingId: null }, select: { id: true, staffIds: true, serviceIds: true, slots: true, appUserId: true } });
     const matches = entries.filter((e) => {
       const staffIds = arr(e.staffIds);
       if (staffIds.length && !staffIds.includes(prev.staffId)) return false;
@@ -538,7 +633,35 @@ export class BookingsService {
         discountPct: discount,
       },
     });
-    if (matches.length) await tx.waitlistEntry.updateMany({ where: { id: { in: matches.map((m) => m.id) } }, data: { notifiedAt: new Date() } });
+    if (matches.length) {
+      await tx.waitlistEntry.updateMany({ where: { id: { in: matches.map((m) => m.id) } }, data: { notifiedAt: new Date() } });
+      await this.notifyWaitlistMatches(tx, prev, matches);
+    }
+  }
+
+  /** Первая волна раздачи (В-18): у кого приложение — реальный пуш «освободилось окно», не только пометка */
+  private async notifyWaitlistMatches(tx: Tx, prev: BookingRow, matches: { id: string; appUserId?: string | null }[]): Promise<void> {
+    const withApp = matches.filter((m) => m.appUserId);
+    if (!withApp.length) return;
+    const def = notifyKindOf('waitlist_available')!;
+    const [staff, users] = await Promise.all([
+      tx.staff.findUnique({ where: { id: prev.staffId }, select: { name: true } }),
+      tx.user.findMany({ where: { id: { in: withApp.map((m) => m.appUserId!) } }, select: { id: true, locale: true } }),
+    ]);
+    const localeByUser = new Map(users.map((u) => [u.id, isLocale(u.locale) ? u.locale : ('ru' as Locale)]));
+    const staffName = staff?.name ?? 'BookTime';
+    for (const m of withApp) {
+      const locale = localeByUser.get(m.appUserId!) ?? 'ru';
+      await enqueueClientNotification(tx, {
+        businessId: prev.businessId,
+        kind: def.kind,
+        appUserId: m.appUserId!,
+        title: staffName,
+        body: t(locale, def.messageKey, { staff: staffName }),
+        dedupeKey: `client:waitlist:${m.id}:${prev.id}`,
+        inbox: { kind: 'waitlist_slot', businessId: prev.businessId, staffId: prev.staffId },
+      });
+    }
   }
 
   // ─────────── после коммита: кеш окон и живые события ───────────
@@ -1491,10 +1614,35 @@ export class BookingsService {
         res.hot++;
       } else if (f.stage === 'waitlist' && now.getTime() - f.createdAt.getTime() >= 30 * 60_000) {
         await this.prisma.freedSlot.update({ where: { id: f.id }, data: { stage: 'subscribers', subscribersAt: now } });
+        await this.notifyFavoriteSubscribers(f);
         res.subscribers++;
       }
     }
     return res;
+  }
+
+  /** Вторая волна раздачи, через 30 мин (В-18): подписчики ❤ мастера, не приглушившие новости — тот же переключатель */
+  private async notifyFavoriteSubscribers(f: { id: string; businessId: string; staffId: string }): Promise<void> {
+    const favorites = await this.prisma.favorite.findMany({ where: { targetType: 'staff', targetId: f.staffId, newsMuted: false }, select: { appUserId: true } });
+    if (!favorites.length) return;
+    const [staff, users] = await Promise.all([
+      this.prisma.staff.findUnique({ where: { id: f.staffId }, select: { name: true } }),
+      this.prisma.user.findMany({ where: { id: { in: favorites.map((fv) => fv.appUserId) } }, select: { id: true, locale: true } }),
+    ]);
+    const def = notifyKindOf('waitlist_available')!;
+    const staffName = staff?.name ?? 'BookTime';
+    for (const u of users) {
+      const locale = isLocale(u.locale) ? u.locale : 'ru';
+      await enqueueClientNotification(this.prisma, {
+        businessId: f.businessId,
+        kind: def.kind,
+        appUserId: u.id,
+        title: staffName,
+        body: t(locale, def.messageKey, { staff: staffName }),
+        dedupeKey: `client:waitlist-sub:${f.id}:${u.id}`,
+        inbox: { kind: 'waitlist_slot', businessId: f.businessId, staffId: f.staffId },
+      });
+    }
   }
 
   // ─────────── события записей ───────────
