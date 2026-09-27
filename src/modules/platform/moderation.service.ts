@@ -199,9 +199,10 @@ export class ModerationService {
     });
   }
 
+  /** null, не undefined: `res.json(undefined)` в Express уходит невалидной строкой "undefined", не пустым телом */
   async getStatus(refId: string) {
     const row = await this.prisma.moderationItem.findFirst({ where: { refId }, orderBy: { submittedAt: 'desc' } });
-    return row ? view(row) : undefined;
+    return row ? view(row) : null;
   }
 
   /** Нет записи в очереди — материал старый (до проверки) и виден; иначе — только approved/auto (F-00-168) */

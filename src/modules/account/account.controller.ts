@@ -10,6 +10,7 @@ import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import { codeSent } from '../auth/auth.schemas.js';
 import {
   accountView,
+  dataExportRow,
   loginEventRow,
   patchAccountBody,
   phoneCodeBody,
@@ -57,6 +58,29 @@ export class AccountController {
   @ZodOk(accountView)
   cancelDeletion(@Ctx() ctx: RequestContext) {
     return this.account.cancelDeletion(ctx);
+  }
+
+  @Post('account/data-export')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Выгрузить мои данные (F-15-154) — не чаще раза в сутки' })
+  @ZodOk(dataExportRow)
+  requestDataExport(@Ctx() ctx: RequestContext) {
+    return this.account.requestDataExport(ctx);
+  }
+
+  @Get('account/data-exports')
+  @ApiOperation({ summary: 'История заявок на выгрузку (F-15-154), новые сверху' })
+  @ZodOk(z.array(dataExportRow))
+  listDataExports(@Ctx() ctx: RequestContext) {
+    return this.account.listDataExports(ctx);
+  }
+
+  @Post('account/data-block')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Запрос на блокировку данных (F-15-155) — заявка, не мгновенное действие' })
+  @ZodOk(accountView)
+  requestDataBlock(@Ctx() ctx: RequestContext) {
+    return this.account.requestDataBlock(ctx);
   }
 
   @Post('account/phone/code')

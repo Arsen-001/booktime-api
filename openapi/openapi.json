@@ -1216,6 +1216,12 @@
                         "null"
                       ]
                     },
+                    "dataBlockRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "profile": {
                       "anyOf": [
                         {
@@ -1283,6 +1289,7 @@
                     "sessionsRevokedAt",
                     "deleteRequestedAt",
                     "deletionAt",
+                    "dataBlockRequestedAt",
                     "profile",
                     "version"
                   ]
@@ -1429,6 +1436,12 @@
                         "null"
                       ]
                     },
+                    "dataBlockRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "profile": {
                       "anyOf": [
                         {
@@ -1496,6 +1509,7 @@
                     "sessionsRevokedAt",
                     "deleteRequestedAt",
                     "deletionAt",
+                    "dataBlockRequestedAt",
                     "profile",
                     "version"
                   ]
@@ -1568,6 +1582,12 @@
                         "null"
                       ]
                     },
+                    "dataBlockRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "profile": {
                       "anyOf": [
                         {
@@ -1635,6 +1655,7 @@
                     "sessionsRevokedAt",
                     "deleteRequestedAt",
                     "deletionAt",
+                    "dataBlockRequestedAt",
                     "profile",
                     "version"
                   ]
@@ -1707,6 +1728,12 @@
                         "null"
                       ]
                     },
+                    "dataBlockRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "profile": {
                       "anyOf": [
                         {
@@ -1774,6 +1801,7 @@
                     "sessionsRevokedAt",
                     "deleteRequestedAt",
                     "deletionAt",
+                    "dataBlockRequestedAt",
                     "profile",
                     "version"
                   ]
@@ -1788,6 +1816,241 @@
           }
         ],
         "summary": "Отменить удаление аккаунта",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/account/data-export": {
+      "post": {
+        "operationId": "AccountController_requestDataExport",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "ready": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "requestedAt",
+                    "ready"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Выгрузить мои данные (F-15-154) — не чаще раза в сутки",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/account/data-exports": {
+      "get": {
+        "operationId": "AccountController_listDataExports",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "requestedAt": {
+                        "type": "string"
+                      },
+                      "ready": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "requestedAt",
+                      "ready"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "История заявок на выгрузку (F-15-154), новые сверху",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/account/data-block": {
+      "post": {
+        "operationId": "AccountController_requestDataBlock",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "locale": {
+                      "type": "string",
+                      "enum": [
+                        "ru",
+                        "hy",
+                        "en"
+                      ]
+                    },
+                    "twoFactorEnabled": {
+                      "type": "boolean"
+                    },
+                    "sessionsRevokedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deleteRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deletionAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "dataBlockRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "gender": {
+                              "type": "string"
+                            },
+                            "birthday": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "district": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "photoUrl": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "bigFont": {
+                              "type": "boolean"
+                            },
+                            "timeFormat": {
+                              "type": "string"
+                            },
+                            "consentAt": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "gender",
+                            "birthday",
+                            "district",
+                            "photoUrl",
+                            "bigFont",
+                            "timeFormat",
+                            "consentAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "phone",
+                    "locale",
+                    "twoFactorEnabled",
+                    "sessionsRevokedAt",
+                    "deleteRequestedAt",
+                    "deletionAt",
+                    "dataBlockRequestedAt",
+                    "profile",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Запрос на блокировку данных (F-15-155) — заявка, не мгновенное действие",
         "tags": [
           "account"
         ]
@@ -1952,6 +2215,12 @@
                         "null"
                       ]
                     },
+                    "dataBlockRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "profile": {
                       "anyOf": [
                         {
@@ -2019,6 +2288,7 @@
                     "sessionsRevokedAt",
                     "deleteRequestedAt",
                     "deletionAt",
+                    "dataBlockRequestedAt",
                     "profile",
                     "version"
                   ]
@@ -2109,6 +2379,12 @@
                         "null"
                       ]
                     },
+                    "dataBlockRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "profile": {
                       "anyOf": [
                         {
@@ -2176,6 +2452,7 @@
                     "sessionsRevokedAt",
                     "deleteRequestedAt",
                     "deletionAt",
+                    "dataBlockRequestedAt",
                     "profile",
                     "version"
                   ]
@@ -54704,6 +54981,918 @@
         ],
         "tags": [
           "integrations"
+        ]
+      }
+    },
+    "/v1/platform/moderation": {
+      "get": {
+        "operationId": "PlatformModerationController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-moderation"
+        ]
+      }
+    },
+    "/v1/platform/moderation/counts": {
+      "get": {
+        "operationId": "PlatformModerationController_counts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-moderation"
+        ]
+      }
+    },
+    "/v1/platform/moderation/{id}/approve": {
+      "post": {
+        "operationId": "PlatformModerationController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-moderation"
+        ]
+      }
+    },
+    "/v1/platform/moderation/{id}/reject": {
+      "post": {
+        "operationId": "PlatformModerationController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Отклонить с причиной (F-00-170) — платное возвращает монеты",
+        "tags": [
+          "platform-moderation"
+        ]
+      }
+    },
+    "/v1/platform/moderation/{id}/reopen": {
+      "post": {
+        "operationId": "PlatformModerationController_reopen",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-moderation"
+        ]
+      }
+    },
+    "/v1/platform/reject-reasons": {
+      "get": {
+        "operationId": "PlatformModerationController_reasons",
+        "parameters": [
+          {
+            "name": "all",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-moderation"
+        ]
+      },
+      "put": {
+        "operationId": "PlatformModerationController_saveReason",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-moderation"
+        ]
+      }
+    },
+    "/v1/platform/reject-reasons/{id}/hide": {
+      "post": {
+        "operationId": "PlatformModerationController_hideReason",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-moderation"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/moderation/submit": {
+      "post": {
+        "operationId": "BizModerationController_submit",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/v1/moderation/status/{refId}": {
+      "get": {
+        "operationId": "ModerationStatusController_status",
+        "parameters": [
+          {
+            "name": "refId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/v1/moderation/visible/{refId}": {
+      "get": {
+        "operationId": "ModerationStatusController_visible",
+        "parameters": [
+          {
+            "name": "refId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/v1/platform/businesses": {
+      "get": {
+        "operationId": "PlatformBusinessesController_overview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-businesses"
+        ]
+      }
+    },
+    "/v1/platform/businesses/visit-connected": {
+      "get": {
+        "operationId": "PlatformBusinessesController_visitConnected",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Подключённые на визите — только им можно выдать бесплатный месяц вручную (F-00-019)",
+        "tags": [
+          "platform-businesses"
+        ]
+      }
+    },
+    "/v1/platform/businesses/{id}/ads-opt-in": {
+      "post": {
+        "operationId": "PlatformBusinessesController_setAdsOptIn",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-businesses"
+        ]
+      }
+    },
+    "/v1/platform/businesses/{id}/backups": {
+      "get": {
+        "operationId": "PlatformBusinessesController_backups",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-businesses"
+        ]
+      },
+      "post": {
+        "operationId": "PlatformBusinessesController_makeBackup",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-businesses"
+        ]
+      }
+    },
+    "/v1/platform/businesses/{id}/export": {
+      "post": {
+        "operationId": "PlatformBusinessesController_export",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-businesses"
+        ]
+      }
+    },
+    "/v1/platform/businesses/{id}/leave": {
+      "post": {
+        "operationId": "PlatformBusinessesController_markLeft",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-businesses"
+        ]
+      }
+    },
+    "/v1/platform/support": {
+      "get": {
+        "operationId": "PlatformSupportController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-support"
+        ]
+      }
+    },
+    "/v1/platform/support/{id}/reply": {
+      "post": {
+        "operationId": "PlatformSupportController_reply",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-support"
+        ]
+      }
+    },
+    "/v1/platform/support/{id}/close": {
+      "post": {
+        "operationId": "PlatformSupportController_close",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-support"
+        ]
+      }
+    },
+    "/v1/platform/support/{id}/reopen": {
+      "post": {
+        "operationId": "PlatformSupportController_reopen",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-support"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/ideas": {
+      "post": {
+        "operationId": "BizIdeasController_create",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/ideas/{id}/vote": {
+      "post": {
+        "operationId": "BizIdeasController_vote",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "ideas"
+        ]
+      }
+    },
+    "/v1/platform/ideas": {
+      "get": {
+        "operationId": "PlatformIdeasController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-ideas"
+        ]
+      }
+    },
+    "/v1/platform/ideas/{id}/status": {
+      "post": {
+        "operationId": "PlatformIdeasController_setStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-ideas"
+        ]
+      }
+    },
+    "/v1/platform/sphere-requests": {
+      "get": {
+        "operationId": "PlatformSphereController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-sphere-requests"
+        ]
+      },
+      "post": {
+        "operationId": "PlatformSphereController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-sphere-requests"
+        ]
+      }
+    },
+    "/v1/platform/sphere-requests/{id}": {
+      "put": {
+        "operationId": "PlatformSphereController_save",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-sphere-requests"
+        ]
+      }
+    },
+    "/v1/platform/visits": {
+      "get": {
+        "operationId": "PlatformVisitsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-visits"
+        ]
+      },
+      "post": {
+        "operationId": "PlatformVisitsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-visits"
+        ]
+      }
+    },
+    "/v1/platform/visits/counts": {
+      "get": {
+        "operationId": "PlatformVisitsController_counts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-visits"
+        ]
+      }
+    },
+    "/v1/platform/visits/callbacks-today": {
+      "get": {
+        "operationId": "PlatformVisitsController_callbacksToday",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-visits"
+        ]
+      }
+    },
+    "/v1/platform/visits/{id}": {
+      "put": {
+        "operationId": "PlatformVisitsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-visits"
+        ]
+      }
+    },
+    "/v1/platform/visits/{id}/callback-done": {
+      "post": {
+        "operationId": "PlatformVisitsController_completeCallback",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-visits"
+        ]
+      }
+    },
+    "/v1/platform/overview": {
+      "get": {
+        "operationId": "PlatformOverviewController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-overview"
+        ]
+      }
+    },
+    "/v1/platform/businesses/{id}/full-archive": {
+      "get": {
+        "operationId": "DataRetentionController_fullArchive",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-data-retention"
         ]
       }
     }

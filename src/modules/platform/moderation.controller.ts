@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from '@nestj
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
-import { Biz, Ctx, Platform } from '../../common/http/guards.js';
+import { Authed, Biz, Ctx, Platform } from '../../common/http/guards.js';
 import { Zod } from '../../common/http/validation.js';
 import { moderationListQuery, moderationSubmitBody, rejectBody, rejectReasonBody } from './platform.schemas.js';
 import { ModerationService } from './moderation.service.js';
@@ -64,7 +64,7 @@ export class PlatformModerationController {
   }
 }
 
-/** Кабинет бизнеса: отправить материал на проверку, узнать статус (F-00-168…170) — любой сотрудник, без права */
+/** Кабинет бизнеса: отправить материал на проверку (F-00-168…170) — любой сотрудник, без права */
 @ApiTags('moderation')
 @Controller('v1/biz/:businessId/moderation')
 export class BizModerationController {
@@ -75,15 +75,26 @@ export class BizModerationController {
   submit(@Param('businessId') businessId: string, @Body(new Zod(moderationSubmitBody)) body: z.infer<typeof moderationSubmitBody>) {
     return this.moderation.submit({ ...body, businessId });
   }
+}
+
+/**
+ * Узнать статус по refId (F-00-168…170) — мок зовёт getModerationStatus/isVisibleToClients без businessId
+ * (refId сам по себе ключ вызывающей стороны), поэтому маршрут не под /v1/biz/{b}/: любой вошедший сотрудник
+ * кабинета может спросить статус своего же материала, без арендатора в пути.
+ */
+@ApiTags('moderation')
+@Controller('v1/moderation')
+export class ModerationStatusController {
+  constructor(private readonly moderation: ModerationService) {}
 
   @Get('status/:refId')
-  @Biz()
+  @Authed()
   status(@Param('refId') refId: string) {
     return this.moderation.getStatus(refId);
   }
 
   @Get('visible/:refId')
-  @Biz()
+  @Authed()
   async visible(@Param('refId') refId: string) {
     return { visible: await this.moderation.isVisibleToClients(refId) };
   }

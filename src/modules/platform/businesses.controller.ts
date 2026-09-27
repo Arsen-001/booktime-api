@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
 import { Ctx, Platform } from '../../common/http/guards.js';
@@ -19,8 +19,16 @@ export class PlatformBusinessesController {
     return this.businesses.overview();
   }
 
+  @Get('visit-connected')
+  @Platform()
+  @ApiOperation({ summary: 'Подключённые на визите — только им можно выдать бесплатный месяц вручную (F-00-019)' })
+  visitConnected() {
+    return this.businesses.listVisitBusinesses();
+  }
+
   @Post(':id/ads-opt-in')
   @Platform()
+  @HttpCode(204)
   setAdsOptIn(@Param('id') id: string, @Body(new Zod(adsOptInBody)) body: z.infer<typeof adsOptInBody>) {
     return this.businesses.setAdsOptIn(id, body.optIn);
   }
@@ -45,6 +53,7 @@ export class PlatformBusinessesController {
 
   @Post(':id/leave')
   @Platform()
+  @HttpCode(204)
   markLeft(@Param('id') id: string, @Body(new Zod(markLeftBody)) body: z.infer<typeof markLeftBody>) {
     return this.businesses.markLeft(id, body.dataHanded);
   }

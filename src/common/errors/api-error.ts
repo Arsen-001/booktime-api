@@ -135,6 +135,8 @@ export const ERROR_STATUS = {
   bad_tax_id: HttpStatus.UNPROCESSABLE_ENTITY,
   bad_telegram_url: HttpStatus.UNPROCESSABLE_ENTITY,
   read_only: HttpStatus.LOCKED,
+  // данные и удаление (этап 20) — «Выгрузить мои данные» не чаще раза в сутки (F-15-154, код мока)
+  too_soon: HttpStatus.TOO_MANY_REQUESTS,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

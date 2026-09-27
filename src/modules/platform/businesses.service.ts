@@ -99,6 +99,20 @@ export class PlatformBusinessesService {
     return { fileName: `${what}-${businessId}-${utcToLocalDate(new Date())}.csv`, csv: toCsv(rows, headers), rows: rows.length };
   }
 
+  /** F-00-019: подключённые нами на визите — только им можно выдать бесплатный месяц вручную (billing.grantFreeDays) */
+  async listVisitBusinesses() {
+    const metas = await this.prisma.bizMeta.findMany({ where: { source: 'visit' } });
+    const bizIds = metas.map((m) => m.businessId);
+    const [businesses, subs] = await Promise.all([
+      this.prisma.business.findMany({ where: { id: { in: bizIds }, leftAt: null }, select: { id: true, name: true } }),
+      this.prisma.subscription.findMany({ where: { businessId: { in: bizIds } }, select: { businessId: true, freeUntil: true } }),
+    ]);
+    const freeUntilOf = new Map(subs.map((s) => [s.businessId, s.freeUntil]));
+    return businesses
+      .map((b) => ({ id: b.id, name: b.name, freeUntil: freeUntilOf.get(b.id) ? utcToLocalDate(freeUntilOf.get(b.id)!) : undefined }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   /** «Бизнес ушёл, данные выданы» — пропадает из каталога (business.leftAt), не отменяется (F-00-183) */
   async markLeft(businessId: string, dataHanded: boolean) {
     const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { id: true } });

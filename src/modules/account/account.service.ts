@@ -40,6 +40,7 @@ export class AccountService {
       sessionsRevokedAt: iso(u.sessionsRevokedAt),
       deleteRequestedAt: iso(u.deleteRequestedAt),
       deletionAt: u.deleteRequestedAt ? new Date(u.deleteRequestedAt.getTime() + ACCOUNT_DELETION_DAYS * 86_400_000).toISOString() : null,
+      dataBlockRequestedAt: iso(u.dataBlockRequestedAt),
       profile: p
         ? {
             gender: p.gender,
@@ -113,6 +114,45 @@ export class AccountService {
       if (!u.deleteRequestedAt) return;
       await tx.user.update({ where: { id: userId }, data: { deleteRequestedAt: null, updatedBy: userId, version: { increment: 1 } } });
       await this.audit.record(tx, ctx, { action: 'delete_cancel', entityType: 'user', entityId: userId, before: { deleteRequestedAt: u.deleteRequestedAt.toISOString() }, after: { deleteRequestedAt: null } });
+    });
+    return this.get(userId);
+  }
+
+  // ─────────── этап 20: данные и удаление (F-15-154/155, 06 §6) ───────────
+
+  /** «Выгрузить мои данные» (F-15-154) — не чаще раза в сутки; готовность мгновенная (расчёт синхронный) */
+  async requestDataExport(ctx: RequestContext) {
+    const userId = ctx.session!.userId;
+    const last = await this.prisma.accountDataExport.findFirst({ where: { userId }, orderBy: { at: 'desc' } });
+    if (last && Date.now() - last.at.getTime() < 86_400_000) throw new ApiError('too_soon', 'Already exported today — once a day at most');
+    const id = newId('accountDataExport');
+    const row = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.accountDataExport.create({ data: { id, userId } });
+      await this.audit.record(tx, ctx, { action: 'export', entityType: 'user', entityId: userId, after: { at: created.at.toISOString() } });
+      return created;
+    });
+    return { id: row.id, requestedAt: row.at.toISOString(), ready: true };
+  }
+
+  /** История заявок на выгрузку, новые сверху (для PrivacyTab фронта) */
+  async listDataExports(ctx: RequestContext) {
+    const rows = await this.prisma.accountDataExport.findMany({ where: { userId: ctx.session!.userId }, orderBy: { at: 'asc' }, take: 50 });
+    return rows.map((r) => ({ id: r.id, requestedAt: r.at.toISOString(), ready: true }));
+  }
+
+  /**
+   * «Запрос на блокировку данных» (F-15-155) — заявка, не мгновенное действие; по закону о персональных данных,
+   * формулировку и то, что именно блокируется, должен подтвердить юрист (docs/backend/08, открытый вопрос вне
+   * этого этапа) — сервер честно только записывает заявку и не позволяет подать её дважды подряд.
+   */
+  async requestDataBlock(ctx: RequestContext) {
+    const userId = ctx.session!.userId;
+    await this.prisma.$transaction(async (tx) => {
+      const u = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+      if (u.dataBlockRequestedAt) return;
+      const at = new Date();
+      await tx.user.update({ where: { id: userId }, data: { dataBlockRequestedAt: at, updatedBy: userId, version: { increment: 1 } } });
+      await this.audit.record(tx, ctx, { action: 'data_block_request', entityType: 'user', entityId: userId, before: { dataBlockRequestedAt: null }, after: { dataBlockRequestedAt: at.toISOString() } });
     });
     return this.get(userId);
   }

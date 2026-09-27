@@ -36,6 +36,8 @@ export const accountView = z.object({
   deleteRequestedAt: z.string().nullable(),
   /** Когда аккаунт удалится (через 25 дней после запроса) */
   deletionAt: z.string().nullable(),
+  /** «Запрос на блокировку данных» подан и ждёт рассмотрения (F-15-155, этап 20) */
+  dataBlockRequestedAt: z.string().nullable(),
   profile: z
     .object({
       gender: z.string(),
@@ -69,4 +71,13 @@ export const loginEventRow = z.object({
   device: z.string(),
   ip: z.string(),
   current: z.boolean(),
+});
+
+// ─────────── этап 20: данные и удаление (F-15-154/155) ───────────
+
+/** «Выгрузить мои данные» (F-15-154) — история заявок, новые сверху; готовность всегда мгновенная */
+export const dataExportRow = z.object({
+  id: z.string(),
+  requestedAt: z.string(),
+  ready: z.boolean(),
 });

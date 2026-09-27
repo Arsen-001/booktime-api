@@ -12,6 +12,7 @@ import { reportsExportDispatch } from './jobs/reports-export.js';
 import { notifyEmptyWeek } from './modules/notify/notify-empty-week.js';
 import { billingDispatch } from './jobs/billing-tick.js';
 import { webhooksDispatch } from './jobs/webhooks-dispatch.js';
+import { businessRetentionTick } from './jobs/business-retention.js';
 
 /**
  * Воркер: очереди BullMQ и расписания (PLAN.md Р10) — напоминания, снятие заявок по сроку, списания, выгрузки.
@@ -39,6 +40,8 @@ await queue.upsertJobScheduler('billing-retry', { every: 300_000 }, { name: 'bil
 // Этап 17: доставка вебхуков — подпись + до 5 попыток с отступом (fan-out кладёт AuditService.record); часто,
 // как notify.dispatch — событие должно уйти за секунды
 await queue.upsertJobScheduler('webhooks-dispatch', { every: 10_000 }, { name: 'webhooks.dispatch', data: {} });
+// Этап 20: хранение и обезличивание при уходе бизнеса (B6) — раз в сутки, срок считается в днях, не в минутах
+await queue.upsertJobScheduler('business-retention', { pattern: '0 4 * * *', tz: 'Asia/Yerevan' }, { name: 'business.retention', data: {} });
 const prisma = new PrismaService();
 const journal = journalServices(prisma, createRedis('worker-journal'));
 const notify = notifyServices(prisma);
@@ -92,6 +95,11 @@ const worker = new Worker(
     }
     if (job.name === 'webhooks.dispatch') {
       await webhooksDispatch(prisma);
+      return;
+    }
+    if (job.name === 'business.retention') {
+      const res = await businessRetentionTick(prisma);
+      if (res.businesses || res.clients) logger.info(res, 'business.retention');
       return;
     }
     logger.warn({ job: job.name }, 'unknown system job');

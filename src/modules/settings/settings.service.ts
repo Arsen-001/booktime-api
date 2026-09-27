@@ -335,15 +335,29 @@ export class SettingsService {
     return this.requestView(row);
   }
 
+  /**
+   * Статус этой таблицы решает наша панель (этап 19: open|agreed|inProgress|done, F-00-151/152) — кабинет
+   * знает только open|answered|closed (HelpRequestStatus фронта, как у help-requests); сведено картой, а не
+   * общим словарём — то же решение, что PLATFORM_STATUS/BIZ_TO_QUEUE у поддержки того же этапа.
+   */
+  private static readonly SPHERE_STATUS_TO_BIZ: Record<string, 'open' | 'answered' | 'closed'> = {
+    open: 'open',
+    agreed: 'answered',
+    inProgress: 'answered',
+    done: 'closed',
+    answered: 'answered',
+    closed: 'closed',
+  };
+
   private sphereView(r: Prisma.SphereRequestGetPayload<object>) {
     return {
       id: r.id,
-      businessId: r.businessId,
-      authorStaffId: r.authorStaffId,
+      businessId: r.businessId ?? undefined,
+      authorStaffId: r.authorStaffId ?? undefined,
       name: r.name,
       message: r.message ?? undefined,
       createdAt: utcToLocal(r.createdAt),
-      status: r.status,
+      status: SettingsService.SPHERE_STATUS_TO_BIZ[r.status] ?? 'open',
       checklist: (r.checklist ?? undefined) as { id: string; labelKey: string; done: boolean }[] | undefined,
       etaDate: r.etaDate ?? undefined,
       readyAt: r.readyAt ?? undefined,

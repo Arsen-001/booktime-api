@@ -17,6 +17,31 @@ import { bookingIndex, clientBookings, withVisits } from './clients.visits.js';
 const QUICK_PICKS: QuickPick[] = ['new', 'repeat', 'lost', 'subscriptionEnding', 'noShow', 'chatLeads'];
 
 /**
+ * Поля обезличивания клиента (F-04-211, P11) — общие для запроса самого клиента и для автоматики этапа 20
+ * (B6: бизнес ушёл, 90 дней после выгрузки истекли). Комментарии/файлы стираются отдельно (не поле).
+ *
+ * Этап 20, найдено и исправлено: `phone` — `VarChar(20)`, а полный id (`cl_<ULID>`, до 29 символов) внутри
+ * `purged:${id}` в него не помещался — `purgeClientData` падал `P2000 LengthMismatch` при первом же реальном
+ * вызове (стадия 5 никогда не проверяла это на настоящей MySQL). Берём хвост id — короче колонки, отличим друг
+ * от друга внутри одного бизнеса, и не похож на настоящий номер, поиском больше не найдётся.
+ */
+function purgedClientFields(id: string) {
+  return {
+    name: 'Удалённый клиент',
+    phone: `x${id.slice(-14)}`,
+    email: null,
+    note: null,
+    tags: [],
+    birthday: null,
+    additionalPhone: null,
+    nationalId: null,
+    adConsent: Prisma.DbNull,
+    customFieldValues: Prisma.DbNull,
+    purgedAt: new Date(),
+  };
+}
+
+/**
  * Проверка номера (F-04-049): армянский — строго 8 местных цифр после +374; другой код страны (F-04-047)
  * принимаем как есть, не короче 6 местных цифр. Тот же приём, что `validatePhone` фронта (src/api/clients/shared.ts).
  */
@@ -305,26 +330,31 @@ export class ClientsService {
     const client = await this.prisma.client.findFirst({ where: { id, businessId } });
     if (!client) throw new ApiError('not_found', 'Client not found');
     await this.prisma.$transaction(async (tx) => {
-      await tx.client.update({
-        where: { id },
-        data: {
-          name: 'Удалённый клиент',
-          phone: `purged:${id}`,
-          email: null,
-          note: null,
-          tags: [],
-          birthday: null,
-          additionalPhone: null,
-          nationalId: null,
-          adConsent: Prisma.DbNull,
-          customFieldValues: Prisma.DbNull,
-          purgedAt: new Date(),
-          deletedAt: client.deletedAt ?? new Date(),
-          version: { increment: 1 },
-        },
-      });
-      await this.audit.record(tx, ctx, { action: 'purged', entityType: 'client', entityId: id, businessId, after: { name: 'Удалённый клиент' } });
+      await tx.client.update({ where: { id }, data: { ...purgedClientFields(id), deletedAt: client.deletedAt ?? new Date(), version: { increment: 1 } } });
+      // P11 (docs/backend/03 §3): «заметки/файлы/комментарии стираются» — не только поле note на карточке
+      await tx.clientComment.deleteMany({ where: { clientId: id } });
+      await tx.clientFile.deleteMany({ where: { clientId: id } });
+      await this.audit.record(tx, ctx, { action: 'purged', entityType: 'client', entityId: id, businessId, before: { name: client.name }, after: { name: 'Удалённый клиент' } });
     });
+  }
+
+  /**
+   * Этап 20 (B6, F-00-183): бизнес ушёл, 90 дней после выгрузки истекли — обезличиваем всех его клиентов сами,
+   * без действия сотрудника (доступ к кабинету к этому моменту не гарантирован). Идемпотентно: `purgedAt` на
+   * клиенте — тот же флаг «уже сделано», что и у ручного запроса F-04-211, так что повторный прогон job-а
+   * трогает только новые/ещё не обезличенные строки.
+   */
+  async purgeAllClientsForBusiness(businessId: string): Promise<number> {
+    const clients = await this.prisma.client.findMany({ where: { businessId, purgedAt: null }, select: { id: true, name: true } });
+    for (const c of clients) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.client.update({ where: { id: c.id }, data: { ...purgedClientFields(c.id), deletedAt: new Date(), version: { increment: 1 } } });
+        await tx.clientComment.deleteMany({ where: { clientId: c.id } });
+        await tx.clientFile.deleteMany({ where: { clientId: c.id } });
+        await this.audit.record(tx, null, { action: 'purged', entityType: 'client', entityId: c.id, businessId, before: { name: c.name }, after: { name: 'Удалённый клиент' } });
+      });
+    }
+    return clients.length;
   }
 
   /** Только номер — для проверки «есть ли приложение» (getAppActivity), без права clients.phones */

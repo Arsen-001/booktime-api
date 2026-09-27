@@ -71,6 +71,8 @@ model User {
   /// Удаление аккаунта через 25 дней, можно отменить (F-10-129, F-15-158)
   deleteRequestedAt DateTime? @map("delete_requested_at") @db.DateTime(3)
   deletedAt         DateTime? @map("deleted_at") @db.DateTime(3)
+  /// «Запрос на блокировку данных» (F-15-155) — этап 20, заявка на рассмотрение, юр. текст не решён (Р14-подобно)
+  dataBlockRequestedAt DateTime? @map("data_block_requested_at") @db.DateTime(3)
   createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
   createdBy         String?   @map("created_by") @db.VarChar(32)
@@ -3463,3 +3465,22 @@ model PlatformCounter {
 }
 
 // === end stage 19 ===
+
+// === stage 20 ===
+// Данные и удаление (docs/backend/01 §10, 06 §6). Выгрузка при уходе бизнеса и хранение (B6) используют
+// Business.leftAt / BizMeta.dataHandedAt уже заведённые этапом 19; клиентское обезличивание — существующее
+// Client.purgedAt (F-04-211, этап 5). Журнал входов (F3) и закрытие аккаунта через 25 дней (F-15-158) уже
+// делает jobs/auth-housekeeping.ts (этап 1) — здесь только сама очистка данных аккаунта, которую тот job
+// сознательно оставил этому этапу.
+
+/// «Выгрузить мои данные» (F-15-154) — личная копия того, что хранит платформа об аккаунте; не чаще раза в
+/// сутки (ensurePersonalAccount мока). Готовность всегда мгновенная — расчёт синхронный, очередь не нужна.
+model AccountDataExport {
+  id     String   @id @db.VarChar(32)
+  userId String   @map("user_id") @db.VarChar(32)
+  at     DateTime @default(now()) @db.DateTime(3)
+
+  @@index([userId, at])
+  @@map("account_data_exports")
+}
+// === end stage 20 ===

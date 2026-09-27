@@ -1,4 +1,5 @@
 import type { PrismaService } from '../common/prisma.service.js';
+import { anonymizeAppUserData } from '../modules/account/account-anonymize.js';
 
 const DAY = 86_400_000;
 /** Как ACCOUNT_DELETION_DAYS в modules/account (F-10-129) */
@@ -8,7 +9,9 @@ const LOGIN_EVENTS_KEEP_DAYS = 365;
 
 /**
  * Уборка входа (воркер, раз в час): старые коды, журнал входов старше года, наступившие удаления аккаунтов.
- * Удаление здесь — «аккаунт закрыт» (вход невозможен, сессии отозваны); чистку данных делает этап 20.
+ * Удаление здесь — «аккаунт закрыт» (вход невозможен, сессии отозваны) И обезличивание данных приложения
+ * (F-05-064, B7, P11, этап 20, account-anonymize.ts) в той же транзакции — `deletedAt IS NULL` в выборке ниже
+ * делает шаг идемпотентным: обработанный однажды пользователь больше не попадёт в `due`.
  */
 export async function authHousekeeping(prisma: PrismaService): Promise<Record<string, number>> {
   const now = Date.now();
@@ -20,11 +23,12 @@ export async function authHousekeeping(prisma: PrismaService): Promise<Record<st
     select: { id: true },
   });
   for (const u of due) {
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: u.id }, data: { deletedAt: new Date(), version: { increment: 1 } } }),
-      prisma.session.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date(), revokeReason: 'deleted' } }),
-      prisma.pushToken.deleteMany({ where: { userId: u.id } }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: u.id }, data: { deletedAt: new Date(), name: 'Удалённый пользователь', phone: null, version: { increment: 1 } } });
+      await tx.session.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date(), revokeReason: 'deleted' } });
+      await tx.pushToken.deleteMany({ where: { userId: u.id } });
+      await anonymizeAppUserData(tx, u.id);
+    });
   }
   return { otp: otp.count, loginEvents: events.count, sessions: sessions.count, accountsClosed: due.length };
 }

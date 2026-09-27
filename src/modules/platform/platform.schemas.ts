@@ -84,6 +84,8 @@ export const sphereSaveBody = z.object({
 export const VISIT_STATUSES = ['connected', 'thinking', 'refused'] as const;
 export const VISIT_TOOLS = ['dikidi', 'altegio', 'whatsapp', 'notebook', 'other', 'nothing'] as const;
 
+export const visitListQuery = z.object({ status: z.enum(VISIT_STATUSES).optional(), district: z.string().max(40).optional() });
+
 export const visitInputBody = z.object({
   placeName: z.string().min(1).max(160),
   contactName: z.string().max(160).optional(),
@@ -102,8 +104,7 @@ export const visitInputBody = z.object({
 });
 
 export const visitPatchBody = visitInputBody.partial();
-export const callbackDateBody = z.object({ callbackDate: z.string().length(10) });
-export const visitConnectBody = z.object({ businessId: z.string().min(1).max(32) });
+export const completeCallbackBody = z.object({ note: z.string().max(2000).optional() });
 
 // ─────────────────────────── Копии (F-00-183) ───────────────────────────
 

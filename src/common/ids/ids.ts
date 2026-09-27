@@ -166,6 +166,9 @@ export const ID_PREFIX = {
   backupCopy: 'bkp',
   idea: 'idea',
   salesVisit: 'ovis',
+  salesVisitEvent: 'vev',
+  // этап 20 — данные и удаление: личная выгрузка «мои данные» (F-15-154) — только на сервере, свой префикс
+  accountDataExport: 'adex',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;
