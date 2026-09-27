@@ -119,6 +119,9 @@ export const BIZ_OPS: Record<string, Permission[]> = {
   confirmOnlineOrder: SELL,
   rejectOnlineOrder: SELL,
   refundOnlineOrder: SELL,
+  // автосписание с абонемента участника события (F-16-062, port/extra-ops.ts)
+  getBookingAutoCharge: ANY,
+  chargeBookingAutoDebit: VISIT,
 };
 
 /** Клиент приложения (/v1/me): первый аргумент — его userId (listMyLoyalty) или бизнес (реквизиты оплаты) */

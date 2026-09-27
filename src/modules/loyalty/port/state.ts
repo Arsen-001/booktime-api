@@ -41,10 +41,18 @@ export interface LoyaltyState {
   onlineSaleWidget: Record<Id, OnlineSaleWidgetSettings>;
   onlineOrders: OnlineOrder[];
   discountNotify: Record<Id, DiscountNotifySettings>;
+  /** F-16-062 (срез resources фронта, `autoChargeStatus`): итог автосписания с абонемента по брони участника */
+  autoChargeStatus: Record<Id, AutoChargeStatus>;
+}
+
+export interface AutoChargeStatus {
+  status: 'charged' | 'not_charged';
+  membershipId?: Id;
+  at: string;
 }
 
 /** Настройки среза, которые не сущности: одна строка business_settings (area='loyalty-port') на бизнес */
-export const SETTINGS_KEYS = ['autoApply', 'referral', 'serviceAutoCharge', 'onlineRequireMembership', 'onlineSalePayment', 'onlineSaleWidget', 'discountNotify'] as const;
+export const SETTINGS_KEYS = ['autoApply', 'referral', 'serviceAutoCharge', 'onlineRequireMembership', 'onlineSalePayment', 'onlineSaleWidget', 'discountNotify', 'autoChargeStatus'] as const;
 export type SettingsKey = (typeof SETTINGS_KEYS)[number];
 
 export interface SettingsBag {
@@ -55,6 +63,7 @@ export interface SettingsBag {
   onlineSalePayment?: Record<Id, OnlineSalePaymentSettings>;
   onlineSaleWidget?: Record<Id, OnlineSaleWidgetSettings>;
   discountNotify?: Record<Id, DiscountNotifySettings>;
+  autoChargeStatus?: Record<Id, AutoChargeStatus>;
   paidBookingIds?: Id[];
 }
 
@@ -80,5 +89,6 @@ export function emptyState(): LoyaltyState {
     onlineSaleWidget: {},
     onlineOrders: [],
     discountNotify: {},
+    autoChargeStatus: {},
   };
 }

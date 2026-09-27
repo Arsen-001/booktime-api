@@ -187,6 +187,48 @@ export class ReportsController {
     return { ok: true as const };
   }
 
+  // ─────────────────────────── F-12-057…062: «Товары» ───────────────────────────
+  // Упрощение против мока (записано в docs/PROGRESS.md этапа 21): «Просмотр себестоимости» — общее право
+  // `finance.view` (то же решение, что докстринг класса выше про «Финансовый отчёт»), а не отдельная матрица
+  // складов StockStaffPermissions.warehouseAccess лейна «finance+stock» — те склады сервер пока не режет.
+
+  @Get('stock-balance')
+  @Biz('reports.view')
+  stockBalance(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Query(new Zod(stockBalanceQuery)) q: z.infer<typeof stockBalanceQuery>) {
+    const { locationId, ...filters } = q;
+    return this.stock.balance(businessId, locationId, filters, ctx.member!.permissions.has('finance.view'), undefined);
+  }
+
+  @Get('stock-order')
+  @Biz('reports.view')
+  stockOrder(@Param('businessId') businessId: string, @Query(new Zod(stockOrderQuery)) q: z.infer<typeof stockOrderQuery>) {
+    return this.stock.order(businessId, q.locationId, q.categoryId, q.onlyCritical);
+  }
+
+  @Get('stock-sales-analysis')
+  @Biz('reports.view')
+  stockSalesAnalysis(@Param('businessId') businessId: string, @Query(new Zod(stockRangeCategoryQuery)) q: z.infer<typeof stockRangeCategoryQuery>) {
+    return this.stock.salesAnalysis(businessId, q.locationId, { from: q.from, to: q.to }, q.categoryId, q.staffId);
+  }
+
+  @Get('stock-usage-analysis')
+  @Biz('reports.view')
+  stockUsageAnalysis(@Param('businessId') businessId: string, @Query(new Zod(stockRangeCategoryQuery)) q: z.infer<typeof stockRangeCategoryQuery>) {
+    return this.stock.usageAnalysis(businessId, q.locationId, { from: q.from, to: q.to }, q.categoryId);
+  }
+
+  @Get('stock-write-off')
+  @Biz('reports.view')
+  stockWriteOff(@Param('businessId') businessId: string, @Query(new Zod(stockWriteOffQuery)) q: z.infer<typeof stockWriteOffQuery>) {
+    return this.stock.writeOff(businessId, q.locationId, { range: { from: q.from, to: q.to }, warehouseId: q.warehouseId, categoryId: q.categoryId, unitMode: q.unitMode, countMoves: q.countMoves });
+  }
+
+  @Get('stock-turnover')
+  @Biz('reports.view')
+  stockTurnover(@Param('businessId') businessId: string, @Query(new Zod(stockTurnoverQuery)) q: z.infer<typeof stockTurnoverQuery>) {
+    return this.stock.turnover(businessId, q.locationId, { from: q.from, to: q.to }, q.categoryId, q.warehouseId);
+  }
+
   // ─────────────────────────── docs/backend/02 §16: `GET …/reports/{name}` ───────────────────────────
 
   @Get(':name')
