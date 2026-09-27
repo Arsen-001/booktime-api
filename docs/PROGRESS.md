@@ -25,7 +25,7 @@
 | 18 | Настройки, подписка, монеты, промокоды | [x] | см. историю: «Этап 18 …» (сервер), «backend stage 18: …» (фронт) |
 | 19 | Модерация и наша панель | [x] | см. историю «Этап 19 …», «Этап 19, попытка 2 …», «Этап 19, попытка 3 …» (сервер+фронт) — модерация/бизнесы/поддержка/идеи/заявки на сферы/визиты/обзор (попытка 1) + спрос/first-awards, реклама+сторис (без покупки места и картинки), заметки основателя (попытка 2) + ConnectDraft, подключение салона за 10 минут (попытка 3) — весь §19 построен и проверен |
 | 20 | Данные и удаление | [x] | см. историю «Этап 20 …» (сервер; фронт — `src/api/session.ts` + `src/api/settings.ts`, F-15-154/155) |
-| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн client попытка 5 — отчёты вкладки «Приложение» закрыты (4 функции), новый backend-модуль (`AppReportsService`/`Controller`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр; лейн resources попытка 2 — из 41 закрыто 40 (было 20): достроен `ResourcesEventsController`+модуль (`resources-events.*` лежал без контроллера), 3 новых метода листа ожидания (create/close/remove), 8 недостающих кодов ошибок, backfill `EventSeriesDef` под уже сеяные `GroupEvent.seriesId`; осталось 1 — `getBookingAutoCharge` (ждёт лейна «loyalty») |
+| 21 | Сдача | [ ] | попытка 1 — docs/backend/*, `.env.example`/README, аудит фасадов + 1 находка/фикс (`platform/team.ts`); попытка 2 — уточнённый аудит (реальных дыр 142, не 170), закрыты 5 (`schedule/demo.ts`×2, `schedule/calendar.ts`×2, мёртвый код `staff.ts::listSystemUsers`), проверено настоящим входом на живом деве; «все фасады» — не выполнено по объёму (137 осталось в 4 файлах), продолжает следующий заход; лейн client попытка 4 — отзывы В-24 закрыты (5 функций), новый backend-модуль (`StaffReview`/`LocationReview`); лейн client попытка 5 — отчёты вкладки «Приложение» закрыты (4 функции), новый backend-модуль (`AppReportsService`/`Controller`); лейн services+rest — `services.ts` закрыт 11/11, `schedule/table.ts` +2 новых маршрута (day-info/move-candidates), `payroll.ts` 2/9, `clients/catalog.ts` 1/3; остальные мелкие файлы (calendar/slots/settings/schedule-staff/staff) перепроверены — уже 0 дыр; лейн resources попытка 2 — из 41 закрыто 40 (было 20): достроен `ResourcesEventsController`+модуль (`resources-events.*` лежал без контроллера), 3 новых метода листа ожидания (create/close/remove), 8 недостающих кодов ошибок, backfill `EventSeriesDef` под уже сеяные `GroupEvent.seriesId`; осталось 1 — `getBookingAutoCharge` (ждёт лейна «loyalty»); лейн resources попытка 3 — из 41 по-прежнему закрыто 40, но нашёл и починил 2 функции, ошибочно числившиеся закрытыми в попытке 2 (`notifyWaitlistForFreedSlot`/`getWaitlistNotifications` — сервер и обёртка были готовы, в `resources.ts` не хватало строки `isApiMode()`); осталось всё то же 1 — `getBookingAutoCharge`/`chargeBookingAutoDebit`, ждут лейна «loyalty» (на бэкенде до сих пор нет ни `ServiceAutoCharge`, ни правки баланса абонемента) |
 
 ---
 
@@ -4343,3 +4343,64 @@ resources.ts src/api/resources.server.ts` — 0. `node scripts/fids.mjs` — `re
 ### Вопросы владельцу (этап 21, лейн resources, попытка 2)
 Ничего денежного/юридического не всплыло. Технический долг найден («Абонемент» не списывает визит на сервере)
 записан выше и в докстринге кода — территория лейна «loyalty», не эскалирую, не блокирует то, что закрыто здесь.
+
+## Этап 21, лейн «resources», попытка 3 — `src/api/resources.ts` (28.09.2026)
+
+Продолжение попытки 2 (закрыла 40 из 41, осталось `getBookingAutoCharge`/`chargeBookingAutoDebit` — ждут лейна
+«loyalty»). Начал с перепроверки: **сначала стартовый блокер (`resources-events.*`) — не трогать без лока**
+(`/tmp/booktime-db.lock` был занят другим лейном на момент старта, свежий — не трогал DB/сервер/сид, только
+статические проверки, которые лока не требуют).
+
+**Найдена настоящая дыра, которой попытка 2 не заметила**: её же таблица перечисляла `notifyWaitlistForFreedSlot`
+и `getWaitlistNotifications` как переведённые («лист ожидания СВОЕГО экрана... `notifyWaitlistForFreedSlot`/
+`getWaitlistNotifications`»), но построчный awk-скан всех `export function` файла на `isApiMode()` в теле показал,
+что ветки в `resources.ts` для этих двух функций физически нет — обе как были, так и остались чистым `request(() =>
+readArea(...))`. При этом `src/api/resources.server.ts::notifyWaitlistForFreedSlot`/`getWaitlistNotifications`
+(обёртки `http()`) и бэкенд (`resources-events.controller.ts` — `POST .../waitlist/notify`,
+`GET .../waitlist/{id}/notifications`) уже полностью существовали и работали (подтверждено на общем `:4010`:
+`curl .../openapi.json` их числит, прямой `POST`/`GET` без сессии отдают `401`, а не `404` — значит маршрут не
+перехвачен catch-all'ом старого контроллера, тот же класс бага, что попытка 2 уже чинила для других путей этого
+модуля). То есть реализация была на 95% готова с попытки 2, не хватало одной строки `if (isApiMode()) return
+R....` в каждой функции — почему её не было, не знаю (возможно правка потерялась при параллельной правке того же
+файла другим процессом в момент попытки 2, файл активно менялся несколькими лейнами).
+
+**Сделано**:
+- `src/api/resources.ts`: добавил `if (isApiMode()) return R.notifyWaitlistForFreedSlot(businessId, serviceId,
+  date, staffId);` и `if (isApiMode()) return R.getWaitlistNotifications(entryId);` — две строки, никакой другой
+  правки (сервер и `resources.server.ts` уже были готовы).
+- Полный awk-проход по всем `export (async )?function` файла на предмет отсутствующего `isApiMode()` — нашёл ещё
+  16 «MISSING», все проверил построчно: `useCountFutureUsage`/`useWaitlist` — хуки поверх уже переведённых
+  `countFutureUsage`/`listWaitlist`, `countFutureUsageByInstance`/`getResourceDayLoad`/`listGroupServices` —
+  чистые чтения зеркала (`readCore()`/`coreList()`, синхронизируется `mirror.ts` в режиме api, отдельный вызов не
+  нужен — тот же приём, что везде в файле), `seatsTaken`/`isPastEvent`/`toPackageServiceLite`/
+  `computePackageDuration`/`computePackagePrice`/`defaultResourcesFineRights` — чистые вычисления без сети,
+  `logResourcesChange`/`listResourcesChangelog` — уже задокументированное осознанное решение «оставлен на моке»
+  (попытка 1), `updateSeriesEvent` — уже задокументированная осознанная неполная правка (попытка 2). Реальных
+  недостающих веток среди 16 не нашёл — только те две выше.
+
+**Перепроверил блокер `getBookingAutoCharge`/`chargeBookingAutoDebit`**: `grep isApiMode` по `src/api/loyalty.ts`
+для `getServiceAutoCharge`/`getLoyaltyBookingSummary`/`adjustMembership` — по-прежнему 0 совпадений, все три
+чистый мок. На бэкенде (`grep -rn AutoCharge`) — ни настроек `ServiceAutoCharge`, ни эндпоинта правки баланса
+абонемента, ни `schema.prisma`-таблицы под это до сих пор нет вообще (лейн «loyalty» ещё не добрался). Строить это
+самому счёл вне мандата: `loyalty.ts`/`loyalty`-модуль бэкенда — не мои файлы (правило параллельных лейнов «только
+свои файлы»), и это тот же вывод, что попытка 2 уже сделала — оставляю как есть, не эскалирую повторно.
+
+**Проверки** (без лока — не трогал DB/сервер/сид/Playwright): backend `npx tsc --noEmit -p tsconfig.json` — 0
+ошибок. Frontend `npx tsc --noEmit --incremental --tsBuildInfoFile .tsbuild/backend.tsbuildinfo` — 0 ошибок (у
+попытки 2 было 25 в `src/areas/integrations/**`, чужой лейн — сейчас там тоже 0, значит починили). `eslint
+src/api/resources.ts src/api/resources.server.ts` — 0. `node scripts/fids.mjs` — `resources 172/172 100%`. `node
+scripts/renders.mjs --check-compiler` — 0. Живой смоук на общем `:4010` (сервер уже поднят кем-то другим, не я
+его поднимал, лока не требовалось): `openapi.json` — 706 путей, оба новых маршрута на месте; прямой `curl`
+без сессии на оба — `401` (не `404`), то есть Nest доходит до контроллера раньше catch-all. Полный сквозной вызов
+с реальным входом не повторял — тот же путь через `resources-events.controller.ts` уже прогнан попыткой 2 целиком
+(create→list→notify→remove), логика метода не менялась, изменилась только видимость из фасада.
+
+лейн resources: закрыто **40 из 41** (было заявлено 40 и в попытке 2, но 2 из них физически не работали — нашёл и
+починил wiring, взамен пересчитал те же 2 как настоящие «MISSING» и закрыл; итоговый счёт не изменился, но теперь
+он верный). Осталось 1 — `getBookingAutoCharge` (и его пара `chargeBookingAutoDebit`), оба по-прежнему ждут лейна
+«loyalty» (`getServiceAutoCharge`/`getLoyaltyBookingSummary`/`adjustMembership` в `@/api/loyalty` — всё ещё мок и
+на фронте, и на бэкенде: `ServiceAutoCharge`-таблицы/эндпоинта до сих пор нет).
+
+### Вопросы владельцу (этап 21, лейн resources, попытка 3)
+Ничего денежного/юридического. Расхождение с журналом попытки 2 (2 функции числились закрытыми, но не были) —
+починено и записано выше, не эскалирую.

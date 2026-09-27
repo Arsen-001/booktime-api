@@ -9,7 +9,7 @@ import { Zod } from '../../common/http/validation.js';
 import { PayrollCatalogService } from './payroll-catalog.service.js';
 import { PayrollComputeService } from './payroll-compute.service.js';
 import { PayrollSettlementsService } from './payroll-settlements.service.js';
-import { assignmentBody, bonusPenaltyTypeBody, bulkApplySchemeBody, chartBody, criterionBody, generalSettingsBody, payoutBody, ruleBody, schemeBlocksBody, settlementEntryBody, settlementSheetBody } from './payroll.schemas.js';
+import { assignmentBody, bonusPenaltyTypeBody, bulkApplySchemeBody, chartBody, criterionBody, generalSettingsBody, payoutBody, payrollStaffRightsBatchBody, payrollStaffRightsBody, ruleBody, schemeBlocksBody, settlementEntryBody, settlementSheetBody, type PayrollStaffRightsBatchBody, type PayrollStaffRightsBody } from './payroll.schemas.js';
 
 /** Своё ли это (право `payroll.manage` отсутствует) — В-10 «мастер видит свою выручку и зарплату всегда»,
  * без него calcAccess ограничен своим staffId (F-09-085…089: полная модель прав на сотрудника — честный гэп,
@@ -257,6 +257,29 @@ export class PayrollController {
     return { ok: true as const };
   }
 
+  // === stage 21 (лейн services+rest) ═══ Права на раздел «Зарплата» (F-09-085…089) ═══
+
+  @Get('rights')
+  @Biz('staff.manage')
+  listRights(@Ctx() ctx: RequestContext) {
+    return this.catalog.listStaffRights(ctx.member!.businessId);
+  }
+
+  @Post('rights')
+  @Biz('staff.manage')
+  @ZodBody(payrollStaffRightsBody)
+  saveRights(@Ctx() ctx: RequestContext, @Body(new Zod(payrollStaffRightsBody)) body: PayrollStaffRightsBody) {
+    return this.catalog.saveStaffRights(ctx, body);
+  }
+
+  /** З14/М2: несколько сотрудников одной кнопкой — один запрос, не N */
+  @Post('rights/batch')
+  @Biz('staff.manage')
+  @ZodBody(payrollStaffRightsBatchBody)
+  saveRightsBatch(@Ctx() ctx: RequestContext, @Body(new Zod(payrollStaffRightsBatchBody)) body: PayrollStaffRightsBatchBody) {
+    return this.catalog.saveStaffRightsBatch(ctx, body.list);
+  }
+
   // ─────────────────────────── Взаиморасчёты и выплата (F-07-159…162, F-09-066…080) ───────────────────────────
 
   @Post('settlements/sheet')
@@ -345,6 +368,13 @@ export class PayrollStaffController {
   @Biz('payroll.manage')
   copyScheme(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Param('otherStaffId') otherStaffId: string) {
     return this.catalog.copyScheme(ctx, staffId, otherStaffId);
+  }
+
+  /** === stage 21 (лейн services+rest) === F-09-085…089: одного сотрудника — управленческий экран, не самообслуживание */
+  @Get('payroll-rights')
+  @Biz('staff.manage')
+  getRights(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string) {
+    return this.catalog.getStaffRights(ctx.member!.businessId, staffId);
   }
 
   @Get('settlements')

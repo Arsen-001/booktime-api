@@ -6,7 +6,7 @@ import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { emptySchemeBlocks, type SchemeBlocks } from './payroll-engine.js';
-import type { AssignmentBody, BonusPenaltyTypeBody, ChartBody, CriterionBody, GeneralSettingsBody, RuleBody, SchemeBlocksBody } from './payroll.schemas.js';
+import type { AssignmentBody, BonusPenaltyTypeBody, ChartBody, CriterionBody, GeneralSettingsBody, PayrollStaffRightsBody, RuleBody, SchemeBlocksBody } from './payroll.schemas.js';
 
 function jsonOf<T>(v: T): Prisma.InputJsonValue {
   return v as unknown as Prisma.InputJsonValue;
@@ -69,7 +69,9 @@ function bonusPenaltyTypeView(r: { id: string; businessId: string; kind: string;
   return { id: r.id, businessId: r.businessId, kind: r.kind as BonusPenaltyTypeBody['kind'], name: r.name, defaultAmount: Number(r.defaultAmount), createdAt: r.createdAt.toISOString() };
 }
 
-function rightsView(r: { staffId: string; data: unknown; updatedAt: Date }): PayrollStaffRightsBody & { updatedAt: string } {
+export type PayrollStaffRightsView = PayrollStaffRightsBody & { updatedAt: string };
+
+function rightsView(r: { staffId: string; data: unknown; updatedAt: Date }): PayrollStaffRightsView {
   const d = r.data as { schemesAccess: boolean; calcAccess: PayrollStaffRightsBody['calcAccess']; accrueAccess: PayrollStaffRightsBody['accrueAccess']; ownOnlyStaffId: string | null };
   return { staffId: r.staffId, schemesAccess: d.schemesAccess, calcAccess: d.calcAccess, accrueAccess: d.accrueAccess, ownOnlyStaffId: d.ownOnlyStaffId ?? undefined, updatedAt: r.updatedAt.toISOString() };
 }
@@ -367,14 +369,14 @@ export class PayrollCatalogService {
 
   // === stage 21 (лейн services+rest) ═══ Права на раздел «Зарплата» (F-09-085…089) ═══
 
-  async getStaffRights(businessId: string, staffId: string): Promise<PayrollStaffRightsBody | undefined> {
+  async getStaffRights(businessId: string, staffId: string): Promise<PayrollStaffRightsView | undefined> {
     const row = await this.prisma.payrollStaffRights.findFirst({ where: { staffId, businessId } });
     return row ? rightsView(row) : undefined;
   }
 
-  async listStaffRights(businessId: string): Promise<Record<string, PayrollStaffRightsBody>> {
+  async listStaffRights(businessId: string): Promise<Record<string, PayrollStaffRightsView>> {
     const rows = await this.prisma.payrollStaffRights.findMany({ where: { businessId } });
-    const out: Record<string, PayrollStaffRightsBody> = {};
+    const out: Record<string, PayrollStaffRightsView> = {};
     for (const row of rows) out[row.staffId] = rightsView(row);
     return out;
   }
@@ -385,7 +387,7 @@ export class PayrollCatalogService {
     throw new ApiError('forbidden', 'Only staff.manage can change payroll rights');
   }
 
-  async saveStaffRights(ctx: RequestContext, body: PayrollStaffRightsBody): Promise<PayrollStaffRightsBody> {
+  async saveStaffRights(ctx: RequestContext, body: PayrollStaffRightsBody): Promise<PayrollStaffRightsView> {
     this.assertCanEditRights(ctx);
     const businessId = ctx.member!.businessId;
     const staff = await this.prisma.staff.findFirst({ where: { id: body.staffId, businessId } });
@@ -399,7 +401,7 @@ export class PayrollCatalogService {
     return rightsView(row);
   }
 
-  async saveStaffRightsBatch(ctx: RequestContext, list: PayrollStaffRightsBody[]): Promise<PayrollStaffRightsBody[]> {
+  async saveStaffRightsBatch(ctx: RequestContext, list: PayrollStaffRightsBody[]): Promise<PayrollStaffRightsView[]> {
     this.assertCanEditRights(ctx);
     const businessId = ctx.member!.businessId;
     const staffIds = list.map((r) => r.staffId);
