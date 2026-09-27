@@ -1,0 +1,66 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "operationId": "HealthController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "system"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "BookTime API",
+    "description": "Сервер для booking-platform. Ошибки — { code, message } (docs/backend/02-api.md §0).",
+    "version": "0.1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "schemas": {
+      "HealthDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ]
+          },
+          "db": {
+            "type": "boolean"
+          },
+          "redis": {
+            "type": "boolean"
+          },
+          "time": {
+            "type": "string",
+            "description": "Время сервера, UTC ISO"
+          }
+        },
+        "required": [
+          "status",
+          "db",
+          "redis",
+          "time"
+        ]
+      }
+    }
+  }
+}

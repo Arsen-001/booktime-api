@@ -1,0 +1,37 @@
+import 'reflect-metadata';
+import { Queue, Worker } from 'bullmq';
+import { createRedis } from './common/redis.js';
+import { logger } from './common/logging/logger.js';
+
+/**
+ * Воркер: очереди BullMQ и расписания (PLAN.md Р10) — напоминания, снятие заявок по сроку, списания, выгрузки.
+ * Этап 0: одна системная очередь и «пульс» раз в минуту, чтобы было видно, что воркер жив.
+ */
+const connection = createRedis('worker');
+const SYSTEM = 'system';
+
+const queue = new Queue(SYSTEM, { connection });
+await queue.upsertJobScheduler('heartbeat', { every: 60_000 }, { name: 'heartbeat', data: {} });
+
+const worker = new Worker(
+  SYSTEM,
+  async (job) => {
+    if (job.name === 'heartbeat') {
+      await connection.set('booktime:worker:heartbeat', new Date().toISOString(), 'EX', 180);
+      return;
+    }
+    logger.warn({ job: job.name }, 'unknown system job');
+  },
+  { connection: createRedis('worker-consumer') },
+);
+worker.on('failed', (job, err) => logger.error({ job: job?.name, err }, 'job failed'));
+logger.info('worker: очереди запущены');
+
+const stop = async () => {
+  await worker.close();
+  await queue.close();
+  await connection.quit();
+  process.exit(0);
+};
+process.on('SIGINT', stop);
+process.on('SIGTERM', stop);

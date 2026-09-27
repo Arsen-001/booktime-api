@@ -1,0 +1,25 @@
+// BookTime — схема базы (MySQL, UTC). Модель — docs/backend/01-data-model.md фронта, перевод на MySQL — PLAN.md §4.
+// Соглашения: id VARCHAR(32) "<префикс>_<ULID>"; деньги BIGINT драмы; время DATETIME(3) UTC; у каждой таблицы
+// created_at / updated_at / created_by / updated_by / version; внешний ключ — всегда с индексом.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+/// Системные значения (версия схемы, флаги каркаса). Этап 0: чтобы миграции и связь с базой проверялись с первого дня.
+model SystemSetting {
+  key       String   @id @db.VarChar(64)
+  value     Json
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  version   Int      @default(1)
+
+  @@map("system_settings")
+}

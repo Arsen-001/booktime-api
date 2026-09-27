@@ -1,0 +1,33 @@
+# Только для разработки (PLAN.md §2, Р4: хостинг решим позже). Файлы пока в папке на диске (STORAGE_DRIVER=local):
+# образ minio/minio больше не раздаётся с Docker Hub; S3-совместимое хранилище подключается адаптером на этапе файлов. Порты сдвинуты, чтобы не мешать другим проектам на машине.
+name: booktime
+services:
+  mysql:
+    image: mysql:9
+    command: ["--default-time-zone=+00:00", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    environment:
+      MYSQL_ROOT_PASSWORD: booktime-root
+      MYSQL_DATABASE: booktime
+      MYSQL_USER: booktime
+      MYSQL_PASSWORD: booktime
+    ports: ["3316:3306"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pbooktime-root"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  redis:
+    image: redis:7
+    ports: ["6389:6379"]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  mysql-data:
+  redis-data:
