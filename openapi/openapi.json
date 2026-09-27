@@ -48707,7 +48707,26 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "lostClientDays": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "networkId",
+                    "lostClientDays"
+                  ]
+                }
+              }
+            }
           }
         },
         "security": [
@@ -48753,7 +48772,26 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "networkId": {
+                      "type": "string"
+                    },
+                    "lostClientDays": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "networkId",
+                    "lostClientDays"
+                  ]
+                }
+              }
+            }
           }
         },
         "security": [
@@ -50240,6 +50278,451 @@
         ],
         "tags": [
           "network"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/favorites": {
+      "get": {
+        "operationId": "ReportsController_favorites",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/favorites/{slug}": {
+      "post": {
+        "operationId": "ReportsController_toggleFavorite",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "slug": {
+                        "type": "string"
+                      },
+                      "addedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "slug",
+                      "addedAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/permissions/{staffId}": {
+      "get": {
+        "operationId": "ReportsController_permissions",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      },
+      "patch": {
+        "operationId": "ReportsController_setPermissions",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dashboard": {
+                    "type": "boolean"
+                  },
+                  "recordsView": {
+                    "type": "boolean"
+                  },
+                  "recordsDepth": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 30
+                      },
+                      {
+                        "type": "string",
+                        "const": "all"
+                      }
+                    ]
+                  },
+                  "recordsExport": {
+                    "type": "boolean"
+                  },
+                  "recordsPhones": {
+                    "type": "boolean"
+                  },
+                  "financePeriod": {
+                    "type": "boolean"
+                  },
+                  "financeYear": {
+                    "type": "boolean"
+                  },
+                  "cashDayTodayOnly": {
+                    "type": "boolean"
+                  },
+                  "events": {
+                    "type": "boolean"
+                  },
+                  "visits": {
+                    "type": "boolean"
+                  },
+                  "visitsPhones": {
+                    "type": "boolean"
+                  },
+                  "retention": {
+                    "type": "boolean"
+                  },
+                  "workload": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/load/staff/{staffId}": {
+      "patch": {
+        "operationId": "ReportsController_setWorkloadIncluded",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "included": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "included"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Учитывать сотрудника в заполненности» (F-12-008)",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/exports": {
+      "get": {
+        "operationId": "ReportsController_listExports",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Журнал выгрузок отчётов — «Операции с данными» (F-12-074…080)",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/exports/{id}": {
+      "get": {
+        "operationId": "ReportsController_getExport",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/exports/{id}/download": {
+      "get": {
+        "operationId": "ReportsController_download",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/{name}/export": {
+      "post": {
+        "operationId": "ReportsController_requestExport",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Поставить выгрузку отчёта в очередь воркера (PLAN §6 №16)",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/reports/{name}": {
+      "get": {
+        "operationId": "ReportsController_run",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Один маршрут на отчёт: overview | visits | records | events | retention | load | by-staff | by-service | by-client | promotions | messages | data-changes",
+        "tags": [
+          "reports"
         ]
       }
     }

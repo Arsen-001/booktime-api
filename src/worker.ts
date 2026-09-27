@@ -8,6 +8,7 @@ import { scheduleEmptyWeek } from './jobs/schedule-empty-week.js';
 import { journalHolds, journalSeries, journalServices } from './jobs/journal-jobs.js';
 import { notifyServices } from './jobs/notify-jobs.js';
 import { notifyBookingReminders } from './jobs/notify-reminders.js';
+import { reportsExportDispatch } from './jobs/reports-export.js';
 import { notifyEmptyWeek } from './modules/notify/notify-empty-week.js';
 
 /**
@@ -28,6 +29,8 @@ await queue.upsertJobScheduler('journal-series', { pattern: '0 3 * * *', tz: 'As
 // Этап 10: отправитель очереди пушей — часто (сообщение должно уйти за секунды, не минуты); напоминания — раз в 5 мин
 await queue.upsertJobScheduler('notify-dispatch', { every: 20_000 }, { name: 'notify.dispatch', data: {} });
 await queue.upsertJobScheduler('notify-reminders', { every: 300_000 }, { name: 'notify.reminders', data: {} });
+// Этап 16: выгрузка отчёта — CSV должен быть готов быстро, не в час по расписанию
+await queue.upsertJobScheduler('reports-export', { every: 15_000 }, { name: 'reports.export', data: {} });
 const prisma = new PrismaService();
 const journal = journalServices(prisma, createRedis('worker-journal'));
 const notify = notifyServices(prisma);
@@ -67,6 +70,11 @@ const worker = new Worker(
     if (job.name === 'notify.reminders') {
       const res = await notifyBookingReminders(prisma);
       if (res.sent) logger.info(res, 'notify.reminders');
+      return;
+    }
+    if (job.name === 'reports.export') {
+      const res = await reportsExportDispatch(prisma);
+      if (res.done || res.failed) logger.info(res, 'reports.export');
       return;
     }
     logger.warn({ job: job.name }, 'unknown system job');

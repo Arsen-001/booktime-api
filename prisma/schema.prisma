@@ -2828,3 +2828,50 @@ model NetworkBroadcast {
   @@index([networkId, createdAt])
   @@map("network_broadcasts")
 }
+
+// ───────────────────────── Этап 16: отчёты (docs/backend/02 §16, PLAN §6 №16) ─────────────────────────
+
+/// Звёздочка шапки отчёта (F-12-003) — per-сотрудник, не per-бизнес: сотрудник видит свои избранные на любом месте.
+model ReportFavorite {
+  staffId   String   @map("staff_id") @db.VarChar(32)
+  slug      String   @db.VarChar(40)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@id([staffId, slug])
+  @@map("report_favorites")
+}
+
+/// Галочки группы «Отчёты» (F-12-084…089) + «Учитывать в заполненности» (F-12-008) — своя мелкая JSON-таблица
+/// per-сотрудник, как ReportsStaffPermissions фронта; отдельно от 39 прав бизнеса (тот же приём, что у сети — этап 15).
+model StaffReportsPermission {
+  staffId   String   @id @map("staff_id") @db.VarChar(32)
+  data      Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy String?  @map("updated_by") @db.VarChar(32)
+
+  @@map("staff_reports_permissions")
+}
+
+/// Выгрузка отчёта — тяжёлая работает задачей в воркере (PLAN §6 №16): строка ставится 'queued' синхронным
+/// запросом, worker.ts пересчитывает отчёт и пишет CSV через FileStorage, помечает 'ready'/'failed'.
+model ReportExport {
+  id         String    @id @db.VarChar(32)
+  businessId String    @map("business_id") @db.VarChar(32)
+  staffId    String    @map("staff_id") @db.VarChar(32)
+  staffName  String    @map("staff_name") @db.VarChar(120)
+  /// Имя отчёта из reports/{name} (F-12-074: тип для журнала «Операции с данными»)
+  name       String    @db.VarChar(24)
+  params     Json
+  /// queued | ready | failed
+  status     String    @default("queued") @db.VarChar(8)
+  fileName   String?   @map("file_name") @db.VarChar(200)
+  storageKey String?   @map("storage_key") @db.VarChar(300)
+  rowCount   Int?      @map("row_count")
+  error      String?   @db.VarChar(300)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  readyAt    DateTime? @map("ready_at") @db.DateTime(3)
+
+  @@index([businessId, createdAt])
+  @@index([status])
+  @@map("report_exports")
+}

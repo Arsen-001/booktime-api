@@ -134,6 +134,8 @@ export const ID_PREFIX = {
   networkField: 'nf',
   networkGoodsCategoryLink: 'ngcl',
   networkBroadcast: 'nbc',
+  // этап 16 — отчёты: только на сервере — выгрузка rex
+  reportExport: 'rex',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;
