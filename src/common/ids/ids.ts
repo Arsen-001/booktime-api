@@ -32,6 +32,9 @@ export const ID_PREFIX = {
   platformMember: 'pm',
   loginEvent: 'le',
   pushToken: 'pt',
+  // этап 3 — как в срезе staff фронта
+  position: 'stpos',
+  staffInvite: 'stinv',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

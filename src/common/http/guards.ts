@@ -49,7 +49,7 @@ export class BizGuard implements CanActivate {
     if (!session) throw new ApiError('unauthorized', 'Session required');
     const businessId = req.params['businessId'];
     if (typeof businessId !== 'string' || !businessId) throw new ApiError('forbidden', 'Business is not accessible');
-    const member = await this.memberships.resolve(session.userId, businessId);
+    const member = await this.memberships.resolve(session, businessId);
     if (!member) throw new ApiError('forbidden', 'Business is not accessible');
     const required = this.reflector.getAllAndOverride<Permission[]>(REQUIRED, [host.getHandler(), host.getClass()]) ?? [];
     const missing = required.filter((p) => !member.permissions.has(p));

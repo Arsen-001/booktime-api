@@ -77,12 +77,15 @@ model User {
   updatedBy         String?   @map("updated_by") @db.VarChar(32)
   version           Int       @default(1)
 
-  appProfile      AppProfile?
-  sessions        Session[]
-  staffLogins     StaffLogin[]
-  platformMember  PlatformMember?
-  pushTokens      PushToken[]
-  loginEvents     LoginEvent[]
+  appProfile     AppProfile?
+  sessions       Session[]
+  staffLogins    StaffLogin[]
+  platformMember PlatformMember?
+  pushTokens     PushToken[]
+  loginEvents    LoginEvent[]
+  staff          Staff[]
+  networks       Network[]
+  masterProfile  MasterProfile?
 
   @@map("users")
 }
@@ -113,29 +116,29 @@ model AppProfile {
 /// Сессия в базе (Р8): в браузере только случайный токен в httpOnly cookie, в базе — его sha256.
 /// Отзыв (выход, «выйти везде», увольнение) действует со следующего запроса.
 model Session {
-  id               String    @id @db.VarChar(32)
-  tokenHash        String    @unique @map("token_hash") @db.Char(64)
-  userId           String    @map("user_id") @db.VarChar(32)
+  id                 String    @id @db.VarChar(32)
+  tokenHash          String    @unique @map("token_hash") @db.Char(64)
+  userId             String    @map("user_id") @db.VarChar(32)
   /// Каким входом открыта: client | business | platform
-  app              String    @db.VarChar(10)
+  app                String    @db.VarChar(10)
   /// Переключатель «Я клиент / Мой бизнес» (В-21): client | business
-  mode             String    @default("client") @db.VarChar(10)
+  mode               String    @default("client") @db.VarChar(10)
   /// Выбранный бизнес в режиме business (сверяется с членством на каждом запросе — этап 3)
-  activeBusinessId String?   @map("active_business_id") @db.VarChar(32)
+  activeBusinessId   String?   @map("active_business_id") @db.VarChar(32)
   /// Вход логином администратора (F-00-034)
-  staffLoginId     String?   @map("staff_login_id") @db.VarChar(32)
+  staffLoginId       String?   @map("staff_login_id") @db.VarChar(32)
   /// Вход команды платформы (Р11)
-  platformMemberId String?   @map("platform_member_id") @db.VarChar(32)
+  platformMemberId   String?   @map("platform_member_id") @db.VarChar(32)
   /// Пароль выдан владельцем и ещё не сменён — экран просит сменить (F-00-034)
-  mustChangePassword Boolean @default(false) @map("must_change_password")
-  device           String    @db.VarChar(200)
-  ip               String    @db.VarChar(64)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  lastSeenAt       DateTime  @default(now()) @map("last_seen_at") @db.DateTime(3)
-  expiresAt        DateTime  @map("expires_at") @db.DateTime(3)
-  revokedAt        DateTime? @map("revoked_at") @db.DateTime(3)
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
+  device             String    @db.VarChar(200)
+  ip                 String    @db.VarChar(64)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  lastSeenAt         DateTime  @default(now()) @map("last_seen_at") @db.DateTime(3)
+  expiresAt          DateTime  @map("expires_at") @db.DateTime(3)
+  revokedAt          DateTime? @map("revoked_at") @db.DateTime(3)
   /// logout | logout_all | logout_others | password_changed | disabled | deleted | expired
-  revokeReason     String?   @map("revoke_reason") @db.VarChar(20)
+  revokeReason       String?   @map("revoke_reason") @db.VarChar(20)
 
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   staffLogin     StaffLogin?     @relation(fields: [staffLoginId], references: [id], onDelete: Cascade)
@@ -176,7 +179,7 @@ model OtpRequest {
   @@map("otp_requests")
 }
 
-/// Логин и пароль администратора салона (F-00-034). staff_id — сотрудник бизнеса (связь по ключу — этап 3).
+/// Логин и пароль администратора салона (F-00-034). staff_id — сотрудник бизнеса.
 model StaffLogin {
   id                 String    @id @db.VarChar(32)
   /// Нижний регистр, без пробелов по краям
@@ -198,6 +201,7 @@ model StaffLogin {
   version            Int       @default(1)
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  staff    Staff?    @relation(fields: [staffId], references: [id])
   sessions Session[]
 
   @@index([userId])
@@ -231,19 +235,19 @@ model PlatformMember {
 
 /// Журнал входов (F-10-106, F-15-159): удачные и неудачные попытки; хранится 1 год (F3)
 model LoginEvent {
-  id        String   @id @db.VarChar(32)
-  userId    String?  @map("user_id") @db.VarChar(32)
-  sessionId String?  @map("session_id") @db.VarChar(32)
+  id         String   @id @db.VarChar(32)
+  userId     String?  @map("user_id") @db.VarChar(32)
+  sessionId  String?  @map("session_id") @db.VarChar(32)
   /// code | password | platform | second_factor
-  method    String   @db.VarChar(16)
-  app       String   @db.VarChar(10)
+  method     String   @db.VarChar(16)
+  app        String   @db.VarChar(10)
   /// ok | wrong_code | wrong_password | locked | blocked | second_factor_sent
-  result    String   @db.VarChar(20)
+  result     String   @db.VarChar(20)
   /// Что вводили (логин или номер с маской) — для неудачных попыток без userId
-  identifier String? @db.VarChar(64)
-  ip        String   @db.VarChar(64)
-  device    String   @db.VarChar(200)
-  at        DateTime @default(now()) @db.DateTime(3)
+  identifier String?  @db.VarChar(64)
+  ip         String   @db.VarChar(64)
+  device     String   @db.VarChar(200)
+  at         DateTime @default(now()) @db.DateTime(3)
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -254,22 +258,330 @@ model LoginEvent {
 
 /// Токены пушей (05 §4): Web Push (подписка JSON) и FCM
 model PushToken {
-  id        String    @id @db.VarChar(32)
-  userId    String    @map("user_id") @db.VarChar(32)
+  id           String    @id @db.VarChar(32)
+  userId       String    @map("user_id") @db.VarChar(32)
   /// client | business
-  app       String    @db.VarChar(10)
+  app          String    @db.VarChar(10)
   /// web | android | ios
-  platform  String    @db.VarChar(8)
+  platform     String    @db.VarChar(8)
   /// FCM-токен или endpoint Web Push; подписка целиком — в subscription
-  token     String    @unique @db.VarChar(512)
+  token        String    @unique @db.VarChar(512)
   subscription Json?
-  locale    String    @default("ru") @db.VarChar(2)
-  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
-  invalidAt DateTime? @map("invalid_at") @db.DateTime(3)
+  locale       String    @default("ru") @db.VarChar(2)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  invalidAt    DateTime? @map("invalid_at") @db.DateTime(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("push_tokens")
+}
+
+// ─────────────────────────── Этап 3 · Бизнес, сеть, филиалы, сотрудники, права (01 §2–3, 03) ───────────────────────────
+
+/// Сеть салонов (F-11-001…023): владелец — человек; филиалы — бизнесы с network_id
+model Network {
+  id             String    @id @db.VarChar(32)
+  name           String    @db.VarChar(160)
+  ownerUserId    String    @map("owner_user_id") @db.VarChar(32)
+  /// Сотрудник-владелец (как Network.ownerStaffId во фронте) — строка staff владельца в одном из филиалов
+  ownerStaffId   String?   @map("owner_staff_id") @db.VarChar(32)
+  /// Главная локация сети (F-05-118, F-11-017); нет — первый филиал
+  mainBusinessId String?   @map("main_business_id") @db.VarChar(32)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy      String?   @map("created_by") @db.VarChar(32)
+  updatedBy      String?   @map("updated_by") @db.VarChar(32)
+  version        Int       @default(1)
+
+  owner      User       @relation(fields: [ownerUserId], references: [id])
+  businesses Business[]
+  positions  Position[]
+
+  @@index([ownerUserId])
+  @@map("networks")
+}
+
+/// Бизнес: мастер-индивидуал или салон (= Business мока). Филиал сети — бизнес с network_id.
+model Business {
+  id                            String    @id @db.VarChar(32)
+  /// individual | salon
+  kind                          String    @db.VarChar(12)
+  name                          String    @db.VarChar(160)
+  /// Адрес публичной страницы /b/<slug>
+  slug                          String    @unique @db.VarChar(120)
+  /// SphereId[]
+  sphereIds                     Json      @map("sphere_ids")
+  networkId                     String?   @map("network_id") @db.VarChar(32)
+  ownerStaffId                  String?   @map("owner_staff_id") @db.VarChar(32)
+  phone                         String    @db.VarChar(16)
+  /// LocalizedText
+  description                   Json?
+  logoUrl                       String?   @map("logo_url") @db.MediumText
+  /// Фото страницы салона, до 6 (F-00-087) — пока адреса/data URI; через модерацию — этап 19
+  photos                        Json
+  /// draft | moderation | active | frozen (В-02: после регистрации — draft до оплаты или промокода)
+  status                        String    @default("draft") @db.VarChar(12)
+  /// Ушёл с платформы (03 §5)
+  leftAt                        DateTime? @map("left_at") @db.DateTime(3)
+  /// Запрет домашних записей мастерам в часы смены (F-00-047)
+  forbidHomeBookingsDuringShift Boolean   @default(false) @map("forbid_home_bookings_during_shift")
+  /// Сайт и соцсети (F-14-028)
+  socials                       Json?
+  /// Правила отмены/переноса (В-04) — пишет раздел online
+  bookingRules                  Json?     @map("booking_rules")
+  /// Имя отправителя уведомлений (F-05-012)
+  brandName                     String?   @map("brand_name") @db.VarChar(160)
+  /// Получать предложения поставщиков (F-00-164)
+  adsOptIn                      Boolean   @default(false) @map("ads_opt_in")
+  /// Промокод, введённый при регистрации — применит раздел подписки (этап 18)
+  signupPromoCode               String?   @map("signup_promo_code") @db.VarChar(40)
+  createdAt                     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt                     DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy                     String?   @map("created_by") @db.VarChar(32)
+  updatedBy                     String?   @map("updated_by") @db.VarChar(32)
+  version                       Int       @default(1)
+
+  network   Network?          @relation(fields: [networkId], references: [id])
+  locations Location[]
+  staff     Staff[]
+  positions Position[]
+  invites   StaffInvite[]
+  settings  BusinessSetting[]
+
+  @@index([status])
+  @@index([networkId])
+  @@map("businesses")
+}
+
+/// Филиал / место (= Location мока). Пояс — tz (по умолчанию Asia/Yerevan, F-02-074)
+model Location {
+  id            String    @id @db.VarChar(32)
+  businessId    String    @map("business_id") @db.VarChar(32)
+  /// LocalizedText
+  name          Json
+  /// LocalizedText (армянский целиком, F-00-172)
+  address       Json
+  district      String    @db.VarChar(40)
+  yandexMapsUrl String?   @map("yandex_maps_url") @db.VarChar(1000)
+  /// Точка из «Я сейчас на месте работы» (F-00-075)
+  lat           Decimal?  @db.Decimal(9, 6)
+  lng           Decimal?  @db.Decimal(9, 6)
+  coordsAt      DateTime? @map("coords_at") @db.DateTime(3)
+  phone         String?   @db.VarChar(16)
+  extraPhones   Json?     @map("extra_phones")
+  hoursText     String?   @map("hours_text") @db.VarChar(200)
+  /// WeekTemplate — только витрина; рабочее время мастеров — в графиках
+  openHours     Json?     @map("open_hours")
+  /// individual | mixed | group (F-01-025)
+  journalKind   String?   @map("journal_kind") @db.VarChar(12)
+  tz            String    @default("Asia/Yerevan") @db.VarChar(40)
+  sortOrder     Int       @default(0) @map("sort_order")
+  deletedAt     DateTime? @map("deleted_at") @db.DateTime(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy     String?   @map("created_by") @db.VarChar(32)
+  updatedBy     String?   @map("updated_by") @db.VarChar(32)
+  version       Int       @default(1)
+
+  business Business        @relation(fields: [businessId], references: [id])
+  staff    StaffLocation[]
+
+  @@index([businessId])
+  @@index([district])
+  @@index([lat, lng])
+  @@map("locations")
+}
+
+/// Настройки разделов бизнеса одним JSON на раздел (01 §2, F4)
+model BusinessSetting {
+  businessId String   @map("business_id") @db.VarChar(32)
+  area       String   @db.VarChar(40)
+  data       Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+  version    Int      @default(1)
+
+  business Business @relation(fields: [businessId], references: [id])
+
+  @@id([businessId, area])
+  @@map("business_settings")
+}
+
+/// Сотрудник бизнеса (= Staff мока + срез staff). Человек (users) может быть сотрудником нескольких бизнесов (F-00-045).
+model Staff {
+  id                   String    @id @db.VarChar(32)
+  businessId           String    @map("business_id") @db.VarChar(32)
+  /// Пусто — сотрудник без входа (F-15-032) или приглашён и не принял
+  userId               String?   @map("user_id") @db.VarChar(32)
+  name                 String    @db.VarChar(120)
+  /// '+374…' или '' (администратор без телефона)
+  phone                String    @default("") @db.VarChar(16)
+  email                String?   @db.VarChar(160)
+  /// owner | admin | master
+  role                 String    @db.VarChar(8)
+  /// 8 шаблонов (F-10-053): systemManager | viewer | specialist | admin | callCenter | accountant | manager | owner
+  roleTemplateId       String?   @map("role_template_id") @db.VarChar(16)
+  /// active | invited | disabled | fired
+  status               String    @db.VarChar(10)
+  /// LocalizedText — название должности (как во фронте: имя, а не ссылка)
+  position             Json?
+  positionId           String?   @map("position_id") @db.VarChar(32)
+  specialty            Json?
+  sphereIds            Json      @map("sphere_ids")
+  avatarUrl            String?   @map("avatar_url") @db.MediumText
+  bio                  Json?
+  /// Портфолио (F-00-085) — копия уходит с мастером в master_profiles (C4)
+  photos               Json
+  materials            Json
+  /// Workplace[] (F-00-073)
+  workplaces           Json
+  homeAddress          String?   @map("home_address") @db.VarChar(300)
+  homeDistrict         String?   @map("home_district") @db.VarChar(40)
+  visitDistricts       Json?     @map("visit_districts")
+  /// all | women | men (F-00-069)
+  accepts              String    @default("all") @db.VarChar(6)
+  /// all | link | mine (F-00-065, В-22)
+  calendarVisibility   String    @default("all") @map("calendar_visibility") @db.VarChar(5)
+  /// free | busy (F-00-051)
+  calendarMode         String    @default("free") @map("calendar_mode") @db.VarChar(5)
+  /// instant | manual (В-03: по умолчанию manual)
+  confirmMode          String    @default("manual") @map("confirm_mode") @db.VarChar(8)
+  colorIndex           Int       @default(1) @map("color_index")
+  /// Услуги мастера — до этапа 4 (staff_services) списком id
+  serviceIds           Json      @map("service_ids")
+  callHours            Json?     @map("call_hours")
+  /// 'YYYY-MM-DD'
+  hiredAt              String    @map("hired_at") @db.VarChar(10)
+  onlineBookingEnabled Boolean   @default(true) @map("online_booking_enabled")
+  hiddenInJournal      Boolean   @default(false) @map("hidden_in_journal")
+  assistantOnly        Boolean   @default(false) @map("assistant_only")
+  journalMarkupMin     Int?      @map("journal_markup_min")
+  prepayment           Json?
+  bookingRules         Json?     @map("booking_rules")
+  contacts             Json?
+  /// Порядок в списке и журнале (F-10-009/013)
+  sortOrder            Int       @default(0) @map("sort_order")
+  /// Доступ в кабинет (F-10-031): выключение закрывает вход, карточка остаётся
+  accessEnabled        Boolean   @default(true) @map("access_enabled")
+  accessInfo           String?   @map("access_info") @db.VarChar(500)
+  /// { enabled, ranges[] } (F-10-091)
+  ipRestriction        Json?     @map("ip_restriction")
+  /// Грубые права, заданные владельцем (Permission[]) — у администратора заменяют шаблон (03 §2)
+  permissions          Json?
+  /// Тонкие права редактора (id строк каталога staff/permissions) и «▾»-ограничения (F-10-071)
+  rights               Json?
+  rightScopes          Json?     @map("right_scopes")
+  /// Юр. информация (F-10-038) — только staff.manage
+  legalInfo            Json?     @map("legal_info")
+  cardSettings         Json?     @map("card_settings")
+  /// Пуши мастера «на себя» (F-10-137)
+  pushPrefs            Json?     @map("push_prefs")
+  /// Увольнение (F-10-040/043): дата, причина, момент
+  firedOn              String?   @map("fired_on") @db.VarChar(10)
+  fireReason           String?   @map("fire_reason") @db.VarChar(500)
+  firedAt              DateTime? @map("fired_at") @db.DateTime(3)
+  /// Удалён (F-10-041): восстановление по правилу 24 ч / 30 дней (F-10-044)
+  deletedAt            DateTime? @map("deleted_at") @db.DateTime(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy            String?   @map("created_by") @db.VarChar(32)
+  updatedBy            String?   @map("updated_by") @db.VarChar(32)
+  version              Int       @default(1)
+
+  business  Business        @relation(fields: [businessId], references: [id])
+  user      User?           @relation(fields: [userId], references: [id])
+  locations StaffLocation[]
+  invites   StaffInvite[]
+  logins    StaffLogin[]
+
+  @@index([businessId, status])
+  @@index([userId])
+  @@index([phone])
+  @@map("staff")
+}
+
+/// В каких филиалах работает сотрудник (Staff.locationIds)
+model StaffLocation {
+  staffId    String @map("staff_id") @db.VarChar(32)
+  locationId String @map("location_id") @db.VarChar(32)
+
+  staff    Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@id([staffId, locationId])
+  @@index([locationId])
+  @@map("staff_locations")
+}
+
+/// Должности (F-10-046…052, F-11-104…107): бизнеса или сети
+model Position {
+  id          String   @id @db.VarChar(32)
+  businessId  String?  @map("business_id") @db.VarChar(32)
+  networkId   String?  @map("network_id") @db.VarChar(32)
+  name        Json
+  /// Нижний регистр ru-имени — для «уже есть такая»
+  nameNorm    String   @map("name_norm") @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy   String?  @map("created_by") @db.VarChar(32)
+  updatedBy   String?  @map("updated_by") @db.VarChar(32)
+  version     Int      @default(1)
+
+  business Business? @relation(fields: [businessId], references: [id])
+  network  Network?  @relation(fields: [networkId], references: [id])
+
+  @@index([businessId, nameNorm])
+  @@index([networkId])
+  @@map("positions")
+}
+
+/// Приглашение в бизнес только с согласием (F-00-042, F-10-020): ссылка с токеном, в базе — sha256
+model StaffInvite {
+  id         String    @id @db.VarChar(32)
+  businessId String    @map("business_id") @db.VarChar(32)
+  staffId    String    @map("staff_id") @db.VarChar(32)
+  /// admin | master
+  role       String    @db.VarChar(8)
+  phone      String?   @db.VarChar(16)
+  email      String?   @db.VarChar(160)
+  tokenHash  String    @unique @map("token_hash") @db.Char(64)
+  /// pending | accepted | declined | revoked | expired
+  status     String    @default("pending") @db.VarChar(10)
+  expiresAt  DateTime  @map("expires_at") @db.DateTime(3)
+  sentAt     DateTime  @default(now()) @map("sent_at") @db.DateTime(3)
+  answeredAt DateTime? @map("answered_at") @db.DateTime(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  String?   @map("created_by") @db.VarChar(32)
+  updatedBy  String?   @map("updated_by") @db.VarChar(32)
+  version    Int       @default(1)
+
+  business Business @relation(fields: [businessId], references: [id])
+  staff    Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([staffId])
+  @@index([phone, status])
+  @@map("staff_invites")
+}
+
+/// Что уходит с мастером (C4, F-00-044): портфолио, дипломы, материалы привязаны к человеку, а не к салону
+model MasterProfile {
+  userId    String   @id @map("user_id") @db.VarChar(32)
+  photos    Json
+  diplomas  Json
+  materials Json
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  version   Int      @default(1)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("master_profiles")
 }

@@ -24,7 +24,7 @@ export interface SessionInfo {
   mustChangePassword: boolean;
 }
 
-/** В какой роли человек действует в бизнесе из пути (docs/backend/03 §2). Заполняет MembershipResolver — этап 3. */
+/** В какой роли человек действует в бизнесе из пути (docs/backend/03 §2). Заполняет MembershipResolver (common/http/membership.ts). */
 export interface MemberInfo {
   businessId: string;
   staffId: string;
@@ -32,6 +32,10 @@ export interface MemberInfo {
   permissions: ReadonlySet<Permission>;
   /** Имя для журнала изменений (снимок) */
   name: string;
+  /** Вошедший человек */
+  userId: string;
+  kind: 'salon' | 'individual';
+  networkId: string | null;
 }
 
 /** Контекст одного запроса: кладётся в req.ctx промежуточным слоем ContextMiddleware */

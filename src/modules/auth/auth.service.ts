@@ -84,7 +84,7 @@ export class AuthService {
       where: { id: sessionId },
       include: { user: { include: { appProfile: { select: { consentAt: true } } } }, staffLogin: { select: { login: true } } },
     });
-    const memberships = s.app === 'platform' ? [] : await this.memberships.list(s.userId);
+    const memberships = s.app === 'platform' ? [] : await this.memberships.list(s.userId, s.staffLoginId);
     return {
       user: { id: s.user.id, name: s.user.name, phone: s.user.phone, locale: isLocale(s.user.locale) ? s.user.locale : 'ru' },
       app: s.app as SessionApp,
@@ -325,7 +325,7 @@ export class AuthService {
     const session = ctx.session!;
     let activeBusinessId: string | null = session.activeBusinessId;
     if (input.mode === 'business') {
-      const list = await this.memberships.list(session.userId);
+      const list = await this.memberships.list(session.userId, session.staffLoginId);
       const pick = input.businessId ? list.find((m) => m.businessId === input.businessId) : (list.find((m) => m.businessId === activeBusinessId) ?? list[0]);
       if (!pick) throw new ApiError('no_business', 'No business for this account');
       activeBusinessId = pick.businessId;

@@ -9,7 +9,7 @@ import { REDIS } from '../tokens.js';
  * все процессы API (и воркер может публиковать). Экран по событию перечитывает свои запросы.
  * Каналы: `biz:{businessId}:day:{YYYY-MM-DD}`, `staff:{staffId}`, `user:{userId}` (подписка `me`).
  */
-export type LiveEventType = 'booking.changed' | 'schedule.changed' | 'mark.changed' | 'slots.changed' | 'inbox.new';
+export type LiveEventType = 'booking.changed' | 'schedule.changed' | 'mark.changed' | 'slots.changed' | 'inbox.new' | 'staff.changed' | 'business.changed';
 
 export interface LiveEvent {
   type: LiveEventType;

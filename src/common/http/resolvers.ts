@@ -17,18 +17,25 @@ export interface MembershipSummary {
   kind: string;
   networkId: string | null;
   staffId: string;
-  /** owner | admin | master */
+  /** owner | admin | master | network (владелец сети в филиале) */
   role: string;
+  /** Филиалы бизнеса (для сети — все филиалы сети) */
+  locationIds: string[];
+  /** Бизнесы сети (владельцу сети — все филиалы, остальным — только этот) */
+  businessIds: string[];
+  /** Итоговые права в этом бизнесе (шаблон роли + галочки владельца, 03 §2) */
+  permissions: string[];
 }
 
-/** Все действующие членства человека. Этап 2 — пусто (бизнесов ещё нет); этап 3 подключает таблицу staff. */
+/** Все действующие членства человека (этап 3: таблица staff + владение сетью, common/http/membership.ts) */
 export interface MembershipLister {
-  list(userId: string): Promise<MembershipSummary[]>;
+  /** staffLoginId — вход логином администратора: он даёт доступ только к своему бизнесу (F-00-034) */
+  list(userId: string, staffLoginId?: string | null): Promise<MembershipSummary[]>;
 }
 
 export interface MembershipResolver {
-  /** Действующее членство человека в бизнесе (status = active) или null */
-  resolve(userId: string, businessId: string): Promise<MemberInfo | null>;
+  /** Действующее членство вошедшего в бизнесе (status = active) или null */
+  resolve(session: SessionInfo, businessId: string): Promise<MemberInfo | null>;
 }
 
 export const SESSION_RESOLVER = Symbol('SESSION_RESOLVER');
