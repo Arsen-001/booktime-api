@@ -1581,17 +1581,29 @@ model DemandLead {
   @@map("demand_leads")
 }
 
-/// «Обращение к нам» из приложения (F-00-182) — очередь читает наша панель (этап 19, здесь только запись)
+/// «Обращение к нам» из приложения (F-00-182) — очередь читает наша панель (этап 19: number/name/channel/section/
+/// topic/messages/updatedAt добавлены тем же этапом; subject/message — прежние поля, submitSupport их не бросил)
 model SupportTicket {
   id        String   @id @db.VarChar(32)
+  /// Единая нумерация с BizRequest(kind=help) — общий счётчик platform_counters(key='support')
+  number    Int?
   appUserId String?  @map("app_user_id") @db.VarChar(32)
+  name      String?  @db.VarChar(160)
   phone     String?  @db.VarChar(20)
   subject   String   @db.VarChar(200)
   message   String   @db.Text
+  /// app | cabinet | phone | whatsapp | telegram | email
+  channel   String   @default("app") @db.VarChar(10)
+  section   String?  @db.VarChar(20)
+  topic     String   @default("other") @db.VarChar(12)
   status    String   @default("open") @db.VarChar(12)
+  /// SupportMessage[] фронта — {id, author: them|us, text, at}; создание кладёт первое сообщение сюда
+  messages  Json?
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   @@index([appUserId, createdAt])
+  @@index([status, updatedAt])
   @@map("support_tickets")
 }
 
@@ -3047,28 +3059,28 @@ model Subscription {
 
 /// Списание за подписку (06 §3.2) — строка «Истории лицензии» (F-15-072)
 model SubscriptionCharge {
-  id             String    @id @db.VarChar(32)
-  businessId     String    @map("business_id") @db.VarChar(32)
-  periodStart    DateTime  @map("period_start") @db.DateTime(3)
-  periodEnd      DateTime  @map("period_end") @db.DateTime(3)
-  months         Int
-  seatsMasters   Int       @map("seats_masters")
-  seatsAdmins    Int       @map("seats_admins")
-  baseAmount     BigInt    @map("base_amount")
-  discountPct    Int       @default(0) @map("discount_pct")
-  amount         BigInt
+  id           String    @id @db.VarChar(32)
+  businessId   String    @map("business_id") @db.VarChar(32)
+  periodStart  DateTime  @map("period_start") @db.DateTime(3)
+  periodEnd    DateTime  @map("period_end") @db.DateTime(3)
+  months       Int
+  seatsMasters Int       @map("seats_masters")
+  seatsAdmins  Int       @map("seats_admins")
+  baseAmount   BigInt    @map("base_amount")
+  discountPct  Int       @default(0) @map("discount_pct")
+  amount       BigInt
   /// card | idram | telcell | invoice | promo | freeMonth | platform
-  method         String    @db.VarChar(12)
+  method       String    @db.VarChar(12)
   /// pending | paid | failed | refunded
-  status         String    @db.VarChar(10)
-  provider       String    @db.VarChar(12)
-  providerRef    String?   @map("provider_ref") @db.VarChar(80)
-  invoiceId      String?   @map("invoice_id") @db.VarChar(32)
+  status       String    @db.VarChar(10)
+  provider     String    @db.VarChar(12)
+  providerRef  String?   @map("provider_ref") @db.VarChar(80)
+  invoiceId    String?   @map("invoice_id") @db.VarChar(32)
   /// auto — автопродление воркером; manual — «Оплатить»
-  trigger        String    @default("manual") @db.VarChar(8)
-  attemptedAt    DateTime  @default(now()) @map("attempted_at") @db.DateTime(3)
-  paidAt         DateTime? @map("paid_at") @db.DateTime(3)
-  createdBy      String?   @map("created_by") @db.VarChar(32)
+  trigger      String    @default("manual") @db.VarChar(8)
+  attemptedAt  DateTime  @default(now()) @map("attempted_at") @db.DateTime(3)
+  paidAt       DateTime? @map("paid_at") @db.DateTime(3)
+  createdBy    String?   @map("created_by") @db.VarChar(32)
 
   @@index([businessId, attemptedAt])
   @@map("subscription_charges")
@@ -3138,23 +3150,23 @@ model FreePeriodGrant {
 
 /// Промокод (06 §4.2, В-13: 10/15/25% за 3/6/12 мес., на один бизнес, 30 дней)
 model PromoCode {
-  id          String    @id @db.VarChar(32)
+  id         String    @id @db.VarChar(32)
   /// Всегда в верхнем регистре
-  code        String    @unique @db.VarChar(24)
+  code       String    @unique @db.VarChar(24)
   /// discount | freeMonth
-  kind        String    @db.VarChar(10)
+  kind       String    @db.VarChar(10)
   /// [{months, percent}]
-  tiers       Json
-  freeDays    Int?      @map("free_days")
-  personal    Boolean   @default(true)
+  tiers      Json
+  freeDays   Int?      @map("free_days")
+  personal   Boolean   @default(true)
   /// {name, phone?, visitId?, businessId?}
-  issuedTo    Json?     @map("issued_to")
-  issuedAt    DateTime? @map("issued_at") @db.DateTime(3)
-  validUntil  String?   @map("valid_until") @db.VarChar(10)
-  revokedAt   DateTime? @map("revoked_at") @db.DateTime(3)
-  note        String?   @db.VarChar(300)
-  createdBy   String    @map("created_by") @db.VarChar(32)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  issuedTo   Json?     @map("issued_to")
+  issuedAt   DateTime? @map("issued_at") @db.DateTime(3)
+  validUntil String?   @map("valid_until") @db.VarChar(10)
+  revokedAt  DateTime? @map("revoked_at") @db.DateTime(3)
+  note       String?   @db.VarChar(300)
+  createdBy  String    @map("created_by") @db.VarChar(32)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
 
   @@map("promo_codes")
 }
@@ -3230,39 +3242,60 @@ model SettingsChangeLog {
   @@map("settings_change_log")
 }
 
-/// Обращения бизнеса к нам: help — помощь (F-15-001), mobileApp — «хочу своё приложение» (В-29)
+/// Обращения бизнеса к нам: help — помощь (F-15-001), mobileApp — «хочу своё приложение» (В-29).
+/// number/reply/repliedAt/updatedAt — этап 19: kind=help сливается в одну очередь поддержки с SupportTicket
+/// (F-00-182), нить — одно входящее + один ответ (упрощение против многоходовой SupportMessage[] мока, честно
+/// не то же самое — записано в PROGRESS.md).
 model BizRequest {
-  id            String   @id @db.VarChar(32)
-  businessId    String   @map("business_id") @db.VarChar(32)
-  authorStaffId String   @map("author_staff_id") @db.VarChar(32)
+  id            String    @id @db.VarChar(32)
+  businessId    String    @map("business_id") @db.VarChar(32)
+  authorStaffId String    @map("author_staff_id") @db.VarChar(32)
   /// help | mobileApp
-  kind          String   @db.VarChar(10)
-  topic         String?  @db.VarChar(12)
-  message       String?  @db.Text
+  kind          String    @db.VarChar(10)
+  topic         String?   @db.VarChar(12)
+  message       String?   @db.Text
   /// open | answered | closed
-  status        String   @default("open") @db.VarChar(10)
-  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  status        String    @default("open") @db.VarChar(10)
+  /// Единая нумерация с SupportTicket — общий счётчик platform_counters(key='support'); только kind=help
+  number        Int?
+  reply         String?   @db.Text
+  repliedAt     DateTime? @map("replied_at") @db.DateTime(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
 
   @@index([businessId, kind, createdAt])
+  @@index([kind, status, updatedAt])
   @@map("biz_requests")
 }
 
-/// «Моей сферы нет» / новая сфера на год (F-15-005, F-00-151/152, В-14: не готова за 60 дней → возврат или сдвиг)
+/// «Моей сферы нет» / новая сфера на год (F-15-005, F-00-151/152, В-14: не готова за 60 дней → возврат или сдвиг).
+/// kind/phone/sphereName/needs — этап 19: наша панель заводит заявки и от людей без бизнеса ещё (kind=newSphere,
+/// businessId пуст); заявки из кабинета (kind по умолчанию noSphere) продолжают работать без этих полей.
 model SphereRequest {
-  id            String   @id @db.VarChar(32)
-  businessId    String   @map("business_id") @db.VarChar(32)
-  authorStaffId String   @map("author_staff_id") @db.VarChar(32)
-  name          String   @db.VarChar(160)
-  message       String?  @db.Text
-  /// open | answered | closed
-  status        String   @default("open") @db.VarChar(10)
+  id            String    @id @db.VarChar(32)
+  businessId    String?   @map("business_id") @db.VarChar(32)
+  authorStaffId String?   @map("author_staff_id") @db.VarChar(32)
+  /// noSphere — из кабинета, «моей сферы нет» | newSphere — заведена нами (визит/звонок), без бизнеса
+  kind          String    @default("noSphere") @db.VarChar(10)
+  name          String    @db.VarChar(160)
+  phone         String?   @db.VarChar(20)
+  /// Профессия своими словами (F-00-151) — для заявок из кабинета совпадает с name
+  sphereName    String?   @map("sphere_name") @db.VarChar(160)
+  /// string[] — что нужно, согласовано письменно (F-00-152)
+  needs         Json?
+  message       String?   @db.Text
+  /// open | answered | closed (кабинет) — панель показывает через STATUS_RANK open|agreed|inProgress|done
+  status        String    @default("open") @db.VarChar(10)
   /// [{id, labelKey, done}]
   checklist     Json?
-  etaDate       String?  @map("eta_date") @db.VarChar(10)
-  readyAt       String?  @map("ready_at") @db.VarChar(10)
-  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  etaDate       String?   @map("eta_date") @db.VarChar(10)
+  readyAt       String?   @map("ready_at") @db.VarChar(10)
+  note          String?   @db.VarChar(500)
+  decidedAt     DateTime? @map("decided_at") @db.DateTime(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
 
   @@index([businessId, createdAt])
+  @@index([kind, status, createdAt])
   @@map("sphere_requests")
 }
 
@@ -3276,4 +3309,157 @@ model StaffAccountPref {
 
   @@map("staff_account_prefs")
 }
+
 // === end stage 18 ===
+
+// === stage 19 ===
+// ───────────────────────── Этап 19: модерация и наша панель (docs/backend/06 §1, 02 §19) ─────────────────────────
+
+/// Справочник причин отказа (F-00-170) — история отказов хранит подпись, скрытая причина не меняет прошлое
+model RejectReason {
+  id     String  @id @db.VarChar(32)
+  /// LocalizedText
+  label  Json
+  active Boolean @default(true)
+  /// Порядок в списке при выборе
+  order  Int     @default(0)
+
+  @@map("reject_reasons")
+}
+
+/// Очередь проверки (F-00-168…171, F-00-179) — одна таблица на все виды материала (фото/услуга/текст/диплом/
+/// сторис/жалоба/отзыв), refId — ключ каталога подключает docs 06 §1.3 отдельным проходом (P7, не в этом этапе):
+/// сейчас submitForModeration/isVisibleToClients — самостоятельный контракт, ничего снаружи модуля его не читает.
+/// imageUrl — LongText (как ClientFile.dataUrl, этап 5): фото приходят data URI до 4 МБ, не короткой ссылкой.
+model ModerationItem {
+  id           String    @id @db.VarChar(32)
+  /// staffPhoto | salonPhoto | servicePhoto | service | text | diploma | story | complaint | review
+  kind         String    @db.VarChar(16)
+  businessId   String    @map("business_id") @db.VarChar(32)
+  staffId      String?   @map("staff_id") @db.VarChar(32)
+  serviceId    String?   @map("service_id") @db.VarChar(32)
+  /// Что именно проверяем — id фото/услуги/текста/документа/сторис/жалобы (ключ вызывающей стороны, не сама картинка)
+  refId        String    @map("ref_id") @db.VarChar(64)
+  label        String?   @db.VarChar(200)
+  text         String?   @db.Text
+  imageUrl     String?   @map("image_url") @db.LongText
+  /// Плитка без картинки — цвет 1..8 (мок-приём для сидов, сервер тоже допускает)
+  tone         Int?
+  /// Платный материал: сколько монет списано (место под фото, сторис) — возвращается при отказе
+  paidCoins    Int?      @map("paid_coins")
+  /// pending | approved | rejected | auto
+  status       String    @default("pending") @db.VarChar(10)
+  /// user | visit | template | reuse
+  source       String    @default("user") @db.VarChar(10)
+  reasonId     String?   @map("reason_id") @db.VarChar(32)
+  reasonNote   String?   @map("reason_note") @db.VarChar(300)
+  /// Для жалобы — на какой материал (id другого ModerationItem)
+  targetItemId String?   @map("target_item_id") @db.VarChar(32)
+  submittedAt  DateTime  @default(now()) @map("submitted_at") @db.DateTime(3)
+  decidedAt    DateTime? @map("decided_at") @db.DateTime(3)
+  /// ModerationEvent[] фронта — {id, at, kind, note?, coins?}
+  history      Json
+
+  @@index([businessId, submittedAt])
+  @@index([status, kind, submittedAt])
+  @@index([refId])
+  @@map("moderation_items")
+}
+
+/// Наши сведения о бизнесе (06 §5, P2, F-00-183) — то, чего нет в Business/Subscription: как узнали о салоне,
+/// кто из команды ведёт, данные выданы при уходе. adsOptIn и leftAt уже в Business (F-00-164, 03 §5) — не дублируем;
+/// freeUntil — в Subscription (этап 18). Строки нет — бизнес зарегистрировался сам, без заметок (source='self').
+model BizMeta {
+  businessId    String    @id @map("business_id") @db.VarChar(32)
+  /// visit — подключили мы на визите; self — зарегистрировался сам
+  source        String    @default("self") @db.VarChar(6)
+  responsibleId String?   @map("responsible_id") @db.VarChar(32)
+  /// Промокод, который выдали именно на визите (может отличаться от Subscription.promoRedemptionId по времени)
+  promoCodeId   String?   @map("promo_code_id") @db.VarChar(32)
+  dataHandedAt  DateTime? @map("data_handed_at") @db.DateTime(3)
+  note          String?   @db.VarChar(500)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("biz_meta")
+}
+
+/// Копия данных бизнеса «на всякий случай» (F-00-183) — счётчики строк, не архив байт (честно, как в моке;
+/// настоящий бэкап — средствами хостинга целиком, этап 21/20)
+model BackupCopy {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// auto | manual
+  kind       String   @default("manual") @db.VarChar(8)
+  /// BackupCounts фронта — {clients, bookings, services, staff}
+  counts     Json
+  sizeKb     Int      @map("size_kb")
+  at         DateTime @default(now()) @map("at") @db.DateTime(3)
+
+  @@index([businessId, at])
+  @@map("backup_copies")
+}
+
+/// Идеи бизнесов (F-00-009) — заводит кабинет (POST /v1/biz/{b}/ideas), очередь и статус — наша панель
+model Idea {
+  id         String    @id @db.VarChar(32)
+  businessId String    @map("business_id") @db.VarChar(32)
+  authorName String    @map("author_name") @db.VarChar(160)
+  text       String    @db.VarChar(2000)
+  votes      Int       @default(0)
+  /// Id[] бизнесов, уже проголосовавших — против повторного голоса
+  voterIds   Json      @map("voter_ids")
+  /// considering | inProgress | done
+  status     String    @default("considering") @db.VarChar(12)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  decidedAt  DateTime? @map("decided_at") @db.DateTime(3)
+  notifiedAt DateTime? @map("notified_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("ideas")
+}
+
+/// Визиты нашей команды к салонам (F-00-177) — CRM обхода, отдельно от MedicalVisitNote (тот же смысл, что
+/// 'vis'-визит журнала, префикс здесь свой, чтобы не путать два разных «визита»). История — Json, как везде
+/// у некрупных сущностей (FinOp.history, этап 12), отдельная таблица событий не оправдана при таком объёме.
+model SalesVisit {
+  id            String   @id @db.VarChar(32)
+  placeName     String   @map("place_name") @db.VarChar(160)
+  contactName   String?  @map("contact_name") @db.VarChar(160)
+  phone         String?  @db.VarChar(20)
+  district      String?  @db.VarChar(20)
+  address       String?  @db.VarChar(300)
+  sphereId      String?  @map("sphere_id") @db.VarChar(40)
+  /// connected | thinking | refused
+  status        String   @default("thinking") @db.VarChar(10)
+  /// 'YYYY-MM-DD'
+  visitedAt     String   @map("visited_at") @db.VarChar(10)
+  callbackDate  String?  @map("callback_date") @db.VarChar(10)
+  refusalReason String?  @map("refusal_reason") @db.VarChar(300)
+  note          String?  @db.VarChar(2000)
+  /// dikidi | altegio | whatsapp | notebook | other | nothing
+  currentTool   String?  @map("current_tool") @db.VarChar(10)
+  /// Драмы в месяц — сколько готовы платить
+  willingToPay  BigInt?  @map("willing_to_pay")
+  responsibleId String   @map("responsible_id") @db.VarChar(32)
+  businessId    String?  @map("business_id") @db.VarChar(32)
+  promoCodeId   String?  @map("promo_code_id") @db.VarChar(32)
+  /// VisitEvent[] фронта — {id, at, kind, status?, date?, text?}
+  history       Json
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([status, callbackDate])
+  @@index([businessId])
+  @@map("sales_visits")
+}
+
+/// Общий счётчик последовательных номеров панели (сейчас — только 'support': единая нумерация
+/// SupportTicket + BizRequest(kind=help), F-00-182). Инкремент — `UPDATE … SET value = value + 1` под транзакцией.
+model PlatformCounter {
+  key   String @id @db.VarChar(20)
+  value Int    @default(0)
+
+  @@map("platform_counters")
+}
+
+// === end stage 19 ===

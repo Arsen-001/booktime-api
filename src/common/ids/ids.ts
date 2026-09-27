@@ -157,6 +157,15 @@ export const ID_PREFIX = {
   bizRequest: 'breq',
   sphereRequest: 'sphr',
   recordCategory: 'rcat',
+  // этап 19 — модерация и наша панель: причина отказа rr / очередь mod (как мок newId('mod')/newId('rr')),
+  // наши сведения о бизнесе — без id (PK businessId), копия backup → 'bkp' (мок 'backup' длиннее 5 символов),
+  // идея idea (как мок), визит нашей команды — свой префикс ovis (журнальный 'vis' уже занят MedicalVisitNote)
+  rejectReason: 'rr',
+  moderationItem: 'mod',
+  moderationEvent: 'mev',
+  backupCopy: 'bkp',
+  idea: 'idea',
+  salesVisit: 'ovis',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;
