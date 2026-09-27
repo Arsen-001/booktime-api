@@ -169,13 +169,14 @@ export class OnlineService {
       staff: visibleStaff.map(sanitizePublicStaff),
       link: linkOut,
       regularsCount: await this.countRegulars(business.id),
-      serviceConfigs: {},
-      staffServiceOnline: {},
+      serviceConfigs: await this.serviceConfigsMap(business.id, services.map((s) => s.id)),
+      staffServiceOnline: (onlineArea?.data as Record<string, unknown> | undefined)?.staffServiceOnline ?? {},
       linkStaffGone,
+      // ⭐ промоблок ждёт очередь модерации (F-00-168) — не в этом заходе, см. docs/PROGRESS.md
       promoBlocks: [],
-      businessStars: 0,
+      businessStars: await this.starCount(business.id, 'business', business.id),
       networkBranches,
-      packages: [],
+      packages: await this.publicPackages(business.id),
       hourCycle,
       addressHidden,
     };
@@ -375,6 +376,29 @@ export class OnlineService {
     const row = await this.findByHash(id, hash);
     const { booking } = await this.bookings.cancelByClient(clientActor(null, 'link_holder'), id, { booking: row });
     return booking;
+  }
+
+  /**
+   * «Я оплатил» по ссылке без входа (B8) — тот же переход, что `BookingsService.markPaidByClient` у клиента со
+   * своим аккаунтом (этап 9), но по hash, не по appUserId: таймер снятия заявки останавливается, дальше решает
+   * мастер (В-05). Хук освобождения замка (`OccupyService.setHold`) здесь не дёргаем — воркер снятия просроченных
+   * заявок сам не тронет запись, раз `status` остаётся `awaiting_prepayment`, а строка занятости не мешает —
+   * тот же слот всё равно занят этой же записью.
+   */
+  async markPrepaymentPaid(id: string, hash: string) {
+    const row = await this.findByHash(id, hash);
+    if (row.status !== 'awaiting_prepayment') throw new ApiError('not_awaiting_prepayment', 'Эта запись не ждёт предоплату');
+    const p = (row.prepayment as Record<string, unknown> | null) ?? {};
+    const holdUntil = p.holdUntil as string | undefined;
+    if (holdUntil && holdUntil < utcToLocal(new Date()) && !p.clientMarkedPaidAt) {
+      throw new ApiError('prepayment_expired', 'Время на оплату истекло — окно уже освободилось');
+    }
+    let updated = row;
+    if (!p.clientMarkedPaidAt) {
+      updated = await this.prisma.booking.update({ where: { id }, data: { prepayment: { ...p, clientMarkedPaidAt: utcToLocal(new Date()) } as Prisma.InputJsonValue, version: { increment: 1 } } });
+      await this.prisma.bookingEvent.create({ data: { id: newId('bookingEvent'), bookingId: id, businessId: row.businessId, staffId: row.staffId, clientId: row.clientId, appUserId: row.appUserId, kind: 'status', toStatus: 'prepayment_reported', byRef: 'client', startLocal: utcToLocal(row.startAt) } });
+    }
+    return this.bookings.view(this.prisma, updated);
   }
 
   // ─────────────────────────── ссылки (F-03-003…037) ───────────────────────────
@@ -749,6 +773,274 @@ export class OnlineService {
       this.prisma.bookingEvent.create({ data: { id: newId('bookingEvent'), bookingId, businessId, staffId: b.staffId, clientId: b.clientId, appUserId: b.appUserId, kind: 'status', toStatus: 'time_offered', byRef: ctx.member!.staffId, startLocal: utcToLocal(b.startAt) } }),
     ]);
     return offered;
+  }
+
+  // ═══════════════════════════ стадия 21 (лейн client+online), попытка 2 ═══════════════════════════
+  // Остаток `online.ts` (docs/PROGRESS.md, попытка 1): 6 маленьких сущностей (промоблок, пакет, звёздочка,
+  // событие виджета, приглашение в окно, лист ожидания виджета) — одной общей таблицей `OnlineRecord`, тем же
+  // приёмом, что и `FinRecord` у лейна finance+stock (см. схему) — вместо шести отдельных таблиц. Настройки
+  // «мастер×услуга», интеграции, мобильные ссылки, API-ключ — в уже существующем JSON бизнеса (area 'online'),
+  // рядом с hourCycle/consentText. Правила групповой записи — в уже существующем BookingLink.config, рядом с
+  // остальными настройками ссылки (тот же приём, что staffDisplayField/theme у createLink).
+
+  private orView(r: { id: string; businessId: string; createdAt: Date; data: unknown }) {
+    return { id: r.id, businessId: r.businessId, createdAt: utcToLocal(r.createdAt), ...((r.data as Record<string, unknown>) ?? {}) };
+  }
+
+  // ── настройка онлайн-записи услуги (F-03-129) ──
+
+  private async serviceConfigRow(businessId: string, serviceId: string) {
+    return this.prisma.onlineRecord.findFirst({ where: { businessId, kind: 'serviceConfig', refId: serviceId } });
+  }
+
+  async serviceOnlineConfig(businessId: string, serviceId: string) {
+    const svc = await this.prisma.service.findFirst({ where: { id: serviceId, businessId } });
+    if (!svc) throw new ApiError('not_found', 'Service not found');
+    const row = await this.serviceConfigRow(businessId, serviceId);
+    return { serviceId, ...((row?.data as Record<string, unknown> | undefined) ?? {}) };
+  }
+
+  async updateServiceOnlineConfig(businessId: string, serviceId: string, patch: Record<string, unknown>) {
+    const svc = await this.prisma.service.findFirst({ where: { id: serviceId, businessId } });
+    if (!svc) throw new ApiError('not_found', 'Service not found');
+    const row = await this.serviceConfigRow(businessId, serviceId);
+    const next = pruneUndefined({ ...((row?.data as Record<string, unknown>) ?? {}), ...patch });
+    if (row) await this.prisma.onlineRecord.update({ where: { id: row.id }, data: { data: next as Prisma.InputJsonValue } });
+    else await this.prisma.onlineRecord.create({ data: { id: newId('onlineRecord'), businessId, kind: 'serviceConfig', refId: serviceId, data: next as Prisma.InputJsonValue } });
+    return this.serviceOnlineConfig(businessId, serviceId);
+  }
+
+  /** Карта serviceId → конфиг, для публичной страницы (F-03-129) */
+  private async serviceConfigsMap(businessId: string, serviceIds: string[]): Promise<Record<string, unknown>> {
+    if (!serviceIds.length) return {};
+    const rows = await this.prisma.onlineRecord.findMany({ where: { businessId, kind: 'serviceConfig', refId: { in: serviceIds } } });
+    return Object.fromEntries(rows.map((r) => [r.refId as string, { serviceId: r.refId, ...(r.data as Record<string, unknown>) }]));
+  }
+
+  /** Карта пакетов, включённых онлайн, для публичной страницы (F-03-130) */
+  private async publicPackages(businessId: string) {
+    const rows = await this.prisma.onlineRecord.findMany({ where: { businessId, kind: 'package' } });
+    return rows.filter((r) => (r.data as Record<string, unknown>).online === true).map((r) => this.orView(r));
+  }
+
+  // ── пара «мастер×услуга» (F-03-133) ──
+
+  async staffServiceOnlineFlags(businessId: string): Promise<Record<string, boolean>> {
+    const data = await this.rawOnlineArea(businessId);
+    return (data.staffServiceOnline as Record<string, boolean> | undefined) ?? {};
+  }
+
+  async setStaffServiceOnline(businessId: string, staffId: string, serviceId: string, online: boolean): Promise<Record<string, boolean>> {
+    const data = await this.rawOnlineArea(businessId);
+    const flags = { ...((data.staffServiceOnline as Record<string, boolean> | undefined) ?? {}) };
+    const key = `${staffId}:${serviceId}`;
+    if (online) delete flags[key];
+    else flags[key] = false;
+    await this.upsertOnlineArea(businessId, data, { staffServiceOnline: flags });
+    return flags;
+  }
+
+  /** Merge-и-запись в BusinessSetting(area:'online') одним местом — используют все настройки ниже */
+  private async upsertOnlineArea(businessId: string, current: Record<string, unknown>, patch: Record<string, unknown>): Promise<void> {
+    const data = { ...current, ...patch };
+    await this.prisma.businessSetting.upsert({
+      where: { businessId_area: { businessId, area: 'online' } },
+      create: { businessId, area: 'online', data: data as Prisma.InputJsonValue },
+      update: { data: data as Prisma.InputJsonValue, version: { increment: 1 } },
+    });
+  }
+
+  // ── мобильные приложения (F-03-048) ──
+
+  async mobileAppLinks(businessId: string) {
+    const data = await this.rawOnlineArea(businessId);
+    const m = (data.mobileApp as Record<string, unknown> | undefined) ?? {};
+    return { businessId, iosUrl: opt(m.iosUrl as string | undefined), androidUrl: opt(m.androidUrl as string | undefined), consultRequestedAt: opt(m.consultRequestedAt as string | undefined) };
+  }
+
+  async updateMobileAppLinks(businessId: string, patch: Record<string, unknown>) {
+    const data = await this.rawOnlineArea(businessId);
+    const next = pruneUndefined({ ...((data.mobileApp as Record<string, unknown>) ?? {}), ...patch });
+    await this.upsertOnlineArea(businessId, data, { mobileApp: next });
+    return this.mobileAppLinks(businessId);
+  }
+
+  // ── другие каналы записи, демо-подключение (F-03-036…046) ──
+
+  private static readonly INTEGRATION_IDS = ['ownApi', 'metaBookNow', 'googleReserve', 'yandexMaps', 'twoGis', 'earlyone', 'doqKz', 'thirdPartyBots'] as const;
+  private static readonly UNAVAILABLE_IN_ARMENIA = new Set(['googleReserve', 'twoGis', 'doqKz']);
+
+  async listIntegrations(businessId: string) {
+    const data = await this.rawOnlineArea(businessId);
+    const stored = (data.integrations as Record<string, { connected: boolean; connectedAt?: string }> | undefined) ?? {};
+    return OnlineService.INTEGRATION_IDS.map((id) => (stored[id] ? { id, ...stored[id] } : { id, connected: false }));
+  }
+
+  async setIntegrationConnected(businessId: string, id: string, connected: boolean) {
+    if (!(OnlineService.INTEGRATION_IDS as readonly string[]).includes(id)) throw new ApiError('not_found', 'Unknown integration');
+    if (connected && OnlineService.UNAVAILABLE_IN_ARMENIA.has(id)) throw new ApiError('integration_unavailable', 'Пока недоступно в Армении по справке партнёра');
+    const data = await this.rawOnlineArea(businessId);
+    const stored = { ...((data.integrations as Record<string, unknown> | undefined) ?? {}) };
+    const entry = { id, connected, connectedAt: connected ? utcToLocal(new Date()) : undefined };
+    stored[id] = entry;
+    await this.upsertOnlineArea(businessId, data, { integrations: stored });
+    return entry;
+  }
+
+  /** Демо-ключ своего API (F-03-036) — только отображение, реальной проверки Bearer этим ключом ещё нет (Р19) */
+  async apiCredentials(businessId: string) {
+    const data = await this.rawOnlineArea(businessId);
+    const c = (data.apiCredentials as { apiKey?: string; createdAt?: string } | undefined) ?? {};
+    return { businessId, apiKey: opt(c.apiKey), createdAt: opt(c.createdAt) };
+  }
+
+  async generateApiKey(businessId: string) {
+    const key = `bp_live_${randomBytes(16).toString('hex')}`;
+    const data = await this.rawOnlineArea(businessId);
+    const creds = { apiKey: key, createdAt: utcToLocal(new Date()) };
+    await this.upsertOnlineArea(businessId, data, { apiCredentials: creds });
+    return { businessId, ...creds };
+  }
+
+  async revokeApiKey(businessId: string): Promise<void> {
+    const data = await this.rawOnlineArea(businessId);
+    await this.upsertOnlineArea(businessId, data, { apiCredentials: {} });
+  }
+
+  // ── пакеты услуг / комплексы (F-03-130) ──
+
+  async listOnlinePackages(businessId: string) {
+    const rows = await this.prisma.onlineRecord.findMany({ where: { businessId, kind: 'package' }, orderBy: { createdAt: 'asc' } });
+    return rows.map((r) => this.orView(r));
+  }
+
+  async createOnlinePackage(businessId: string, input: { name: string; serviceIds: string[]; mode: string }) {
+    const data = { name: { ru: input.name, en: input.name, hy: input.name }, serviceIds: input.serviceIds, mode: input.mode, online: false };
+    const row = await this.prisma.onlineRecord.create({ data: { id: newId('onlineRecord'), businessId, kind: 'package', data: data as Prisma.InputJsonValue } });
+    return this.orView(row);
+  }
+
+  async updateOnlinePackage(businessId: string, id: string, patch: Record<string, unknown>) {
+    const row = await this.prisma.onlineRecord.findFirst({ where: { id, businessId, kind: 'package' } });
+    if (!row) throw new ApiError('not_found', 'Пакет не найден');
+    const next = pruneUndefined({ ...(row.data as Record<string, unknown>), ...patch });
+    const updated = await this.prisma.onlineRecord.update({ where: { id }, data: { data: next as Prisma.InputJsonValue } });
+    return this.orView(updated);
+  }
+
+  async deleteOnlinePackage(businessId: string, id: string): Promise<void> {
+    await this.prisma.onlineRecord.deleteMany({ where: { id, businessId, kind: 'package' } });
+  }
+
+  // ── промоблок в виджете (F-03-106) ──
+
+  async listPromoBlocks(businessId: string) {
+    const rows = await this.prisma.onlineRecord.findMany({ where: { businessId, kind: 'promoBlock' }, orderBy: { createdAt: 'asc' } });
+    return rows.map((r) => this.orView(r));
+  }
+
+  /** F-00-168/F-03-106: новые тексты и картинки видны клиентам только после нашей проверки — как у heroImageUrl
+   * ссылки. Очереди «наша панель → модерация» на промоблоки пока нет (ModerationKind платформы их не знает) —
+   * «На проверке» держится своим статусом здесь; approve/reject у наc пока не строит ничего (не в этом заходе,
+   * см. docs/PROGRESS.md — публичная сторона тоже пока не отдаёт промоблоки в getPublicBusinessData). */
+  async createPromoBlock(businessId: string, input: Record<string, unknown>) {
+    const data = { ...input, status: 'pending', enabled: true };
+    const row = await this.prisma.onlineRecord.create({ data: { id: newId('onlineRecord'), businessId, kind: 'promoBlock', data: data as Prisma.InputJsonValue } });
+    return this.orView(row);
+  }
+
+  async updatePromoBlock(businessId: string, id: string, patch: Record<string, unknown>) {
+    const row = await this.prisma.onlineRecord.findFirst({ where: { id, businessId, kind: 'promoBlock' } });
+    if (!row) throw new ApiError('not_found', 'Промоблок не найден');
+    const next = pruneUndefined({ ...(row.data as Record<string, unknown>), ...patch });
+    const updated = await this.prisma.onlineRecord.update({ where: { id }, data: { data: next as Prisma.InputJsonValue } });
+    return this.orView(updated);
+  }
+
+  async deletePromoBlock(businessId: string, id: string): Promise<void> {
+    await this.prisma.onlineRecord.deleteMany({ where: { id, businessId, kind: 'promoBlock' } });
+  }
+
+  // ── звёздочка вместо отзывов (F-00-116/117, F-03-105) ──
+
+  async starCount(businessId: string, target: string, targetId: string): Promise<number> {
+    const rows = await this.prisma.onlineRecord.findMany({ where: { businessId, kind: 'review' }, select: { data: true } });
+    return rows.filter((r) => {
+      const d = r.data as Record<string, unknown>;
+      return d.target === target && d.targetId === targetId;
+    }).length;
+  }
+
+  async hasReviewed(bookingId: string, target: string): Promise<boolean> {
+    const rows = await this.prisma.onlineRecord.findMany({ where: { refId: bookingId, kind: 'review' }, select: { data: true } });
+    return rows.some((r) => (r.data as Record<string, unknown>).target === target);
+  }
+
+  /** Клиент ставит звёздочку по своей записи (F-00-116) — вход тем же путём, что мок: без входа, доверяя
+   * bookingId+clientId, которые пришли со страницы «Вы записаны» (свой hash уже проверен при её открытии). */
+  async addReviewByBooking(bookingId: string, input: { target: string; targetId: string; clientId: string }) {
+    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+    if (!booking) throw new ApiError('not_found', 'Booking not found');
+    if (await this.hasReviewed(bookingId, input.target)) throw new ApiError('already_rated', 'Вы уже поставили звёздочку за эту запись');
+    const data = { target: input.target, targetId: input.targetId, bookingId, clientId: input.clientId };
+    const row = await this.prisma.onlineRecord.create({ data: { id: newId('onlineRecord'), businessId: booking.businessId, kind: 'review', refId: bookingId, data: data as Prisma.InputJsonValue } });
+    return this.orView(row);
+  }
+
+  // ── события виджета для аналитики (F-03-117…122) ──
+
+  private static readonly MAX_WIDGET_EVENTS = 200;
+
+  async trackWidgetEvent(businessId: string, linkId: string | undefined, type: string): Promise<void> {
+    if (!linkId) return;
+    await this.prisma.onlineRecord.create({ data: { id: newId('onlineRecord'), businessId, kind: 'widgetEvent', linkId, data: { type } as Prisma.InputJsonValue } });
+    const count = await this.prisma.onlineRecord.count({ where: { linkId, kind: 'widgetEvent' } });
+    const cap = OnlineService.MAX_WIDGET_EVENTS * 4;
+    if (count > cap) {
+      const excess = await this.prisma.onlineRecord.findMany({ where: { linkId, kind: 'widgetEvent' }, orderBy: { createdAt: 'asc' }, take: count - cap, select: { id: true } });
+      await this.prisma.onlineRecord.deleteMany({ where: { id: { in: excess.map((e) => e.id) } } });
+    }
+  }
+
+  async listWidgetEvents(linkId: string) {
+    const rows = await this.prisma.onlineRecord.findMany({ where: { linkId, kind: 'widgetEvent' }, orderBy: { createdAt: 'desc' }, take: OnlineService.MAX_WIDGET_EVENTS });
+    return rows.map((r) => ({ id: r.id, linkId: r.linkId!, businessId: r.businessId, type: (r.data as Record<string, unknown>).type as string, at: utcToLocal(r.createdAt) }));
+  }
+
+  // ── групповая запись: настройка ссылки (F-03-076, F-03-102) ──
+
+  private static readonly DEFAULT_GROUP_RULES = { allowExtraSeats: false, maxSeatsPerBooking: 1, allowMultiEvent: false, maxEventsPerBooking: 3 };
+
+  async groupBookingRules(linkId: string) {
+    const link = await this.prisma.bookingLink.findUnique({ where: { id: linkId } });
+    if (!link) throw new ApiError('not_found', 'Link not found');
+    const cfg = (link.config as Record<string, unknown>).groupBookingRules as Record<string, unknown> | undefined;
+    return { linkId, ...OnlineService.DEFAULT_GROUP_RULES, ...cfg };
+  }
+
+  async updateGroupBookingRules(businessId: string, linkId: string, patch: Record<string, unknown>) {
+    const link = await this.prisma.bookingLink.findFirst({ where: { id: linkId, businessId } });
+    if (!link) throw new ApiError('not_found', 'Link not found');
+    const current = await this.groupBookingRules(linkId);
+    const { linkId: _l, ...rest } = current;
+    void _l;
+    const next = { ...rest, ...patch };
+    await this.prisma.bookingLink.update({ where: { id: linkId }, data: { config: { ...(link.config as Record<string, unknown>), groupBookingRules: next } as Prisma.InputJsonValue } });
+    return this.groupBookingRules(linkId);
+  }
+
+  // ── лист ожидания виджета (F-03-086, ⭐ F-00-101/102) ──
+  // Стенд-ин (см. docstring WaitlistRequest в domain/online.ts): собственная запись здесь, не в
+  // ResourcesWaitlistEntry раздела resources — разное устройство (там serviceIds[]/wishes[] на СВОЙ экран
+  // «Лист ожидания», здесь один serviceId/staffId/date из виджета клиента); решение записано в docs/PROGRESS.md.
+
+  async joinOnlineWaitlist(input: { businessId: string; locationId?: string; staffId: string; serviceId: string; date: string; clientName: string; clientPhone: string; comment?: string }) {
+    const phone = normalizePhone(input.clientPhone);
+    if (!phone) throw new ApiError('invalid_phone', 'Проверьте номер телефона');
+    if (!input.clientName.trim()) throw new ApiError('invalid_input', 'Укажите имя');
+    const data = { locationId: input.locationId, staffId: input.staffId, serviceId: input.serviceId, date: input.date, clientName: input.clientName.trim(), clientPhone: phone, comment: input.comment, status: 'pending' as const };
+    const row = await this.prisma.onlineRecord.create({ data: { id: newId('onlineRecord'), businessId: input.businessId, kind: 'waitlist', refId: input.staffId, data: pruneUndefined(data) as Prisma.InputJsonValue } });
+    return this.orView(row);
   }
 }
 

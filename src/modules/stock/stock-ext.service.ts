@@ -705,6 +705,23 @@ export class StockExtService {
     return next;
   }
 
+  // ─────────────────────────── Поставщик «Заказать» (Ск15) ───────────────────────────
+
+  async getOrderSupplier(businessId: string) {
+    const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'stock.orderSupplier' } } });
+    return (row?.data as { counterpartyId?: string; name?: string; phone: string } | undefined) ?? null;
+  }
+
+  async saveOrderSupplier(ctx: RequestContext, supplier: { counterpartyId?: string; name?: string; phone: string }) {
+    const businessId = ctx.member!.businessId;
+    const data = { counterpartyId: supplier.counterpartyId, name: supplier.name?.trim() || undefined, phone: supplier.phone.trim() } as Prisma.InputJsonValue;
+    await this.prisma.businessSetting.upsert({
+      where: { businessId_area: { businessId, area: 'stock.orderSupplier' } },
+      create: { businessId, area: 'stock.orderSupplier', data, updatedBy: ctx.member!.staffId },
+      update: { data, updatedBy: ctx.member!.staffId, version: { increment: 1 } },
+    });
+  }
+
   // ─────────────────────────── Напоминания-сводка, материалы и палитра клиента (F-00-142…144) ───────────────────────────
 
   async remindersSummary(businessId: string, locationId: string, staffId?: string) {

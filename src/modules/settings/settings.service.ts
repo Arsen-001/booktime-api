@@ -10,7 +10,7 @@ import { nextPlatformNumber } from '../platform/counters.js';
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaService | Tx;
-type Section = 'brand' | 'contacts' | 'gallery' | 'legal' | 'system' | 'categories' | 'webhooks';
+type Section = 'brand' | 'contacts' | 'gallery' | 'legal' | 'system' | 'categories';
 
 const TAX_ID_RE = /^\d{8}$/;
 const TELEGRAM_RE = /^https:\/\/t\.me\/[a-zA-Z0-9_]{3,}$/;
@@ -278,12 +278,11 @@ export class SettingsService {
     return { businessId, enabled: s.enabled ?? false, url: s.url, entities: s.entities ?? [] };
   }
 
+  // Не пишем в общий журнал изменений компании (F-15-180, settings.history.section.*): 'webhooks' не входит в
+  // SettingsChangeSection фронта (src/domain/settings.ts) — заводить новую секцию ради демо-формы (см. выше)
+  // не по объёму этапа «Сдача». Форма сохраняется, просто без строки в «Что менялось».
   async saveWebhooks(ctx: RequestContext, businessId: string, input: { enabled: boolean; url?: string; entities: string[] }) {
-    await this.prisma.$transaction(async (tx) => {
-      const before = await this.area<{ enabled?: boolean }>(tx, businessId, 'webhooks', {});
-      await this.putArea(tx, ctx, businessId, 'webhooks', input);
-      await this.log(tx, ctx, businessId, 'webhooks', 'webhookEnabled', String(before.enabled ?? false), String(input.enabled));
-    });
+    await this.prisma.$transaction((tx) => this.putArea(tx, ctx, businessId, 'webhooks', input));
     this.changed(businessId);
     return this.webhooks(businessId);
   }

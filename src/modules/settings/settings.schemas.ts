@@ -29,7 +29,7 @@ export const contactsBody = z.object({
 });
 export const galleryBody = z.object({ photos: z.array(z.string().max(4_000_000)).max(6) });
 export const categoryBody = z.object({ name: z.string().max(80), colorIndex: z.number().int().min(1).max(8), icon: z.string().max(40).optional() });
-export const changeLogQuery = z.object({ section: z.enum(['brand', 'contacts', 'gallery', 'legal', 'system', 'categories', 'webhooks']).optional() });
+export const changeLogQuery = z.object({ section: z.enum(['brand', 'contacts', 'gallery', 'legal', 'system', 'categories']).optional() });
 /** «Для разработчиков» — вебхуки (F-15-119, этап 21 «Сдача», лейн rest): форма демо-интерфейса, см. settings.service.ts */
 export const webhookBody = z.object({
   enabled: z.boolean(),

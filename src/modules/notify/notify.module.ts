@@ -5,6 +5,7 @@ import { NotifyClientPrefsService } from './notify-client-prefs.service.js';
 import { NotifyDispatchService } from './notify-dispatch.service.js';
 import { NotifyInboxService } from './notify-inbox.service.js';
 import { NotifyMiscService } from './notify-misc.service.js';
+import { NotifyMoreService } from './notify-more.service.js';
 import { NotifyNewsService } from './notify-news.service.js';
 import { NotifyStaffPrefsService } from './notify-staff-prefs.service.js';
 import { NotifyTypesService } from './notify-types.service.js';

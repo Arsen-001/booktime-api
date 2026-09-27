@@ -283,3 +283,78 @@ export const offerTimesBody = z.object({ starts: z.array(z.string()).min(1) });
 export const statusLogOut = z.array(z.object({ status: z.string(), at: z.string(), by: z.enum(['client', 'staff']) }));
 
 export const placesDataOut = z.object({ staff: staffOut, location: locationOut.optional(), rules: z.record(z.string(), z.unknown()) });
+
+// ─────────────────────────── стадия 21 (лейн client+online), попытка 2 ───────────────────────────
+
+export const serviceOnlineConfigOut = z.object({ serviceId: z.string() }).catchall(z.unknown());
+export const serviceOnlineConfigBody = z
+  .object({ onlineName: localized, description: localized, imageUrl: z.string(), availability: z.unknown(), subscriptionOnly: z.boolean(), subscriptionPlanName: z.string() })
+  .partial();
+
+export const onlinePackageOut = z.object({ id: z.string(), businessId: z.string(), createdAt: z.string() }).catchall(z.unknown());
+export const createOnlinePackageBody = z.object({ name: z.string().min(1).max(160), serviceIds: z.array(id32).min(2).max(10), mode: z.enum(['simultaneous', 'sequentialSame', 'sequentialMulti']) });
+export const updateOnlinePackageBody = z.object({ name: localized, online: z.boolean(), onlineName: localized, description: localized, imageUrl: z.string(), availability: z.unknown(), serviceIds: z.array(id32).min(2).max(10), mode: z.enum(['simultaneous', 'sequentialSame', 'sequentialMulti']) }).partial();
+
+export const staffServiceFlagsOut = z.record(z.string(), z.boolean());
+export const setStaffServiceOnlineBody = z.object({ staffId: id32, serviceId: id32, online: z.boolean() });
+
+export const promoBlockOut = z.object({ id: z.string(), businessId: z.string(), createdAt: z.string(), status: z.enum(['pending', 'approved', 'rejected']), enabled: z.boolean() }).catchall(z.unknown());
+export const createPromoBlockBody = z.object({
+  title: z.string().min(1).max(50),
+  description: z.string().max(220).optional(),
+  imageUrl: z.string().optional(),
+  buttonText: z.string().max(20).optional(),
+  buttonLink: z.string().optional(),
+  screens: z.array(z.enum(['menu', 'service', 'staff', 'success'])).min(1),
+});
+export const updatePromoBlockBody = createPromoBlockBody.partial().extend({ enabled: z.boolean() }).partial();
+
+export const reviewOut = z.object({ id: z.string(), businessId: z.string(), createdAt: z.string(), target: z.enum(['business', 'staff']), targetId: z.string(), bookingId: z.string(), clientId: z.string() });
+export const addReviewBody = z.object({ target: z.enum(['business', 'staff']), targetId: id32, clientId: id32 });
+
+export const trackWidgetEventBody = z.object({ linkId: id32.optional(), businessId: id32, type: z.string().min(1).max(60) });
+export const widgetEventOut = z.object({ id: z.string(), linkId: z.string(), businessId: z.string(), type: z.string(), at: z.string() });
+
+export const groupBookingRulesOut = z.object({ linkId: z.string(), allowExtraSeats: z.boolean(), maxSeatsPerBooking: z.number(), allowMultiEvent: z.boolean(), maxEventsPerBooking: z.number() });
+export const groupBookingRulesBody = z.object({ allowExtraSeats: z.boolean(), maxSeatsPerBooking: z.number().int().min(1).max(50), allowMultiEvent: z.boolean(), maxEventsPerBooking: z.number().int().min(1).max(10) }).partial();
+
+export const publicGroupEventOut = z.object({ event: z.record(z.string(), z.unknown()), service: serviceOut.optional(), staff: staffOut.optional(), seatsTaken: z.number(), seatsLeft: z.number() });
+export const createGroupOnlineBookingBody = z.object({
+  locationId: id32,
+  groupEventId: id32,
+  seats: z.number().int().min(1).max(50),
+  clientName: z.string().min(1).max(160),
+  clientPhone: z.string().min(8).max(24),
+  comment: z.string().max(2000).optional(),
+  linkId: id32.optional(),
+  formId: z.string().max(20).optional(),
+  source: bookingSource,
+  device: bookingDevice,
+  phoneVerified: z.boolean(),
+  payByMembership: z.boolean().optional(),
+});
+
+export const mobileAppLinksOut = z.object({ businessId: z.string(), iosUrl: z.string().optional(), androidUrl: z.string().optional(), consultRequestedAt: z.string().optional() });
+export const mobileAppLinksBody = z.object({ iosUrl: z.string().nullable(), androidUrl: z.string().nullable(), consultRequestedAt: z.string().nullable() }).partial();
+
+export const integrationConnectionOut = z.object({ id: z.string(), connected: z.boolean(), connectedAt: z.string().optional() });
+export const setIntegrationConnectedBody = z.object({ connected: z.boolean() });
+
+export const apiCredentialsOut = z.object({ businessId: z.string(), apiKey: z.string().optional(), createdAt: z.string().optional() });
+
+export const slotCandidateOut = z.object({ slotStart: z.string(), staffId: z.string(), clientId: z.string(), clientName: z.string(), clientPhone: z.string(), reason: z.enum(['regular', 'dueAgain']), serviceId: z.string().optional() });
+export const inviteToSlotBody = z.object({ candidate: slotCandidateOut, message: z.string().min(1).max(2000) });
+export const slotInviteOut = z.object({ id: z.string(), businessId: z.string(), staffId: z.string(), clientId: z.string(), clientName: z.string(), slotStart: z.string(), serviceId: z.string().optional(), message: z.string(), sentAt: z.string() });
+
+export const joinWaitlistBody = z.object({ locationId: id32.optional(), staffId: id32, serviceId: id32, date: z.string(), clientName: z.string().min(1).max(160), clientPhone: z.string().min(8).max(24), comment: z.string().max(2000).optional() });
+export const waitlistRequestOut = z.object({ id: z.string(), businessId: z.string(), locationId: z.string().optional(), staffId: z.string(), serviceId: z.string(), date: z.string(), clientName: z.string(), clientPhone: z.string(), comment: z.string().optional(), status: z.enum(['pending', 'notified', 'booked', 'cancelled']), createdAt: z.string() });
+
+export const cabinetDataOut = z.object({
+  client: z.record(z.string(), z.unknown()),
+  upcoming: z.array(z.record(z.string(), z.unknown())),
+  past: z.array(z.record(z.string(), z.unknown())),
+  services: z.record(z.string(), z.unknown()),
+  staffNames: z.record(z.string(), z.string()),
+  loyalty: z.object({ certificates: z.array(z.unknown()), subscriptions: z.array(z.unknown()) }),
+  accessHashes: z.record(z.string(), z.string()),
+});

@@ -1214,6 +1214,9 @@ model Booking {
   /// OnlineBookingMeta без bookingId/accessHash (этап 8, F-03-091…139): откуда пришла запись — ссылка/форма,
   /// устройство, e-mail/фамилия/отчество, свои поля виджета, «специалист не важен», адрес выезда
   onlineMeta          Json?     @map("online_meta")
+  /// BookingNotifyOverride фронта (F-05-009/082, этап 21 «notify+integrations», попытка 3) — ручная правка
+  /// уведомлений ОДНОЙ записи (какой канал напоминания и за сколько часов); нет строки — DEFAULT_BOOKING_NOTIFY_OVERRIDE
+  notifyOverride      Json?     @map("notify_override")
   deletedAt           DateTime? @map("deleted_at") @db.DateTime(3)
   deletedBy           String?   @map("deleted_by") @db.VarChar(32)
   deletedByName       String?   @map("deleted_by_name") @db.VarChar(160)
@@ -1737,6 +1740,43 @@ model BizInboxRead {
   @@id([businessId, eventId])
   @@map("biz_inbox_read")
 }
+
+// === stage 21 (лейн notify+integrations), попытка 3 ===
+// Настройки-«одиночки» раздела notify, которые не зависят от каталога типов Altegio (см. NotifyMiscService
+// докстринг, попытка 2): язык/тихие часы, витрина подарка партнёра, сводки от партнёров, WhatsApp через
+// Altegio, флаги внешнего агента, расписание Open Slots — все на area = 'notify-<name>' той же BusinessSetting,
+// поэтому своих моделей под них не заводим. Ниже — то, для чего area/JSON не хватает: своя таблица нужна.
+
+/// Своё время напоминания (тип 1 реестра, Ув15) для ОТДЕЛЬНОЙ услуги — без полного каталога 29 типов (см.
+/// notify.server.ts докстринг): достаточно узкой пары (businessId, serviceId) → часы. Нет строки — общее время
+/// типа действует (экран notify.ts берёт из типа 1, серверу типа 1 пока негде взять — просто нет строки).
+model ServiceReminderOverride {
+  businessId String @map("business_id") @db.VarChar(32)
+  serviceId  String @map("service_id") @db.VarChar(32)
+  hours      Int
+
+  @@id([businessId, serviceId])
+  @@map("service_reminder_overrides")
+}
+
+/// «Для разработчиков» (F-05-120): вебхук на изменения по entities. ТОЛЬКО хранение и переключатель —
+/// настоящей рассылки событий на url при их изменении нет (out of scope этого захода, см. PROGRESS.md);
+/// это НЕ WebhookAddress (integrations.ts, этап 17 — ключ разработчика с подписью HMAC и настоящей
+/// доставкой jobs/webhooks-dispatch.ts) — разные экраны, разный домен фронта (Webhook/WebhookEntity в
+/// src/domain/notify.ts, без secret).
+model NotifyWebhook {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  url        String   @db.VarChar(500)
+  /// WebhookEntity[] — location|staff|clients|bookings|loyaltyCards|services|products|sales
+  entities   Json
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("notify_webhooks")
+}
+// === end stage 21 (лейн notify+integrations), попытка 3 ===
 
 // ═══════════════════════════ Этап 11 — Лояльность (02-api.md §11, F-06-*) ═══════════════════════════
 // Владелец программы — сеть (F-06-002); у одиночного бизнеса owner_id = business_id. `ownerId` — то, что
@@ -2265,6 +2305,9 @@ model BookingPayment {
   loyaltyAccountId String? @map("loyalty_account_id") @db.VarChar(32)
   /// Этап 21: общий ключ одного платежа, разнесённого по строкам визита (groupId мока)
   groupId          String? @map("group_id") @db.VarChar(32)
+  /// Этап 21 (лейн finance+stock): сколько по строке уже вернули (частичный возврат, fin-review Ф8) — оплата
+  /// остаётся, визит не становится снова «К оплате», касса дня оплаты не меняется задним числом
+  refundedAmount   BigInt  @default(0) @map("refunded_amount")
 
   @@index([businessId, bookingId])
   @@index([finOpId])
@@ -3970,3 +4013,30 @@ model FinRecord {
   @@index([businessId, kind, clientId])
   @@map("fin_records")
 }
+
+/// Кассовая смена наличной кассы и её Z-отчёт (fin-review Ф1): пересчёт ящика на открытии и закрытии,
+/// расхождение с учётом — отдельной операцией-поправкой (FinOp), её id — в adjustmentOperationIds.
+model CashShift {
+  id                     String    @id @db.VarChar(32)
+  businessId             String    @map("business_id") @db.VarChar(32)
+  accountId              String    @map("account_id") @db.VarChar(32)
+  /// open | closed
+  status                 String    @db.VarChar(10)
+  /// Держит «одна открытая смена на кассу» уникальным индексом: = accountId у открытой, NULL у закрытой
+  openKey                String?   @unique @map("open_key") @db.VarChar(32)
+  openedAt               DateTime  @map("opened_at") @db.DateTime(3)
+  openedBy               String    @map("opened_by") @db.VarChar(32)
+  openingCash            BigInt    @map("opening_cash")
+  expectedAtOpen         BigInt    @map("expected_at_open")
+  closedAt               DateTime? @map("closed_at") @db.DateTime(3)
+  closedBy               String?   @map("closed_by") @db.VarChar(32)
+  countedCash            BigInt?   @map("counted_cash")
+  expectedAtClose        BigInt?   @map("expected_at_close")
+  adjustmentOperationIds Json      @map("adjustment_operation_ids")
+  comment                String?   @db.VarChar(500)
+
+  @@index([businessId, accountId, openedAt])
+  @@map("cash_shifts")
+}
+
+// === end stage 21 (лейн finance+stock) ===

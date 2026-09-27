@@ -37,6 +37,7 @@ const copyBody = z.object({ targetLocationIds: z.array(id32).min(1).max(100) });
 const permsBody = z.object({ permissions: z.record(z.string(), z.unknown()), base: z.record(z.string(), z.unknown()).optional() });
 const permsReplaceBody = z.object({ permissions: z.record(z.string(), z.unknown()), label: z.string().max(120).optional(), fromStaffId: id32.optional() });
 const priceTagBody = z.object({ patch: z.record(z.string(), z.unknown()), base: z.record(z.string(), z.unknown()) });
+const orderSupplierBody = z.object({ counterpartyId: id32.optional(), name: z.string().max(200).optional(), phone: z.string().min(1).max(40) });
 
 /**
  * Этап 21, лейн «finance+stock»: недостающие маршруты раздела «Товары» — см. докстринг `StockExtService`.
@@ -209,6 +210,22 @@ export class StockExtController {
   @ZodBody(priceTagBody)
   putPriceTag(@Ctx() ctx: RequestContext, @Body(new Zod(priceTagBody)) body: z.infer<typeof priceTagBody>) {
     return this.ext.updatePriceTagLayout(ctx, body.patch, body.base);
+  }
+
+  /** Ск15: запомненный поставщик «Заказать» — один на бизнес (как в моке, settings.orderSupplier) */
+  @Get('order-supplier')
+  @Biz('stock.view')
+  async getOrderSupplier(@Param('businessId') businessId: string) {
+    return { supplier: await this.ext.getOrderSupplier(businessId) };
+  }
+
+  @Put('order-supplier')
+  @Biz('stock.view')
+  @HttpCode(200)
+  @ZodBody(orderSupplierBody)
+  async putOrderSupplier(@Ctx() ctx: RequestContext, @Body(new Zod(orderSupplierBody)) body: z.infer<typeof orderSupplierBody>) {
+    await this.ext.saveOrderSupplier(ctx, body);
+    return { ok: true as const };
   }
 
   @Get('reminders/summary')

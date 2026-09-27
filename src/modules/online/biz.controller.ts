@@ -8,24 +8,42 @@ import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { ifMatch } from '../../common/http/version.js';
 import {
+  apiCredentialsOut,
   bookingLinkOut,
   businessOnlineRulesBody,
   businessOnlineRulesOut,
   clientFieldsConfigBody,
   clientFieldsConfigOut,
   createLinkBody,
+  createOnlinePackageBody,
+  createPromoBlockBody,
   customClientFieldBody,
+  groupBookingRulesBody,
+  groupBookingRulesOut,
+  integrationConnectionOut,
   listabilityOut,
+  mobileAppLinksBody,
+  mobileAppLinksOut,
   moveFieldBody,
   offerTimesBody,
   onlineMetaOut,
+  onlinePackageOut,
   onlineRequestOut,
   placesDataOut,
+  promoBlockOut,
   respondBody,
+  serviceOnlineConfigBody,
+  serviceOnlineConfigOut,
+  setIntegrationConnectedBody,
+  setStaffServiceOnlineBody,
   staffClientRulesBody,
   staffClientRulesOut,
+  staffServiceFlagsOut,
   statusLogOut,
   updateLinkBody,
+  updateOnlinePackageBody,
+  updatePromoBlockBody,
+  widgetEventOut,
 } from './online.schemas.js';
 import { OnlineService } from './online.service.js';
 
@@ -250,5 +268,195 @@ export class BizOnlineController {
   @ZodOk(z.array(z.string()))
   offerTimes(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(offerTimesBody)) body: z.infer<typeof offerTimesBody>) {
     return this.svc.offerOtherTimes(ctx, businessId, id, body.starts);
+  }
+
+  // ═══════════════ стадия 21 (лейн client+online), попытка 2 ═══════════════
+
+  // ── настройка онлайн-записи услуги (F-03-129) ──
+
+  @Get('online/services/:serviceId/config')
+  @Biz()
+  @ZodOk(serviceOnlineConfigOut)
+  serviceConfig(@Param('businessId') businessId: string, @Param('serviceId') serviceId: string) {
+    return this.svc.serviceOnlineConfig(businessId, serviceId);
+  }
+
+  @Patch('online/services/:serviceId/config')
+  @Biz('online.manage')
+  @ZodBody(serviceOnlineConfigBody)
+  @ZodOk(serviceOnlineConfigOut)
+  setServiceConfig(@Param('businessId') businessId: string, @Param('serviceId') serviceId: string, @Body(new Zod(serviceOnlineConfigBody)) body: z.infer<typeof serviceOnlineConfigBody>) {
+    return this.svc.updateServiceOnlineConfig(businessId, serviceId, body);
+  }
+
+  // ── пара «мастер×услуга» (F-03-133) ──
+
+  @Get('online/staff-service-flags')
+  @Biz()
+  @ZodOk(staffServiceFlagsOut)
+  staffServiceFlags(@Param('businessId') businessId: string) {
+    return this.svc.staffServiceOnlineFlags(businessId);
+  }
+
+  @Put('online/staff-service-flags')
+  @Biz('online.manage')
+  @ZodBody(setStaffServiceOnlineBody)
+  @ZodOk(staffServiceFlagsOut)
+  setStaffServiceFlag(@Param('businessId') businessId: string, @Body(new Zod(setStaffServiceOnlineBody)) body: z.infer<typeof setStaffServiceOnlineBody>) {
+    return this.svc.setStaffServiceOnline(businessId, body.staffId, body.serviceId, body.online);
+  }
+
+  // ── пакеты услуг (F-03-130) ──
+
+  @Get('online/packages')
+  @Biz()
+  @ZodOk(z.array(onlinePackageOut))
+  packages(@Param('businessId') businessId: string) {
+    return this.svc.listOnlinePackages(businessId);
+  }
+
+  @Post('online/packages')
+  @Biz('online.manage')
+  @ZodBody(createOnlinePackageBody)
+  @ZodOk(onlinePackageOut)
+  createPackage(@Param('businessId') businessId: string, @Body(new Zod(createOnlinePackageBody)) body: z.infer<typeof createOnlinePackageBody>) {
+    return this.svc.createOnlinePackage(businessId, body);
+  }
+
+  @Patch('online/packages/:id')
+  @Biz('online.manage')
+  @ZodBody(updateOnlinePackageBody)
+  @ZodOk(onlinePackageOut)
+  updatePackage(@Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(updateOnlinePackageBody)) body: z.infer<typeof updateOnlinePackageBody>) {
+    return this.svc.updateOnlinePackage(businessId, id, body);
+  }
+
+  @Delete('online/packages/:id')
+  @Biz('online.manage')
+  async removePackage(@Param('businessId') businessId: string, @Param('id') id: string) {
+    await this.svc.deleteOnlinePackage(businessId, id);
+    return { ok: true };
+  }
+
+  // ── промоблок в виджете (F-03-106) ──
+
+  @Get('online/promo-blocks')
+  @Biz()
+  @ZodOk(z.array(promoBlockOut))
+  promoBlocks(@Param('businessId') businessId: string) {
+    return this.svc.listPromoBlocks(businessId);
+  }
+
+  @Post('online/promo-blocks')
+  @Biz('online.manage')
+  @ZodBody(createPromoBlockBody)
+  @ZodOk(promoBlockOut)
+  createPromo(@Param('businessId') businessId: string, @Body(new Zod(createPromoBlockBody)) body: z.infer<typeof createPromoBlockBody>) {
+    return this.svc.createPromoBlock(businessId, body);
+  }
+
+  @Patch('online/promo-blocks/:id')
+  @Biz('online.manage')
+  @ZodBody(updatePromoBlockBody)
+  @ZodOk(promoBlockOut)
+  updatePromo(@Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(updatePromoBlockBody)) body: z.infer<typeof updatePromoBlockBody>) {
+    return this.svc.updatePromoBlock(businessId, id, body);
+  }
+
+  @Delete('online/promo-blocks/:id')
+  @Biz('online.manage')
+  async removePromo(@Param('businessId') businessId: string, @Param('id') id: string) {
+    await this.svc.deletePromoBlock(businessId, id);
+    return { ok: true };
+  }
+
+  // ── звёздочка вместо отзывов (F-00-116/117) ──
+
+  @Get('online/reviews/:target/:targetId/count')
+  @Biz()
+  @ZodOk(z.object({ count: z.number() }))
+  async reviewCount(@Param('businessId') businessId: string, @Param('target') target: string, @Param('targetId') targetId: string) {
+    return { count: await this.svc.starCount(businessId, target, targetId) };
+  }
+
+  // ── события виджета для аналитики (F-03-121) ──
+
+  @Get('online/links/:id/widget-events')
+  @Biz()
+  @ZodOk(z.array(widgetEventOut))
+  widgetEvents(@Param('id') id: string) {
+    return this.svc.listWidgetEvents(id);
+  }
+
+  // ── групповая запись: настройка ссылки (F-03-076, F-03-102) ──
+
+  @Get('online/links/:id/group-rules')
+  @Biz()
+  @ZodOk(groupBookingRulesOut)
+  groupRules(@Param('id') id: string) {
+    return this.svc.groupBookingRules(id);
+  }
+
+  @Put('online/links/:id/group-rules')
+  @Biz('online.manage')
+  @ZodBody(groupBookingRulesBody)
+  @ZodOk(groupBookingRulesOut)
+  setGroupRules(@Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(groupBookingRulesBody)) body: z.infer<typeof groupBookingRulesBody>) {
+    return this.svc.updateGroupBookingRules(businessId, id, body);
+  }
+
+  // ── мобильные приложения (F-03-048) ──
+
+  @Get('online/mobile-app')
+  @Biz()
+  @ZodOk(mobileAppLinksOut)
+  mobileApp(@Param('businessId') businessId: string) {
+    return this.svc.mobileAppLinks(businessId);
+  }
+
+  @Put('online/mobile-app')
+  @Biz('online.manage')
+  @ZodBody(mobileAppLinksBody)
+  @ZodOk(mobileAppLinksOut)
+  setMobileApp(@Param('businessId') businessId: string, @Body(new Zod(mobileAppLinksBody)) body: z.infer<typeof mobileAppLinksBody>) {
+    return this.svc.updateMobileAppLinks(businessId, body);
+  }
+
+  // ── другие каналы записи (F-03-036…046) ──
+
+  @Get('online/integrations')
+  @Biz()
+  @ZodOk(z.array(integrationConnectionOut))
+  integrations(@Param('businessId') businessId: string) {
+    return this.svc.listIntegrations(businessId);
+  }
+
+  @Put('online/integrations/:id')
+  @Biz('online.manage')
+  @ZodBody(setIntegrationConnectedBody)
+  @ZodOk(integrationConnectionOut)
+  setIntegration(@Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(setIntegrationConnectedBody)) body: z.infer<typeof setIntegrationConnectedBody>) {
+    return this.svc.setIntegrationConnected(businessId, id, body.connected);
+  }
+
+  @Get('online/api-credentials')
+  @Biz()
+  @ZodOk(apiCredentialsOut)
+  apiCredentials(@Param('businessId') businessId: string) {
+    return this.svc.apiCredentials(businessId);
+  }
+
+  @Post('online/api-credentials/generate')
+  @Biz('online.manage')
+  @ZodOk(apiCredentialsOut)
+  generateApiKey(@Param('businessId') businessId: string) {
+    return this.svc.generateApiKey(businessId);
+  }
+
+  @Post('online/api-credentials/revoke')
+  @Biz('online.manage')
+  async revokeApiKey(@Param('businessId') businessId: string) {
+    await this.svc.revokeApiKey(businessId);
+    return { ok: true };
   }
 }

@@ -166,6 +166,19 @@ export const ERROR_STATUS = {
   membership_not_applicable: HttpStatus.UNPROCESSABLE_ENTITY,
   negative_limit_required: HttpStatus.UNPROCESSABLE_ENTITY,
   over_limit: HttpStatus.UNPROCESSABLE_ENTITY,
+  // этап 21, лейн finance+stock — возврат по платежу визита, кассовая смена
+  discount_not_refundable: HttpStatus.UNPROCESSABLE_ENTITY,
+  payment_setup_incomplete: HttpStatus.UNPROCESSABLE_ENTITY,
+  insufficient_cash: HttpStatus.UNPROCESSABLE_ENTITY,
+  not_cash_account: HttpStatus.UNPROCESSABLE_ENTITY,
+  shift_already_open: HttpStatus.CONFLICT,
+  shift_not_open: HttpStatus.CONFLICT,
+  // online, остаток (этап 21, лейн client+online, попытка 2) — коды мока src/api/online.ts как есть
+  not_awaiting_prepayment: HttpStatus.CONFLICT,
+  prepayment_expired: HttpStatus.GONE,
+  already_rated: HttpStatus.CONFLICT,
+  integration_unavailable: HttpStatus.UNPROCESSABLE_ENTITY,
+  invalid_input: HttpStatus.UNPROCESSABLE_ENTITY,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

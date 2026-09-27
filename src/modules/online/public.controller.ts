@@ -7,15 +7,21 @@ import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import { Zod } from '../../common/http/validation.js';
 import {
+  addReviewBody,
   cancelWindowOut,
   codeSentOut,
   createOnlineBookingBody,
   freeSlotOut,
+  groupBookingRulesOut,
+  joinWaitlistBody,
   monthAvailabilityOut,
   onlineBookingResultOut,
   onlineBookingViewOut,
   publicBusinessOut,
+  reviewOut,
   sendBookingCodeBody,
+  trackWidgetEventBody,
+  waitlistRequestOut,
 } from './online.schemas.js';
 import { OnlineService } from './online.service.js';
 
@@ -139,5 +145,60 @@ export class PublicOnlineController {
   @ApiOperation({ summary: 'Отмена своей записи по ссылке без входа (F-03-100). Перенос по ссылке не строим — B8' })
   cancel(@Param('id') id: string, @Query('h') hash: string) {
     return this.svc.cancelByHash(id, hash);
+  }
+
+  // ═══════════════ стадия 21 (лейн client+online), попытка 2 ═══════════════
+
+  @Post('bookings/:id/prepayment-paid')
+  @HttpCode(200)
+  @RateLimit({ bucket: 'public-booking-hash', limit: 20, windowSec: 3600, by: 'ip' })
+  @ApiOperation({ summary: '«Я оплатил» по ссылке без входа (B8, В-05)' })
+  markPrepaymentPaid(@Param('id') id: string, @Query('h') hash: string) {
+    return this.svc.markPrepaymentPaid(id, hash);
+  }
+
+  @Post('bookings/:id/reviews')
+  @HttpCode(200)
+  @RateLimit({ bucket: 'public-booking-hash', limit: 20, windowSec: 3600, by: 'ip' })
+  @ApiOperation({ summary: 'Звёздочка после визита (F-00-116) — без входа, как у мока' })
+  @ZodBody(addReviewBody)
+  @ZodOk(reviewOut)
+  addReview(@Param('id') id: string, @Body(new Zod(addReviewBody)) body: z.infer<typeof addReviewBody>) {
+    return this.svc.addReviewByBooking(id, body);
+  }
+
+  @Get('bookings/:id/reviews/:target')
+  @RateLimit({ bucket: 'public-booking-hash', limit: 60, windowSec: 60, by: 'ip' })
+  @ApiOperation({ summary: 'Уже ли поставлена звёздочка за эту запись' })
+  @ZodOk(z.object({ reviewed: z.boolean() }))
+  async hasReviewed(@Param('id') id: string, @Param('target') target: string) {
+    return { reviewed: await this.svc.hasReviewed(id, target) };
+  }
+
+  @Post('track')
+  @HttpCode(200)
+  @RateLimit({ bucket: 'public-slots', limit: 300, windowSec: 60, by: 'ip' })
+  @ApiOperation({ summary: 'Событие пути записи для аналитики (F-03-117…122)' })
+  @ZodBody(trackWidgetEventBody)
+  async track(@Body(new Zod(trackWidgetEventBody)) body: z.infer<typeof trackWidgetEventBody>) {
+    await this.svc.trackWidgetEvent(body.businessId, body.linkId, body.type);
+    return { ok: true };
+  }
+
+  @Get('links/:linkId/group-rules')
+  @RateLimit({ bucket: 'public-slots', limit: 300, windowSec: 60, by: 'ip' })
+  @ApiOperation({ summary: 'Правила групповой записи ссылки (F-03-076/102) — числа не секретные, читаем без входа' })
+  @ZodOk(groupBookingRulesOut)
+  groupRules(@Param('linkId') linkId: string) {
+    return this.svc.groupBookingRules(linkId);
+  }
+
+  @Post('businesses/:businessId/waitlist')
+  @RateLimit({ bucket: 'public-booking-create', limit: 20, windowSec: 3600, by: 'ip' })
+  @ApiOperation({ summary: 'Клиент сам встаёт в лист ожидания из виджета (F-03-086, ⭐ F-00-101/102)' })
+  @ZodBody(joinWaitlistBody)
+  @ZodOk(waitlistRequestOut)
+  joinWaitlist(@Param('businessId') businessId: string, @Body(new Zod(joinWaitlistBody)) body: z.infer<typeof joinWaitlistBody>) {
+    return this.svc.joinOnlineWaitlist({ businessId, ...body });
   }
 }

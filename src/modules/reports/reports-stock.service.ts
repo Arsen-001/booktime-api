@@ -236,9 +236,11 @@ export class ReportsStockService {
     const cards = serviceIds.length ? await this.prisma.techCard.findMany({ where: { businessId, serviceId: { in: serviceIds } } }) : [];
     const calcByGood = new Map<string, { qty: number; cost: number }>();
     for (const b of arrived) {
-      for (const line of b.services as { serviceId: string; staffId?: string }[]) {
-        const staffId = line.staffId ?? b.staffId;
-        const card = cards.find((c) => c.serviceId === line.serviceId && c.staffId === staffId);
+      for (const line of b.services as { serviceId: string }[]) {
+        // F-12-060 1:1 с моком (`stockGoodsAndCategories`/цикл в `reports.ts::getStockUsageAnalysis`): техкарта
+        // мастера ЗАПИСИ (`b.staffId`), не построчного `line.staffId` — в отличие от `getConsumablesAnalysis`
+        // соседнего `stock.ts`/`stock-ext.service.ts`, у которого свой контракт (не путать эти два отчёта).
+        const card = cards.find((c) => c.serviceId === line.serviceId && c.staffId === b.staffId);
         for (const tl of (card?.lines as { goodId: string; qtyWriteoff: number }[] | undefined) ?? []) {
           const good = goods.find((g) => g.id === tl.goodId);
           if (!good) continue;

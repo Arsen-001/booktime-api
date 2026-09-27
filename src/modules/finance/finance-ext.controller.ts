@@ -8,6 +8,7 @@ import { ZodBody } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { BookingPaymentsService } from './booking-payments.service.js';
+import { CashShiftsService } from './cash-shifts.service.js';
 import { FIN_RECORD_KINDS, FINANCE_SETTING_KEYS, FinanceExtService, type FinanceSettingKey, type FinRecordKind } from './finance-ext.service.js';
 
 const id32 = z.string().min(1).max(32);
@@ -19,6 +20,7 @@ const discountBody = z.object({ label: z.string().min(1).max(200), amount: money
 const accountPayBody = z.object({ clientId: id32, amount: money, loyaltyAccountId: id32.optional(), debt: z.boolean().optional() });
 const topUpBody = z.object({ accountId: id32, amount: money, method: z.enum(['cash', 'card', 'other']), clientName: z.string().max(200).optional() });
 const accountRefundBody = z.object({ accountId: id32, amount: money, comment: z.string().max(400).optional() });
+const shiftBody = z.object({ amount: money, comment: z.string().max(400).optional() });
 const linkBody = z.object({ targetKind: z.enum(['booking', 'sale']), bookingId: id32.optional(), saleLabel: z.string().max(200).optional(), amount: money, remainingBefore: money });
 
 /** Ключи, которые можно менять без «Финансы: редактировать» — нет: все настройки раздела под finance.edit (как мок) */
@@ -45,6 +47,7 @@ export class FinanceExtController {
     private readonly ext: FinanceExtService,
     private readonly payments: BookingPaymentsService,
     private readonly prisma: PrismaService,
+    private readonly shifts: CashShiftsService,
   ) {}
 
   @Get('settings/:key')
@@ -187,6 +190,36 @@ export class FinanceExtController {
   @Biz('clients.view')
   debtVisits(@Param('businessId') businessId: string, @Param('clientId') clientId: string) {
     return this.ext.clientDebtVisits(businessId, clientId);
+  }
+
+  @Get('reports/unpaid-visits')
+  @Biz('finance.view')
+  unpaidVisits(@Param('businessId') businessId: string, @Query('locationIds') locationIds?: string, @Query('days') days?: string) {
+    return this.ext.unpaidVisits(businessId, locationIds ? locationIds.split(',').filter(Boolean) : undefined, Number(days) || 14);
+  }
+
+  // ── Кассовая смена и Z-отчёт (fin-review Ф1) ──
+
+  @Get('cash-registers/:accountId/shifts')
+  @Biz('finance.view')
+  listShifts(@Param('businessId') businessId: string, @Param('accountId') accountId: string) {
+    return this.shifts.list(businessId, accountId);
+  }
+
+  @Post('cash-registers/:accountId/shifts')
+  @Biz('finance.edit')
+  @HttpCode(200)
+  @ZodBody(shiftBody)
+  openShift(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('accountId') accountId: string, @Body(new Zod(shiftBody)) body: z.infer<typeof shiftBody>) {
+    return this.shifts.open(ctx, businessId, accountId, body.amount, body.comment);
+  }
+
+  @Post('cash-shifts/:shiftId/close')
+  @Biz('finance.edit')
+  @HttpCode(200)
+  @ZodBody(shiftBody)
+  closeShift(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('shiftId') shiftId: string, @Body(new Zod(shiftBody)) body: z.infer<typeof shiftBody>) {
+    return this.shifts.close(ctx, businessId, shiftId, body.amount, body.comment);
   }
 
   @Get('reports/day-money')

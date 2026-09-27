@@ -289,6 +289,42 @@ export class FinanceExtService {
     return rows;
   }
 
+  /**
+   * «Пришли, но не оплатили» (fin-review Ф20, listUnpaidVisits мока): визиты «Клиент пришёл» за последние `days`
+   * дней, по которым получено меньше суммы визита (услуги + товары). Новые сверху.
+   */
+  async unpaidVisits(businessId: string, locationIds: string[] | undefined, days: number) {
+    const now = new Date();
+    const from = new Date(now.getTime() - Math.max(1, Math.min(days, 366)) * 86_400_000);
+    const bookings = await this.prisma.booking.findMany({
+      where: { businessId, status: 'arrived', deletedAt: null, startAt: { gte: from, lte: now }, ...(locationIds?.length ? { locationId: { in: locationIds } } : {}) },
+      orderBy: { startAt: 'desc' },
+    });
+    if (!bookings.length) return [];
+    const names = await this.serviceNames(businessId);
+    const clientIds = [...new Set(bookings.map((b) => b.clientId).filter((x): x is string => !!x))];
+    const clients = clientIds.length ? await this.prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, name: true, lastName: true } }) : [];
+    const rows = [];
+    for (const b of bookings) {
+      const total = (await this.payments.payableOf(b)).payable;
+      if (total <= 0n) continue;
+      const due = total - b.paidAmount;
+      if (due <= 0n) continue;
+      const c = clients.find((x) => x.id === b.clientId);
+      const serviceLabel = ((b.services as { serviceId: string }[]) ?? []).map((l) => names.get(l.serviceId)).filter((n): n is string => !!n).join(', ');
+      rows.push({
+        bookingId: b.id,
+        start: utcToLocal(b.startAt),
+        clientName: c ? [c.name, c.lastName].filter(Boolean).join(' ').trim() : undefined,
+        serviceLabel: serviceLabel || '—',
+        total: moneyToJson(total),
+        paid: moneyToJson(total - due),
+        due: moneyToJson(due),
+      });
+    }
+    return rows;
+  }
+
   // ─────────────────────────── Сводка денег дня в журнале (F-07-046) ───────────────────────────
 
   async dayMoneySummary(businessId: string, date: string, locationIds?: string[]) {

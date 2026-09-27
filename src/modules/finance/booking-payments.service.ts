@@ -125,6 +125,7 @@ export class BookingPaymentsService {
         accountId: l.accountId ?? undefined,
         amount: moneyToJson(l.amount),
         operationId: l.finOpId ?? undefined,
+        refundedAmount: l.refundedAmount > 0n ? moneyToJson(l.refundedAmount) : undefined,
         goods: l.goods || undefined,
         debt: l.debt || undefined,
         loyaltyAccountId: l.loyaltyAccountId ?? undefined,
@@ -314,7 +315,7 @@ export class BookingPaymentsService {
     const refunds = ops.filter((o) => o.itemId === refundItem && !o.refId).reduce((s, o) => s + o.amount, 0n);
     const bookingIds = (await this.prisma.booking.findMany({ where: { businessId, clientId }, select: { id: true } })).map((x) => x.id);
     const spent = bookingIds.length
-      ? (await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: { in: bookingIds }, kind: 'account', cancelled: false, loyaltyAccountId: null }, select: { amount: true } })).reduce((s, p) => s + p.amount, 0n)
+      ? (await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: { in: bookingIds }, kind: 'account', cancelled: false, loyaltyAccountId: null }, select: { amount: true, refundedAmount: true } })).reduce((s, p) => s + p.amount - p.refundedAmount, 0n)
       : 0n;
     return topUps - refunds - spent;
   }
@@ -414,6 +415,88 @@ export class BookingPaymentsService {
     }
     await this.setNote(ctx, businessId, bookingId, reason);
     return this.getSummary(businessId, bookingId);
+  }
+
+  /**
+   * Частичный (или полный) возврат по одному платежу визита (fin-review Ф8, refundPaymentGroupSync мока) —
+   * ОТДЕЛЬНОЙ расходной операцией «Возврат» с той же кассы тем же способом; исходная оплата остаётся (визит не
+   * становится снова «К оплате», касса дня оплаты не меняется задним числом), у строк растёт refundedAmount.
+   * Товары визита: денег в кассе finance у них нет (их кладёт продажа склада) — только отметка в строках.
+   * Счёт клиента: деньги возвращаются на «личный счёт» — расходом «Возврат» с source='account' без кассы нет,
+   * поэтому уменьшаем списание: строка account с refundedAmount не считается в clientAccountBalance (см. ниже).
+   */
+  async refundPayment(ctx: RequestContext, businessId: string, paymentId: string, amount: number, reason: string) {
+    const line = await this.prisma.bookingPayment.findFirst({ where: { id: paymentId, businessId } });
+    if (!line || line.cancelled) throw new ApiError('not_found', 'payment_not_found');
+    if (line.kind === 'discount') throw new ApiError('discount_not_refundable', 'Discount is not money');
+    const b = await this.requireBooking(businessId, line.bookingId);
+    const group = line.groupId ? await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: b.id, groupId: line.groupId, cancelled: false }, orderBy: { createdAt: 'asc' } }) : [line];
+    const net = group.reduce((s, l) => s + (l.amount - l.refundedAmount > 0n ? l.amount - l.refundedAmount : 0n), 0n);
+    const want = BigInt(Math.round(Math.max(0, amount)));
+    if (want <= 0n) throw new ApiError('invalid_amount', 'Amount must be positive');
+    const take = want < net ? want : net;
+    if (take <= 0n) throw new ApiError('invalid_amount', 'nothing_to_refund');
+    const by = ctx.member!.staffId;
+    const at = new Date();
+    const goodsOnly = group.every((l) => l.goods);
+    await this.prisma.$transaction(async (tx) => {
+      if (line.kind === 'money' && !goodsOnly) {
+        const src = group.find((l) => l.finOpId)?.finOpId;
+        const source = src ? await tx.finOp.findUnique({ where: { id: src } }) : null;
+        const accountId = line.accountId ?? source?.accountId;
+        if (!accountId) throw new ApiError('payment_setup_incomplete', 'No cash register');
+        const account = await tx.cashRegister.findUnique({ where: { id: accountId } });
+        if (account?.kind === 'cash') {
+          const ops = await tx.finOp.findMany({ where: { accountId, cancelled: false }, select: { kind: true, amount: true } });
+          const balance = ops.reduce((s, o) => s + (o.kind === 'income' || o.kind === 'transfer_in' ? o.amount : -o.amount), account.openingBalance);
+          if (balance < take) throw new ApiError('insufficient_cash', 'Not enough cash in the drawer');
+        }
+        const itemId = await this.catalog.systemItemId(businessId, 'refund');
+        const client = b.clientId ? await tx.client.findFirst({ where: { id: b.clientId }, select: { name: true } }) : null;
+        await tx.finOp.create({
+          data: {
+            id: newId('finOp'),
+            businessId,
+            locationId: b.locationId,
+            accountId,
+            itemId,
+            kind: 'expense',
+            amount: take,
+            date: at,
+            method: source?.method ?? (account?.kind === 'cash' ? 'cash' : 'card'),
+            partyType: b.clientId ? 'client' : 'none',
+            partyId: b.clientId ?? undefined,
+            partyName: client?.name ?? undefined,
+            comment: reason.trim() || undefined,
+            source: 'booking',
+            refId: b.id,
+            refundOfId: source?.id,
+            docNumber: source?.docNumber ?? undefined,
+            lineLabel: source?.lineLabel ?? undefined,
+            history: [{ at: at.toISOString(), by, action: 'created' }] as Prisma.InputJsonValue,
+            createdBy: by,
+            updatedBy: by,
+          },
+        });
+        if (source) {
+          const history = Array.isArray(source.history) ? [...(source.history as Record<string, unknown>[])] : [];
+          history.push({ at: at.toISOString(), by, action: 'refunded' });
+          await tx.finOp.update({ where: { id: source.id }, data: { refundedAmount: { increment: take }, history: history as Prisma.InputJsonValue } });
+        }
+      }
+      // Разнос возврата по строкам — с последней к первой (как мок)
+      let left = take;
+      for (const l of [...group].reverse()) {
+        if (left <= 0n) break;
+        const lineNet = l.amount - l.refundedAmount;
+        if (lineNet <= 0n) continue;
+        const part = lineNet < left ? lineNet : left;
+        await tx.bookingPayment.update({ where: { id: l.id }, data: { refundedAmount: { increment: part } } });
+        left -= part;
+      }
+      await this.audit.record(tx, ctx, { action: 'refund', entityType: 'bookingPayment', entityId: line.id, businessId, before: { net: moneyToJson(net) }, after: { refunded: moneyToJson(take), reason } });
+    });
+    return this.getSummary(businessId, b.id);
   }
 
   /** Нефискальный чек визита (В-33: «нефискальный чек в кассе») — снимок для печати/показа клиенту */

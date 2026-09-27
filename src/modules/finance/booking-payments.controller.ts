@@ -8,6 +8,9 @@ import { Zod } from '../../common/http/validation.js';
 import { BookingPaymentsService } from './booking-payments.service.js';
 import { bookingPaymentNoteBody, payBookingBody, refundBookingFullBody } from './finance.schemas.js';
 
+const refundPaymentBody = z.object({ amount: z.number().int().min(1).max(1_000_000_000_000), reason: z.string().max(400).default('') });
+
+
 /**
  * Оплата визита (docs/backend/02-api.md §12). Путь — `/finance/bookings/:id/payments`, НЕ буквальный
  * `/bookings/:id/payments` из 02-api.md: тот уже занят стопгапом этапа 7 (`BookingsController`, PROGRESS.md
@@ -76,5 +79,14 @@ export class BookingPaymentLineController {
   @Biz('journal.edit')
   cancelLine(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('paymentId') paymentId: string) {
     return this.payments.cancelLine(ctx, businessId, paymentId);
+  }
+
+  /** Частичный возврат по одному платежу визита (fin-review Ф8) */
+  @Post(':paymentId/refund')
+  @Biz('journal.edit')
+  @HttpCode(200)
+  @ZodBody(refundPaymentBody)
+  refund(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('paymentId') paymentId: string, @Body(new Zod(refundPaymentBody)) body: z.infer<typeof refundPaymentBody>) {
+    return this.payments.refundPayment(ctx, businessId, paymentId, body.amount, body.reason);
   }
 }
