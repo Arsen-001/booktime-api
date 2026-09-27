@@ -37,6 +37,16 @@ export class BookingPaymentsController {
     return this.payments.pay(ctx, businessId, bookingId, body);
   }
 
+  /** Стереть платежи уже удалённой записи (F-07-050, deleteBookingPaymentsHard) */
+  @Delete()
+  @Biz('journal.edit')
+  @HttpCode(200)
+  @ZodOk(z.object({ ok: z.literal(true) }))
+  async purge(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('bookingId') bookingId: string) {
+    await this.payments.purgeForDeletedBooking(ctx, businessId, bookingId);
+    return { ok: true as const };
+  }
+
   @Put('note')
   @Biz('journal.edit')
   @HttpCode(200)

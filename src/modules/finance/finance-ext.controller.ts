@@ -15,7 +15,8 @@ const id32 = z.string().min(1).max(32);
 const money = z.number().int().min(0).max(1_000_000_000_000);
 const settingBody = z.object({ value: z.unknown() });
 const recordBody = z.object({ kind: z.enum(FIN_RECORD_KINDS), refId: id32.optional(), clientId: id32.optional(), data: z.record(z.string(), z.unknown()) });
-const recordPatchBody = z.object({ data: z.record(z.string(), z.unknown()) });
+/** refId — перенос документа на другую запись (снимок политики при объединении визитов, F-07-116) */
+const recordPatchBody = z.object({ data: z.record(z.string(), z.unknown()), refId: id32.optional() });
 const discountBody = z.object({ label: z.string().min(1).max(200), amount: money, exactLabel: z.boolean().optional() });
 const accountPayBody = z.object({ clientId: id32, amount: money, loyaltyAccountId: id32.optional(), debt: z.boolean().optional() });
 const topUpBody = z.object({ accountId: id32, amount: money, method: z.enum(['cash', 'card', 'other']), clientName: z.string().max(200).optional() });
@@ -85,7 +86,7 @@ export class FinanceExtController {
     const row = await this.prisma.finRecord.findFirst({ where: { id, businessId: ctx.member!.businessId }, select: { kind: true } });
     if (!row) throw new ApiError('not_found', 'Record not found');
     assertKindWrite(ctx, row.kind as FinRecordKind);
-    return this.ext.patchRecord(ctx, id, body.data);
+    return this.ext.patchRecord(ctx, id, body.data, body.refId);
   }
 
   // ── Оплата визита: скидка по акции, личный счёт клиента ──

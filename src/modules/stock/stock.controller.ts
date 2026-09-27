@@ -19,6 +19,7 @@ import {
   incomeBody,
   inventoryCreateBody,
   inventorySetLinesBody,
+  inventoryMetaBody,
   moveBody,
   opDocPatchBody,
   quickUpdateGoodsBody,
@@ -416,6 +417,13 @@ export class StockController {
   @ZodBody(inventorySetLinesBody)
   setInventoryLines(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new Zod(inventorySetLinesBody)) body: z.infer<typeof inventorySetLinesBody>) {
     return this.inventories.setLines(ctx, id, body.lines);
+  }
+
+  @Patch('inventories/:id')
+  @Biz('stock.edit')
+  @ZodBody(inventoryMetaBody)
+  updateInventoryMeta(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new Zod(inventoryMetaBody)) body: z.infer<typeof inventoryMetaBody>) {
+    return this.inventories.updateMeta(ctx, id, body);
   }
 
   @Post('inventories/:id/complete')

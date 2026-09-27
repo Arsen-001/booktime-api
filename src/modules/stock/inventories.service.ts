@@ -6,7 +6,8 @@ import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { StockCatalogService } from './stock-catalog.service.js';
 import { StockOpsService } from './stock-ops.service.js';
-import type { InventoryLineBody, InventoryCreateBody } from './stock.schemas.js';
+import type { InventoryLineBody, InventoryCreateBody, InventoryMetaBody } from './stock.schemas.js';
+import { localToUtc } from '../../common/time/time.js';
 
 interface InventoryLineJson {
   goodId: string;
@@ -140,6 +141,23 @@ export class InventoriesService {
       incomeDocId = doc?.id;
     }
     await this.prisma.inventory.update({ where: { id }, data: { status: 'done', writeoffDocId, incomeDocId, version: { increment: 1 }, updatedBy: ctx.member!.staffId } });
+    return this.get(businessId, id);
+  }
+
+  /**
+   * F-08-088: правка комментария/даты/категории, пока ведомость не проведена (updateInventoryMeta мока).
+   * Как в моке: categoryId и comment пишутся всегда (отсутствие = «Все категории» / пустой комментарий),
+   * дата — только если пришла. Дата — локальная 'YYYY-MM-DD[THH:mm]' филиала или ISO с Z (как отдаёт view).
+   */
+  async updateMeta(ctx: RequestContext, id: string, body: InventoryMetaBody) {
+    const businessId = ctx.member!.businessId;
+    const row = await this.prisma.inventory.findFirst({ where: { id, businessId } });
+    if (!row) throw new ApiError('not_found', 'Inventory not found');
+    if (row.status !== 'draft') throw new ApiError('already_completed', 'Inventory already completed');
+    let date: Date | undefined;
+    if (body.date) date = body.date.endsWith('Z') ? new Date(body.date) : localToUtc(body.date.length === 10 ? `${body.date}T00:00` : body.date.slice(0, 16));
+    const comment = body.comment?.trim() || null;
+    await this.prisma.inventory.update({ where: { id }, data: { categoryId: body.categoryId ?? null, comment, ...(date ? { date } : {}), version: { increment: 1 }, updatedBy: ctx.member!.staffId } });
     return this.get(businessId, id);
   }
 

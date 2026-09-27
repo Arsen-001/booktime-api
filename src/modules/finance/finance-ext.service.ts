@@ -103,12 +103,12 @@ export class FinanceExtService {
     return recordView(row);
   }
 
-  async patchRecord(ctx: RequestContext, id: string, patch: Record<string, unknown>) {
+  async patchRecord(ctx: RequestContext, id: string, patch: Record<string, unknown>, refId?: string) {
     const businessId = ctx.member!.businessId;
     const row = await this.prisma.finRecord.findFirst({ where: { id, businessId } });
     if (!row) throw new ApiError('not_found', 'Record not found');
     const next = { ...((row.data as Record<string, unknown>) ?? {}), ...patch, id, businessId };
-    const saved = await this.prisma.finRecord.update({ where: { id }, data: { data: next as Prisma.InputJsonValue } });
+    const saved = await this.prisma.finRecord.update({ where: { id }, data: { data: next as Prisma.InputJsonValue, ...(refId ? { refId } : {}) } });
     return recordView(saved);
   }
 

@@ -645,6 +645,31 @@ export class StockExtService {
     return created;
   }
 
+  /**
+   * F-08-017 (copyGoodToLocations мока): простая копия товара в другие филиалы — без связи сети (у копии своя
+   * жизнь, F-08-130 её не запирает). Категория — с тем же названием, иначе «Основные товары», иначе первая.
+   */
+  async copyGoodPlain(ctx: RequestContext, goodId: string, targetLocationIds: string[]) {
+    const businessId = ctx.member!.businessId;
+    const src = await this.prisma.product.findFirst({ where: { id: goodId, businessId } });
+    if (!src) throw new ApiError('not_found', 'Good not found');
+    const created: ReturnType<typeof goodView>[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      for (const locationId of targetLocationIds) {
+        const cats = await tx.stockCategory.findMany({ where: { businessId, locationId }, orderBy: { createdAt: 'asc' } });
+        const target = cats.find((c) => c.name === src.name) ?? cats.find((c) => c.name === 'Основные товары') ?? cats[0];
+        if (!target) continue;
+        const { id: _id, createdAt: _c, updatedAt: _u, version: _v, clientName, ...rest } = src;
+        const row = await tx.product.create({
+          data: { ...rest, clientName: (clientName ?? undefined) as Prisma.InputJsonValue | undefined, id: newId('product'), locationId, categoryId: target.id, isNetworkSource: false, createdBy: ctx.member!.staffId, updatedBy: ctx.member!.staffId },
+        });
+        created.push(goodView(row));
+      }
+      await this.audit.record(tx, ctx, { action: 'update', entityType: 'stockGood', entityId: goodId, before: {}, after: { copiedTo: targetLocationIds.length } });
+    });
+    return created;
+  }
+
   // ─────────────────────────── Права раздела + история (F-08-109…118, F-08-149) ───────────────────────────
 
   private async permsMap(db: Prisma.TransactionClient | PrismaService, businessId: string): Promise<Record<string, StockPermissionsJson>> {

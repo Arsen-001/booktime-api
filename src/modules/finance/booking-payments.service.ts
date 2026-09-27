@@ -397,6 +397,27 @@ export class BookingPaymentsService {
     return this.getSummary(businessId, line.bookingId);
   }
 
+  /**
+   * F-07-050 (deleteBookingPaymentsHard мока): у удалённой записи её платежи не остаются даже «Отменёнными» —
+   * строки оплаты и операции визита (с комиссиями эквайринга) стираются. Только для уже удалённой записи:
+   * живую запись так «разоплатить» нельзя (для неё — отмена строки/возврат). Восстановление такой записи
+   * возвращает её без денег (deletionRestore.paidAmount обнуляется), иначе визит числился бы оплаченным без платежей.
+   */
+  async purgeForDeletedBooking(ctx: RequestContext, businessId: string, bookingId: string) {
+    const b = await this.requireBooking(businessId, bookingId);
+    if (!b.deletedAt) throw new ApiError('validation', 'booking_not_deleted');
+    await this.prisma.$transaction(async (tx) => {
+      const lines = await tx.bookingPayment.findMany({ where: { businessId, bookingId }, select: { finOpId: true } });
+      const opIds = lines.map((l) => l.finOpId).filter((x): x is string => Boolean(x));
+      await tx.bookingPayment.deleteMany({ where: { businessId, bookingId } });
+      await tx.finOp.deleteMany({ where: { businessId, source: 'booking', OR: [{ refId: bookingId }, ...(opIds.length ? [{ id: { in: opIds } }, { feeOfOperationId: { in: opIds } }] : [])] } });
+      const fresh = await tx.booking.findUniqueOrThrow({ where: { id: bookingId }, select: { deletionRestore: true } });
+      const restore = (fresh.deletionRestore ?? {}) as Record<string, unknown>;
+      await tx.booking.update({ where: { id: bookingId }, data: { deletionRestore: { ...restore, paidAmount: 0 } as Prisma.InputJsonValue } });
+      await this.audit.record(tx, ctx, { action: 'delete', entityType: 'bookingPayment', entityId: bookingId, businessId, before: { lines: lines.length }, after: null });
+    });
+  }
+
   async setNote(ctx: RequestContext, businessId: string, bookingId: string, note: string) {
     const b = await this.requireBooking(businessId, bookingId);
     const extras = extrasOf(b.extras) as BookingExtras & { paymentNote?: string };

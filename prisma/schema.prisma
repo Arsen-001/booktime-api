@@ -1746,6 +1746,34 @@ model BizInboxRead {
 // докстринг, попытка 2): язык/тихие часы, витрина подарка партнёра, сводки от партнёров, WhatsApp через
 // Altegio, флаги внешнего агента, расписание Open Slots, время напоминания на услугу, свои вебхуки — все на
 // area = 'notify-<name>' той же BusinessSetting (см. notify-more.service.ts) — своих таблиц под них не заводим.
+//
+// Решение владельца (28.09, в ответ на вопрос попытки 2): каталог типов уведомлений строим ПОД экран, а не
+// наоборот — 29 настраиваемых + 2 служебных типа `src/areas/notify/lib/registry.ts` (TYPE_REGISTRY), НЕ 88
+// Altegio (то было верхней границей нумерации, не количеством). Реестр (имена/описания/дефолты/шаблоны на
+// ru/hy/en) статичен и живёт в коде (`notify-type-registry.ts`, порт TYPE_REGISTRY) — тут только правки бизнеса
+// поверх дефолта, одна строка на business+code. НЕ путать с `StaffNotifyPref`/`kinds.ts`/`NotifyTypesService`
+// выше — те питают НАСТОЯЩУЮ отправку (13 своих kind, docs/backend/05 §3) и их трогать нельзя; это отдельная,
+// более богатая модель ТОЛЬКО для экрана настройки каталога (docs/PROGRESS.md, этап 21, разбор лейна).
+model NotifyTypeOverride {
+  businessId String   @map("business_id") @db.VarChar(32)
+  code       Int
+  /// Патч поверх TypeDef.enabledDefault — нет строки/поля → действует дефолт реестра
+  enabled    Boolean?
+  /// NotifyChannelSetting[] — патч поверх TypeDef.defaultScenario
+  channels   Json?
+  /// Partial<Record<NotifyChannel, LocalizedText>> — патч поверх шаблона реестра (мержится по каналу)
+  templates  Json?
+  /// EmailExtra
+  emailExtra Json?    @map("email_extra")
+  /// TypeConditions — патч поверх TypeDef.conditionsDefault; serviceTimingHours сюда НЕ пишем (Ув15,
+  /// своя область AREA_SERVICE_REMINDER_HOURS в notify-more.service.ts — независимо от каталога)
+  conditions Json?
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+
+  @@id([businessId, code])
+  @@map("notify_type_overrides")
+}
 // === end stage 21 (лейн notify+integrations), попытка 3 ===
 
 // ═══════════════════════════ Этап 11 — Лояльность (02-api.md §11, F-06-*) ═══════════════════════════

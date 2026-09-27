@@ -19,6 +19,7 @@ import {
   agentFlagsBody,
   altegioWhatsAppBody,
   altegioWhatsAppModeBody,
+  bookingNotifyOverrideBody,
   channelOverviewBody,
   clientNotifyPatchBody,
   connectChannelBody,
@@ -316,6 +317,20 @@ export class NotifyController {
   @Biz('notify.manage')
   setSettings(@Param('businessId') businessId: string, @Body(new Zod(notifySettingsBody)) body: z.infer<typeof notifySettingsBody>) {
     return this.more.updateSettings(businessId, { ...body, quietHours: body.quietHours ?? { enabled: true, from: '22:00', to: '09:00' } });
+  }
+
+  // ── ручная правка уведомлений ОДНОЙ записи (F-05-009/082) ──
+
+  @Get('bookings/:bookingId/notify-override')
+  @Biz()
+  getBookingNotifyOverride(@Param('businessId') businessId: string, @Param('bookingId') bookingId: string) {
+    return this.more.getBookingOverride(businessId, bookingId);
+  }
+
+  @Put('bookings/:bookingId/notify-override')
+  @Biz()
+  setBookingNotifyOverride(@Param('businessId') businessId: string, @Param('bookingId') bookingId: string, @Body(new Zod(bookingNotifyOverrideBody)) body: z.infer<typeof bookingNotifyOverrideBody>) {
+    return this.more.updateBookingOverride(businessId, bookingId, body);
   }
 
   // ── витрина подарков партнёра (F-05-127) ──

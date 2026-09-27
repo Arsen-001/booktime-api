@@ -157,6 +157,14 @@ export class StockExtController {
     return this.ext.importGoods(ctx, body.locationId, body.categoryId, body.rows);
   }
 
+  @Post('products/:id/copy')
+  @Biz('stock.edit')
+  @HttpCode(200)
+  @ZodBody(copyBody)
+  copyPlain(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new Zod(copyBody)) body: z.infer<typeof copyBody>) {
+    return this.ext.copyGoodPlain(ctx, id, body.targetLocationIds);
+  }
+
   @Post('products/:id/copy-networked')
   @Biz('stock.edit')
   @HttpCode(200)

@@ -221,6 +221,13 @@ export const inventoryCreateBody = z.object({
   comment: z.string().max(400).optional(),
 });
 export type InventoryCreateBody = z.infer<typeof inventoryCreateBody>;
+/** F-08-088: правка комментария/даты/категории черновика (этап 21, лейн finance+stock). categoryId: null — «Все категории» */
+export const inventoryMetaBody = z.object({
+  categoryId: id32.nullable().optional(),
+  comment: z.string().max(400).optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z?)?$/).optional(),
+});
+export type InventoryMetaBody = z.infer<typeof inventoryMetaBody>;
 export const inventoryLineBody = z.object({ goodId: id32, actualQty: z.number().min(0).max(1_000_000) });
 export type InventoryLineBody = z.infer<typeof inventoryLineBody>;
 export const inventorySetLinesBody = z.object({ lines: z.array(inventoryLineBody).min(1).max(2000) });
