@@ -19,7 +19,7 @@ import {
 import { ResourcesService } from './resources.service.js';
 
 /** Ресурсы: кресла, кабинеты, аппараты — /v1/biz (docs/backend/02 §9, PLAN §6 №4). Групповые события и лист
- * ожидания (F-16-036…169) — этап 7 «Журнал и записи» (нужна таблица записей/бронирований). */
+ * ожидания (F-16-036…169) — модуль journal (этап 7): /events, /waitlist, участники — записи с group_event_id. */
 @ApiTags('resources')
 @Controller('v1/biz/:businessId/resources')
 export class ResourcesController {

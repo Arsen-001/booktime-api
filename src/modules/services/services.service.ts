@@ -301,8 +301,15 @@ export class ServicesService {
     const staffCount = service && Array.isArray(service.staffIds) ? (service.staffIds as string[]).length : 0;
     const pkgs = await this.prisma.service.findMany({ where: { businessId, NOT: { servicePackage: { equals: Prisma.DbNull } } }, select: { servicePackage: true } });
     const packagesUsing = pkgs.filter((p) => ((p.servicePackage as { items?: { serviceId: string }[] } | null)?.items ?? []).some((it) => it.serviceId === id)).length;
-    // Записи/события ещё не на сервере (этап 7) — считаем 0 до того, как появится таблица bookings/group_events
-    return { staffCount, futureBookings: 0, futureEvents: 0, packagesUsing };
+    // Будущие записи и групповые события с этой услугой (этап 7): активные, не удалённые, начало впереди
+    const now = new Date();
+    const future = await this.prisma.booking.findMany({
+      where: { businessId, deletedAt: null, startAt: { gt: now }, status: { notIn: ['cancelled_by_client', 'cancelled_by_master'] } },
+      select: { services: true },
+    });
+    const futureBookings = future.filter((b) => ((b.services ?? []) as { serviceId: string }[]).some((l) => l.serviceId === id)).length;
+    const futureEvents = await this.prisma.groupEvent.count({ where: { businessId, serviceId: id, status: 'scheduled', startAt: { gt: now } } });
+    return { staffCount, futureBookings, futureEvents, packagesUsing };
   }
 
   /** Удаляет сразу (F-16-170); «Отменить» — экран хранит снимок и зовёт restoreService в те же 5 с */
@@ -580,9 +587,13 @@ export class ServicesService {
     return this.getPackage(businessId, id);
   }
 
-  async countFuturePackageBookings(_businessId: string, _serviceId: string): Promise<number> {
-    // Записи на сервере — этап 7 (журнал). До тех пор пакет ничем не занят.
-    return 0;
+  /** Будущие записи с этим пакетом (этап 7): строка услуги записи ссылается на пакет */
+  async countFuturePackageBookings(businessId: string, serviceId: string): Promise<number> {
+    const future = await this.prisma.booking.findMany({
+      where: { businessId, deletedAt: null, startAt: { gt: new Date() }, status: { notIn: ['cancelled_by_client', 'cancelled_by_master'] } },
+      select: { services: true },
+    });
+    return future.filter((b) => ((b.services ?? []) as { serviceId: string }[]).some((l) => l.serviceId === serviceId)).length;
   }
 
   async deletePackage(ctx: RequestContext, businessId: string, id: string): Promise<void> {

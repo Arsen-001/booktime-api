@@ -98,9 +98,10 @@ export class ResourcesService {
     return this.get(businessId, id);
   }
 
-  /** Записи/события ещё не на сервере (этап 6/7) — считаем 0, пока не появится таблица занятости */
-  async countFutureUsage(_businessId: string, _id: string): Promise<number> {
-    return 0;
+  /** Сколько будущих записей и событий держат этот ресурс (занятость resource_busy, этап 7) — предупреждение перед удалением */
+  async countFutureUsage(businessId: string, id: string): Promise<number> {
+    const rows = await this.prisma.resourceBusy.findMany({ where: { businessId, resourceId: id, active: true, startAt: { gt: new Date() } }, select: { sourceId: true } });
+    return new Set(rows.map((r) => r.sourceId)).size;
   }
 
   async delete(ctx: RequestContext, businessId: string, id: string) {

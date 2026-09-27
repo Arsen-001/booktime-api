@@ -25773,6 +25773,18 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "breakOverrideMin": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 600
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -28941,6 +28953,58 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/clients/{clientId}/window-tags": {
+      "put": {
+        "operationId": "JournalController_windowTags",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tags": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 80
+                    }
+                  }
+                },
+                "required": [
+                  "tags"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Метки клиента из окна записи (F-01-070) — правят саму карточку, без накладки поверх ядра",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/claims": {
       "post": {
         "operationId": "JournalController_mintClaim",
@@ -29016,12 +29080,7 @@
             "description": ""
           }
         },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "summary": "Карточка ссылки: ready | wrong_actor | expired | used | taken",
+        "summary": "Карточка ссылки: ready | wrong_actor | expired | used | taken (без входа — wrong_actor, без деталей)",
         "tags": [
           "journal"
         ]
@@ -29220,6 +29279,58 @@
           }
         ],
         "summary": "Лента событий моих записей (новые → старые), кроме моих собственных действий",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/public/claims": {
+      "post": {
+        "operationId": "PublicClaimsController_mint",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "serviceId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "clientName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "staffId",
+                  "start"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
         "tags": [
           "journal"
         ]
