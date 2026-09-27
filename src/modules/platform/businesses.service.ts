@@ -67,6 +67,14 @@ export class PlatformBusinessesService {
     if (!n.count) throw new ApiError('not_found', 'Business not found');
   }
 
+  /** Блокировка из панели (этап 21): frozen ↔ active; ушедший бизнес не трогаем — conflict, как в моке */
+  async setBlocked(businessId: string, blocked: boolean) {
+    const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { leftAt: true } });
+    if (!biz) throw new ApiError('not_found', 'Business not found');
+    if (biz.leftAt) throw new ApiError('conflict', 'Business has left the platform');
+    await this.prisma.business.update({ where: { id: businessId }, data: { status: blocked ? 'frozen' : 'active' } });
+  }
+
   async listBackupCopies(businessId: string) {
     const rows = await this.prisma.backupCopy.findMany({ where: { businessId }, orderBy: { at: 'desc' }, take: 100 });
     return rows.map((r) => ({ id: r.id, businessId: r.businessId, at: utcToLocal(r.at), kind: r.kind as 'auto' | 'manual', counts: r.counts as { clients: number; bookings: number; services: number; staff: number }, sizeKb: r.sizeKb }));

@@ -48724,6 +48724,35 @@
         ]
       }
     },
+    "/v1/platform/businesses/{id}/block": {
+      "post": {
+        "operationId": "PlatformBusinessesController_setBlocked",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Заблокировать/разблокировать бизнес (status frozen ↔ active); ушедший — 409",
+        "tags": [
+          "platform-businesses"
+        ]
+      }
+    },
     "/v1/platform/businesses/{id}/backups": {
       "get": {
         "operationId": "PlatformBusinessesController_backups",
@@ -52785,6 +52814,102 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/payroll/criteria/{id}/value": {
+      "get": {
+        "operationId": "PayrollController_evaluateCriterionValue",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "atDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payroll"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/payroll/preview": {
+      "get": {
+        "operationId": "PayrollController_previewChartForStaff",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "atDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payroll"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/payroll/charts": {
       "get": {
         "operationId": "PayrollController_listCharts",
@@ -53310,6 +53435,163 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payroll"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/payroll/rights": {
+      "get": {
+        "operationId": "PayrollController_listRights",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payroll"
+        ]
+      },
+      "post": {
+        "operationId": "PayrollController_saveRights",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "schemesAccess": {
+                    "type": "boolean"
+                  },
+                  "calcAccess": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "today",
+                      "all"
+                    ]
+                  },
+                  "accrueAccess": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "today",
+                      "all"
+                    ]
+                  },
+                  "ownOnlyStaffId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "staffId",
+                  "schemesAccess",
+                  "calcAccess",
+                  "accrueAccess"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payroll"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/payroll/rights/batch": {
+      "post": {
+        "operationId": "PayrollController_saveRightsBatch",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "list": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "staffId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "schemesAccess": {
+                          "type": "boolean"
+                        },
+                        "calcAccess": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "today",
+                            "all"
+                          ]
+                        },
+                        "accrueAccess": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "today",
+                            "all"
+                          ]
+                        },
+                        "ownOnlyStaffId": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "staffId",
+                        "schemesAccess",
+                        "calcAccess",
+                        "accrueAccess"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "list"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
           }
         },
         "security": [
@@ -54436,6 +54718,34 @@
         ],
         "responses": {
           "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payroll"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff/{staffId}/payroll-rights": {
+      "get": {
+        "operationId": "PayrollStaffController_getRights",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         },

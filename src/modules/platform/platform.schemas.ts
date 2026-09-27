@@ -40,6 +40,7 @@ export const rejectReasonBody = z.object({
 
 export const adsOptInBody = z.object({ optIn: z.boolean() });
 export const markLeftBody = z.object({ dataHanded: z.boolean() });
+export const blockBody = z.object({ blocked: z.boolean() });
 export const exportQuery = z.object({ what: z.enum(['clients', 'bookings']) });
 /** Заголовки CSV — экран уже перевёл их (Р12: сервер UI-текст не переводит) */
 export const exportBody = z.object({ headers: z.array(z.string().max(80)).min(1).max(20) });

@@ -45,3 +45,21 @@ esbuild/tsx: Nest берёт зависимости из метаданных д
 - Приглашение из сида: `/biz/onboarding/invite/dev-invite-st_nuri_eva` (номер `+374 00 110 008`). Новые ссылки
   выпускает «Скопировать ссылку» / «Отправить ещё раз» — прежняя ссылка при этом перестаёт работать.
 - Сид можно запускать повторно на рабочей базе (`npx prisma db seed`): уже существующие строки пропускаются.
+
+## Проверка перед сдачей (PLAN.md §9)
+
+```bash
+npx tsc --noEmit -p tsconfig.build.json      # 0 ошибок
+npm run openapi                              # сборка + openapi/openapi.json
+# чистая база: migrate reset --force (или CREATE DATABASE … + prisma migrate deploy) и npx prisma db seed
+npm run start:api & npm run start:worker     # /v1/health → {db:true, redis:true}
+```
+
+Фронт: `npx tsc --noEmit --incremental --tsBuildInfoFile .tsbuild/backend.tsbuildinfo`, затем экраны с `?data=api`
+настоящим входом (номера выше, код `0000`).
+
+## Состояние (этап 21 «Сдача»)
+
+Сервер покрывает все 21 раздел плана (§6), OpenAPI — `/openapi.json`. Фронт переведён на сервер не целиком: часть
+функций фасадов `src/api/*` в режиме `api` всё ещё читает моковую базу браузера (её держит живой `src/api/mirror.ts`).
+Точный список по файлам и функциям — `docs/PROGRESS.md`, «Этап 21 — Сдача, итог».

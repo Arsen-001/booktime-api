@@ -4,7 +4,7 @@ import type { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
 import { Ctx, Platform } from '../../common/http/guards.js';
 import { Zod } from '../../common/http/validation.js';
-import { adsOptInBody, exportBody, exportQuery, markLeftBody } from './platform.schemas.js';
+import { adsOptInBody, blockBody, exportBody, exportQuery, markLeftBody } from './platform.schemas.js';
 import { PlatformBusinessesService } from './businesses.service.js';
 
 /** Наша панель: бизнесы, копии данных, выгрузка при уходе, согласие на рекламу (docs/backend/02 §19, 06 §6). */
@@ -31,6 +31,14 @@ export class PlatformBusinessesController {
   @HttpCode(204)
   setAdsOptIn(@Param('id') id: string, @Body(new Zod(adsOptInBody)) body: z.infer<typeof adsOptInBody>) {
     return this.businesses.setAdsOptIn(id, body.optIn);
+  }
+
+  @Post(':id/block')
+  @Platform()
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Заблокировать/разблокировать бизнес (status frozen ↔ active); ушедший — 409' })
+  setBlocked(@Param('id') id: string, @Body(new Zod(blockBody)) body: z.infer<typeof blockBody>) {
+    return this.businesses.setBlocked(id, body.blocked);
   }
 
   @Get(':id/backups')
