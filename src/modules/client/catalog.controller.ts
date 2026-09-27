@@ -9,7 +9,6 @@ import { Zod } from '../../common/http/validation.js';
 import { CatalogService } from './catalog.service.js';
 import { callbackBody, demandBody } from './client.schemas.js';
 
-const bool = z.coerce.boolean().optional();
 const num = z.coerce.number().optional();
 const intOpt = z.coerce.number().int().positive().optional();
 
@@ -32,13 +31,18 @@ export class PublicCatalogController {
     @Query('workplace') workplace: string | undefined,
     @Query('accepts') accepts: string | undefined,
     @Query('material') material: string | undefined,
-    @Query('freeToday', new Zod(bool)) freeToday: boolean | undefined,
-    @Query('freeTomorrow', new Zod(bool)) freeTomorrow: boolean | undefined,
+    @Query('freeToday') freeTodayRaw: string | undefined,
+    @Query('freeTomorrow') freeTomorrowRaw: string | undefined,
     @Query('lat', new Zod(num)) lat: number | undefined,
     @Query('lng', new Zod(num)) lng: number | undefined,
     @Query('businessId') businessId: string | undefined,
     @Query('limit', new Zod(intOpt)) limit: number | undefined,
   ) {
+    // 'false'/'0' → выкл: z.coerce.boolean() трактует ЛЮБУЮ непустую строку как true (Boolean('false') === true) —
+    // та же ловушка, что уже обходят includeDeleted/freedOnly журнала своим === 'true' || === '1'.
+    const truthy = (v: string | undefined) => v === 'true' || v === '1';
+    const freeToday = freeTodayRaw === undefined ? undefined : truthy(freeTodayRaw);
+    const freeTomorrow = freeTomorrowRaw === undefined ? undefined : truthy(freeTomorrowRaw);
     return this.svc.catalog({ search, sphereId, district, workplace, accepts, material, freeToday, freeTomorrow, lat, lng, businessId, limit });
   }
 
