@@ -3627,3 +3627,64 @@ Backend не трогал ни одного файла в этом заходе 
 
 лейн client: закрыто 20 из 69 отслеженных (14 из исходных 63 + 6 из 6 дополнительных), осталось 49 —
 все в исходном пуле попытки 2, доп. класс дыр закрыт полностью.
+
+## Этап 21, лейн «journal» — `src/api/journal.ts` (27–28.09.2026)
+
+Попытка 1 (коммиты бэкенда «journal-more module…» и фронта «journal.ts — 24 функции на сервере…») построила всё,
+но не записала сюда ни строчки и не прогнала проверки; попытка 2 — проверка, одна найденная поломка, запись.
+
+Сделано (попытка 1, перепроверено попыткой 2 по файлам на диске):
+- Бэкенд: модуль `src/modules/journal-more` (`/v1/biz/{b}/journal/…`, без новых таблиц — `booking`, `staff`,
+  `service`, склад/касса/лояльность этапов 11–13, личное и черновики — в `business_settings`, области
+  `jprefs:<userKey>` и `journal.drafts`): `staff-hours`, `range-load`, `lacquers` (по id и по дню, «Все филиалы»
+  через `?businessIds=`), `client-visit-stats`, `frequent-services`, `day-summary`, `package-slots`,
+  `prefs/{userKey}` GET/PATCH, `draft` GET/PUT, `goods-catalog`, `quick-sales` + `…/cancel` (списание и возврат
+  остатка склада), `ledger` + `…/cancel` (операции кассы).
+- Фронт: `src/api/journal-more.server.ts` (свой файл, не `journal.server.ts` соседних лейнов) и ветки
+  `isApiMode()` в 29 функциях `journal.ts` (24 из аудита + их парные сеттеры): getStaffWorkHours, getStaffHoursMap,
+  getWeekHours, getRangeLoad, get/togglePinnedField, get/toggleClientCardPin, listBookingLacquers,
+  listDayLacquers, getClientVisitStats, getGoodsCatalog, sellWithoutBooking, cancelQuickSale, getFrequentServices,
+  loadDraft, saveDraft, flushDraftSync, clearDraft, create/list/cancelLedgerEntry, getFavorites, isFavorite,
+  toggleFavorite, getDaySummary, getPackageSlots, get/setWaitlistPanelOpen.
+
+Найдено и починено (попытка 2):
+- **«Ещё» журнала падало в режиме api** («экран упал», `LinkComponent` … `reading 'split'`): в
+  `jprefs:st_nuri_owner` лежало избранное `{id:'journal', title:'Журнал'}` без `labelKey`/`href` (проверочный
+  curl попытки 1 — сервер принимал `.passthrough()`), и экран строил `<Link href={undefined}>`. Сервер теперь
+  принимает избранное только в форме `FavoriteSection` фронта (`{id, labelKey, href:'/…'}`, `.strict()`, иначе
+  400 `validation`), а при чтении отбрасывает старые неполные строки. Проверено на отдельной сборке (порт 4099):
+  плохое тело → 400, полное → 200, старая плохая строка → не отдаётся. На живом деве (:4010, старый процесс
+  чужой, не перезапускал) плохую строку заменил на `[]`; настоящий UI «Закрепить журнал» записал
+  `{id:'journal', href:'/biz/journal', labelKey:'sections.journal'}` — ровно та форма, что теперь требует сервер.
+
+Проверено (попытка 2):
+- Backend `tsc --noEmit`: 0 ошибок в моих файлах; 50 чужих — `src/modules/resources/**` (лейн resources прямо
+  сейчас, `resourcesWaitlistEntry` ещё не в сгенерированном клиенте), не чинил.
+- Чистая база `booktime_checkj` (под локом, root — у `booktime` нет прав CREATE DATABASE): `migrate deploy` —
+  все миграции, `tsx prisma/seed.ts` — прошёл (15 бизнесов, 628 клиентов CRM …); база удалена. API на свежей
+  сборке поднялся (4099, `/v1/health` 200), воркер — «очереди запущены». OpenAPI — 662 пути, 14 путей лейна на месте.
+- curl настоящей сессией (`+37400110001`, `biz_nuri`) по всем 14 маршрутам: чтения 200 с реальными числами
+  (часы Ани 11–16, загрузка 0.7, 7 лаков дня, сводка дня 111 500 ֏ записано / 13 клиентов, статистика cl_034 —
+  3 визита), мутации: пакет → окно 16:30–17:30, prefs туда-обратно, черновик put/get/null, продажа пилки —
+  остаток 23→22, отмена → 23, операция кассы создана и отменена.
+- Playwright настоящим входом (кука сессии, `bt_data=api`): `/biz/journal`, `?view=week`, `/biz/journal/settings`
+  — без ошибок страницы; окно записи (клик по записи) → `frequent-services`, `goods-catalog`, `draft` GET/PUT;
+  «Ещё» → `day-summary`; «Продать», «Пакет услуг» (`POST package-slots`), «Закрепить журнал» (`PATCH prefs`),
+  «Принять оплату» (`GET ledger`) — все 200, ошибок консоли нет. `client-visit-stats` — только curl (в UI нужен
+  выбор клиента в окне новой записи, не прокликивал).
+- Фронт `tsc` — 1 ошибка, чужая (`src/areas/client/login/ClientCodeLogin.tsx`). `renders --check-compiler` — 0.
+  `fids` — 2891/2896 (было 2892; фронт в этом заходе не правил — минус один у соседей).
+- Один раз `/biz/journal` упал «Rendered more hooks» (в том числе в режиме mock) — через минуту не повторился ни
+  в одном режиме; вывод (inferred): Fast Refresh от правок соседних помощников в живом `next dev`, не код лейна.
+
+Решено по ходу:
+- `setJournalZoom`/`setJournalHiddenStatuses` оставлены в браузере: и чтение (`getJournalPrefs` → `readArea`), и
+  запись — локальные в обоих режимах, это настройка вида устройства (масштаб на телефоне и на компьютере разный),
+  как `schedule/table.ts::setViewConfig` в попытке 2. `hasScheduleOnDate`, `computeOverlap`,
+  `getClientSubscriptions` — 0 вызовов с экранов; `computeResourceFree` — только внутренний помощник гейтованных
+  функций того же файла.
+
+лейн journal: закрыто 24 из 24 (29 функций с парными), осталось: ничего по `journal.ts`.
+
+### Вопросы владельцу (этап 21, лейн journal)
+Ничего денежного/юридического не всплыло.

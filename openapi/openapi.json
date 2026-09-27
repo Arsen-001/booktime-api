@@ -11090,6 +11090,59 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/categories/order": {
+      "put": {
+        "operationId": "ServicesController_reorderCategories",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "maxItems": 2000,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Порядок категорий (У25)",
+        "tags": [
+          "services"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/service-rows": {
       "get": {
         "operationId": "ServicesController_listServiceRows",
@@ -11652,6 +11705,43 @@
             "cookie": []
           }
         ],
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/services/photo-links": {
+      "get": {
+        "operationId": "ServicesController_getPhotoLinks",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "urls",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Привязка фото→услуга одним запросом (вместо запроса на каждое фото); ключ — сам url фото, не мастер",
         "tags": [
           "services"
         ]
@@ -14382,6 +14472,716 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/staff/{staffId}/photo-slots": {
+      "get": {
+        "operationId": "ServicesController_getPhotoSlots",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "used": {
+                      "type": "number"
+                    },
+                    "base": {
+                      "type": "number"
+                    },
+                    "extra": {
+                      "type": "number"
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "priceCoins": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "used",
+                    "base",
+                    "extra",
+                    "total",
+                    "priceCoins"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff/{staffId}/photo-profile": {
+      "put": {
+        "operationId": "ServicesController_savePhotoProfile",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "photos": {
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 4000000
+                    }
+                  },
+                  "links": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 32
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "photos",
+                  "links"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Сохранить» на экране фото работ (У3): снимки и привязки одной операцией",
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff/{staffId}/documents": {
+      "get": {
+        "operationId": "ServicesController_listStaffDocuments",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "staffId": {
+                        "type": "string"
+                      },
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "imageUrl": {
+                        "type": "string"
+                      },
+                      "fileName": {
+                        "type": "string"
+                      },
+                      "uploadedAt": {
+                        "type": "string"
+                      },
+                      "moderationId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "staffId",
+                      "businessId",
+                      "imageUrl",
+                      "uploadedAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "services"
+        ]
+      },
+      "post": {
+        "operationId": "ServicesController_addStaffDocument",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "imageUrl": {
+                    "type": "string",
+                    "maxLength": 4000000
+                  },
+                  "fileName": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "moderationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "imageUrl"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "staffId": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "imageUrl": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "uploadedAt": {
+                      "type": "string"
+                    },
+                    "moderationId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "staffId",
+                    "businessId",
+                    "imageUrl",
+                    "uploadedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/services/documents/{id}": {
+      "delete": {
+        "operationId": "ServicesController_removeStaffDocument",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/services/documents/restore": {
+      "post": {
+        "operationId": "ServicesController_restoreStaffDocument",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "staffId": {
+                    "type": "string"
+                  },
+                  "businessId": {
+                    "type": "string"
+                  },
+                  "imageUrl": {
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "uploadedAt": {
+                    "type": "string"
+                  },
+                  "moderationId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "staffId",
+                  "businessId",
+                  "imageUrl",
+                  "uploadedAt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Отменить» после удаления документа (У26)",
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff/{staffId}/sterilization": {
+      "get": {
+        "operationId": "ServicesController_getSterilization",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff/{staffId}/materials-profile": {
+      "put": {
+        "operationId": "ServicesController_saveMaterialsProfile",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "materials": {
+                    "type": "object",
+                    "properties": {
+                      "presetIds": {
+                        "maxItems": 20,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40
+                        }
+                      },
+                      "custom": {
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 200
+                        }
+                      }
+                    },
+                    "required": [
+                      "presetIds",
+                      "custom"
+                    ]
+                  },
+                  "sterilization": {
+                    "type": "object",
+                    "properties": {
+                      "methods": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "autoclave",
+                            "craftBags",
+                            "disposable"
+                          ]
+                        }
+                      },
+                      "note": {
+                        "type": "string",
+                        "maxLength": 500
+                      }
+                    },
+                    "required": [
+                      "methods"
+                    ]
+                  }
+                },
+                "required": [
+                  "materials",
+                  "sterilization"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Сохранить» на экране материалов (У3): метки и стерилизация одной операцией",
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/services/{id}/materials": {
+      "get": {
+        "operationId": "ServicesController_getServiceMaterials",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "staffLabels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffCustom": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "stockItems": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "brand": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "staffLabels",
+                    "staffCustom",
+                    "stockItems"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff-content-counts": {
+      "get": {
+        "operationId": "ServicesController_listStaffContentCounts",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "photos": {
+                        "type": "number"
+                      },
+                      "documents": {
+                        "type": "number"
+                      },
+                      "materials": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "photos",
+                      "documents",
+                      "materials"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "services"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/resources/split-by-resource": {
       "get": {
         "operationId": "ResourcesController_getSplit",
@@ -14488,7 +15288,9 @@
                         "type": "string",
                         "enum": [
                           "resource",
-                          "package"
+                          "package",
+                          "event",
+                          "waitlist"
                         ]
                       },
                       "entityId": {
@@ -14902,6 +15704,952 @@
           }
         ],
         "summary": "Ресурсы, привязанные к услуге — вклад в карточку услуги (F-16-006)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/free-instances": {
+      "post": {
+        "operationId": "ResourcesController_freeInstances",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  },
+                  "excludeBookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "serviceIds",
+                  "start",
+                  "durationMin"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "По одному свободному экземпляру каждого ресурса услуги (F-16-011/012)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/check-instances-free": {
+      "post": {
+        "operationId": "ResourcesController_checkFree",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "instanceIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  },
+                  "excludeBookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "instanceIds",
+                  "start",
+                  "durationMin"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Выбранные вручную экземпляры всё ещё свободны? (F-16-013)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/options": {
+      "post": {
+        "operationId": "ResourcesController_options",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "start": {
+                    "type": "string"
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  },
+                  "excludeBookingId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "start",
+                  "durationMin"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Все активные ресурсы с отметкой занятых сейчас экземпляров (F-16-013)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/assistant-settings": {
+      "get": {
+        "operationId": "ResourcesController_getAssistantSettings",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "put": {
+        "operationId": "ResourcesController_saveAssistantSettings",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "compensationEnabled": {
+                    "type": "boolean"
+                  },
+                  "allowMultiple": {
+                    "type": "boolean"
+                  },
+                  "shareRule": {
+                    "type": "string",
+                    "enum": [
+                      "full",
+                      "split"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/assistant-staff": {
+      "get": {
+        "operationId": "ResourcesController_listAssistantStaff",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/assistant-staff/{staffId}": {
+      "put": {
+        "operationId": "ResourcesController_setStaffAssistantEligible",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/create-assistant": {
+      "post": {
+        "operationId": "ResourcesController_createAssistant",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "name",
+                  "phone"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "F-09-044/F-16-137/139: короткий путь для минимального помощника без графика",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/staff-rights/{staffId}": {
+      "get": {
+        "operationId": "ResourcesController_getStaffResourcesRights",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "put": {
+        "operationId": "ResourcesController_setStaffResourcesRights",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "viewResources": {
+                    "type": "boolean"
+                  },
+                  "editServiceResources": {
+                    "type": "boolean"
+                  },
+                  "viewWaitlist": {
+                    "type": "boolean"
+                  },
+                  "addAssistants": {
+                    "type": "boolean"
+                  },
+                  "editAssistantShare": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/group-seats-settings": {
+      "get": {
+        "operationId": "ResourcesController_getGroupSeatsSettings",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "put": {
+        "operationId": "ResourcesController_saveGroupSeatsSettings",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "allowMultiSeat": {
+                    "type": "boolean"
+                  },
+                  "maxSeats": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  }
+                },
+                "required": [
+                  "allowMultiSeat",
+                  "maxSeats"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/event-templates": {
+      "get": {
+        "operationId": "ResourcesController_listEventTemplates",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "post": {
+        "operationId": "ResourcesController_saveEventTemplate",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "freq": {
+                    "type": "string",
+                    "enum": [
+                      "daily",
+                      "weekdays",
+                      "monWedFri",
+                      "tueThu",
+                      "weekly",
+                      "monthly",
+                      "yearly"
+                    ]
+                  },
+                  "weekIntervalWeeks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 52
+                  }
+                },
+                "required": [
+                  "name",
+                  "freq"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/event-categories": {
+      "get": {
+        "operationId": "ResourcesController_listEventCategories",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "post": {
+        "operationId": "ResourcesController_createEventCategory",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "colorIndex": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8
+                  }
+                },
+                "required": [
+                  "name",
+                  "colorIndex"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/event-categories/{id}": {
+      "patch": {
+        "operationId": "ResourcesController_updateEventCategory",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "colorIndex": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8
+                  }
+                },
+                "required": [
+                  "name",
+                  "colorIndex"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "delete": {
+        "operationId": "ResourcesController_deleteEventCategory",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/group-service-payment/{serviceId}": {
+      "get": {
+        "operationId": "ResourcesController_getGroupServicePayment",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serviceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "resources"
+        ]
+      },
+      "put": {
+        "operationId": "ResourcesController_setGroupServicePayment",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serviceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "onlinePrepaymentEnabled": {
+                    "type": "boolean"
+                  },
+                  "membershipBookingEnabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "resources"
         ]
@@ -37983,6 +39731,815 @@
         ],
         "tags": [
           "finance"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/staff-hours": {
+      "get": {
+        "operationId": "JournalMoreController_staffHours",
+        "parameters": [
+          {
+            "name": "staffIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "businessIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Рабочие часы сотрудников по дням: {staffId: {date: DayHours}} (F-01-013/019/023)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/range-load": {
+      "get": {
+        "operationId": "JournalMoreController_rangeLoad",
+        "parameters": [
+          {
+            "name": "staffIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "businessIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Загрузка дней диапазона для мини-календаря (F-01-003/004)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/lacquers": {
+      "get": {
+        "operationId": "JournalMoreController_lacquers",
+        "parameters": [
+          {
+            "name": "ids",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "businessIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Оттенок лака записей (F-00-094): ?ids= или ?date=",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/client-visit-stats": {
+      "get": {
+        "operationId": "JournalMoreController_clientVisitStats",
+        "parameters": [
+          {
+            "name": "clientId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "businessIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Статистика клиента в окне записи (F-01-071)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/frequent-services": {
+      "get": {
+        "operationId": "JournalMoreController_frequentServices",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Id самых частых услуг мастера (F-01-056)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/day-summary": {
+      "get": {
+        "operationId": "JournalMoreController_daySummary",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сводка дня: касса, записано, выполнено, товары, клиенты (F-01-011)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/package-slots": {
+      "post": {
+        "operationId": "JournalMoreController_packageSlots",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "order": {
+                    "type": "string",
+                    "enum": [
+                      "parallel",
+                      "sequential_one",
+                      "sequential_many"
+                    ]
+                  },
+                  "steps": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "staffId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "durationMin": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1440
+                        },
+                        "bufferAfterMin": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 600
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "staffId",
+                        "durationMin"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "date",
+                  "order",
+                  "steps"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Окна, где помещается весь пакет услуг (F-01-134, F-02-069)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/prefs/{userKey}": {
+      "get": {
+        "operationId": "JournalMoreController_prefs",
+        "parameters": [
+          {
+            "name": "userKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Личные закрепления журнала: поля окна, плитки карточки, избранное, панель ожидания",
+        "tags": [
+          "journal"
+        ]
+      },
+      "patch": {
+        "operationId": "JournalMoreController_patchPrefs",
+        "parameters": [
+          {
+            "name": "userKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pinnedFields": {
+                    "maxItems": 60,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 60
+                    }
+                  },
+                  "clientCardPins": {
+                    "maxItems": 60,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 60
+                    }
+                  },
+                  "favorites": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        },
+                        "labelKey": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "href": {
+                          "type": "string",
+                          "maxLength": 300,
+                          "pattern": "^\\/[^\\s]*$"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "labelKey",
+                        "href"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "waitlistPanelOpen": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/draft": {
+      "get": {
+        "operationId": "JournalMoreController_draft",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Черновик окна записи (F-01-040)",
+        "tags": [
+          "journal"
+        ]
+      },
+      "put": {
+        "operationId": "JournalMoreController_setDraft",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "data": {
+                    "anyOf": [
+                      {},
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "key",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/goods-catalog": {
+      "get": {
+        "operationId": "JournalMoreController_goodsCatalog",
+        "parameters": [
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Каталог «Продать»: товары склада, типы абонементов и сертификатов (F-01-010)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/quick-sales": {
+      "post": {
+        "operationId": "JournalMoreController_sell",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "itemId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "qty": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000
+                  },
+                  "paymentMethod": {
+                    "type": "string",
+                    "enum": [
+                      "cash",
+                      "card"
+                    ]
+                  },
+                  "code": {
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "itemId",
+                  "qty",
+                  "paymentMethod"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Продажа вне визита (F-01-010, F-04-219): склад/лояльность + касса",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/quick-sales/{id}/cancel": {
+      "post": {
+        "operationId": "JournalMoreController_cancelSale",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/ledger": {
+      "get": {
+        "operationId": "JournalMoreController_ledger",
+        "parameters": [
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Платежи без визита филиала — ручные операции кассы (F-01-151)",
+        "tags": [
+          "journal"
+        ]
+      },
+      "post": {
+        "operationId": "JournalMoreController_createLedger",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "at": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}"
+                  },
+                  "category": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "cashRegister": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "counterpartyType": {
+                    "type": "string",
+                    "enum": [
+                      "contractor",
+                      "client",
+                      "staff"
+                    ]
+                  },
+                  "counterpartyName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 400
+                  },
+                  "createdByStaffId": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "at",
+                  "category",
+                  "counterpartyType",
+                  "counterpartyName",
+                  "amount"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/ledger/{id}/cancel": {
+      "post": {
+        "operationId": "JournalMoreController_cancelLedger",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "journal"
         ]
       }
     },
