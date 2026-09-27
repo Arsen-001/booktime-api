@@ -21,11 +21,17 @@ export const ID_PREFIX = {
   schedule: 'sch',
   calendarMark: 'mk',
   // новые таблицы сервера
-  user: 'usr',
+  // человек (users) = AppUser мока: тот же префикс, чтобы экраны клиента работали с id как раньше
+  user: 'au',
   session: 'ses',
   auditEvent: 'aud',
   file: 'fil',
   notification: 'ntf',
+  otp: 'otp',
+  staffLogin: 'sl',
+  platformMember: 'pm',
+  loginEvent: 'le',
+  pushToken: 'pt',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

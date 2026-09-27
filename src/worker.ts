@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { Queue, Worker } from 'bullmq';
 import { createRedis } from './common/redis.js';
 import { logger } from './common/logging/logger.js';
+import { PrismaService } from './common/prisma.service.js';
+import { authHousekeeping } from './jobs/auth-housekeeping.js';
 
 /**
  * Воркер: очереди BullMQ и расписания (PLAN.md Р10) — напоминания, снятие заявок по сроку, списания, выгрузки.
@@ -12,12 +14,18 @@ const SYSTEM = 'system';
 
 const queue = new Queue(SYSTEM, { connection });
 await queue.upsertJobScheduler('heartbeat', { every: 60_000 }, { name: 'heartbeat', data: {} });
+await queue.upsertJobScheduler('auth-housekeeping', { every: 3_600_000 }, { name: 'auth.housekeeping', data: {} });
+const prisma = new PrismaService();
 
 const worker = new Worker(
   SYSTEM,
   async (job) => {
     if (job.name === 'heartbeat') {
       await connection.set('booktime:worker:heartbeat', new Date().toISOString(), 'EX', 180);
+      return;
+    }
+    if (job.name === 'auth.housekeeping') {
+      logger.info(await authHousekeeping(prisma), 'auth housekeeping');
       return;
     }
     logger.warn({ job: job.name }, 'unknown system job');
@@ -30,6 +38,7 @@ logger.info('worker: очереди запущены');
 const stop = async () => {
   await worker.close();
   await queue.close();
+  await prisma.$disconnect();
   await connection.quit();
   process.exit(0);
 };

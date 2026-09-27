@@ -21,6 +21,18 @@ export const ERROR_STATUS = {
   promo_expired: HttpStatus.GONE,
   promo_revoked: HttpStatus.GONE,
   promo_personal: HttpStatus.FORBIDDEN,
+  // вход (этап 2)
+  wrong_password: HttpStatus.UNPROCESSABLE_ENTITY,
+  weak_password: HttpStatus.UNPROCESSABLE_ENTITY,
+  account_locked: HttpStatus.LOCKED,
+  account_blocked: HttpStatus.FORBIDDEN,
+  code_expired: HttpStatus.GONE,
+  code_attempts: HttpStatus.TOO_MANY_REQUESTS,
+  code_resend_wait: HttpStatus.TOO_MANY_REQUESTS,
+  code_not_delivered: HttpStatus.BAD_GATEWAY,
+  phone_taken: HttpStatus.CONFLICT,
+  phone_required: HttpStatus.UNPROCESSABLE_ENTITY,
+  no_business: HttpStatus.FORBIDDEN,
   rate_limited: HttpStatus.TOO_MANY_REQUESTS,
   validation: HttpStatus.BAD_REQUEST,
   internal: HttpStatus.INTERNAL_SERVER_ERROR,
@@ -34,6 +46,8 @@ export interface ErrorBody {
   message: string;
   /** validation: какие поля не прошли и почему */
   fields?: Record<string, string>;
+  /** Сколько секунд ждать до повтора (code_resend_wait, rate_limited, account_locked) */
+  retryAfter?: number;
 }
 
 /** Бросать из сервисов: throw new ApiError('slot_taken', 'Staff is busy at this time') */
@@ -43,6 +57,7 @@ export class ApiError extends Error {
     readonly code: ErrorCode,
     message: string,
     readonly fields?: Record<string, string>,
+    readonly retryAfter?: number,
   ) {
     super(message);
     this.status = ERROR_STATUS[code];

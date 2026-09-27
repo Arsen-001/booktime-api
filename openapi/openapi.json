@@ -21,6 +21,2485 @@
           "system"
         ]
       }
+    },
+    "/v1/undo/{token}": {
+      "post": {
+        "operationId": "UndoController_run",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/live": {
+      "get": {
+        "operationId": "LiveController_subscribe",
+        "parameters": [
+          {
+            "name": "channels",
+            "required": true,
+            "in": "query",
+            "description": "Через запятую: me, staff:{id}, biz:{id}:day:{YYYY-MM-DD}",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/auth/session": {
+      "get": {
+        "operationId": "AuthController_session",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "user": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "phone": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "locale": {
+                                  "type": "string",
+                                  "enum": [
+                                    "ru",
+                                    "hy",
+                                    "en"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "phone",
+                                "locale"
+                              ]
+                            },
+                            "app": {
+                              "type": "string",
+                              "enum": [
+                                "client",
+                                "business",
+                                "platform"
+                              ]
+                            },
+                            "mode": {
+                              "type": "string",
+                              "enum": [
+                                "client",
+                                "business"
+                              ]
+                            },
+                            "activeBusinessId": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "memberships": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "businessId": {
+                                    "type": "string"
+                                  },
+                                  "businessName": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "networkId": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "staffId": {
+                                    "type": "string"
+                                  },
+                                  "role": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "businessId",
+                                  "businessName",
+                                  "kind",
+                                  "networkId",
+                                  "staffId",
+                                  "role"
+                                ]
+                              }
+                            },
+                            "staffLogin": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "mustChangePassword": {
+                              "type": "boolean"
+                            },
+                            "consent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "user",
+                            "app",
+                            "mode",
+                            "activeBusinessId",
+                            "memberships",
+                            "staffLogin",
+                            "mustChangePassword",
+                            "consent"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "session"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Кто вошёл: сессия или { session: null } для гостя",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/code": {
+      "post": {
+        "operationId": "AuthController_sendCode",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 24
+                  },
+                  "channel": {
+                    "default": "telegram",
+                    "type": "string",
+                    "enum": [
+                      "telegram",
+                      "whatsapp",
+                      "sms"
+                    ]
+                  },
+                  "locale": {
+                    "type": "string",
+                    "enum": [
+                      "ru",
+                      "hy",
+                      "en"
+                    ]
+                  }
+                },
+                "required": [
+                  "phone"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "challengeId": {
+                      "type": "string"
+                    },
+                    "resendAfter": {
+                      "type": "number"
+                    },
+                    "expiresIn": {
+                      "type": "number"
+                    },
+                    "channel": {
+                      "type": "string",
+                      "enum": [
+                        "telegram",
+                        "whatsapp",
+                        "sms"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "challengeId",
+                    "resendAfter",
+                    "expiresIn",
+                    "channel"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Отправить код входа (4 цифры, 5 мин, повтор через 60 с). Ответ одинаков для любого номера.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/verify": {
+      "post": {
+        "operationId": "AuthController_verify",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 24
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{4}$"
+                  },
+                  "app": {
+                    "default": "client",
+                    "type": "string",
+                    "enum": [
+                      "client",
+                      "business"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "consent": {
+                    "type": "boolean"
+                  },
+                  "locale": {
+                    "type": "string",
+                    "enum": [
+                      "ru",
+                      "hy",
+                      "en"
+                    ]
+                  }
+                },
+                "required": [
+                  "phone",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "locale": {
+                          "type": "string",
+                          "enum": [
+                            "ru",
+                            "hy",
+                            "en"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "phone",
+                        "locale"
+                      ]
+                    },
+                    "app": {
+                      "type": "string",
+                      "enum": [
+                        "client",
+                        "business",
+                        "platform"
+                      ]
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "client",
+                        "business"
+                      ]
+                    },
+                    "activeBusinessId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "memberships": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "businessName": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "networkId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "staffId": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "businessId",
+                          "businessName",
+                          "kind",
+                          "networkId",
+                          "staffId",
+                          "role"
+                        ]
+                      }
+                    },
+                    "staffLogin": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "mustChangePassword": {
+                      "type": "boolean"
+                    },
+                    "consent": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "user",
+                    "app",
+                    "mode",
+                    "activeBusinessId",
+                    "memberships",
+                    "staffLogin",
+                    "mustChangePassword",
+                    "consent"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Проверить код и войти (клиент или кабинет бизнеса). Ставит httpOnly cookie сессии.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/password": {
+      "post": {
+        "operationId": "AuthController_password",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "login": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "telegram",
+                      "whatsapp",
+                      "sms"
+                    ]
+                  }
+                },
+                "required": [
+                  "login",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Вход администратора логином и паролем (F-00-034). Если включён второй шаг — { secondFactor }.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/second-factor": {
+      "post": {
+        "operationId": "AuthController_secondFactor",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "challengeId": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 32
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{4}$"
+                  }
+                },
+                "required": [
+                  "challengeId",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "locale": {
+                          "type": "string",
+                          "enum": [
+                            "ru",
+                            "hy",
+                            "en"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "phone",
+                        "locale"
+                      ]
+                    },
+                    "app": {
+                      "type": "string",
+                      "enum": [
+                        "client",
+                        "business",
+                        "platform"
+                      ]
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "client",
+                        "business"
+                      ]
+                    },
+                    "activeBusinessId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "memberships": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "businessName": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "networkId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "staffId": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "businessId",
+                          "businessName",
+                          "kind",
+                          "networkId",
+                          "staffId",
+                          "role"
+                        ]
+                      }
+                    },
+                    "staffLogin": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "mustChangePassword": {
+                      "type": "boolean"
+                    },
+                    "consent": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "user",
+                    "app",
+                    "mode",
+                    "activeBusinessId",
+                    "memberships",
+                    "staffLogin",
+                    "mustChangePassword",
+                    "consent"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Второй шаг входа по паролю: код на телефон (F-15-159)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/password/change": {
+      "post": {
+        "operationId": "AuthController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "oldPassword": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "newPassword"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сменить пароль администратора; при первом входе старый не нужен (F-00-034)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/mode": {
+      "put": {
+        "operationId": "AuthController_mode",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "client",
+                      "business"
+                    ]
+                  },
+                  "businessId": {
+                    "type": "string",
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "mode"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "locale": {
+                          "type": "string",
+                          "enum": [
+                            "ru",
+                            "hy",
+                            "en"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "phone",
+                        "locale"
+                      ]
+                    },
+                    "app": {
+                      "type": "string",
+                      "enum": [
+                        "client",
+                        "business",
+                        "platform"
+                      ]
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "client",
+                        "business"
+                      ]
+                    },
+                    "activeBusinessId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "memberships": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "businessName": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "networkId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "staffId": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "businessId",
+                          "businessName",
+                          "kind",
+                          "networkId",
+                          "staffId",
+                          "role"
+                        ]
+                      }
+                    },
+                    "staffLogin": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "mustChangePassword": {
+                      "type": "boolean"
+                    },
+                    "consent": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "user",
+                    "app",
+                    "mode",
+                    "activeBusinessId",
+                    "memberships",
+                    "staffLogin",
+                    "mustChangePassword",
+                    "consent"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Переключатель «Я клиент / Мой бизнес» (В-21)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "Выйти на этом устройстве",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/logout-all": {
+      "post": {
+        "operationId": "AuthController_logoutAll",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keepCurrent": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Завершить все сеансы» (F-15-152, F-10-125); keepCurrent — кроме этого устройства",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/platform/login": {
+      "post": {
+        "operationId": "AuthController_platformLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "login": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "telegram",
+                      "whatsapp",
+                      "sms"
+                    ]
+                  }
+                },
+                "required": [
+                  "login",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "secondFactor": {
+                      "type": "object",
+                      "properties": {
+                        "challengeId": {
+                          "type": "string"
+                        },
+                        "phoneMasked": {
+                          "type": "string"
+                        },
+                        "resendAfter": {
+                          "type": "number"
+                        },
+                        "expiresIn": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "challengeId",
+                        "phoneMasked",
+                        "resendAfter",
+                        "expiresIn"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "secondFactor"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Панель: логин + пароль → код на телефон (всегда второй шаг)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/platform/verify": {
+      "post": {
+        "operationId": "AuthController_platformVerify",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "challengeId": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 32
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{4}$"
+                  }
+                },
+                "required": [
+                  "challengeId",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "locale": {
+                          "type": "string",
+                          "enum": [
+                            "ru",
+                            "hy",
+                            "en"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "phone",
+                        "locale"
+                      ]
+                    },
+                    "login": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "user",
+                    "login",
+                    "role"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Панель: код второго шага → сессия платформы",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/platform/session": {
+      "get": {
+        "operationId": "AuthController_platformSession",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Панель: кто вошёл ({ session: null } — не вошёл)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/platform/logout": {
+      "post": {
+        "operationId": "AuthController_platformLogout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "Панель: выйти",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/me/account": {
+      "get": {
+        "operationId": "AccountController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "locale": {
+                      "type": "string",
+                      "enum": [
+                        "ru",
+                        "hy",
+                        "en"
+                      ]
+                    },
+                    "twoFactorEnabled": {
+                      "type": "boolean"
+                    },
+                    "sessionsRevokedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deleteRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deletionAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "gender": {
+                              "type": "string"
+                            },
+                            "birthday": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "district": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "photoUrl": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "bigFont": {
+                              "type": "boolean"
+                            },
+                            "timeFormat": {
+                              "type": "string"
+                            },
+                            "consentAt": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "gender",
+                            "birthday",
+                            "district",
+                            "photoUrl",
+                            "bigFont",
+                            "timeFormat",
+                            "consentAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "phone",
+                    "locale",
+                    "twoFactorEnabled",
+                    "sessionsRevokedAt",
+                    "deleteRequestedAt",
+                    "deletionAt",
+                    "profile",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Профиль, язык, крупный шрифт, 2FA, удаление (F-00-124, F-15-158)",
+        "tags": [
+          "account"
+        ]
+      },
+      "patch": {
+        "operationId": "AccountController_patch",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "locale": {
+                    "type": "string",
+                    "enum": [
+                      "ru",
+                      "hy",
+                      "en"
+                    ]
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": [
+                      "female",
+                      "male",
+                      "unknown"
+                    ]
+                  },
+                  "birthday": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "district": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "photoUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "bigFont": {
+                    "type": "boolean"
+                  },
+                  "timeFormat": {
+                    "type": "string",
+                    "enum": [
+                      "24h",
+                      "12h"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "locale": {
+                      "type": "string",
+                      "enum": [
+                        "ru",
+                        "hy",
+                        "en"
+                      ]
+                    },
+                    "twoFactorEnabled": {
+                      "type": "boolean"
+                    },
+                    "sessionsRevokedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deleteRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deletionAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "gender": {
+                              "type": "string"
+                            },
+                            "birthday": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "district": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "photoUrl": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "bigFont": {
+                              "type": "boolean"
+                            },
+                            "timeFormat": {
+                              "type": "string"
+                            },
+                            "consentAt": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "gender",
+                            "birthday",
+                            "district",
+                            "photoUrl",
+                            "bigFont",
+                            "timeFormat",
+                            "consentAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "phone",
+                    "locale",
+                    "twoFactorEnabled",
+                    "sessionsRevokedAt",
+                    "deleteRequestedAt",
+                    "deletionAt",
+                    "profile",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Изменить профиль. If-Match: version — чужая правка между чтением и записью → 409",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/account/delete": {
+      "post": {
+        "operationId": "AccountController_requestDeletion",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "locale": {
+                      "type": "string",
+                      "enum": [
+                        "ru",
+                        "hy",
+                        "en"
+                      ]
+                    },
+                    "twoFactorEnabled": {
+                      "type": "boolean"
+                    },
+                    "sessionsRevokedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deleteRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deletionAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "gender": {
+                              "type": "string"
+                            },
+                            "birthday": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "district": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "photoUrl": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "bigFont": {
+                              "type": "boolean"
+                            },
+                            "timeFormat": {
+                              "type": "string"
+                            },
+                            "consentAt": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "gender",
+                            "birthday",
+                            "district",
+                            "photoUrl",
+                            "bigFont",
+                            "timeFormat",
+                            "consentAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "phone",
+                    "locale",
+                    "twoFactorEnabled",
+                    "sessionsRevokedAt",
+                    "deleteRequestedAt",
+                    "deletionAt",
+                    "profile",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Удалить аккаунт через 25 дней (можно отменить)",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/account/delete/cancel": {
+      "post": {
+        "operationId": "AccountController_cancelDeletion",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "locale": {
+                      "type": "string",
+                      "enum": [
+                        "ru",
+                        "hy",
+                        "en"
+                      ]
+                    },
+                    "twoFactorEnabled": {
+                      "type": "boolean"
+                    },
+                    "sessionsRevokedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deleteRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deletionAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "gender": {
+                              "type": "string"
+                            },
+                            "birthday": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "district": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "photoUrl": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "bigFont": {
+                              "type": "boolean"
+                            },
+                            "timeFormat": {
+                              "type": "string"
+                            },
+                            "consentAt": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "gender",
+                            "birthday",
+                            "district",
+                            "photoUrl",
+                            "bigFont",
+                            "timeFormat",
+                            "consentAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "phone",
+                    "locale",
+                    "twoFactorEnabled",
+                    "sessionsRevokedAt",
+                    "deleteRequestedAt",
+                    "deletionAt",
+                    "profile",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Отменить удаление аккаунта",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/account/phone/code": {
+      "post": {
+        "operationId": "AccountController_phoneCode",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 24
+                  },
+                  "channel": {
+                    "default": "telegram",
+                    "type": "string",
+                    "enum": [
+                      "telegram",
+                      "whatsapp",
+                      "sms"
+                    ]
+                  }
+                },
+                "required": [
+                  "phone"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "challengeId": {
+                      "type": "string"
+                    },
+                    "resendAfter": {
+                      "type": "number"
+                    },
+                    "expiresIn": {
+                      "type": "number"
+                    },
+                    "channel": {
+                      "type": "string",
+                      "enum": [
+                        "telegram",
+                        "whatsapp",
+                        "sms"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "challengeId",
+                    "resendAfter",
+                    "expiresIn",
+                    "channel"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Смена номера: код на новый номер (F-15-149)",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/account/phone/confirm": {
+      "post": {
+        "operationId": "AccountController_phoneConfirm",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 24
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{4}$"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "locale": {
+                      "type": "string",
+                      "enum": [
+                        "ru",
+                        "hy",
+                        "en"
+                      ]
+                    },
+                    "twoFactorEnabled": {
+                      "type": "boolean"
+                    },
+                    "sessionsRevokedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deleteRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deletionAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "gender": {
+                              "type": "string"
+                            },
+                            "birthday": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "district": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "photoUrl": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "bigFont": {
+                              "type": "boolean"
+                            },
+                            "timeFormat": {
+                              "type": "string"
+                            },
+                            "consentAt": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "gender",
+                            "birthday",
+                            "district",
+                            "photoUrl",
+                            "bigFont",
+                            "timeFormat",
+                            "consentAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "phone",
+                    "locale",
+                    "twoFactorEnabled",
+                    "sessionsRevokedAt",
+                    "deleteRequestedAt",
+                    "deletionAt",
+                    "profile",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Смена номера: подтвердить код",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/security/two-factor": {
+      "put": {
+        "operationId": "AccountController_twoFactor",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "locale": {
+                      "type": "string",
+                      "enum": [
+                        "ru",
+                        "hy",
+                        "en"
+                      ]
+                    },
+                    "twoFactorEnabled": {
+                      "type": "boolean"
+                    },
+                    "sessionsRevokedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deleteRequestedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "deletionAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "profile": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "gender": {
+                              "type": "string"
+                            },
+                            "birthday": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "district": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "photoUrl": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "bigFont": {
+                              "type": "boolean"
+                            },
+                            "timeFormat": {
+                              "type": "string"
+                            },
+                            "consentAt": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "gender",
+                            "birthday",
+                            "district",
+                            "photoUrl",
+                            "bigFont",
+                            "timeFormat",
+                            "consentAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "phone",
+                    "locale",
+                    "twoFactorEnabled",
+                    "sessionsRevokedAt",
+                    "deleteRequestedAt",
+                    "deletionAt",
+                    "profile",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Двухэтапная проверка входа по паролю (F-15-159)",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/consent": {
+      "get": {
+        "operationId": "AccountController_consent",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Принято ли пользовательское соглашение (F-14-008)",
+        "tags": [
+          "account"
+        ]
+      },
+      "post": {
+        "operationId": "AccountController_acceptConsent",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Принять соглашение (человек вошёл как бизнес и открыл приложение клиента)",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/sessions": {
+      "get": {
+        "operationId": "AccountController_sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "app": {
+                        "type": "string"
+                      },
+                      "device": {
+                        "type": "string"
+                      },
+                      "ip": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "lastSeenAt": {
+                        "type": "string"
+                      },
+                      "current": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "app",
+                      "device",
+                      "ip",
+                      "createdAt",
+                      "lastSeenAt",
+                      "current"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Устройства, где открыт вход",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/sessions/{id}": {
+      "delete": {
+        "operationId": "AccountController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Закрыть вход на одном устройстве",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/login-events": {
+      "get": {
+        "operationId": "AccountController_loginEvents",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "at": {
+                        "type": "string"
+                      },
+                      "method": {
+                        "type": "string"
+                      },
+                      "app": {
+                        "type": "string"
+                      },
+                      "result": {
+                        "type": "string"
+                      },
+                      "device": {
+                        "type": "string"
+                      },
+                      "ip": {
+                        "type": "string"
+                      },
+                      "current": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "at",
+                      "method",
+                      "app",
+                      "result",
+                      "device",
+                      "ip",
+                      "current"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Журнал входов (F-10-106, F-15-159), новые сверху",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/v1/me/push-tokens": {
+      "post": {
+        "operationId": "AccountController_pushToken",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "app": {
+                    "type": "string",
+                    "enum": [
+                      "client",
+                      "business"
+                    ]
+                  },
+                  "platform": {
+                    "type": "string",
+                    "enum": [
+                      "web",
+                      "android",
+                      "ios"
+                    ]
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 512
+                  },
+                  "subscription": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "app",
+                  "platform",
+                  "token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сохранить токен пуша (Web Push / FCM)",
+        "tags": [
+          "account"
+        ]
+      },
+      "delete": {
+        "operationId": "AccountController_deletePushToken",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 512
+                  }
+                },
+                "required": [
+                  "token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Удалить токен пуша (выход, отказ от пушей)",
+        "tags": [
+          "account"
+        ]
+      }
     }
   },
   "info": {

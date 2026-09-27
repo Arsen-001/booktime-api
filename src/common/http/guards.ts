@@ -74,3 +74,18 @@ export function tenant(ctx: RequestContext): { businessId: string } {
   if (!ctx.member) throw new ApiError('forbidden', 'Business context required');
   return { businessId: ctx.member.businessId };
 }
+
+/** Наша панель: сессия команды платформы (Р11, своя cookie) */
+@Injectable()
+export class PlatformGuard implements CanActivate {
+  canActivate(host: ExecutionContext): boolean {
+    const { ctx } = host.switchToHttp().getRequest<RequestWithContext>();
+    if (!ctx?.session?.platform) throw new ApiError('unauthorized', 'Platform session required');
+    return true;
+  }
+}
+
+/** Маршрут нашей панели /v1/platform/…: @Platform() */
+export function Platform() {
+  return applyDecorators(UseGuards(PlatformGuard), ApiCookieAuth());
+}

@@ -3,8 +3,9 @@ import type { Redis } from 'ioredis';
 import { adapterProviders } from '../adapters/adapters.js';
 import { AuditService } from './audit/audit.service.js';
 import { ContextMiddleware } from './http/context.middleware.js';
-import { BizGuard, SessionGuard } from './http/guards.js';
-import { MEMBERSHIP_RESOLVER, SESSION_RESOLVER, noMemberships, noSessions } from './http/resolvers.js';
+import { BizGuard, PlatformGuard, SessionGuard } from './http/guards.js';
+import { MEMBERSHIP_LISTER, MEMBERSHIP_RESOLVER, SESSION_RESOLVER, noMembershipList, noMemberships } from './http/resolvers.js';
+import { SessionStore } from './http/sessions.js';
 import { IdempotencyInterceptor } from './idempotency/idempotency.js';
 import { LIVE_ACCESS, LiveController, ownChannelsOnly } from './live/live.controller.js';
 import { LiveService } from './live/live.service.js';
@@ -16,8 +17,8 @@ import { UndoController } from './undo/undo.controller.js';
 import { UndoService } from './undo/undo.service.js';
 
 /**
- * Сквозной слой (PLAN.md §5, этап 1) — общий для всех разделов. Резолверы сессий/членства и доступ к живым каналам —
- * заглушки «всё закрыто»; этапы 2 и 3 переопределяют их провайдерами в своих модулях.
+ * Сквозной слой (PLAN.md §5, этап 1) — общий для всех разделов. Сессии — из базы (SessionStore, этап 2). Членство и доступ к живым
+ * каналам — заглушки «всё закрыто»; этап 3 меняет провайдеры здесь же (MEMBERSHIP_*, LIVE_ACCESS).
  */
 @Global()
 @Module({
@@ -25,12 +26,15 @@ import { UndoService } from './undo/undo.service.js';
   providers: [
     PrismaService,
     { provide: REDIS, useFactory: () => createRedis('api') },
-    { provide: SESSION_RESOLVER, useValue: noSessions },
+    SessionStore,
+    { provide: SESSION_RESOLVER, useExisting: SessionStore },
     { provide: MEMBERSHIP_RESOLVER, useValue: noMemberships },
+    { provide: MEMBERSHIP_LISTER, useValue: noMembershipList },
     { provide: LIVE_ACCESS, useValue: ownChannelsOnly },
     ContextMiddleware,
     SessionGuard,
     BizGuard,
+    PlatformGuard,
     AuditService,
     RateLimitService,
     RateLimitGuard,
@@ -42,11 +46,14 @@ import { UndoService } from './undo/undo.service.js';
   exports: [
     PrismaService,
     REDIS,
+    SessionStore,
     SESSION_RESOLVER,
     MEMBERSHIP_RESOLVER,
+    MEMBERSHIP_LISTER,
     LIVE_ACCESS,
     SessionGuard,
     BizGuard,
+    PlatformGuard,
     AuditService,
     RateLimitService,
     RateLimitGuard,

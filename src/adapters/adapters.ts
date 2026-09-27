@@ -1,5 +1,6 @@
 import { FakeBusinessMessenger, type BusinessMessenger } from './business-sms/business-sms.js';
-import { FakeCodeSender, type CodeChannel, type CodeSender } from './code-sender/code-sender.js';
+import { env } from '../common/config/env.js';
+import { FakeCodeSender, TelegramGatewaySender, type CodeChannel, type CodeSender } from './code-sender/code-sender.js';
 import { FakeMailSender, type MailSender } from './mail/mail.js';
 import { FakePaymentProvider, type PaymentProvider } from './payments/payments.js';
 import { FakePushSender, type PushSender } from './push/push.js';
@@ -19,7 +20,7 @@ export const adapterProviders = [
   {
     provide: CODE_SENDERS,
     useFactory: (): CodeSenders => ({
-      telegram: new FakeCodeSender('telegram'),
+      telegram: env.TELEGRAM_GATEWAY_TOKEN ? new TelegramGatewaySender(env.TELEGRAM_GATEWAY_TOKEN) : new FakeCodeSender('telegram'),
       whatsapp: new FakeCodeSender('whatsapp'),
       sms: new FakeCodeSender('sms'),
     }),

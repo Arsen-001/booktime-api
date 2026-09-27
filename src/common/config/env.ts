@@ -18,6 +18,17 @@ const schema = z.object({
   S3_BUCKET: z.string().default('booktime'),
   S3_ACCESS_KEY: z.string().optional(),
   S3_SECRET_KEY: z.string().optional(),
+  // Вход (этап 2)
+  /** Telegram Gateway: есть токен — код в Telegram уходит по-настоящему; нет — заглушка пишет в лог */
+  TELEGRAM_GATEWAY_TOKEN: z.string().optional(),
+  /** Постоянный код входа только для разработки (NODE_ENV=development); в остальных средах игнорируется */
+  DEV_LOGIN_CODE: z.string().regex(/^\d{4}$/).optional(),
+  /** Домен cookie сессии (прод: .booktime.am — чтобы сайт и API на поддоменах видели одну сессию); пусто — хост API */
+  COOKIE_DOMAIN: z.string().optional(),
+  /** Cookie только по HTTPS (прод — да) */
+  COOKIE_SECURE: z.enum(['0', '1']).default('0').transform((v) => v === '1'),
+  /** Сколько дней живёт сессия без захода (продлевается при каждом заходе) */
+  SESSION_TTL_DAYS: z.coerce.number().int().positive().default(60),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
 });
 

@@ -1,10 +1,10 @@
 import { Inject, Injectable, type NestMiddleware } from '@nestjs/common';
 import type { NextFunction, Response } from 'express';
 import { randomUUID } from 'node:crypto';
-import { SESSION_COOKIE, type RequestWithContext } from './context.js';
+import { PLATFORM_COOKIE, SESSION_COOKIE, isPlatformPath, type RequestWithContext } from './context.js';
 import { SESSION_RESOLVER, type SessionResolver } from './resolvers.js';
 
-function readCookie(header: string | undefined, name: string): string | undefined {
+export function readCookie(header: string | undefined, name: string): string | undefined {
   if (!header) return undefined;
   for (const part of header.split(';')) {
     const [k, ...v] = part.trim().split('=');
@@ -22,8 +22,11 @@ export class ContextMiddleware implements NestMiddleware {
     const incoming = req.header('x-request-id');
     const requestId = incoming && /^[\w-]{8,64}$/.test(incoming) ? incoming : randomUUID();
     res.setHeader('X-Request-Id', requestId);
-    const sid = readCookie(req.headers.cookie, SESSION_COOKIE);
-    const session = sid ? await this.sessions.resolve(sid) : null;
+    const platform = isPlatformPath(req.originalUrl ?? req.path);
+    const token = readCookie(req.headers.cookie, platform ? PLATFORM_COOKIE : SESSION_COOKIE);
+    const resolved = token ? await this.sessions.resolve(token) : null;
+    // Сессия платформы действует только на путях платформы, обычная — только вне их
+    const session = resolved && Boolean(resolved.platform) === platform ? resolved : null;
     req.ctx = {
       requestId,
       ip: req.ip ?? '',

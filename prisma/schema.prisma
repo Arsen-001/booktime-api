@@ -51,3 +51,225 @@ model AuditEvent {
   @@index([actorId, at])
   @@map("audit_events")
 }
+
+// ─────────────────────────── Этап 2 · Вход и аккаунт (01 §1, 05 §6, PLAN Р8/Р11) ───────────────────────────
+
+/// Человек. Один на все роли: клиент, мастер, владелец, администратор, команда платформы (01 §1).
+/// Администратор салона может быть без телефона (входит логином, F-00-034) — поэтому phone необязателен.
+model User {
+  id                String    @id @db.VarChar(32)
+  /// '+374XXXXXXXX' (В-37: только армянские номера)
+  phone             String?   @unique @db.VarChar(16)
+  name              String    @db.VarChar(120)
+  /// ru | hy | en — язык пушей и писем (Р12)
+  locale            String    @default("ru") @db.VarChar(2)
+  /// Двухэтапная проверка входа по паролю (F-15-159): после пароля — код на телефон
+  twoFactorEnabled  Boolean   @default(false) @map("two_factor_enabled")
+  /// «Завершить все сеансы» — когда нажато последний раз (F-15-152)
+  sessionsRevokedAt DateTime? @map("sessions_revoked_at") @db.DateTime(3)
+  blockedAt         DateTime? @map("blocked_at") @db.DateTime(3)
+  /// Удаление аккаунта через 25 дней, можно отменить (F-10-129, F-15-158)
+  deleteRequestedAt DateTime? @map("delete_requested_at") @db.DateTime(3)
+  deletedAt         DateTime? @map("deleted_at") @db.DateTime(3)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy         String?   @map("created_by") @db.VarChar(32)
+  updatedBy         String?   @map("updated_by") @db.VarChar(32)
+  version           Int       @default(1)
+
+  appProfile      AppProfile?
+  sessions        Session[]
+  staffLogins     StaffLogin[]
+  platformMember  PlatformMember?
+  pushTokens      PushToken[]
+  loginEvents     LoginEvent[]
+
+  @@map("users")
+}
+
+/// Профиль клиента приложения (= AppUser мока) + согласие при входе (F-14-008)
+model AppProfile {
+  userId         String    @id @map("user_id") @db.VarChar(32)
+  /// female | male | unknown (В-19: необязательный)
+  gender         String    @default("unknown") @db.VarChar(8)
+  /// 'YYYY-MM-DD'
+  birthday       String?   @db.VarChar(10)
+  district       String?   @db.VarChar(40)
+  photoUrl       String?   @map("photo_url") @db.VarChar(500)
+  bigFont        Boolean   @default(false) @map("big_font")
+  /// '24h' | '12h'
+  timeFormat     String    @default("24h") @map("time_format") @db.VarChar(3)
+  consentAt      DateTime? @map("consent_at") @db.DateTime(3)
+  consentVersion String?   @map("consent_version") @db.VarChar(20)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  version        Int       @default(1)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("app_profiles")
+}
+
+/// Сессия в базе (Р8): в браузере только случайный токен в httpOnly cookie, в базе — его sha256.
+/// Отзыв (выход, «выйти везде», увольнение) действует со следующего запроса.
+model Session {
+  id               String    @id @db.VarChar(32)
+  tokenHash        String    @unique @map("token_hash") @db.Char(64)
+  userId           String    @map("user_id") @db.VarChar(32)
+  /// Каким входом открыта: client | business | platform
+  app              String    @db.VarChar(10)
+  /// Переключатель «Я клиент / Мой бизнес» (В-21): client | business
+  mode             String    @default("client") @db.VarChar(10)
+  /// Выбранный бизнес в режиме business (сверяется с членством на каждом запросе — этап 3)
+  activeBusinessId String?   @map("active_business_id") @db.VarChar(32)
+  /// Вход логином администратора (F-00-034)
+  staffLoginId     String?   @map("staff_login_id") @db.VarChar(32)
+  /// Вход команды платформы (Р11)
+  platformMemberId String?   @map("platform_member_id") @db.VarChar(32)
+  /// Пароль выдан владельцем и ещё не сменён — экран просит сменить (F-00-034)
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  device           String    @db.VarChar(200)
+  ip               String    @db.VarChar(64)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  lastSeenAt       DateTime  @default(now()) @map("last_seen_at") @db.DateTime(3)
+  expiresAt        DateTime  @map("expires_at") @db.DateTime(3)
+  revokedAt        DateTime? @map("revoked_at") @db.DateTime(3)
+  /// logout | logout_all | logout_others | password_changed | disabled | deleted | expired
+  revokeReason     String?   @map("revoke_reason") @db.VarChar(20)
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  staffLogin     StaffLogin?     @relation(fields: [staffLoginId], references: [id], onDelete: Cascade)
+  platformMember PlatformMember? @relation(fields: [platformMemberId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([staffLoginId])
+  @@index([platformMemberId])
+  @@map("sessions")
+}
+
+/// Код входа / подтверждения (05 §6): только хэш кода, 4 цифры, 5 минут, 5 попыток
+model OtpRequest {
+  id                String    @id @db.VarChar(32)
+  /// '+374…' — куда отправлен
+  phone             String    @db.VarChar(16)
+  /// login | phone_change | second_factor | platform
+  purpose           String    @db.VarChar(16)
+  /// telegram | whatsapp | sms
+  channel           String    @db.VarChar(10)
+  codeHash          String    @map("code_hash") @db.Char(64)
+  /// Для второго шага: чей вход подтверждается (staff_login / platform_member)
+  subjectId         String?   @map("subject_id") @db.VarChar(32)
+  /// Для смены номера: чей номер меняем
+  userId            String?   @map("user_id") @db.VarChar(32)
+  attempts          Int       @default(0)
+  /// sent | used | exhausted | superseded
+  status            String    @default("sent") @db.VarChar(12)
+  providerMessageId String?   @map("provider_message_id") @db.VarChar(100)
+  ip                String    @db.VarChar(64)
+  sentAt            DateTime  @default(now()) @map("sent_at") @db.DateTime(3)
+  expiresAt         DateTime  @map("expires_at") @db.DateTime(3)
+  usedAt            DateTime? @map("used_at") @db.DateTime(3)
+
+  @@index([phone, purpose, sentAt])
+  @@index([ip, sentAt])
+  @@index([userId])
+  @@map("otp_requests")
+}
+
+/// Логин и пароль администратора салона (F-00-034). staff_id — сотрудник бизнеса (связь по ключу — этап 3).
+model StaffLogin {
+  id                 String    @id @db.VarChar(32)
+  /// Нижний регистр, без пробелов по краям
+  login              String    @unique @db.VarChar(64)
+  passwordHash       String    @map("password_hash") @db.VarChar(200)
+  userId             String    @map("user_id") @db.VarChar(32)
+  staffId            String?   @map("staff_id") @db.VarChar(32)
+  businessId         String?   @map("business_id") @db.VarChar(32)
+  mustChangePassword Boolean   @default(true) @map("must_change_password")
+  failedAttempts     Int       @default(0) @map("failed_attempts")
+  lockedUntil        DateTime? @map("locked_until") @db.DateTime(3)
+  /// Отключён владельцем (F-00-040): вход закрыт, сессии отозваны
+  disabledAt         DateTime? @map("disabled_at") @db.DateTime(3)
+  passwordChangedAt  DateTime? @map("password_changed_at") @db.DateTime(3)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy          String?   @map("created_by") @db.VarChar(32)
+  updatedBy          String?   @map("updated_by") @db.VarChar(32)
+  version            Int       @default(1)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions Session[]
+
+  @@index([userId])
+  @@index([staffId])
+  @@index([businessId])
+  @@map("staff_logins")
+}
+
+/// Команда платформы (Р11): логин + пароль + код на телефон человека (user.phone)
+model PlatformMember {
+  id             String    @id @db.VarChar(32)
+  login          String    @unique @db.VarChar(64)
+  passwordHash   String    @map("password_hash") @db.VarChar(200)
+  userId         String    @unique @map("user_id") @db.VarChar(32)
+  /// reviewer | admin
+  role           String    @default("reviewer") @db.VarChar(16)
+  failedAttempts Int       @default(0) @map("failed_attempts")
+  lockedUntil    DateTime? @map("locked_until") @db.DateTime(3)
+  disabledAt     DateTime? @map("disabled_at") @db.DateTime(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy      String?   @map("created_by") @db.VarChar(32)
+  updatedBy      String?   @map("updated_by") @db.VarChar(32)
+  version        Int       @default(1)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions Session[]
+
+  @@map("platform_members")
+}
+
+/// Журнал входов (F-10-106, F-15-159): удачные и неудачные попытки; хранится 1 год (F3)
+model LoginEvent {
+  id        String   @id @db.VarChar(32)
+  userId    String?  @map("user_id") @db.VarChar(32)
+  sessionId String?  @map("session_id") @db.VarChar(32)
+  /// code | password | platform | second_factor
+  method    String   @db.VarChar(16)
+  app       String   @db.VarChar(10)
+  /// ok | wrong_code | wrong_password | locked | blocked | second_factor_sent
+  result    String   @db.VarChar(20)
+  /// Что вводили (логин или номер с маской) — для неудачных попыток без userId
+  identifier String? @db.VarChar(64)
+  ip        String   @db.VarChar(64)
+  device    String   @db.VarChar(200)
+  at        DateTime @default(now()) @db.DateTime(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, at])
+  @@index([at])
+  @@map("login_events")
+}
+
+/// Токены пушей (05 §4): Web Push (подписка JSON) и FCM
+model PushToken {
+  id        String    @id @db.VarChar(32)
+  userId    String    @map("user_id") @db.VarChar(32)
+  /// client | business
+  app       String    @db.VarChar(10)
+  /// web | android | ios
+  platform  String    @db.VarChar(8)
+  /// FCM-токен или endpoint Web Push; подписка целиком — в subscription
+  token     String    @unique @db.VarChar(512)
+  subscription Json?
+  locale    String    @default("ru") @db.VarChar(2)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  invalidAt DateTime? @map("invalid_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
+}

@@ -22,6 +22,10 @@ export class ErrorFilter implements ExceptionFilter {
     if (exception instanceof ApiError) {
       status = exception.status;
       body = { code: exception.code, message: exception.message, ...(exception.fields ? { fields: exception.fields } : {}) };
+      if (exception.retryAfter !== undefined) {
+        body.retryAfter = exception.retryAfter;
+        res.setHeader('Retry-After', String(exception.retryAfter));
+      }
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       body = { code: STATUS_TO_CODE[status] ?? 'internal', message: exception.message };
