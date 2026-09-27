@@ -41,11 +41,13 @@ export class ScheduleController {
 
   @Post('schedule/table')
   @HttpCode(200)
-  @Biz('staff.view')
-  @ApiOperation({ summary: 'Таблица «Сотрудники × дни» с фильтрами (F-02-002/003)' })
+  @Biz()
+  @ApiOperation({ summary: 'Таблица «Сотрудники × дни» с фильтрами (F-02-002/003); без staff.view — только своя строка' })
   @ZodBody(tableBody)
-  table(@Param('businessId') businessId: string, @Body(new Zod(tableBody)) body: z.infer<typeof tableBody>) {
-    return this.svc.table(businessId, body);
+  table(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(tableBody)) body: z.infer<typeof tableBody>) {
+    const m = ctx.member!;
+    const self = !m.permissions.has('staff.view') && !m.permissions.has('journal.others');
+    return this.svc.table(businessId, self ? { ...body, filters: { ...body.filters, staffIds: [m.staffId] } } : body);
   }
 
   @Post('schedule/has-saved')
