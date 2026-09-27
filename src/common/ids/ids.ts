@@ -174,6 +174,10 @@ export const ID_PREFIX = {
   ad: 'ad',
   storyBooking: 'story',
   firstAward: 'first',
+  // этап 19 (попытка 3) — подключение салона за 10 минут: черновик cd (мок newId('cd')); приглашение
+  // мастера внутри черновика — свой префикс cinv, не 'inv' (уже занят billingInvoice, этап 18)
+  connectDraft: 'cd',
+  connectInvite: 'cinv',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

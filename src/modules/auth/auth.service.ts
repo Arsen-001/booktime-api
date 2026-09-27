@@ -150,6 +150,23 @@ export class AuthService {
           update: existing?.appProfile?.consentAt ? {} : { consentAt, consentVersion: CONSENT_VERSION },
         });
       }
+      // F-00-176 (этап 19): салон, подключённый нашей командой на визите, ждёт владельца по номеру телефона —
+      // без отдельного приглашения (ConnectHandoff фронта: «шаг 1 — войдите этим номером»). Пришёл именно этот
+      // номер бизнес-входом и есть непринятый owner-стул с ним — сразу привязать (та же строка, что заводит
+      // ConnectService.finish: userId ещё null). Обычных сотрудников это не касается — те идут через инвайт (F-00-042).
+      if (input.app === 'business') {
+        const unclaimed = await tx.staff.findFirst({
+          where: { phone, role: 'owner', userId: null, deletedAt: null, business: { leftAt: null } },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (unclaimed) {
+          await tx.staff.update({
+            where: { id: unclaimed.id },
+            data: { userId: id, accessEnabled: true, status: unclaimed.status === 'fired' ? 'fired' : 'active', updatedBy: id, version: { increment: 1 } },
+          });
+          await this.audit.record(tx, { ...ctx, member: null }, { action: 'connectOwnerClaimed', entityType: 'staff', entityId: unclaimed.id, businessId: unclaimed.businessId });
+        }
+      }
       return id;
     });
 

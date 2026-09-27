@@ -21,11 +21,14 @@ import { PlatformStoriesController } from './stories.controller.js';
 import { StoriesService } from './stories.service.js';
 import { PlatformNotesController } from './notes.controller.js';
 import { PlatformNotesService } from './notes.service.js';
+import { PlatformConnectController, PlatformConnectResultController } from './connect.controller.js';
+import { ConnectService } from './connect.service.js';
 
 /**
- * Этап 19 — модерация и наша панель (docs/backend/02 §19, 06 §1). Не строит этим проходом (попытка 2): подключение
- * салона за 10 минут (ConnectDraft) — см. docs/PROGRESS.md. Спрос/first-awards, реклама+сторис (без покупки места
- * и без картинки сторис K18, они не построены ещё и во фронте) и заметки основателя — построены этой попыткой.
+ * Этап 19 — модерация и наша панель (docs/backend/02 §19, 06 §1). Попытка 3 достроила последнее, что оставалось:
+ * подключение салона за 10 минут (ConnectDraft, F-00-176) — см. docs/PROGRESS.md. Остальное (модерация, бизнесы,
+ * поддержка, идеи, заявки на сферы, визиты, обзор, спрос/first-awards, реклама+сторис, заметки основателя) —
+ * построено попытками 1–2.
  */
 @Module({
   controllers: [
@@ -44,8 +47,23 @@ import { PlatformNotesService } from './notes.service.js';
     PublicAdsController,
     PlatformStoriesController,
     PlatformNotesController,
+    PlatformConnectController,
+    PlatformConnectResultController,
   ],
-  providers: [ModerationService, PlatformBusinessesService, PlatformSupportService, IdeasService, SphereRequestsService, VisitsService, OverviewService, DemandService, AdsService, StoriesService, PlatformNotesService],
+  providers: [
+    ModerationService,
+    PlatformBusinessesService,
+    PlatformSupportService,
+    IdeasService,
+    SphereRequestsService,
+    VisitsService,
+    OverviewService,
+    DemandService,
+    AdsService,
+    StoriesService,
+    PlatformNotesService,
+    ConnectService,
+  ],
   exports: [ModerationService],
 })
 export class PlatformModule {}

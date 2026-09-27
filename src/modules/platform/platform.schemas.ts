@@ -228,3 +228,45 @@ export const platformNotesBody = z.object({
   nameCandidates: z.array(nameCandidateShape).max(200).optional(),
   brand: brandStateShape.optional(),
 });
+
+// ─────────────────────────── Подключение салона за 10 минут (F-00-176, F-00-171, F-00-052) ───────────────────────────
+
+const connectTimeRange = z.object({ from: z.string().regex(/^([01]\d|2[0-4]):[0-5]\d$/), to: z.string().regex(/^([01]\d|2[0-4]):[0-5]\d$/) });
+/** WeekTemplate — ключи '0'…'6' (0 = пн); дни вне 0..6 отбрасываются сервисом, не схемой (внутренний инструмент) */
+export const connectWeekShape = z.record(z.string(), z.array(connectTimeRange).max(12));
+
+export const connectServiceLineShape = z.object({
+  templateId: z.string().min(1).max(60),
+  name: localized,
+  durationMin: z.number().int().positive().max(1000),
+  price: z.number().int().nonnegative(),
+  selected: z.boolean(),
+});
+
+export const connectStartBody = z.object({ visitId: z.string().max(32).optional() });
+
+export const connectDraftPatchBody = z
+  .object({
+    step: z.number().int().min(0).max(10),
+    kind: z.enum(['individual', 'salon']),
+    name: z.string().max(160),
+    sphereId: z.string().max(40),
+    ownerName: z.string().max(160),
+    ownerPhone: z.string().max(20),
+    district: z.string().max(40),
+    address: z.string().max(300),
+    yandexMapsUrl: z.string().max(1000),
+    coords: z.object({ lat: z.number(), lng: z.number() }),
+    photos: z.array(z.string().max(4_000_000)).max(6),
+    services: z.array(connectServiceLineShape).max(60),
+    hours: connectWeekShape,
+    calendarMode: z.enum(['free', 'busy']),
+    promoCodeId: z.string().max(32),
+    responsibleId: z.string().max(32),
+  })
+  .partial();
+export type ConnectDraftPatchBody = z.infer<typeof connectDraftPatchBody>;
+
+export const connectInviteInputBody = z.object({ name: z.string().max(160), phone: z.string().min(6).max(20) });
+
+export const connectFinishBody = connectDraftPatchBody;

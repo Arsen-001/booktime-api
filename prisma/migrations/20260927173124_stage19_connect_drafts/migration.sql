@@ -1,0 +1,33 @@
+-- CreateTable
+CREATE TABLE `connect_drafts` (
+    `id` VARCHAR(32) NOT NULL,
+    `status` VARCHAR(6) NOT NULL DEFAULT 'draft',
+    `step` INTEGER NOT NULL DEFAULT 0,
+    `kind` VARCHAR(12) NOT NULL DEFAULT 'salon',
+    `name` VARCHAR(160) NOT NULL DEFAULT '',
+    `sphere_id` VARCHAR(40) NULL,
+    `owner_name` VARCHAR(160) NOT NULL DEFAULT '',
+    `owner_phone` VARCHAR(20) NOT NULL DEFAULT '',
+    `district` VARCHAR(40) NULL,
+    `address` VARCHAR(300) NOT NULL DEFAULT '',
+    `yandex_maps_url` VARCHAR(1000) NOT NULL DEFAULT '',
+    `lat` DECIMAL(9, 6) NULL,
+    `lng` DECIMAL(9, 6) NULL,
+    `coords_at` DATETIME(3) NULL,
+    `photos` JSON NOT NULL,
+    `invites` JSON NOT NULL,
+    `services` JSON NOT NULL,
+    `hours` JSON NOT NULL,
+    `calendar_mode` VARCHAR(5) NULL,
+    `promo_code_id` VARCHAR(32) NULL,
+    `visit_id` VARCHAR(32) NULL,
+    `responsible_id` VARCHAR(32) NOT NULL,
+    `business_id` VARCHAR(32) NULL,
+    `started_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `finished_at` DATETIME(3) NULL,
+
+    INDEX `connect_drafts_status_idx`(`status`),
+    INDEX `connect_drafts_visit_id_idx`(`visit_id`),
+    INDEX `connect_drafts_business_id_idx`(`business_id`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

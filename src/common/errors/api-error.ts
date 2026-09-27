@@ -137,6 +137,9 @@ export const ERROR_STATUS = {
   read_only: HttpStatus.LOCKED,
   // данные и удаление (этап 20) — «Выгрузить мои данные» не чаще раза в сутки (F-15-154, код мока)
   too_soon: HttpStatus.TOO_MANY_REQUESTS,
+  // подключение салона за 10 минут (этап 19, F-00-176) — коды мока (src/api/platform/connect.ts)
+  connect_incomplete: HttpStatus.UNPROCESSABLE_ENTITY,
+  duplicate: HttpStatus.CONFLICT,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

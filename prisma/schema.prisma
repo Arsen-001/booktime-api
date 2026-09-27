@@ -3598,6 +3598,53 @@ model PlatformNotes {
   @@map("platform_notes")
 }
 
+/// Подключение салона на визите за 10 минут (F-00-176, F-00-171, F-00-052) — черновик по шагам, «Подключить»
+/// делает всё одной транзакцией (PLAN §9): бизнес+филиал+владелец+приглашённые мастера+услуги+часы+фото(auto)+
+/// бесплатный месяц+промокод+визит→connected (connect.service.ts). Без version/createdBy (как SalesVisit/
+/// PlatformNotes этого же этапа) — рабочий документ одного человека из команды, гонка не имеет практического веса.
+model ConnectDraft {
+  id            String    @id @db.VarChar(32)
+  /// draft | done
+  status        String    @default("draft") @db.VarChar(6)
+  /// Текущий шаг мастера (с 0) — только для возврата на то же место при перезагрузке
+  step          Int       @default(0)
+  /// individual | salon
+  kind          String    @default("salon") @db.VarChar(12)
+  name          String    @default("") @db.VarChar(160)
+  sphereId      String?   @map("sphere_id") @db.VarChar(40)
+  ownerName     String    @default("") @map("owner_name") @db.VarChar(160)
+  ownerPhone    String    @default("") @map("owner_phone") @db.VarChar(20)
+  district      String?   @db.VarChar(40)
+  address       String    @default("") @db.VarChar(300)
+  yandexMapsUrl String    @default("") @map("yandex_maps_url") @db.VarChar(1000)
+  /// Точка из «Я на месте» — без карт (F-00-176)
+  lat           Decimal?  @db.Decimal(9, 6)
+  lng           Decimal?  @db.Decimal(9, 6)
+  coordsAt      DateTime? @map("coords_at") @db.DateTime(3)
+  /// string[] data URI, как Business.photos
+  photos        Json
+  /// ConnectInvite[] фронта — {id, name, phone}; масters получают настоящие staff_invites при «Подключить»
+  invites       Json
+  /// ConnectServiceLine[] — шаблон услуг сферы, отмечены/сняты (F-00-083)
+  services      Json
+  /// WeekTemplate — часы владельца; салону календарь всегда 'free', индивидуал выбирает (F-00-052)
+  hours         Json
+  /// free | busy — только для kind='individual' (connectIssues фронта требует явный выбор)
+  calendarMode  String?   @map("calendar_mode") @db.VarChar(5)
+  promoCodeId   String?   @map("promo_code_id") @db.VarChar(32)
+  visitId       String?   @map("visit_id") @db.VarChar(32)
+  /// Кто из команды ведёт подключение (SalesVisit.responsibleId — тот же смысл)
+  responsibleId String    @map("responsible_id") @db.VarChar(32)
+  businessId    String?   @map("business_id") @db.VarChar(32)
+  startedAt     DateTime  @default(now()) @map("started_at") @db.DateTime(3)
+  finishedAt    DateTime? @map("finished_at") @db.DateTime(3)
+
+  @@index([status])
+  @@index([visitId])
+  @@index([businessId])
+  @@map("connect_drafts")
+}
+
 // === end stage 19 ===
 
 // === stage 20 ===

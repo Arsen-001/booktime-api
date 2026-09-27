@@ -56233,6 +56233,254 @@
         ]
       }
     },
+    "/v1/platform/connect-drafts": {
+      "get": {
+        "operationId": "PlatformConnectController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-connect"
+        ]
+      },
+      "post": {
+        "operationId": "PlatformConnectController_start",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Новый черновик; из карточки визита — сразу с его названием/контактом/районом/сферой",
+        "tags": [
+          "platform-connect"
+        ]
+      }
+    },
+    "/v1/platform/connect-drafts/{id}": {
+      "get": {
+        "operationId": "PlatformConnectController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-connect"
+        ]
+      },
+      "put": {
+        "operationId": "PlatformConnectController_save",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сохранить поля шага; смена сферы подставляет её услуги, все отмечены",
+        "tags": [
+          "platform-connect"
+        ]
+      },
+      "delete": {
+        "operationId": "PlatformConnectController_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-connect"
+        ]
+      }
+    },
+    "/v1/platform/connect-drafts/{id}/invites": {
+      "post": {
+        "operationId": "PlatformConnectController_addInvite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-connect"
+        ]
+      }
+    },
+    "/v1/platform/connect-drafts/{id}/invites/{inviteId}": {
+      "delete": {
+        "operationId": "PlatformConnectController_removeInvite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "inviteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-connect"
+        ]
+      }
+    },
+    "/v1/platform/connect-drafts/{id}/finish": {
+      "post": {
+        "operationId": "PlatformConnectController_finish",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Подключить: бизнес+филиал+владелец+мастера+услуги+часы+фото+бесплатный месяц+промокод одной транзакцией",
+        "tags": [
+          "platform-connect"
+        ]
+      }
+    },
+    "/v1/platform/connect-result/{businessId}": {
+      "get": {
+        "operationId": "PlatformConnectResultController_result",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-connect"
+        ]
+      }
+    },
     "/v1/platform/businesses/{id}/full-archive": {
       "get": {
         "operationId": "DataRetentionController_fullArchive",
