@@ -1374,6 +1374,62 @@ await prisma.client.createMany({
   console.log(`seed: подписка — подписок ${subsCreated}, промокодов ${promos.length}, пакетов монет 3, разделов настроек ${areaRows.length}`);
 }
 
+// ─────────── этап 17: интеграции — своё настоящее без демо-данных каталога (Р19, В-28 «позже»). Встроенное
+// приложение «для клиентов» подключено у КАЖДОГО филиала по умолчанию (F-13-007, F-13-173 — поведение
+// платформы, не демо), «Свободные окна» — у половины филиалов (то же соотношение, что мок фронта). Первый
+// демо-бизнес с филиалом получает «легаси»-адрес вебхука (F-13-065) и 2 исторические доставки для журнала —
+// идемпотентно, детерминированные id, как остальные этапы сида. ───
+{
+  let connCreated = 0;
+  const locsByBiz = new Map<string, Rec[]>();
+  for (const l of locations) {
+    const bId = String(l.businessId);
+    if (!locsByBiz.has(bId)) locsByBiz.set(bId, []);
+    locsByBiz.get(bId)!.push(l);
+  }
+  for (const b of businesses) {
+    const bizId = String(b.id);
+    const locs = locsByBiz.get(bizId) ?? [];
+    for (const [li, l] of locs.entries()) {
+      const locationId = String(l.id);
+      const clientId = `ic_${locationId}_client`.slice(0, 32);
+      if ((await prisma.integrationConnection.count({ where: { id: clientId } })) === 0) {
+        await prisma.integrationConnection.create({
+          data: { id: clientId, businessId: bizId, locationId, appId: 'ia_builtin_client', status: 'connected', grantedScopes: ['bookings', 'clients'], connectedAt: new Date(now.getTime() - 90 * 86_400_000), activatedAt: new Date(now.getTime() - 90 * 86_400_000) },
+        });
+        connCreated++;
+      }
+      if (li % 2 === 0) {
+        const slotsId = `ic_${locationId}_slots`.slice(0, 32);
+        if ((await prisma.integrationConnection.count({ where: { id: slotsId } })) === 0) {
+          await prisma.integrationConnection.create({
+            data: { id: slotsId, businessId: bizId, locationId, appId: 'ia_builtin_openslots', status: 'connected', grantedScopes: ['schedule'], connectedAt: new Date(now.getTime() - 40 * 86_400_000), activatedAt: new Date(now.getTime() - 40 * 86_400_000) },
+          });
+          connCreated++;
+        }
+      }
+    }
+  }
+  const firstBizWithLocation = businesses.find((b) => (locsByBiz.get(String(b.id)) ?? []).length > 0);
+  let webhookSeeded = false;
+  if (firstBizWithLocation) {
+    const bizId = String(firstBizWithLocation.id);
+    if ((await prisma.webhook.count({ where: { businessId: bizId } })) === 0) {
+      await prisma.webhook.create({ data: { businessId: bizId, enabled: true, entities: ['records', 'clients', 'staff'], secret: sha(`webhook-secret-${bizId}`), updatedBy: 'seed' } });
+      const addrId = `wha_${bizId}_legacy`.slice(0, 32);
+      await prisma.webhookAddress.create({ data: { id: addrId, businessId: bizId, url: 'https://legacy.example-crm.am/hooks/booktime', legacy: true, createdAt: new Date(now.getTime() - 120 * 86_400_000) } });
+      await prisma.webhookDelivery.createMany({
+        data: [
+          { id: `whd_${bizId}_1`.slice(0, 32), businessId: bizId, addressId: addrId, url: 'https://legacy.example-crm.am/hooks/booktime', entity: 'records', action: 'create', objectLabel: 'Запись №5821', payload: { demo: true }, status: 'delivered', attempts: 1, createdAt: new Date(now.getTime() - 86_400_000), deliveredAt: new Date(now.getTime() - 86_400_000) },
+          { id: `whd_${bizId}_2`.slice(0, 32), businessId: bizId, addressId: addrId, url: 'https://legacy.example-crm.am/hooks/booktime', entity: 'clients', action: 'update', objectLabel: 'Клиент «Анна Саргсян»', payload: { demo: true }, status: 'delivered', attempts: 1, createdAt: new Date(now.getTime() - 90_000_000), deliveredAt: new Date(now.getTime() - 90_000_000) },
+        ],
+      });
+      webhookSeeded = true;
+    }
+  }
+  console.log(`seed: интеграции — подключений ${connCreated}, демо-вебхук ${webhookSeeded ? 'заведён' : 'уже был'}`);
+}
+
 console.log(
   `seed: людей ${users.length} (клиентов ${core.appUsers.length}), логинов администраторов ${admins.length}, команда платформы 1; ` +
     `сетей ${networks.length}, бизнесов ${businesses.length}, филиалов ${locations.length}, сотрудников ${core.staff.length}, ` +

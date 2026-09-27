@@ -50725,6 +50725,3980 @@
           "reports"
         ]
       }
+    },
+    "/v1/biz/{businessId}/billing": {
+      "get": {
+        "operationId": "BillingController_view",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Подписка: статус, срок, бесплатно до, скидка кода, тариф (F-00-012…025)",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/quote": {
+      "get": {
+        "operationId": "BillingController_quote",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Расчёт за 1/3/6/12 месяцев со скидкой кода (F-15-033/041/062)",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/seats": {
+      "get": {
+        "operationId": "BillingController_seats",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/preview": {
+      "post": {
+        "operationId": "BillingController_preview",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "masters": {
+                    "type": "integer",
+                    "minimum": -50,
+                    "maximum": 50
+                  },
+                  "admins": {
+                    "type": "integer",
+                    "minimum": -50,
+                    "maximum": 50
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сумма до/после при добавлении или увольнении (F-15-051)",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/warnings": {
+      "get": {
+        "operationId": "BillingController_warnings",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/pay": {
+      "post": {
+        "operationId": "BillingController_pay",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "months": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "card",
+                      "idram",
+                      "telcell",
+                      "invoice"
+                    ]
+                  }
+                },
+                "required": [
+                  "months",
+                  "method"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Оплатить: карта/Idram/Telcell (заглушка провайдера) или счёт для фирмы (F-15-083/084)",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/autorenew": {
+      "put": {
+        "operationId": "BillingController_autorenew",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "autoRenew": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "autoRenew"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/card": {
+      "put": {
+        "operationId": "BillingController_card",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "card",
+                      "idram",
+                      "telcell"
+                    ]
+                  },
+                  "label": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "method"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/docs-email": {
+      "put": {
+        "operationId": "BillingController_docsEmail",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/charges": {
+      "get": {
+        "operationId": "BillingController_charges",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/invoices": {
+      "get": {
+        "operationId": "BillingController_invoices",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/invoices/{invoiceId}": {
+      "get": {
+        "operationId": "BillingController_invoice",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "invoiceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/billing/price-rules": {
+      "get": {
+        "operationId": "BillingController_priceRules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/coins": {
+      "get": {
+        "operationId": "BillingController_coins",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/coins/entries": {
+      "get": {
+        "operationId": "BillingController_entries",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/coins/packages": {
+      "get": {
+        "operationId": "BillingController_packages",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/coins/buy": {
+      "post": {
+        "operationId": "BillingController_buy",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "packageId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20
+                  }
+                },
+                "required": [
+                  "packageId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Купить пакет монет (F-00-026, В-15)",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/coins/spend": {
+      "post": {
+        "operationId": "BillingController_spend",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "area": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20
+                  },
+                  "refId": {
+                    "type": "string",
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "amount",
+                  "reason",
+                  "area"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Потратить монеты (раздел-покупатель: сторис, новость сверх лимита…); не хватает → 402 insufficient_coins",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/photo-slots": {
+      "post": {
+        "operationId": "BillingController_photoSlot",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Повтор с тем же ключом вернёт первый ответ (24 ч)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "staffId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "staffId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Место под фото сверх 6 за монеты (F-00-086)",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/platform/promo-codes": {
+      "get": {
+        "operationId": "BillingPlatformController_listPromo",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-billing"
+        ]
+      },
+      "post": {
+        "operationId": "BillingPlatformController_createPromo",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 24
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "discount",
+                      "freeMonth"
+                    ]
+                  },
+                  "tiers": {
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "months": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "percent": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 90
+                        }
+                      },
+                      "required": [
+                        "months",
+                        "percent"
+                      ]
+                    }
+                  },
+                  "freeDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 366
+                  },
+                  "personal": {
+                    "type": "boolean"
+                  },
+                  "validUntil": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "issuedTo": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "phone": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "visitId": {
+                        "type": "string",
+                        "maxLength": 32
+                      },
+                      "businessId": {
+                        "type": "string",
+                        "maxLength": 32
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                },
+                "required": [
+                  "code",
+                  "kind"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Создать промокод (F-00-178, В-13: ступени 10/15/25 %, 30 дней)",
+        "tags": [
+          "platform-billing"
+        ]
+      }
+    },
+    "/v1/platform/promo-codes/check": {
+      "get": {
+        "operationId": "BillingPlatformController_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-billing"
+        ]
+      }
+    },
+    "/v1/platform/promo-codes/{id}/revoke": {
+      "post": {
+        "operationId": "BillingPlatformController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-billing"
+        ]
+      }
+    },
+    "/v1/platform/promo-codes/{id}/restore": {
+      "post": {
+        "operationId": "BillingPlatformController_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-billing"
+        ]
+      }
+    },
+    "/v1/platform/free-months": {
+      "post": {
+        "operationId": "BillingPlatformController_freeMonths",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "businessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 366
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "visit",
+                      "first",
+                      "promo",
+                      "manual"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                },
+                "required": [
+                  "businessId",
+                  "days",
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Бесплатные дни бизнесу (F-00-019: подключили на визите; первому — first)",
+        "tags": [
+          "platform-billing"
+        ]
+      }
+    },
+    "/v1/platform/coins/grant": {
+      "post": {
+        "operationId": "BillingPlatformController_grantCoins",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "businessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "firstAward",
+                      "promo",
+                      "referralSalon",
+                      "manual"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                },
+                "required": [
+                  "businessId",
+                  "amount",
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Подарок монетами: первому, по промокоду, за приведённый салон (06 §2.1)",
+        "tags": [
+          "platform-billing"
+        ]
+      }
+    },
+    "/v1/platform/invoices/{invoiceId}/paid": {
+      "post": {
+        "operationId": "BillingPlatformController_invoicePaid",
+        "parameters": [
+          {
+            "name": "invoiceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Оплата по счёту для фирмы пришла — продлить срок (F-15-084)",
+        "tags": [
+          "platform-billing"
+        ]
+      }
+    },
+    "/v1/platform/prices": {
+      "get": {
+        "operationId": "BillingPlatformController_prices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-billing"
+        ]
+      },
+      "put": {
+        "operationId": "BillingPlatformController_setPrices",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "values": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10000000
+                    }
+                  }
+                },
+                "required": [
+                  "values"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Цены платформы (В-01: пересмотр после показа салонам). Меняют только новые покупки",
+        "tags": [
+          "platform-billing"
+        ]
+      }
+    },
+    "/v1/public/pricing": {
+      "get": {
+        "operationId": "PublicPricingController_pricing",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/public/pricing/plan": {
+      "get": {
+        "operationId": "PublicPricingController_plan",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/company/legal": {
+      "get": {
+        "operationId": "SettingsController_legal",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_saveLegal",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "entityType": {
+                    "type": "string",
+                    "enum": [
+                      "legalEntity",
+                      "soleProprietor"
+                    ]
+                  },
+                  "companyName": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "taxId": {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  "legalAddress": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "billingAddress": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "bankName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "bankAccount": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "correspondentAccount": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "payerTax": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Реквизиты (F-15-112): ՀՎՀՀ — 8 цифр (bad_tax_id)",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/company/billing-address": {
+      "put": {
+        "operationId": "SettingsController_billingAddress",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "billingAddress": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                },
+                "required": [
+                  "billingAddress"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/company/system": {
+      "get": {
+        "operationId": "SettingsController_system",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_saveSystem",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "dateTimeFormat": {
+                    "type": "string",
+                    "enum": [
+                      "12",
+                      "24"
+                    ]
+                  },
+                  "messageLanguage": {
+                    "type": "string",
+                    "enum": [
+                      "ru",
+                      "hy",
+                      "en"
+                    ]
+                  },
+                  "sphereSubtype": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "internalName": {
+                    "type": "string",
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "city",
+                  "dateTimeFormat",
+                  "messageLanguage"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/company/brand": {
+      "get": {
+        "operationId": "SettingsController_brand",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_saveBrand",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "descriptionRu": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "logoUrl": {
+                    "type": "string",
+                    "maxLength": 4000000
+                  }
+                },
+                "required": [
+                  "brandName",
+                  "descriptionRu"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/company/contacts": {
+      "get": {
+        "operationId": "SettingsController_contacts",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_saveContacts",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "addressRu": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "yandexMapsUrl": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "hoursText": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "phones": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "socials": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 300
+                    }
+                  }
+                },
+                "required": [
+                  "addressRu",
+                  "phones",
+                  "socials"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Контакты (F-15-104…110): Telegram — https://t.me/username (bad_telegram_url)",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/company/gallery": {
+      "get": {
+        "operationId": "SettingsController_gallery",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_saveGallery",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "photos": {
+                    "maxItems": 6,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 4000000
+                    }
+                  }
+                },
+                "required": [
+                  "photos"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/company/profile": {
+      "get": {
+        "operationId": "SettingsController_profile",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/company/change-log": {
+      "get": {
+        "operationId": "SettingsController_changeLog",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/record-categories": {
+      "get": {
+        "operationId": "SettingsController_categories",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "operationId": "SettingsController_addCategory",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "colorIndex": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8
+                  },
+                  "icon": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "name",
+                  "colorIndex"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/record-categories/{id}": {
+      "patch": {
+        "operationId": "SettingsController_editCategory",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "colorIndex": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8
+                  },
+                  "icon": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "name",
+                  "colorIndex"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "delete": {
+        "operationId": "SettingsController_deleteCategory",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/onboarding": {
+      "get": {
+        "operationId": "SettingsController_onboarding",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_saveOnboarding",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "goals": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "tourSeen": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Цели анкеты (F-15-007), тур просмотрен (F-15-021)",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/onboarding/checklist": {
+      "get": {
+        "operationId": "SettingsController_checklist",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/help-requests": {
+      "get": {
+        "operationId": "SettingsController_help",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "operationId": "SettingsController_createHelp",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "topic": {
+                    "type": "string",
+                    "enum": [
+                      "billing",
+                      "settings",
+                      "staff",
+                      "bug",
+                      "other"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "topic",
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/mobile-app-requests": {
+      "get": {
+        "operationId": "SettingsController_appRequests",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "operationId": "SettingsController_createAppRequest",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Хочу своё приложение» (В-29: позже, платно) — только заявка",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/sphere-requests": {
+      "get": {
+        "operationId": "SettingsController_spheres",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "operationId": "SettingsController_createSphere",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "message": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/sphere-requests/{id}": {
+      "get": {
+        "operationId": "SettingsController_sphere",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/me/prefs": {
+      "get": {
+        "operationId": "SettingsController_prefs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "SettingsController_savePrefs",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "notificationPrefs": {
+                    "type": "object",
+                    "properties": {
+                      "news": {
+                        "type": "boolean"
+                      },
+                      "marketing": {
+                        "type": "boolean"
+                      },
+                      "system": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "news",
+                      "marketing",
+                      "system"
+                    ]
+                  },
+                  "startPage": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "journal",
+                          "clients",
+                          "analytics",
+                          "settings"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "startLocationId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Личные: уведомления (F-15-150), стартовая страница (F-15-157)",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/api-keys/{kind}": {
+      "get": {
+        "operationId": "IntegrationsController_listApiKeys",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "partner",
+                          "userToken",
+                          "aiAssistant"
+                        ]
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "scope": {
+                        "type": "string",
+                        "enum": [
+                          "read",
+                          "readWrite"
+                        ]
+                      },
+                      "token": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "revokedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "businessId",
+                      "kind",
+                      "token",
+                      "createdAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/api-keys/partner": {
+      "post": {
+        "operationId": "IntegrationsController_issuePartnerKey",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "partner",
+                        "userToken",
+                        "aiAssistant"
+                      ]
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string",
+                      "enum": [
+                        "read",
+                        "readWrite"
+                      ]
+                    },
+                    "token": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "kind",
+                    "token",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/api-keys/user-token": {
+      "post": {
+        "operationId": "IntegrationsController_issueUserToken",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "label"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "partner",
+                        "userToken",
+                        "aiAssistant"
+                      ]
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string",
+                      "enum": [
+                        "read",
+                        "readWrite"
+                      ]
+                    },
+                    "token": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "kind",
+                    "token",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/api-keys/ai-token": {
+      "post": {
+        "operationId": "IntegrationsController_issueAiToken",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "read",
+                      "readWrite"
+                    ]
+                  }
+                },
+                "required": [
+                  "scope"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "partner",
+                        "userToken",
+                        "aiAssistant"
+                      ]
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string",
+                      "enum": [
+                        "read",
+                        "readWrite"
+                      ]
+                    },
+                    "token": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "kind",
+                    "token",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/api-keys/{id}": {
+      "delete": {
+        "operationId": "IntegrationsController_revokeApiKey",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/webhooks": {
+      "get": {
+        "operationId": "IntegrationsController_getWebhookConfig",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "legacy": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "url",
+                          "createdAt",
+                          "legacy"
+                        ]
+                      }
+                    },
+                    "entities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "location",
+                          "staff",
+                          "goods",
+                          "services",
+                          "serviceCategories",
+                          "clients",
+                          "records",
+                          "loyaltyCards",
+                          "goodsSales",
+                          "goodsArrival",
+                          "goodsWriteOff",
+                          "goodsConsumables",
+                          "goodsTransfer",
+                          "transactions",
+                          "certificates",
+                          "subscriptions"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "businessId",
+                    "enabled",
+                    "addresses",
+                    "entities"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/webhooks/enabled": {
+      "put": {
+        "operationId": "IntegrationsController_setWebhookEnabled",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "legacy": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "url",
+                          "createdAt",
+                          "legacy"
+                        ]
+                      }
+                    },
+                    "entities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "location",
+                          "staff",
+                          "goods",
+                          "services",
+                          "serviceCategories",
+                          "clients",
+                          "records",
+                          "loyaltyCards",
+                          "goodsSales",
+                          "goodsArrival",
+                          "goodsWriteOff",
+                          "goodsConsumables",
+                          "goodsTransfer",
+                          "transactions",
+                          "certificates",
+                          "subscriptions"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "businessId",
+                    "enabled",
+                    "addresses",
+                    "entities"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/webhooks/entities": {
+      "put": {
+        "operationId": "IntegrationsController_setWebhookEntities",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "entities": {
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "location",
+                        "staff",
+                        "goods",
+                        "services",
+                        "serviceCategories",
+                        "clients",
+                        "records",
+                        "loyaltyCards",
+                        "goodsSales",
+                        "goodsArrival",
+                        "goodsWriteOff",
+                        "goodsConsumables",
+                        "goodsTransfer",
+                        "transactions",
+                        "certificates",
+                        "subscriptions"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "entities"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "legacy": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "url",
+                          "createdAt",
+                          "legacy"
+                        ]
+                      }
+                    },
+                    "entities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "location",
+                          "staff",
+                          "goods",
+                          "services",
+                          "serviceCategories",
+                          "clients",
+                          "records",
+                          "loyaltyCards",
+                          "goodsSales",
+                          "goodsArrival",
+                          "goodsWriteOff",
+                          "goodsConsumables",
+                          "goodsTransfer",
+                          "transactions",
+                          "certificates",
+                          "subscriptions"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "businessId",
+                    "enabled",
+                    "addresses",
+                    "entities"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/webhooks/deliveries": {
+      "get": {
+        "operationId": "IntegrationsController_listDeliveries",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "entity": {
+                        "type": "string",
+                        "enum": [
+                          "location",
+                          "staff",
+                          "goods",
+                          "services",
+                          "serviceCategories",
+                          "clients",
+                          "records",
+                          "loyaltyCards",
+                          "goodsSales",
+                          "goodsArrival",
+                          "goodsWriteOff",
+                          "goodsConsumables",
+                          "goodsTransfer",
+                          "transactions",
+                          "certificates",
+                          "subscriptions"
+                        ]
+                      },
+                      "action": {
+                        "type": "string",
+                        "enum": [
+                          "create",
+                          "update",
+                          "delete"
+                        ]
+                      },
+                      "objectLabel": {
+                        "type": "string"
+                      },
+                      "address": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "delivered",
+                          "failed"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "businessId",
+                      "entity",
+                      "action",
+                      "objectLabel",
+                      "address",
+                      "status",
+                      "createdAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/installs": {
+      "get": {
+        "operationId": "IntegrationsController_listInstalled",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "locationId": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pendingActivation",
+                          "connected",
+                          "error",
+                          "disconnected",
+                          "autoDisconnected"
+                        ]
+                      },
+                      "grantedScopes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "schedule",
+                            "clients",
+                            "bookings",
+                            "money",
+                            "staff",
+                            "services",
+                            "catalog",
+                            "reports"
+                          ]
+                        }
+                      },
+                      "connectedAt": {
+                        "type": "string"
+                      },
+                      "activatesBy": {
+                        "type": "string"
+                      },
+                      "activatedAt": {
+                        "type": "string"
+                      },
+                      "disconnectedAt": {
+                        "type": "string"
+                      },
+                      "paidUntil": {
+                        "type": "string"
+                      },
+                      "systemUserId": {
+                        "type": "string"
+                      },
+                      "errorText": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "appId",
+                      "businessId",
+                      "locationId",
+                      "status",
+                      "grantedScopes",
+                      "connectedAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      },
+      "post": {
+        "operationId": "IntegrationsController_connect",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "appId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "locationIds": {
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "scopes": {
+                    "default": [],
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "schedule",
+                        "clients",
+                        "bookings",
+                        "money",
+                        "staff",
+                        "services",
+                        "catalog",
+                        "reports"
+                      ]
+                    }
+                  },
+                  "instant": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "appId",
+                  "locationIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "locationId": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pendingActivation",
+                          "connected",
+                          "error",
+                          "disconnected",
+                          "autoDisconnected"
+                        ]
+                      },
+                      "grantedScopes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "schedule",
+                            "clients",
+                            "bookings",
+                            "money",
+                            "staff",
+                            "services",
+                            "catalog",
+                            "reports"
+                          ]
+                        }
+                      },
+                      "connectedAt": {
+                        "type": "string"
+                      },
+                      "activatesBy": {
+                        "type": "string"
+                      },
+                      "activatedAt": {
+                        "type": "string"
+                      },
+                      "disconnectedAt": {
+                        "type": "string"
+                      },
+                      "paidUntil": {
+                        "type": "string"
+                      },
+                      "systemUserId": {
+                        "type": "string"
+                      },
+                      "errorText": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "appId",
+                      "businessId",
+                      "locationId",
+                      "status",
+                      "grantedScopes",
+                      "connectedAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/installs/count": {
+      "get": {
+        "operationId": "IntegrationsController_countInstalled",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/installs/one": {
+      "get": {
+        "operationId": "IntegrationsController_getOne",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "appId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "appId": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pendingActivation",
+                        "connected",
+                        "error",
+                        "disconnected",
+                        "autoDisconnected"
+                      ]
+                    },
+                    "grantedScopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "schedule",
+                          "clients",
+                          "bookings",
+                          "money",
+                          "staff",
+                          "services",
+                          "catalog",
+                          "reports"
+                        ]
+                      }
+                    },
+                    "connectedAt": {
+                      "type": "string"
+                    },
+                    "activatesBy": {
+                      "type": "string"
+                    },
+                    "activatedAt": {
+                      "type": "string"
+                    },
+                    "disconnectedAt": {
+                      "type": "string"
+                    },
+                    "paidUntil": {
+                      "type": "string"
+                    },
+                    "systemUserId": {
+                      "type": "string"
+                    },
+                    "errorText": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "appId",
+                    "businessId",
+                    "locationId",
+                    "status",
+                    "grantedScopes",
+                    "connectedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/installs/live-locations": {
+      "get": {
+        "operationId": "IntegrationsController_liveLocations",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "appId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/installs/{id}/activate": {
+      "post": {
+        "operationId": "IntegrationsController_activate",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "appId": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pendingActivation",
+                        "connected",
+                        "error",
+                        "disconnected",
+                        "autoDisconnected"
+                      ]
+                    },
+                    "grantedScopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "schedule",
+                          "clients",
+                          "bookings",
+                          "money",
+                          "staff",
+                          "services",
+                          "catalog",
+                          "reports"
+                        ]
+                      }
+                    },
+                    "connectedAt": {
+                      "type": "string"
+                    },
+                    "activatesBy": {
+                      "type": "string"
+                    },
+                    "activatedAt": {
+                      "type": "string"
+                    },
+                    "disconnectedAt": {
+                      "type": "string"
+                    },
+                    "paidUntil": {
+                      "type": "string"
+                    },
+                    "systemUserId": {
+                      "type": "string"
+                    },
+                    "errorText": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "appId",
+                    "businessId",
+                    "locationId",
+                    "status",
+                    "grantedScopes",
+                    "connectedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/installs/{id}/disconnect": {
+      "post": {
+        "operationId": "IntegrationsController_disconnect",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/installs/system-users": {
+      "get": {
+        "operationId": "IntegrationsController_listSystemUsers",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "installId": {
+                        "type": "string"
+                      },
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "locationId": {
+                        "type": "string"
+                      },
+                      "grantedScopes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "schedule",
+                            "clients",
+                            "bookings",
+                            "money",
+                            "staff",
+                            "services",
+                            "catalog",
+                            "reports"
+                          ]
+                        }
+                      },
+                      "connectedAt": {
+                        "type": "string"
+                      },
+                      "billedInSubscription": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "appId",
+                      "installId",
+                      "businessId",
+                      "locationId",
+                      "grantedScopes",
+                      "connectedAt",
+                      "billedInSubscription"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
     }
   },
   "info": {

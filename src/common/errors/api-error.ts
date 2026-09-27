@@ -127,6 +127,8 @@ export const ERROR_STATUS = {
   // зарплата (этап 14) — как в моке фронта (src/api/finance.ts, src/domain/payroll.ts)
   sheet_not_draft: HttpStatus.CONFLICT,
   cannot_pay: HttpStatus.CONFLICT,
+  // интеграции (этап 17) — как в моке фронта (src/api/integrations.ts)
+  builtin_locked: HttpStatus.CONFLICT,
   // подписка, монеты, промокоды, настройки (этап 18) — docs/backend/06 §2–4, коды мока (src/api/settings.ts)
   promo_not_found: HttpStatus.NOT_FOUND,
   payment_failed: HttpStatus.PAYMENT_REQUIRED,
