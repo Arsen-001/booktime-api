@@ -8,6 +8,8 @@ import { AppReportsService } from './app-reports.service.js';
 import { AppStaffController } from './app-staff.controller.js';
 import { AppStaffService } from './app-staff.service.js';
 import { CatalogService } from './catalog.service.js';
+import { ClientPromoBizController, ClientPromoPublicController } from './client-promo.controller.js';
+import { ClientPromoService } from './client-promo.service.js';
 import { PublicCatalogController } from './catalog.controller.js';
 import { MeController } from './me.controller.js';
 import { MeService } from './me.service.js';
@@ -42,7 +44,7 @@ import { VisitCashService } from './visit-cash.service.js';
  */
 @Module({
   imports: [ScheduleModule, JournalModule, LoyaltyModule, PlatformModule],
-  controllers: [PublicCatalogController, MeController, AppReportsController, AppStaffController, TranslationsController, VisitCashController],
-  providers: [CatalogService, MeService, AppReportsService, AppStaffService, TranslationsService, VisitCashService],
+  controllers: [PublicCatalogController, ClientPromoPublicController, ClientPromoBizController, MeController, AppReportsController, AppStaffController, TranslationsController, VisitCashController],
+  providers: [CatalogService, ClientPromoService, MeService, AppReportsService, AppStaffService, TranslationsService, VisitCashService],
 })
 export class ClientModule {}

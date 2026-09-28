@@ -13,7 +13,14 @@ import { loyaltySlice } from '@/mock/slices/loyalty';
 import { financeSlice } from '@/mock/slices/finance';
 // @ts-expect-error — путь из tsconfig фронта (этап 21, сдача, попытка 6: маркетплейс интеграций — каталог, отзывы, промоблоки, демо-подключения)
 import { integrationsSlice } from '@/mock/slices/integrations';
+// @ts-expect-error — путь из tsconfig фронта (этап 21, сдача, попытка 6: сторис, новости, продвижение кабинета)
+import { clientSlice } from '@/mock/slices/client';
+
+/** Из среза «client» серверу нужны только сторис/новости/продвижение (остальное сеют свои этапы) */
+function pickClientPromo(state: { stories: unknown[]; newsPosts: unknown[]; promotionSettings: unknown }) {
+  return { stories: state.stories, newsPosts: state.newsPosts, promotionSettings: state.promotionSettings };
+}
 
 const now = process.env.SEED_NOW ? new Date(process.env.SEED_NOW) : new Date();
 const core = seedCore(now);
-process.stdout.write(JSON.stringify({ ...core, areaSchedule: scheduleSlice.seed(core, now), areaLoyalty: loyaltySlice.seed(core, now), areaFinance: financeSlice.seed(core, now), areaIntegrations: integrationsSlice.seed(core, now) }));
+process.stdout.write(JSON.stringify({ ...core, areaSchedule: scheduleSlice.seed(core, now), areaLoyalty: loyaltySlice.seed(core, now), areaFinance: financeSlice.seed(core, now), areaIntegrations: integrationsSlice.seed(core, now), areaClientPromo: pickClientPromo(clientSlice.seed(core, now)) }));

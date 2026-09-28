@@ -1709,6 +1709,14 @@ model NewsPost {
   recipientsCount Int      @default(0) @map("recipients_count")
   createdBy       String?  @map("created_by") @db.VarChar(32)
   createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  /// Этап 21 (сдача, попытка 6): новость из кабинета (client.ts::createNewsPost) идёт через нашу проверку —
+  /// pending_review → sent | rejected; уведомления из раздела «Уведомления» (этап 10) сразу 'sent'
+  status          String    @default("sent") @db.VarChar(16)
+  photoUrl        String?   @map("photo_url") @db.LongText
+  /// Сверх 3 бесплатных за 7 дней — оплачено монетами (F-00-027)
+  paidWithCoins   Boolean   @default(false) @map("paid_with_coins")
+  sentAt          DateTime? @map("sent_at") @db.DateTime(3)
+  moderationItemId String?  @map("moderation_item_id") @db.VarChar(32)
 
   @@index([businessId, createdAt])
   @@index([businessId, weekKey])
@@ -3834,6 +3842,11 @@ model StoryBooking {
   clicks            Int      @default(0)
   bookingsFromStory Int      @default(0) @map("bookings_from_story")
   createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  /// Этап 21 (сдача, попытка 6): покупка сторис кабинетом (client.ts::purchaseStory, F-00-155…163) — сама картинка
+  /// (data URI до 4 МБ), до какого момента показ, и поля Story фронта (lang/showStaffNames/windows/bookingTarget/caption)
+  imageUrl          String?   @map("image_url") @db.LongText
+  expiresAt         DateTime? @map("expires_at") @db.DateTime(3)
+  data              Json?
 
   @@index([date, status])
   @@index([businessId])
