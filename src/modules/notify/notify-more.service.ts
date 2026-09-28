@@ -5,6 +5,7 @@ import type { MailSender } from '../../adapters/mail/mail.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { AvailabilityService } from '../availability/availability.service.js';
 
 const J = (v: unknown) => v as Prisma.InputJsonValue;
 
@@ -102,6 +103,21 @@ const DEFAULT_BOOKING_NOTIFY_OVERRIDE: BookingNotifyOverrideOut = {
   emailTimingHours: 12,
 };
 
+export interface SuggestedOpenSlotOut {
+  staffId: string;
+  staffName: string;
+  date: string;
+  time: string;
+}
+
+export interface WhoToInviteSuggestionOut {
+  clientId: string;
+  clientName: string;
+  clientPhone: string;
+  slot: SuggestedOpenSlotOut;
+  messageText: string;
+}
+
 export type NotifyWebhookEntity = 'location' | 'staff' | 'clients' | 'bookings' | 'loyaltyCards' | 'services' | 'products' | 'sales';
 export interface NotifyWebhookOut {
   id: string;
@@ -116,7 +132,57 @@ export class NotifyMoreService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(MAIL_SENDER) private readonly mail: MailSender,
+    private readonly availability: AvailabilityService,
   ) {}
+
+  // ─────────── Open Slots — окна на сегодня/завтра (F-05-124) — настоящий движок availability, не свой расчёт ───────────
+
+  async listOpenSlots(businessId: string, day: 'today' | 'tomorrow'): Promise<SuggestedOpenSlotOut[]> {
+    const dateISO = new Date(Date.now() + (day === 'tomorrow' ? 86_400_000 : 0)).toISOString().slice(0, 10);
+    const staff = await this.prisma.staff.findMany({ where: { businessId, status: 'active', deletedAt: null }, select: { id: true, name: true } });
+    const out: SuggestedOpenSlotOut[] = [];
+    for (const st of staff) {
+      const slots = await this.availability.freeSlots(businessId, { staffId: st.id, date: dateISO, durationMin: 30 }).catch(() => []);
+      for (const slot of slots) out.push({ staffId: st.id, staffName: st.name, date: dateISO, time: slot.start.slice(11, 16) });
+    }
+    return out.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+  }
+
+  // ─────────── Кого позвать в свободное окно (F-05-125) — до 10 «тёплых» клиентов на окно, 7 дней вперёд ───────────
+
+  async listWhoToInvite(businessId: string): Promise<WhoToInviteSuggestionOut[]> {
+    const staff = await this.prisma.staff.findMany({ where: { businessId, status: 'active', deletedAt: null }, select: { id: true, name: true } });
+    const out: WhoToInviteSuggestionOut[] = [];
+    for (let dayOffset = 0; dayOffset < 7 && out.length < 30; dayOffset += 1) {
+      const dateISO = new Date(Date.now() + dayOffset * 86_400_000).toISOString().slice(0, 10);
+      for (const st of staff) {
+        if (out.length >= 30) break;
+        const free = await this.availability.freeSlots(businessId, { staffId: st.id, date: dateISO, durationMin: 30 }).catch(() => []);
+        const firstFree = free[0];
+        if (!firstFree) continue;
+        const time = firstFree.start.slice(11, 16);
+        const pastVisits = await this.prisma.booking.findMany({
+          where: { businessId, staffId: st.id, deletedAt: null, clientId: { not: null } },
+          distinct: ['clientId'],
+          select: { clientId: true },
+          take: 10,
+        });
+        const clientIds = pastVisits.map((v) => v.clientId).filter((id): id is string => !!id);
+        if (clientIds.length === 0) continue;
+        const clients = await this.prisma.client.findMany({ where: { id: { in: clientIds }, deletedAt: null, blocked: { not: true } }, select: { id: true, name: true, phone: true } });
+        for (const c of clients) {
+          out.push({
+            clientId: c.id,
+            clientName: c.name,
+            clientPhone: c.phone,
+            slot: { staffId: st.id, staffName: st.name, date: dateISO, time },
+            messageText: `${c.name}, у ${st.name} освободилось окно ${dateISO.slice(8, 10)}.${dateISO.slice(5, 7)} в ${time} — записать вас?`,
+          });
+        }
+      }
+    }
+    return out;
+  }
 
   // ─────────── язык/формат/тихие часы (F-05-010/011, Ув12) ───────────
 
@@ -331,4 +397,118 @@ export class NotifyMoreService {
     await this.mail.send({ to: toEmail, subject: 'Plan progress report', text: `Plan progress report: ${downloadUrl}` });
     return { sent: true };
   }
+
+  // ─────────── лента новостей платформы владельцу (F-05-061/062) ───────────
+  // Статические объявления «что нового в BookTime» — общие всем бизнесам (не по businessId), правит только
+  // наша команда правкой кода (как было в моке — тот же список, F-05 не даёт бизнесу свою ленту новостей).
+
+  listPlatformNews(): PlatformNewsItemOut[] {
+    return PLATFORM_NEWS;
+  }
+
+  // ─────────── уведомления сотрудника — БОГАТАЯ матрица под экран (F-05-055…060) ───────────
+  // НЕ путать с `NotifyStaffPrefsService`/`StaffNotifyPref` (notify-staff-prefs.service.ts) — та модель (4 bool-
+  // флага) питает НАСТОЯЩУЮ отправку из bookings.service.ts, трогать нельзя (тот же принцип, что TYPE_REGISTRY
+  // vs kinds.ts выше). Эта — для вкладки «Уведомления» карточки сотрудника: view + матрица 7 событий × 3 канала +
+  // sendClientContacts. Своя область BusinessSetting на КАЖДОГО сотрудника (`nsp:<staffId>`, короткий префикс —
+  // area VARCHAR(40), staffId уже ULID ~29-32 симв.) — своей таблицы не заводим.
+
+  private staffPrefsArea(staffId: string): string {
+    return `nsp:${staffId}`.slice(0, 40);
+  }
+
+  async getStaffPrefsRich(businessId: string, staffId: string): Promise<StaffNotifyPrefsRichOut> {
+    const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: this.staffPrefsArea(staffId) } } });
+    if (!row) return defaultStaffPrefsRich(staffId);
+    const stored = row.data as Partial<StaffNotifyPrefsRichOut>;
+    return { ...defaultStaffPrefsRich(staffId), ...stored, matrix: { ...emptyStaffMatrix(), ...(stored.matrix ?? {}) } };
+  }
+
+  async updateStaffPrefsRich(businessId: string, staffId: string, patch: Partial<StaffNotifyPrefsRichOut>): Promise<StaffNotifyPrefsRichOut> {
+    const current = await this.getStaffPrefsRich(businessId, staffId);
+    const next: StaffNotifyPrefsRichOut = { ...current, ...patch, staffId };
+    await this.prisma.businessSetting.upsert({
+      where: { businessId_area: { businessId, area: this.staffPrefsArea(staffId) } },
+      create: { businessId, area: this.staffPrefsArea(staffId), data: J(next) },
+      update: { data: J(next), version: { increment: 1 } },
+    });
+    return next;
+  }
+
+  async setStaffPrefsMatrixCell(businessId: string, staffId: string, event: StaffNotifyEventRich, channel: StaffNotifyChannelRich, value: boolean): Promise<StaffNotifyPrefsRichOut> {
+    const current = await this.getStaffPrefsRich(businessId, staffId);
+    const next: StaffNotifyPrefsRichOut = { ...current, matrix: { ...current.matrix, [event]: { ...current.matrix[event], [channel]: value } } };
+    await this.prisma.businessSetting.upsert({
+      where: { businessId_area: { businessId, area: this.staffPrefsArea(staffId) } },
+      create: { businessId, area: this.staffPrefsArea(staffId), data: J(next) },
+      update: { data: J(next), version: { increment: 1 } },
+    });
+    return next;
+  }
+
+  /** F-05-059, шаг 4: хотя бы один сотрудник реально настроен во вкладке «Уведомления» карточки */
+  async anyStaffPrefsConfigured(businessId: string, staffIds: string[]): Promise<boolean> {
+    if (staffIds.length === 0) return false;
+    const areas = staffIds.map((id) => this.staffPrefsArea(id));
+    const rows = await this.prisma.businessSetting.findMany({ where: { businessId, area: { in: areas } } });
+    return rows.some((r) => {
+      const p = r.data as Partial<StaffNotifyPrefsRichOut> | null;
+      if (!p) return false;
+      if (p.view && p.view !== 'byAccess') return true;
+      if (!p.matrix) return false;
+      return Object.values(p.matrix).some((row) => Object.values(row as Record<string, boolean>).some(Boolean));
+    });
+  }
 }
+
+// ─────────── типы уведомлений сотрудника (F-05-055…060) ───────────
+
+export type StaffNotifyViewRich = 'admin' | 'staff' | 'byAccess' | 'off';
+export const STAFF_NOTIFY_EVENTS_RICH = ['createdByClient', 'createdByAdmin', 'deleted', 'moved', 'cancelledByAdmin', 'licenseExpiring', 'billingDocs'] as const;
+export type StaffNotifyEventRich = (typeof STAFF_NOTIFY_EVENTS_RICH)[number];
+export const STAFF_NOTIFY_CHANNELS_RICH = ['sms', 'email', 'push'] as const;
+export type StaffNotifyChannelRich = (typeof STAFF_NOTIFY_CHANNELS_RICH)[number];
+export type StaffNotifyMatrixRich = Record<StaffNotifyEventRich, Record<StaffNotifyChannelRich, boolean>>;
+
+export interface StaffNotifyPrefsRichOut {
+  staffId: string;
+  view: StaffNotifyViewRich;
+  matrix: StaffNotifyMatrixRich;
+  sendClientContacts: boolean;
+}
+
+function emptyStaffMatrix(): StaffNotifyMatrixRich {
+  const row = { sms: false, email: false, push: false };
+  return STAFF_NOTIFY_EVENTS_RICH.reduce((acc, code) => {
+    acc[code] = { ...row };
+    return acc;
+  }, {} as StaffNotifyMatrixRich);
+}
+
+function defaultStaffPrefsRich(staffId: string): StaffNotifyPrefsRichOut {
+  return { staffId, view: 'byAccess', matrix: emptyStaffMatrix(), sendClientContacts: false };
+}
+
+// ─────────── лента новостей платформы (F-05-061/062) — порт мока, тот же текст ───────────
+
+export interface PlatformNewsItemOut {
+  id: string;
+  title: string;
+  text: string;
+  date: string;
+}
+
+const PLATFORM_NEWS: PlatformNewsItemOut[] = [
+  {
+    id: 'news_1',
+    title: 'Обновление платформы',
+    text: 'Добавили журнал отправок и центр уведомлений — теперь видно судьбу каждого сообщения.',
+    date: '2026-09-26T09:00:00.000Z',
+  },
+  {
+    id: 'news_2',
+    title: 'Готовим брендированное приложение',
+    text: 'Скоро можно будет заказать своё мобильное приложение с пушами клиентам.',
+    date: '2026-09-19T09:00:00.000Z',
+  },
+];

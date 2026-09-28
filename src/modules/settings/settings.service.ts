@@ -12,6 +12,20 @@ type Tx = Prisma.TransactionClient;
 type Db = PrismaService | Tx;
 type Section = 'brand' | 'contacts' | 'gallery' | 'legal' | 'system' | 'categories';
 
+/** Черновик заявки на своё приложение (F-14-142…170, В-29) — форма `BrandedAppRequest` фронта (domain/client.ts) */
+interface BrandedAppRow {
+  businessId: string;
+  stage: 'draft' | 'submitted' | 'in_development' | 'published';
+  ownerType?: 'organization' | 'individual';
+  accessMethod?: 'portal_invite' | 'password_shared';
+  materials: Record<string, string | undefined>;
+  docs: Record<string, boolean>;
+  iosLink?: string;
+  androidLink?: string;
+  extraLocations: number;
+  submittedAt?: string;
+}
+
 const TAX_ID_RE = /^\d{8}$/;
 const TELEGRAM_RE = /^https:\/\/t\.me\/[a-zA-Z0-9_]{3,}$/;
 const SYSTEM_CATEGORIES = [
@@ -373,6 +387,120 @@ export class SettingsService {
       return tx.bizRequest.create({ data: { id: newId('bizRequest'), businessId, authorStaffId: ctx.member!.staffId, kind, topic: input.topic ?? null, message: input.message ?? null, number } });
     });
     return this.requestView(row);
+  }
+
+  // ─────────── b06: своё (брендированное) приложение салона (F-14-142…170, В-29) — этап 21, лейн client+online ───────────
+  // Черновик заявки — area='brandedApp' одним JSON (тот же приём `area`/`putArea`, что и остальные разделы этого
+  // сервиса выше). Отправка (submitBrandedAppRequest) идёt тем же путём, что «Хочу своё приложение» из online
+  // (см. `mobile-app-requests` выше) — переиспользует `createRequest(kind:'mobileApp')`, вторую очередь не строим.
+
+  private static readonly BRANDED_APP_MATERIALS_EMPTY = { fullName: '', shortName: '', shortDescription: '', longDescription: '', keywords: '' };
+  private static readonly BRANDED_APP_DOCS_EMPTY = { appleDeveloperAccess: false, googlePlayAccess: false, registrationDoc: false, trademarkDoc: false };
+
+  private async brandedAppRow(businessId: string): Promise<BrandedAppRow> {
+    return this.area<BrandedAppRow>(this.prisma, businessId, 'brandedApp', {
+      businessId,
+      stage: 'draft',
+      materials: { ...SettingsService.BRANDED_APP_MATERIALS_EMPTY },
+      docs: { ...SettingsService.BRANDED_APP_DOCS_EMPTY },
+      extraLocations: 0,
+    });
+  }
+
+  async brandedAppRequest(businessId: string) {
+    return this.brandedAppRow(businessId);
+  }
+
+  private async patchBrandedApp(ctx: RequestContext, businessId: string, apply: (r: Awaited<ReturnType<SettingsService['brandedAppRow']>>) => void) {
+    const current = await this.brandedAppRow(businessId);
+    apply(current);
+    await this.prisma.$transaction((tx) => this.putArea(tx, ctx, businessId, 'brandedApp', current));
+    return current;
+  }
+
+  /** Ссылки на уже опубликованные приложения бизнеса — предлагаются клиенту после записи (F-14-144) */
+  async saveBrandedAppLinks(ctx: RequestContext, businessId: string, links: { iosLink?: string; androidLink?: string }) {
+    return this.patchBrandedApp(ctx, businessId, (r) => {
+      r.iosLink = links.iosLink?.trim() || undefined;
+      r.androidLink = links.androidLink?.trim() || undefined;
+    });
+  }
+
+  /** На кого регистрировать аккаунт Apple Developer (F-14-153) */
+  async setBrandedAppOwnerType(ctx: RequestContext, businessId: string, ownerType: 'organization' | 'individual') {
+    return this.patchBrandedApp(ctx, businessId, (r) => {
+      r.ownerType = ownerType;
+    });
+  }
+
+  /** Как передавать доступ к аккаунтам (F-14-157) */
+  async setBrandedAppAccessMethod(ctx: RequestContext, businessId: string, method: 'portal_invite' | 'password_shared') {
+    return this.patchBrandedApp(ctx, businessId, (r) => {
+      r.accessMethod = method;
+    });
+  }
+
+  /** Число доп. филиалов сверх первого — влияет на годовую цену (F-14-168, F-14-169) */
+  async setBrandedAppExtraLocations(ctx: RequestContext, businessId: string, extraLocations: number) {
+    return this.patchBrandedApp(ctx, businessId, (r) => {
+      r.extraLocations = Math.max(0, Math.round(extraLocations));
+    });
+  }
+
+  /** Материалы: заставка, логотип, названия, описания, картинка Featured (F-14-148…152) */
+  async saveBrandedAppMaterials(ctx: RequestContext, businessId: string, patch: Record<string, string | undefined>) {
+    return this.patchBrandedApp(ctx, businessId, (r) => {
+      r.materials = { ...r.materials, ...patch };
+    });
+  }
+
+  /** Отметка в чеклисте документов и доступов (F-14-147) */
+  async toggleBrandedAppDoc(ctx: RequestContext, businessId: string, key: string, value: boolean) {
+    return this.patchBrandedApp(ctx, businessId, (r) => {
+      r.docs = { ...r.docs, [key]: value };
+    });
+  }
+
+  /** F-03-… «текст мешает публикации»: ссылка/телефон/чужой бренд в описании (то же правило, что фронт, F-14-151) */
+  private static checkBrandedAppText(text: string): boolean {
+    if (/https?:\/\/|www\./i.test(text)) return true;
+    if (/\+?\d[\d\s()-]{6,}\d/.test(text)) return true;
+    if (/\b(apple|google|samsung|meta|instagram|facebook|whatsapp|telegram)\b/i.test(text)) return true;
+    return false;
+  }
+
+  /** Что мешает отправить заявку (F-14-147, F-14-151) — то же правило, что `getBrandedAppBlockers` фронта */
+  private brandedAppBlockers(r: Awaited<ReturnType<SettingsService['brandedAppRow']>>): string[] {
+    const m = r.materials as Record<string, string>;
+    const d = r.docs as Record<string, boolean>;
+    const blockers: string[] = [];
+    if (!m.fullName?.trim()) blockers.push('fullName');
+    if (!m.shortName?.trim()) blockers.push('shortName');
+    if (!m.shortDescription?.trim()) blockers.push('shortDescription');
+    if (!m.logoUrl) blockers.push('logo');
+    if (!m.splashUrl) blockers.push('splash');
+    if (!d.appleDeveloperAccess) blockers.push('appleDeveloperAccess');
+    if (!d.googlePlayAccess) blockers.push('googlePlayAccess');
+    if (!d.registrationDoc) blockers.push('registrationDoc');
+    if (!d.trademarkDoc) blockers.push('trademarkDoc');
+    if (SettingsService.checkBrandedAppText(m.shortDescription ?? '')) blockers.push('shortDescriptionText');
+    if (SettingsService.checkBrandedAppText(m.longDescription ?? '')) blockers.push('longDescriptionText');
+    return blockers;
+  }
+
+  /** Заявка через менеджера (F-14-145) — до сбора материалов и документов не отправляется (F-14-147) */
+  async submitBrandedAppRequest(ctx: RequestContext, businessId: string, contact: { name: string; phone?: string }) {
+    const current = await this.brandedAppRow(businessId);
+    if (this.brandedAppBlockers(current).length > 0) throw new ApiError('validation', 'Материалы и документы ещё не собраны');
+    const m = current.materials as Record<string, string>;
+    await this.createRequest(ctx, businessId, 'mobileApp', {
+      topic: 'ownApp',
+      message: `Заявка на своё (брендированное) приложение «${m.fullName}». Контакт: ${contact.name}${contact.phone ? `, ${contact.phone}` : ''}. Тип аккаунта Apple: ${current.ownerType ?? 'не выбран'}. Доп. филиалов: ${current.extraLocations}.`,
+    });
+    return this.patchBrandedApp(ctx, businessId, (r) => {
+      r.stage = 'submitted';
+      r.submittedAt = utcToLocal(new Date());
+    });
   }
 
   /**

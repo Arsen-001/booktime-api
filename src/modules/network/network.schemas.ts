@@ -129,6 +129,35 @@ export const migrateGoodsBody = z.object({ fromBusinessId: id32, goodIds: z.unio
 
 export const networkPositionBody = z.object({ name: z.string().min(1).max(120), description: z.string().max(500).optional() });
 
+// === stage 21 (lane network+reports) ===
+
+// ─────────────────────── Сотрудники сети: фильтры списка (F-11-097) ───────────────────────
+
+export const networkStaffQuery = z.object({
+  status: z.enum(['active', 'deleted', 'all']).optional(),
+  fired: z.enum(['fired', 'working', 'all']).optional(),
+  positionId: z.string().max(120).optional(),
+});
+
+// ─────────────────────── Подразделения (F-11-080, ссылается на NetworkServiceCategoryLink.subdivisionId) ───────────────────────
+
+export const networkSubdivisionBody = z.object({ name: z.string().min(1).max(120) });
+
+// ─────────────────────── Типы нерабочих дней сети (F-11-108) ───────────────────────
+
+export const networkOffDayTypeBody = z.object({
+  name: z.string().min(1).max(120),
+  comment: z.string().max(400).optional(),
+  colorIndex: z.number().int().min(1).max(8),
+  businessIds: z.array(id32).max(50).default([]),
+});
+
+// ─────────────────────── Порядок сотрудников сети (F-11-100) ───────────────────────
+
+export const networkStaffOrderBody = z.object({ orderedKeys: z.array(z.string().max(120)).max(5000) });
+
+// === /stage 21 ===
+
 // ─────────────────────── Поля записи/клиента сети (F-11-126…134) ───────────────────────
 
 export const FIELD_API_KEY_RE = /^[a-zA-Z0-9._-]+$/;

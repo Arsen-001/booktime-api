@@ -95,21 +95,26 @@ model User {
 
 /// Профиль клиента приложения (= AppUser мока) + согласие при входе (F-14-008)
 model AppProfile {
-  userId         String    @id @map("user_id") @db.VarChar(32)
+  userId                  String    @id @map("user_id") @db.VarChar(32)
   /// female | male | unknown (В-19: необязательный)
-  gender         String    @default("unknown") @db.VarChar(8)
+  gender                  String    @default("unknown") @db.VarChar(8)
   /// 'YYYY-MM-DD'
-  birthday       String?   @db.VarChar(10)
-  district       String?   @db.VarChar(40)
-  photoUrl       String?   @map("photo_url") @db.VarChar(500)
-  bigFont        Boolean   @default(false) @map("big_font")
+  birthday                String?   @db.VarChar(10)
+  district                String?   @db.VarChar(40)
+  photoUrl                String?   @map("photo_url") @db.VarChar(500)
+  bigFont                 Boolean   @default(false) @map("big_font")
   /// '24h' | '12h'
-  timeFormat     String    @default("24h") @map("time_format") @db.VarChar(3)
-  consentAt      DateTime? @map("consent_at") @db.DateTime(3)
-  consentVersion String?   @map("consent_version") @db.VarChar(20)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
-  version        Int       @default(1)
+  timeFormat              String    @default("24h") @map("time_format") @db.VarChar(3)
+  /// Этап 21 (лейн client+online, попытка 2): пуш о новостях ПРОДУКТА (не о новостях компании-бизнеса) —
+  /// client.ts::getNewsPushOptOut/setNewsPushOptOut, F-14-136
+  newsPushOptOut          Boolean   @default(false) @map("news_push_opt_out")
+  /// Этап 21 (лейн client+online, попытка 2): филиал сети по умолчанию (F-14-163) — { [networkId]: businessId }
+  networkDefaultLocations Json?     @map("network_default_locations")
+  consentAt               DateTime? @map("consent_at") @db.DateTime(3)
+  consentVersion          String?   @map("consent_version") @db.VarChar(20)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  version                 Int       @default(1)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -313,6 +318,11 @@ model Network {
   goodsCategoryLinks   NetworkGoodsCategoryLink[]
   planCells            NetworkPlanCell[]
   broadcasts           NetworkBroadcast[]
+  // === stage 21 (lane network+reports) ===
+  subdivisions         NetworkSubdivision[]
+  offDayTypes          NetworkOffDayType[]
+  staffOrder           NetworkStaffOrder?
+  // === /stage 21 ===
 
   @@index([ownerUserId])
   @@map("networks")
@@ -1217,6 +1227,11 @@ model Booking {
   /// BookingNotifyOverride фронта (F-05-009/082, этап 21 «notify+integrations», попытка 3) — ручная правка
   /// уведомлений ОДНОЙ записи (какой канал напоминания и за сколько часов); нет строки — DEFAULT_BOOKING_NOTIFY_OVERRIDE
   notifyOverride      Json?     @map("notify_override")
+  // === stage 21 (lane rest) ===
+  /// BookingReminder фронта (F-04-100): своё напоминание клиенту и свой срок приглашения на повторный визит для
+  /// ОДНОЙ записи — {remindAt?, revisitInviteDays?}; нет строки — используются общие настройки уведомлений
+  reminderOverride    Json?     @map("reminder_override")
+  // === /stage 21 ===
   deletedAt           DateTime? @map("deleted_at") @db.DateTime(3)
   deletedBy           String?   @map("deleted_by") @db.VarChar(32)
   deletedByName       String?   @map("deleted_by_name") @db.VarChar(160)
@@ -1720,13 +1735,13 @@ model StaffNotifyPref {
 
 /// Настройки уведомлений на клиента (F-04-087…090) — отказ от маркетинга, каналы
 model ClientNotifyPref {
-  clientId        String   @id @map("client_id") @db.VarChar(32)
-  marketingOptOut Boolean  @default(false) @map("marketing_opt_out")
+  clientId          String   @id @map("client_id") @db.VarChar(32)
+  marketingOptOut   Boolean  @default(false) @map("marketing_opt_out")
   /// {push, sms, email} — какие каналы разрешены этому клиенту
-  channels        Json
+  channels          Json
   /// number[] — отключённые клиентом типы из CLIENT_DISABLEABLE_TYPES фронта (F-05-090); этап 21 «notify+integrations»
-  disabledTypeCodes Json?  @map("disabled_type_codes")
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  disabledTypeCodes Json?    @map("disabled_type_codes")
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   @@map("client_notify_prefs")
 }
@@ -1774,6 +1789,7 @@ model NotifyTypeOverride {
   @@id([businessId, code])
   @@map("notify_type_overrides")
 }
+
 // === end stage 21 (лейн notify+integrations), попытка 3 ===
 
 // ═══════════════════════════ Этап 11 — Лояльность (02-api.md §11, F-06-*) ═══════════════════════════
@@ -2280,32 +2296,32 @@ model FinanceDocument {
 
 /// Строка оплаты визита по услуге (F-07-036…050/181/184) — привязана к booking.services[serviceIndex]
 model BookingPayment {
-  id           String    @id @db.VarChar(32)
-  businessId   String    @map("business_id") @db.VarChar(32)
-  bookingId    String    @map("booking_id") @db.VarChar(32)
-  serviceIndex Int?      @map("service_index")
+  id               String    @id @db.VarChar(32)
+  businessId       String    @map("business_id") @db.VarChar(32)
+  bookingId        String    @map("booking_id") @db.VarChar(32)
+  serviceIndex     Int?      @map("service_index")
   /// money | discount | account — этот этап пишет только money; discount/account — раздел «лояльность» (этап 11)
-  kind         String    @default("money") @db.VarChar(10)
-  methodKey    String    @map("method_key") @db.VarChar(32)
-  methodLabel  String    @map("method_label") @db.VarChar(80)
-  accountId    String?   @map("account_id") @db.VarChar(32)
-  amount       BigInt
-  finOpId      String?   @map("fin_op_id") @db.VarChar(32)
-  cancelled    Boolean   @default(false)
-  cancelledAt  DateTime? @map("cancelled_at") @db.DateTime(3)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  createdBy    String?   @map("created_by") @db.VarChar(32)
+  kind             String    @default("money") @db.VarChar(10)
+  methodKey        String    @map("method_key") @db.VarChar(32)
+  methodLabel      String    @map("method_label") @db.VarChar(80)
+  accountId        String?   @map("account_id") @db.VarChar(32)
+  amount           BigInt
+  finOpId          String?   @map("fin_op_id") @db.VarChar(32)
+  cancelled        Boolean   @default(false)
+  cancelledAt      DateTime? @map("cancelled_at") @db.DateTime(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy        String?   @map("created_by") @db.VarChar(32)
   /// Этап 21 (лейн finance+stock): строка за товары визита — в кассу finance не идёт, выручку кладёт продажа склада
-  goods            Boolean @default(false)
+  goods            Boolean   @default(false)
   /// Этап 21: оплата счётом клиента в долг (F-07-061/062)
-  debt             Boolean @default(false)
+  debt             Boolean   @default(false)
   /// Этап 21: счёт уже списан разделом «Лояльность» — баланс «личного счёта» finance не трогаем
-  loyaltyAccountId String? @map("loyalty_account_id") @db.VarChar(32)
+  loyaltyAccountId String?   @map("loyalty_account_id") @db.VarChar(32)
   /// Этап 21: общий ключ одного платежа, разнесённого по строкам визита (groupId мока)
-  groupId          String? @map("group_id") @db.VarChar(32)
+  groupId          String?   @map("group_id") @db.VarChar(32)
   /// Этап 21 (лейн finance+stock): сколько по строке уже вернули (частичный возврат, fin-review Ф8) — оплата
   /// остаётся, визит не становится снова «К оплате», касса дня оплаты не меняется задним числом
-  refundedAmount   BigInt  @default(0) @map("refunded_amount")
+  refundedAmount   BigInt    @default(0) @map("refunded_amount")
 
   @@index([businessId, bookingId])
   @@index([finOpId])
@@ -2792,15 +2808,24 @@ model PayrollStaffRights {
 model NetworkUser {
   id                  String    @id @db.VarChar(32)
   networkId           String    @map("network_id") @db.VarChar(32)
-  userId              String    @map("user_id") @db.VarChar(32)
+  /// этап 21: null пока приглашение по телефону не подтверждено (pending=true, F-11-025)
+  userId              String?   @map("user_id") @db.VarChar(32)
   name                String    @db.VarChar(160)
-  phone               String    @db.VarChar(16)
+  /// этап 21: необязателен — пользователь с логином+паролем (F-11-026) может не иметь телефона вовсе
+  phone               String?   @db.VarChar(16)
   email               String?   @db.VarChar(160)
   /// NetworkPermissionKey[] (network.schemas.ts) — плоский список, как ALL_NETWORK_PERMISSIONS мока
   permissions         Json
   /// off | daily | weekly | monthly (F-11-030)
   planReportFrequency String?   @map("plan_report_frequency") @db.VarChar(8)
   lastVisitAt         DateTime? @map("last_visit_at") @db.DateTime(3)
+  // === stage 21 (лейн network+reports) ===
+  /// F-11-025: приглашение по телефону отправлено, аккаунта ещё нет — userId=null, ждёт саморегистрации
+  pending             Boolean   @default(false)
+  /// F-11-026: вход логином+паролем (владелец решил — не телефон+код, ANSWERS.md 28.09) — id строки StaffLogin
+  /// с businessId=null/staffId=null (та же модель входа, что у администратора бизнеса, common/passwords.ts);
+  /// без формальной Prisma-relation — StaffLogin не «свой» для этого лейна, схему той модели не трогаем.
+  staffLoginId        String?   @map("staff_login_id") @db.VarChar(32)
   createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
   createdBy           String?   @map("created_by") @db.VarChar(32)
@@ -2808,10 +2833,11 @@ model NetworkUser {
   version             Int       @default(1)
 
   network Network @relation(fields: [networkId], references: [id])
-  user    User    @relation(fields: [userId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id])
 
   @@unique([networkId, userId])
   @@index([userId])
+  @@index([staffLoginId])
   @@map("network_users")
 }
 
@@ -2944,6 +2970,57 @@ model NetworkBroadcast {
   @@index([networkId, createdAt])
   @@map("network_broadcasts")
 }
+
+// === stage 21 (lane network+reports) ===
+
+/// Подразделение сети (F-11-080) — своя коллекция, на неё ссылается NetworkServiceCategoryLink.subdivisionId
+/// (без FK — тот же приём, что categoryKey у сетевых услуг). categoryIds — F-11-080 «состав» (id категорий),
+/// экран/мок хранит списком id, сервер — тем же JSON (id услуг не участвуют в поиске/фильтрах по этому полю).
+model NetworkSubdivision {
+  id          String   @id @db.VarChar(32)
+  networkId   String   @map("network_id") @db.VarChar(32)
+  name        String   @db.VarChar(120)
+  categoryIds Json     @default("[]") @map("category_ids")
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy   String?  @map("created_by") @db.VarChar(32)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@index([networkId])
+  @@map("network_subdivisions")
+}
+
+/// Свой тип нерабочего дня сети (F-11-108) — показывается рядом с системными (sick/vacation/…) в панели графика
+model NetworkOffDayType {
+  id          String   @id @db.VarChar(32)
+  networkId   String   @map("network_id") @db.VarChar(32)
+  name        String   @db.VarChar(120)
+  comment     String?  @db.VarChar(400)
+  /// 1..8 — тот же токен chart-N, что и цвет сотрудника в журнале
+  colorIndex  Int      @default(1) @map("color_index")
+  businessIds Json     @default("[]") @map("business_ids")
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy   String?  @map("created_by") @db.VarChar(32)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@index([networkId])
+  @@map("network_off_day_types")
+}
+
+/// Порядок сотрудников сети (F-11-100) — один общий список ключей на сеть, применяется в журнале/записи
+model NetworkStaffOrder {
+  networkId   String   @id @map("network_id") @db.VarChar(32)
+  orderedKeys Json     @default("[]") @map("ordered_keys")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy   String?  @map("updated_by") @db.VarChar(32)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@map("network_staff_order")
+}
+
+// === /stage 21 ===
 
 // ───────────────────────── Этап 16: отчёты (docs/backend/02 §16, PLAN §6 №16) ─────────────────────────
 
@@ -4083,3 +4160,71 @@ model ClientBroadcastMessage {
 }
 
 // === end stage 21 (лейн rest), попытка 2 ===
+
+// === stage 21 shortlinks ===
+/// Короткие ссылки SMS `booktime.am/s/<code>` (28.09): полная ссылка на запись съедала больше половины SMS
+/// (70 символов в кириллице/армянском). Один путь бизнеса — один код (уникально business_id+target).
+model ShortLink {
+  /// 6 знаков base62 (crypto)
+  code       String    @id @db.VarChar(12)
+  /// Путь на нашем домене: /b/<slug>/booking/<id>?h=…, /b/<slug>/book
+  target     String    @db.VarChar(512)
+  businessId String    @map("business_id") @db.VarChar(32)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  expiresAt  DateTime? @map("expires_at") @db.DateTime(3)
+
+  @@unique([businessId, target])
+  @@map("short_links")
+}
+
+// === end stage 21 shortlinks ===
+
+// === stage 21 (лейн client+online), попытка 2 ===
+// Продолжение лейна client+online (см. докстринги выше в этом файле): `src/api/client.ts` — 80 используемых
+// функций (facade-audit.mjs), помимо тех, что делит с лейном loyalty/finance. Три маленьких, самостоятельных
+// куска, ни один не пересекается с чужими таблицами: правки автоперевода мастера (F-00-174), настройки
+// «Приложение сотрудника» (F-14-116…121), демо-копилка выплат раздела «Приложение» (F-14-127 — сам мок
+// называет её «демо-копилка, реальных денег нет», поэтому не через PayrollSettlementEntry/FinOp настоящего
+// раздела «Зарплата», которому нужны locationId+accountId — это другая, лёгкая сущность экрана).
+
+/// Правка мастера/бизнеса к автопереводу текста на en (F-00-174, client.ts::getTranslationOverride/
+/// listTranslatable/setTranslationOverride) — ключ owner+ownerId+field, как translationKey() мока.
+model TranslationOverride {
+  id        String   @id @db.VarChar(32)
+  owner     String   @db.VarChar(10)
+  ownerId   String   @map("owner_id") @db.VarChar(32)
+  field     String   @db.VarChar(40)
+  text      String   @db.VarChar(4000)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy String?  @map("updated_by") @db.VarChar(32)
+
+  @@unique([owner, ownerId, field])
+  @@map("translation_overrides")
+}
+
+/// Доступ сотрудника в приложении (F-14-116…121, client.ts::EmployeeAppAccess) — одна строка на сотрудника,
+/// нет строки = дефолт (DEFAULT_ACCESS мока), как ClientFineRights/StaffAccountPref у других разделов.
+model EmployeeAppAccess {
+  staffId    String   @id @map("staff_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  /// EmployeeAppAccess фронта минус staffId
+  data       Json
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy  String?  @map("updated_by") @db.VarChar(32)
+
+  @@index([businessId])
+  @@map("employee_app_access")
+}
+
+/// «Payouts» раздела «Приложение» (F-14-127) — демо-копилка выплат сотруднику, своя (не настоящая финансовая
+/// операция раздела «Зарплата», см. докстринг выше). Общий счётчик без периода — 1:1 с payrollPaid[staffId] мока.
+model AppPayrollPayout {
+  staffId    String   @id @map("staff_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  paid       BigInt   @default(0)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("app_payroll_payouts")
+}
+
+// === end stage 21 (лейн client+online), попытка 2 ===

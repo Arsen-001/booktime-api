@@ -91,3 +91,27 @@ export const locationReviewBody = z.object({
   businessId: id32,
   text: z.string().min(1).max(2000),
 });
+
+// ─────────────────────────── «Приложение» кабинета (F-14-116…129) — этап 21, лейн client+online, попытка 2 ───────────────────────────
+
+/** EmployeeAppAccess фронта (client.ts) — все поля частичные (PATCH сверху текущего/дефолта) */
+const staffPushType = z.enum(['bookings', 'calls', 'reviews', 'payroll', 'news']);
+export const employeeAppAccessBody = z.object({
+  onlyOwnBookings: z.boolean().optional(),
+  hideClientContacts: z.boolean().optional(),
+  analyticsAllowed: z.boolean().optional(),
+  pushEnabledByOwner: z.boolean().optional(),
+  pushTypesAllowed: z.array(staffPushType).optional(),
+  pushTypesOn: z.array(staffPushType).optional(),
+  hideClientDataInPush: z.boolean().optional(),
+  payrollAccess: z.enum(['self', 'all', 'none']).optional(),
+  payrollCurrentDayOnly: z.boolean().optional(),
+  twoStepLoginEnabled: z.boolean().optional(),
+});
+
+export const payoutBody = z.object({ amount: z.number().min(1) });
+
+// ─────────────────────────── автоперевод (F-00-174) — этап 21, лейн client+online, попытка 2 ───────────────────────────
+
+export const translationOwner = z.enum(['staff', 'business', 'service']);
+export const translationOverrideBody = z.object({ owner: translationOwner, ownerId: id32, field: z.string().min(1).max(40), text: z.string().max(4000) });

@@ -72,6 +72,20 @@ export class LoyaltyPortRunner {
     const scope = [...new Set(opts.scope)].sort();
     const home = opts.businessId ?? scope[0]!;
     const core = await this.loadCore(home, scope, withBookings, opts.appUserId);
+    // строки-замки заводятся ДО транзакции: INSERT IGNORE внутри брал бы общий замок на дубликат, а FOR UPDATE
+    // следом — повышение замка, и два параллельных чтения экрана ловили взаимную блокировку (1213)
+    await this.prisma.businessSetting.createMany({ data: scope.map((businessId) => ({ businessId, area: SETTINGS_AREA, data: {} })), skipDuplicates: true });
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.tx(op, fn, args, scope, home, core, opts);
+      } catch (e) {
+        if (attempt >= 4 || !isDeadlock(e)) throw e;
+        await new Promise((r) => setTimeout(r, 20 * attempt + Math.random() * 30));
+      }
+    }
+  }
+
+  private tx(op: string, fn: LogicFn, args: unknown[], scope: Id[], home: Id, core: CoreData, opts: RunOptions): Promise<unknown> {
     return this.prisma.$transaction(
       async (db) => {
         await lockScope(db, scope);
@@ -120,9 +134,13 @@ function emptyCore(): CoreData {
   return { networks: [], businesses: [], locations: [], staff: [], serviceCategories: [], services: [], resources: [], clients: [], appUsers: [], bookings: [], groupEvents: [], schedules: [], calendarMarks: [] };
 }
 
-/** Замок среза: строка business_settings(area='loyalty-port') каждого бизнеса, по порядку id */
+function isDeadlock(e: unknown): boolean {
+  const text = e instanceof Error ? `${e.message} ${JSON.stringify(e)}` : String(e);
+  return /1213|Deadlock|P2034|write conflict/i.test(text);
+}
+
+/** Замок среза: строка business_settings(area='loyalty-port') каждого бизнеса (заведена до транзакции), по порядку id */
 async function lockScope(db: Db, scope: Id[]): Promise<void> {
-  await db.businessSetting.createMany({ data: scope.map((businessId) => ({ businessId, area: SETTINGS_AREA, data: {} })), skipDuplicates: true });
   await db.$queryRawUnsafe(
     `SELECT business_id FROM business_settings WHERE area = ? AND business_id IN (${scope.map(() => '?').join(',')}) ORDER BY business_id FOR UPDATE`,
     SETTINGS_AREA,

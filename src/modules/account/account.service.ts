@@ -257,4 +257,48 @@ export class AccountService {
   async deletePushToken(ctx: RequestContext, token: string) {
     await this.prisma.pushToken.deleteMany({ where: { token, userId: ctx.session!.userId } });
   }
+
+  // ─────────── этап 21 (лейн client+online, попытка 2): мелкие настройки профиля приложения ───────────
+
+  /** F-14-136: пуш о новостях продукта — свой переключатель, не «новости компании» (client.ts::getNewsPushOptOut) */
+  async getNewsPushOptOut(userId: string): Promise<boolean> {
+    const p = await this.prisma.appProfile.findUnique({ where: { userId }, select: { newsPushOptOut: true } });
+    return p?.newsPushOptOut ?? false;
+  }
+
+  async setNewsPushOptOut(userId: string, optOut: boolean): Promise<void> {
+    await this.prisma.appProfile.upsert({ where: { userId }, create: { userId, newsPushOptOut: optOut }, update: { newsPushOptOut: optOut } });
+  }
+
+  /** F-14-163: филиал сети по умолчанию — переживает перезагрузку (client.ts::getDefaultNetworkLocation) */
+  async getDefaultNetworkLocation(userId: string, networkId: string): Promise<string | undefined> {
+    const p = await this.prisma.appProfile.findUnique({ where: { userId }, select: { networkDefaultLocations: true } });
+    const map = (p?.networkDefaultLocations as Record<string, string> | null) ?? {};
+    return map[networkId];
+  }
+
+  async setDefaultNetworkLocation(userId: string, networkId: string, businessId: string): Promise<void> {
+    const p = await this.prisma.appProfile.findUnique({ where: { userId }, select: { networkDefaultLocations: true } });
+    const map = (p?.networkDefaultLocations as Record<string, string> | null) ?? {};
+    map[networkId] = businessId;
+    await this.prisma.appProfile.upsert({ where: { userId }, create: { userId, networkDefaultLocations: map }, update: { networkDefaultLocations: map } });
+  }
+
+  /**
+   * F-14-059: карточка профиля приложения — тот же `AccountView`, плюс «свои неявки» (В-07: считаем ТОЛЬКО по
+   * своим записям appUserId, не по общей базе платформы, как и мок client.ts::getClientProfile).
+   */
+  async getClientProfile(userId: string) {
+    const [account, user, noShowCount] = await Promise.all([
+      this.get(userId),
+      this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { createdAt: true } }),
+      this.prisma.booking.count({ where: { appUserId: userId, status: 'no_show' } }),
+    ]);
+    return {
+      appUser: { id: account.id, phone: account.phone, name: account.name, gender: account.profile?.gender ?? 'unknown', birthday: account.profile?.birthday ?? null, district: account.profile?.district ?? null, locale: account.locale, createdAt: user.createdAt.toISOString(), photoUrl: account.profile?.photoUrl ?? null },
+      photoUrl: account.profile?.photoUrl ?? null,
+      timeFormat: account.profile?.timeFormat ?? '24h',
+      noShowCount,
+    };
+  }
 }

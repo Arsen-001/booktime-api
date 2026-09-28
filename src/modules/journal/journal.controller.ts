@@ -17,6 +17,7 @@ import { JournalService } from './journal.service.js';
 import {
   attachLinkedBody,
   authorBody,
+  bookingReminderBody,
   categoryBody,
   checkBody,
   checkLinkedBody,
@@ -383,6 +384,21 @@ export class JournalController {
   @ZodBody(medicalVisitBody)
   setMedical(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new Zod(medicalVisitBody)) body: z.infer<typeof medicalVisitBody>) {
     return this.journal.setMedicalVisit([ctx.member!.businessId], id, body.patch, body.authorName);
+  }
+
+  // ─────────── своё напоминание и приглашение на повтор (F-04-100, этап 21 «rest») ───────────
+
+  @Get('bookings/:id/reminder')
+  @Biz()
+  getReminder(@Ctx() ctx: RequestContext, @Param('id') id: string) {
+    return this.journal.getReminder([ctx.member!.businessId], id);
+  }
+
+  @Put('bookings/:id/reminder')
+  @Biz()
+  @ZodBody(bookingReminderBody)
+  setReminder(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new Zod(bookingReminderBody)) body: z.infer<typeof bookingReminderBody>) {
+    return this.journal.setReminder([ctx.member!.businessId], id, body);
   }
 
   @Get('clients/:clientId/medical-card')

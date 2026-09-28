@@ -280,6 +280,13 @@ export class PayrollController {
     return this.catalog.listStaffRights(ctx.member!.businessId);
   }
 
+  /** F-09-001/010: «Схемы расчёта» — статус схемы у всех сотрудников разом (этап 21, лейн rest) */
+  @Get('schemes')
+  @Biz('payroll.view')
+  listSchemes(@Ctx() ctx: RequestContext) {
+    return this.catalog.listSchemesByBusiness(ctx.member!.businessId);
+  }
+
   @Post('rights')
   @Biz('staff.manage')
   @ZodBody(payrollStaffRightsBody)

@@ -3,6 +3,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { TYPE_REGISTRY, typeDefByCode } from './notify-type-registry.js';
+import { smsDefaultOf } from './notify-sms-defaults.js';
 import type { NotifyChannel, NotifyClientGroup, NotifyRecipient, NotifyScenario, RegistryTypeConditions, TypeDef } from './notify-type-registry.js';
 
 const J = (v: unknown) => (v === undefined || v === null ? Prisma.DbNull : (v as Prisma.InputJsonValue));
@@ -62,8 +63,10 @@ interface StoredOverride {
 function defaultOf(def: TypeDef, businessId: string): NotificationTypeOut {
   const template: RichLocalizedText = { ru: def.templateRu, en: def.templateEn, hy: def.templateHy };
   const templates: Partial<Record<NotifyChannel, RichLocalizedText>> = {};
+  const smsShort = smsDefaultOf(def.code);
   def.availableChannels.forEach((channel) => {
-    templates[channel] = { ...template };
+    // 28.09: SMS — короткий текст (одна часть = 25 ֏), остальные каналы — полный
+    templates[channel] = channel === 'sms' && smsShort ? { ...smsShort } : { ...template };
   });
   return {
     id: `nt_${businessId}_${def.code}`,
@@ -83,13 +86,27 @@ function defaultOf(def: TypeDef, businessId: string): NotificationTypeOut {
   };
 }
 
+/**
+ * 28.09: сохранённая правка хранит все каналы разом — SMS-текст, равный прежнему полному тексту по умолчанию (или
+ * пустой), читается как новый короткий; свой текст салона не трогаем (сравнение по каждому языку).
+ */
+function upgradeSms(templates: Partial<Record<NotifyChannel, RichLocalizedText>>, base: NotificationTypeOut): Partial<Record<NotifyChannel, RichLocalizedText>> {
+  const short = smsDefaultOf(base.code);
+  const def = typeDefByCode(base.code);
+  const current = templates.sms;
+  if (!short || !def || !current) return templates;
+  const oldFull: Record<'ru' | 'en' | 'hy', string | undefined> = { ru: def.templateRu, en: def.templateEn, hy: def.templateHy };
+  const pick = (lang: 'ru' | 'en' | 'hy'): string => (!current[lang] || current[lang] === oldFull[lang] ? short[lang] : (current[lang] as string));
+  return { ...templates, sms: { ...current, ru: pick('ru'), en: pick('en'), hy: pick('hy') } };
+}
+
 function applyOverride(base: NotificationTypeOut, o: StoredOverride | undefined): NotificationTypeOut {
   if (!o) return base;
   return {
     ...base,
     enabled: o.enabled ?? base.enabled,
     channels: o.channels ?? base.channels,
-    templates: o.templates ?? base.templates,
+    templates: o.templates ? upgradeSms(o.templates, base) : base.templates,
     emailExtra: o.emailExtra ?? base.emailExtra,
     conditions: o.conditions ?? base.conditions,
   };

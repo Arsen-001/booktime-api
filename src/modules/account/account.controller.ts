@@ -10,8 +10,11 @@ import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import { codeSent } from '../auth/auth.schemas.js';
 import {
   accountView,
+  clientProfileView,
   dataExportRow,
   loginEventRow,
+  networkDefaultLocationBody,
+  newsPushOptOutBody,
   patchAccountBody,
   phoneCodeBody,
   phoneConfirmBody,
@@ -158,5 +161,42 @@ export class AccountController {
   @ZodBody(pushTokenDeleteBody)
   async deletePushToken(@Ctx() ctx: RequestContext, @Body(new Zod(pushTokenDeleteBody)) body: z.infer<typeof pushTokenDeleteBody>) {
     await this.account.deletePushToken(ctx, body.token);
+  }
+
+  // ─────────── этап 21 (лейн client+online, попытка 2) ───────────
+
+  @Get('client-profile')
+  @ApiOperation({ summary: 'Карточка профиля приложения — фото, формат времени, свои неявки (F-14-059, В-07)' })
+  @ZodOk(clientProfileView)
+  clientProfile(@Ctx() ctx: RequestContext) {
+    return this.account.getClientProfile(ctx.session!.userId);
+  }
+
+  @Get('news-push-opt-out')
+  @ApiOperation({ summary: 'Отключён ли пуш о новостях продукта (F-14-136)' })
+  async getNewsPushOptOut(@Ctx() ctx: RequestContext) {
+    return { optOut: await this.account.getNewsPushOptOut(ctx.session!.userId) };
+  }
+
+  @Put('news-push-opt-out')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Включить/выключить пуш о новостях продукта' })
+  @ZodBody(newsPushOptOutBody)
+  async setNewsPushOptOut(@Ctx() ctx: RequestContext, @Body(new Zod(newsPushOptOutBody)) body: z.infer<typeof newsPushOptOutBody>) {
+    await this.account.setNewsPushOptOut(ctx.session!.userId, body.optOut);
+  }
+
+  @Get('network-default-location/:networkId')
+  @ApiOperation({ summary: 'Филиал сети по умолчанию (F-14-163)' })
+  async getDefaultNetworkLocation(@Ctx() ctx: RequestContext, @Param('networkId') networkId: string) {
+    return { businessId: (await this.account.getDefaultNetworkLocation(ctx.session!.userId, networkId)) ?? null };
+  }
+
+  @Put('network-default-location/:networkId')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Клиент сети выбирает филиал по умолчанию (F-14-163)' })
+  @ZodBody(networkDefaultLocationBody)
+  async setDefaultNetworkLocation(@Ctx() ctx: RequestContext, @Param('networkId') networkId: string, @Body(new Zod(networkDefaultLocationBody)) body: z.infer<typeof networkDefaultLocationBody>) {
+    await this.account.setDefaultNetworkLocation(ctx.session!.userId, networkId, body.businessId);
   }
 }

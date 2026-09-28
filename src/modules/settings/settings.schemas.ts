@@ -45,3 +45,39 @@ export const prefsBody = z.object({
   startPage: z.enum(['journal', 'clients', 'analytics', 'settings']).nullable().optional(),
   startLocationId: z.string().max(32).nullable().optional(),
 });
+
+// ─────────────────────────── b06: своё приложение салона (F-14-142…170, В-29) — этап 21, лейн client+online ───────────────────────────
+
+export const brandedAppMaterialsBody = z
+  .object({
+    splashUrl: z.string().max(4_000_000),
+    logoUrl: z.string().max(4_000_000),
+    featuredImageUrl: z.string().max(4_000_000),
+    fullName: z.string().max(30),
+    shortName: z.string().max(11),
+    shortDescription: z.string().max(80),
+    longDescription: z.string().max(4000),
+    keywords: z.string().max(100),
+  })
+  .partial();
+export const brandedAppLinksBody = z.object({ iosLink: z.string().max(2000).optional(), androidLink: z.string().max(2000).optional() });
+export const brandedAppOwnerTypeBody = z.object({ ownerType: z.enum(['organization', 'individual']) });
+export const brandedAppAccessMethodBody = z.object({ method: z.enum(['portal_invite', 'password_shared']) });
+export const brandedAppExtraLocationsBody = z.object({ extraLocations: z.number().int().min(0).max(1000) });
+export const brandedAppDocKey = z.enum(['appleDeveloperAccess', 'googlePlayAccess', 'registrationDoc', 'trademarkDoc']);
+export const brandedAppDocBody = z.object({ key: brandedAppDocKey, value: z.boolean() });
+export const brandedAppSubmitBody = z.object({ name: z.string().min(1).max(160), phone: z.string().max(24).optional() });
+export const brandedAppRequestOut = z
+  .object({
+    businessId: z.string(),
+    stage: z.enum(['draft', 'submitted', 'in_development', 'published']),
+    ownerType: z.enum(['organization', 'individual']).optional(),
+    accessMethod: z.enum(['portal_invite', 'password_shared']).optional(),
+    materials: z.record(z.string(), z.unknown()),
+    docs: z.record(z.string(), z.boolean()),
+    iosLink: z.string().optional(),
+    androidLink: z.string().optional(),
+    extraLocations: z.number(),
+    submittedAt: z.string().optional(),
+  })
+  .catchall(z.unknown());

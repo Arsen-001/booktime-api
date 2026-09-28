@@ -8,6 +8,13 @@ import { Zod } from '../../common/http/validation.js';
 import {
   billingAddressBody,
   brandBody,
+  brandedAppAccessMethodBody,
+  brandedAppDocBody,
+  brandedAppExtraLocationsBody,
+  brandedAppLinksBody,
+  brandedAppMaterialsBody,
+  brandedAppOwnerTypeBody,
+  brandedAppSubmitBody,
   categoryBody,
   changeLogQuery,
   contactsBody,
@@ -224,6 +231,64 @@ export class SettingsController {
   @ApiOperation({ summary: '«Хочу своё приложение» (В-29: позже, платно) — только заявка' })
   createAppRequest(@Ctx() ctx: RequestContext, @Param('businessId') b: string) {
     return this.s.createRequest(ctx, b, 'mobileApp', {});
+  }
+
+  // ─────────── b06: своё (брендированное) приложение — черновик заявки (F-14-142…170, В-29) ───────────
+
+  @Get('branded-app')
+  @Biz()
+  brandedApp(@Param('businessId') b: string) {
+    return this.s.brandedAppRequest(b);
+  }
+
+  @Put('branded-app/links')
+  @Biz('settings.manage')
+  @ZodBody(brandedAppLinksBody)
+  setBrandedAppLinks(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(brandedAppLinksBody)) body: z.infer<typeof brandedAppLinksBody>) {
+    return this.s.saveBrandedAppLinks(ctx, b, body);
+  }
+
+  @Put('branded-app/owner-type')
+  @Biz('settings.manage')
+  @ZodBody(brandedAppOwnerTypeBody)
+  setBrandedAppOwnerType(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(brandedAppOwnerTypeBody)) body: z.infer<typeof brandedAppOwnerTypeBody>) {
+    return this.s.setBrandedAppOwnerType(ctx, b, body.ownerType);
+  }
+
+  @Put('branded-app/access-method')
+  @Biz('settings.manage')
+  @ZodBody(brandedAppAccessMethodBody)
+  setBrandedAppAccessMethod(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(brandedAppAccessMethodBody)) body: z.infer<typeof brandedAppAccessMethodBody>) {
+    return this.s.setBrandedAppAccessMethod(ctx, b, body.method);
+  }
+
+  @Put('branded-app/extra-locations')
+  @Biz('settings.manage')
+  @ZodBody(brandedAppExtraLocationsBody)
+  setBrandedAppExtraLocations(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(brandedAppExtraLocationsBody)) body: z.infer<typeof brandedAppExtraLocationsBody>) {
+    return this.s.setBrandedAppExtraLocations(ctx, b, body.extraLocations);
+  }
+
+  @Patch('branded-app/materials')
+  @Biz('settings.manage')
+  @ZodBody(brandedAppMaterialsBody)
+  saveBrandedAppMaterials(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(brandedAppMaterialsBody)) body: z.infer<typeof brandedAppMaterialsBody>) {
+    return this.s.saveBrandedAppMaterials(ctx, b, body);
+  }
+
+  @Put('branded-app/docs')
+  @Biz('settings.manage')
+  @ZodBody(brandedAppDocBody)
+  toggleBrandedAppDoc(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(brandedAppDocBody)) body: z.infer<typeof brandedAppDocBody>) {
+    return this.s.toggleBrandedAppDoc(ctx, b, body.key, body.value);
+  }
+
+  @Post('branded-app/submit')
+  @Biz('settings.manage')
+  @ApiOperation({ summary: 'Заявка через менеджера (F-14-145) — только когда материалы и документы собраны' })
+  @ZodBody(brandedAppSubmitBody)
+  submitBrandedApp(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(brandedAppSubmitBody)) body: z.infer<typeof brandedAppSubmitBody>) {
+    return this.s.submitBrandedAppRequest(ctx, b, body);
   }
 
   @Get('sphere-requests')

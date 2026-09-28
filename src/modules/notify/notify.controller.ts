@@ -13,12 +13,14 @@ import { NotifyInboxService } from './notify-inbox.service.js';
 import { NotifyMiscService } from './notify-misc.service.js';
 import { NotifyMoreService } from './notify-more.service.js';
 import { NotifyNewsService } from './notify-news.service.js';
+import { NotifyRichTypesService } from './notify-rich-types.service.js';
 import { NotifyStaffPrefsService } from './notify-staff-prefs.service.js';
 import { NotifyTypesService } from './notify-types.service.js';
 import {
   agentFlagsBody,
   altegioWhatsAppBody,
   altegioWhatsAppModeBody,
+  anyStaffPrefsConfiguredBody,
   bookingNotifyOverrideBody,
   channelOverviewBody,
   clientNotifyPatchBody,
@@ -40,6 +42,8 @@ import {
   serviceReminderHoursBody,
   setWebhookActiveBody,
   staffNotifyPatchBody,
+  staffPrefsRichCellBody,
+  staffPrefsRichPatchBody,
   updateTemplatesBody,
   updateTypeBody,
   webPopupBody,
@@ -59,21 +63,31 @@ export class NotifyController {
     private readonly channels: NotifyChannelsService,
     private readonly misc: NotifyMiscService,
     private readonly more: NotifyMoreService,
+    private readonly richTypes: NotifyRichTypesService,
     private readonly staff: StaffService,
   ) {}
 
   // ─────────── типы и шаблоны (F-05-001…023) ───────────
+  // Каталог типов (29 настраиваемых + 2 служебных, F-05-004) — решение владельца 28.09 (этап 21, попытка 3):
+  // сервер строит ПОД экран, richTypes (notify-rich-types.service.ts), а не старый `this.types` (13 kind, тот
+  // питает настоящую отправку — bookings.service.ts/notify-dispatch.service.ts, трогать нельзя, см. kinds.ts).
 
   @Get('notify/types')
   @Biz('notify.manage')
   listTypes(@Param('businessId') businessId: string) {
-    return this.types.list(businessId);
+    return this.richTypes.list(businessId);
+  }
+
+  @Get('notify/types/:code')
+  @Biz('notify.manage')
+  getType(@Param('businessId') businessId: string, @Param('code') code: string) {
+    return this.richTypes.get(businessId, Number(code));
   }
 
   @Put('notify/types')
   @Biz('notify.manage')
   updateType(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(updateTypeBody)) body: z.infer<typeof updateTypeBody>) {
-    return this.types.updateType(ctx, businessId, body.kind, body.patch);
+    return this.richTypes.update(businessId, body.code, body.patch, ctx.member?.staffId);
   }
 
   @Get('notify/templates/:kind')
@@ -476,5 +490,56 @@ export class NotifyController {
   @Biz()
   sendPlanReportEmail(@Param('businessId') businessId: string, @Body(new Zod(sendPlanReportEmailBody)) body: z.infer<typeof sendPlanReportEmailBody>) {
     return this.more.sendPlanReportEmail(body.toEmail, body.downloadUrl, body.frequency);
+  }
+
+  // ── Open Slots — окна на сегодня/завтра (F-05-124) / Кого позвать (F-05-125), этап 21 попытка 4 ──
+
+  @Get('notify/open-slots')
+  @Biz('notify.manage')
+  listOpenSlots(@Param('businessId') businessId: string, @Query('day') day?: string) {
+    return this.more.listOpenSlots(businessId, day === 'tomorrow' ? 'tomorrow' : 'today');
+  }
+
+  @Get('notify/who-to-invite')
+  @Biz('notify.manage')
+  listWhoToInvite(@Param('businessId') businessId: string) {
+    return this.more.listWhoToInvite(businessId);
+  }
+
+  // ── уведомления сотрудника — богатая матрица под экран (F-05-055…060), НЕ StaffNotifyPref внутренний ──
+
+  @Get('staff/:staffId/notify-prefs-rich')
+  @Biz()
+  async getStaffPrefsRich(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('staffId') staffId: string) {
+    await this.assertStaffAccess(ctx, businessId, staffId);
+    return this.more.getStaffPrefsRich(businessId, staffId);
+  }
+
+  @Put('staff/:staffId/notify-prefs-rich')
+  @Biz()
+  async setStaffPrefsRich(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('staffId') staffId: string, @Body(new Zod(staffPrefsRichPatchBody)) body: z.infer<typeof staffPrefsRichPatchBody>) {
+    await this.assertStaffAccess(ctx, businessId, staffId);
+    return this.more.updateStaffPrefsRich(businessId, staffId, body);
+  }
+
+  @Post('staff/:staffId/notify-prefs-rich/cell')
+  @Biz()
+  async setStaffPrefsRichCell(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('staffId') staffId: string, @Body(new Zod(staffPrefsRichCellBody)) body: z.infer<typeof staffPrefsRichCellBody>) {
+    await this.assertStaffAccess(ctx, businessId, staffId);
+    return this.more.setStaffPrefsMatrixCell(businessId, staffId, body.event, body.channel, body.value);
+  }
+
+  @Post('staff/notify-prefs-rich/any-configured')
+  @Biz()
+  async anyStaffPrefsConfigured(@Param('businessId') businessId: string, @Body(new Zod(anyStaffPrefsConfiguredBody)) body: z.infer<typeof anyStaffPrefsConfiguredBody>) {
+    return { value: await this.more.anyStaffPrefsConfigured(businessId, body.staffIds) };
+  }
+
+  // ── лента новостей платформы (F-05-061/062) ──
+
+  @Get('notify/news-feed')
+  @Biz()
+  listPlatformNews() {
+    return this.more.listPlatformNews();
   }
 }

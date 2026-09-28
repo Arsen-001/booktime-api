@@ -26,6 +26,22 @@ export const pushTokenBody = z.object({
 });
 export const pushTokenDeleteBody = z.object({ token: z.string().min(10).max(512) });
 
+// ─────────── этап 21 (лейн client+online, попытка 2): мелкие настройки профиля приложения ───────────
+
+/** F-14-136: пуш о новостях ПРОДУКТА (не «новости компании» бизнеса) */
+export const newsPushOptOutBody = z.object({ optOut: z.boolean() });
+
+/** F-14-163: филиал сети по умолчанию, выбранный клиентом */
+export const networkDefaultLocationBody = z.object({ businessId: z.string().min(1) });
+
+/** F-14-059: своя карточка профиля приложения (носы шоу считает сервер, не фронт) */
+export const clientProfileView = z.object({
+  appUser: z.object({ id: z.string(), phone: z.string().nullable(), name: z.string(), gender: z.string(), birthday: z.string().nullable(), district: z.string().nullable(), locale: locale, createdAt: z.string(), photoUrl: z.string().nullable() }),
+  photoUrl: z.string().nullable(),
+  timeFormat: z.string(),
+  noShowCount: z.number(),
+});
+
 export const accountView = z.object({
   id: z.string(),
   name: z.string(),

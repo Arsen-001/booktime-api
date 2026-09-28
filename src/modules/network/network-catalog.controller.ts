@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Injectable, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Injectable, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { AuditService } from '../../common/audit/audit.service.js';
@@ -10,7 +10,8 @@ import { Zod } from '../../common/http/validation.js';
 import { newId } from '../../common/ids/ids.js';
 import { money, moneyToJson } from '../../common/money/money.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { networkView } from '../businesses/views.js';
+import { goodView } from '../stock/stock-catalog.service.js';
+import { networkView, staffView } from '../businesses/views.js';
 import { NetworkAccessService } from './network-access.service.js';
 import {
   businessIdsBody,
@@ -18,9 +19,13 @@ import {
   networkFieldBody,
   networkGoodsCategoryBody,
   networkGoodsProductBody,
+  networkOffDayTypeBody,
   networkPositionBody,
   networkServiceBody,
   networkServiceCategoryBody,
+  networkStaffOrderBody,
+  networkStaffQuery,
+  networkSubdivisionBody,
 } from './network.schemas.js';
 
 type LocalizedText = { ru: string; hy?: string; en?: string };
@@ -218,6 +223,20 @@ export class NetworkCatalogService {
     return this.prisma.networkGoodsCategoryLink.findMany({ where: { networkId }, orderBy: { createdAt: 'asc' } });
   }
 
+  /**
+   * Этап 21 «network+reports»: `src/api/network.ts::getNetworkGoodsCategoryDetail` — карточка категории
+   * (F-11-112, вкладка «Филиалы»): businessIds — те филиалы сети, где УЖЕ есть stock-категория с тем же
+   * именем (мок сравнивает по `c.name === cat.name`, 1:1 здесь по колонке `StockCategory.name`).
+   */
+  async getGoodsCategoryDetail(ctx: RequestContext, networkId: string, id: string) {
+    const { network } = await this.access.require(ctx, networkId, 'goods');
+    const cat = await this.prisma.networkGoodsCategoryLink.findFirst({ where: { id, networkId } });
+    if (!cat) throw new ApiError('not_found', 'Category not found');
+    if (!network.businessIds.length) return { ...cat, businessIds: [] };
+    const matches = await this.prisma.stockCategory.findMany({ where: { businessId: { in: network.businessIds }, name: cat.name }, select: { businessId: true } });
+    return { ...cat, businessIds: matches.map((m) => m.businessId) };
+  }
+
   async saveGoodsCategory(ctx: RequestContext, networkId: string, input: z.infer<typeof networkGoodsCategoryBody>) {
     const { network } = await this.access.require(ctx, networkId, 'goods');
     const name = input.name.trim();
@@ -239,12 +258,17 @@ export class NetworkCatalogService {
     return saved;
   }
 
+  /**
+   * Этап 21 «network+reports»: `src/api/network.ts::getNetworkGoodsProduct` ждёт полный `Good` (карточка
+   * товара на фронте показывает единицы/налог/остатки полями `Good`, не только цену) — `goodView()` уже
+   * построен модулем «Склад» (`stock-catalog.service.ts`) для тех же Product-строк, переиспользован как есть.
+   */
   async getGoodsProduct(ctx: RequestContext, networkId: string, groupId: string) {
     const { network } = await this.access.require(ctx, networkId, 'goods');
     const rows = await this.prisma.product.findMany({ where: { businessId: { in: network.businessIds }, OR: [{ networkGroupId: groupId }, { id: groupId }] } });
     if (!rows.length) throw new ApiError('not_found', 'Good not found');
     const source = rows.find((r) => r.isNetworkSource) ?? rows[0]!;
-    return { key: source.id, name: source.name, salePrice: moneyToJson(source.salePrice), costPrice: moneyToJson(source.costPrice), businessIds: rows.map((r) => r.businessId) };
+    return { key: source.id, good: goodView(source), businessIds: rows.map((r) => r.businessId) };
   }
 
   /** F-11-113: создать сетевой товар в первом филиале и раздать по остальным; F-08-135 — networkGroupId/isNetworkSource */
@@ -342,11 +366,29 @@ export class NetworkCatalogService {
 
   // ───────────────────────── Сотрудники сети — сводный список, только чтение ─────────────────────────
 
-  async listStaff(ctx: RequestContext, networkId: string) {
+  /**
+   * Этап 21 «network+reports»: `src/api/network.ts::listNetworkStaff` — мок фильтрует ЯВНО (по умолчанию,
+   * без фильтров, отдаёт ВСЕХ, включая уволенных/удалённых — `StaffMigrationScreen` зовёт `{status:'all',
+   * fired:'all'}` именно за этим, `StaffScreen` — реальными значениями из своих `Select`). Раньше маршрут
+   * жёстко резал `deletedAt:null, status<>fired` — уволенных для миграции было не найти никогда. Теперь
+   * фильтрация — только по явным `filters`, 1:1 с мок-веткой; `deletedAt: null` остаётся всегда (жёсткое
+   * удаление строки, не бизнес-статус `disabled`). Вид строки — тот же `staffView()`, что и у обычного
+   * списка сотрудников бизнеса (`services.service.ts`/`resources.service.ts`) — экран (`StaffScreen.tsx`)
+   * читает `avatarUrl`/`position` (LocalizedText, не строку) через `pickText`, слепая DTO их бы не дала.
+   */
+  async listStaff(ctx: RequestContext, networkId: string, filters: z.infer<typeof networkStaffQuery> = {}) {
     const { network } = await this.access.require(ctx, networkId, 'staff');
     if (!network.businessIds.length) return [];
-    const rows = await this.prisma.staff.findMany({ where: { businessId: { in: network.businessIds }, deletedAt: null, status: { not: 'fired' } }, include: { business: { select: { name: true } } }, orderBy: { name: 'asc' } });
-    return rows.map((s) => ({ id: s.id, businessId: s.businessId, businessName: s.business.name, name: s.name, phone: s.phone, role: s.role, position: (s.position as LocalizedText | null)?.ru ?? undefined }));
+    const rows = await this.prisma.staff.findMany({ where: { businessId: { in: network.businessIds }, deletedAt: null }, include: { locations: { select: { locationId: true } } }, orderBy: { name: 'asc' } });
+    const filtered = rows.filter((s) => {
+      if (filters.status === 'active' && s.status !== 'active' && s.status !== 'invited') return false;
+      if (filters.status === 'deleted' && s.status !== 'disabled') return false;
+      if (filters.fired === 'fired' && s.status !== 'fired') return false;
+      if (filters.fired === 'working' && s.status === 'fired') return false;
+      if (filters.positionId && (s.position as LocalizedText | null)?.ru !== filters.positionId) return false;
+      return true;
+    });
+    return filtered.map((s) => staffView(s));
   }
 
   // ───────────────────────── Поля записи/клиента сети (F-11-126…134) ─────────────────────────
@@ -383,6 +425,69 @@ export class NetworkCatalogService {
     const row = await this.prisma.networkField.findFirst({ where: { id, networkId } });
     if (!row) throw new ApiError('not_found', 'Field not found');
     await this.prisma.networkField.delete({ where: { id } });
+  }
+
+  // ───────────────────────── Этап 21 «network+reports»: подразделения (F-11-080) ─────────────────────────
+
+  async listSubdivisions(ctx: RequestContext, networkId: string) {
+    await this.access.require(ctx, networkId, 'subdivisions');
+    const rows = await this.prisma.networkSubdivision.findMany({ where: { networkId }, orderBy: { createdAt: 'asc' } });
+    return rows.map((r) => ({ id: r.id, networkId: r.networkId, name: r.name, categoryIds: Array.isArray(r.categoryIds) ? (r.categoryIds as string[]) : [] }));
+  }
+
+  async createSubdivision(ctx: RequestContext, networkId: string, input: z.infer<typeof networkSubdivisionBody>) {
+    await this.access.require(ctx, networkId, 'subdivisions');
+    const name = input.name.trim();
+    if (!name) throw new ApiError('validation', 'name required');
+    const row = await this.prisma.networkSubdivision.create({ data: { id: newId('networkSubdivision'), networkId, name, categoryIds: [], createdBy: ctx.session!.userId } });
+    return { id: row.id, networkId: row.networkId, name: row.name, categoryIds: [] as string[] };
+  }
+
+  // ───────────────────────── Этап 21 «network+reports»: типы нерабочих дней сети (F-11-108) ─────────────────────────
+
+  async listOffDayTypes(ctx: RequestContext, networkId: string) {
+    await this.access.require(ctx, networkId, 'staff');
+    const rows = await this.prisma.networkOffDayType.findMany({ where: { networkId }, orderBy: { createdAt: 'asc' } });
+    return rows.map(offDayTypeOut);
+  }
+
+  async saveOffDayType(ctx: RequestContext, networkId: string, id: string | undefined, input: z.infer<typeof networkOffDayTypeBody>) {
+    const { network } = await this.access.require(ctx, networkId, 'staff');
+    const name = input.name.trim();
+    if (!name) throw new ApiError('validation', 'name required');
+    const businessIds = input.businessIds.filter((bid) => network.businessIds.includes(bid));
+    if (id) {
+      const existing = await this.prisma.networkOffDayType.findFirst({ where: { id, networkId } });
+      if (!existing) throw new ApiError('not_found', 'Off-day type not found');
+      const row = await this.prisma.networkOffDayType.update({ where: { id }, data: { name, comment: input.comment, colorIndex: input.colorIndex, businessIds } });
+      return offDayTypeOut(row);
+    }
+    const row = await this.prisma.networkOffDayType.create({ data: { id: newId('networkOffDayType'), networkId, name, comment: input.comment, colorIndex: input.colorIndex, businessIds, createdBy: ctx.session!.userId } });
+    return offDayTypeOut(row);
+  }
+
+  async deleteOffDayType(ctx: RequestContext, networkId: string, id: string) {
+    await this.access.require(ctx, networkId, 'staff');
+    const row = await this.prisma.networkOffDayType.findFirst({ where: { id, networkId } });
+    if (!row) return;
+    await this.prisma.networkOffDayType.delete({ where: { id } });
+  }
+
+  // ───────────────────────── Этап 21 «network+reports»: порядок сотрудников сети (F-11-100) ─────────────────────────
+
+  async getStaffOrder(ctx: RequestContext, networkId: string): Promise<string[]> {
+    await this.access.require(ctx, networkId, 'staff');
+    const row = await this.prisma.networkStaffOrder.findUnique({ where: { networkId } });
+    return Array.isArray(row?.orderedKeys) ? (row!.orderedKeys as string[]) : [];
+  }
+
+  async setStaffOrder(ctx: RequestContext, networkId: string, orderedKeys: string[]): Promise<void> {
+    await this.access.require(ctx, networkId, 'staff');
+    await this.prisma.networkStaffOrder.upsert({
+      where: { networkId },
+      create: { networkId, orderedKeys, updatedBy: ctx.session!.userId },
+      update: { orderedKeys, updatedBy: ctx.session!.userId },
+    });
   }
 
   /**
@@ -431,6 +536,11 @@ function fieldOut(f: { id: string; networkId: string; kind: string; name: string
   return { ...f, listOptions: Array.isArray(f.listOptions) ? f.listOptions : [], businessIds: Array.isArray(f.businessIds) ? f.businessIds : [], createdAt: f.createdAt.toISOString() };
 }
 
+/** Этап 21 «network+reports»: F-11-108, форма `NetworkOffDayType` фронта */
+function offDayTypeOut(o: { id: string; networkId: string; name: string; comment: string | null; colorIndex: number; businessIds: unknown }) {
+  return { id: o.id, networkId: o.networkId, name: o.name, comment: o.comment ?? undefined, colorIndex: o.colorIndex, businessIds: Array.isArray(o.businessIds) ? (o.businessIds as string[]) : [] };
+}
+
 @ApiTags('network')
 @Controller('v1/net/:networkId')
 @Authed()
@@ -476,6 +586,12 @@ export class NetworkCatalogController {
   @Get('goods-categories')
   listGoodsCategories(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
     return this.svc.listGoodsCategories(ctx, n);
+  }
+
+  @Get('goods-categories/:id')
+  @ApiOperation({ summary: 'Карточка сетевой категории товаров (F-11-112)' })
+  getGoodsCategoryDetail(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('id') id: string) {
+    return this.svc.getGoodsCategoryDetail(ctx, n, id);
   }
 
   @Post('goods-categories')
@@ -527,9 +643,58 @@ export class NetworkCatalogController {
   }
 
   @Get('staff')
-  @ApiOperation({ summary: 'Сводный список сотрудников сети, только чтение' })
-  listStaff(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
-    return this.svc.listStaff(ctx, n);
+  @ApiOperation({ summary: 'Сводный список сотрудников сети, только чтение (F-11-097)' })
+  listStaff(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query(new Zod(networkStaffQuery)) query: z.infer<typeof networkStaffQuery>) {
+    return this.svc.listStaff(ctx, n, query);
+  }
+
+  @Get('staff-order')
+  @ApiOperation({ summary: 'Порядок сотрудников сети (F-11-100)' })
+  getStaffOrder(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.getStaffOrder(ctx, n);
+  }
+
+  @Put('staff-order')
+  @ZodBody(networkStaffOrderBody)
+  async setStaffOrder(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkStaffOrderBody)) body: z.infer<typeof networkStaffOrderBody>) {
+    await this.svc.setStaffOrder(ctx, n, body.orderedKeys);
+    return { ok: true as const };
+  }
+
+  @Get('subdivisions')
+  @ApiOperation({ summary: 'Подразделения сети (F-11-080)' })
+  listSubdivisions(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.listSubdivisions(ctx, n);
+  }
+
+  @Post('subdivisions')
+  @ZodBody(networkSubdivisionBody)
+  createSubdivision(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkSubdivisionBody)) body: z.infer<typeof networkSubdivisionBody>) {
+    return this.svc.createSubdivision(ctx, n, body);
+  }
+
+  @Get('off-day-types')
+  @ApiOperation({ summary: 'Типы нерабочих дней сети (F-11-108)' })
+  listOffDayTypes(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.listOffDayTypes(ctx, n);
+  }
+
+  @Post('off-day-types')
+  @ZodBody(networkOffDayTypeBody)
+  addOffDayType(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkOffDayTypeBody)) body: z.infer<typeof networkOffDayTypeBody>) {
+    return this.svc.saveOffDayType(ctx, n, undefined, body);
+  }
+
+  @Patch('off-day-types/:id')
+  @ZodBody(networkOffDayTypeBody)
+  editOffDayType(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('id') id: string, @Body(new Zod(networkOffDayTypeBody)) body: z.infer<typeof networkOffDayTypeBody>) {
+    return this.svc.saveOffDayType(ctx, n, id, body);
+  }
+
+  @Delete('off-day-types/:id')
+  async deleteOffDayType(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('id') id: string) {
+    await this.svc.deleteOffDayType(ctx, n, id);
+    return { ok: true as const };
   }
 
   @Get('fields')

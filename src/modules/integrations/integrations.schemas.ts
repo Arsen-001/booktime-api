@@ -102,6 +102,13 @@ export const connectAppBody = z.object({
 });
 export type ConnectAppBody = z.infer<typeof connectAppBody>;
 
+// Этап 21 (лейн notify+integrations, попытка 3): каналы каскада чат-бота (F-13-146/147) — свой enum, не
+// пересекается с webhookEntity выше.
+export const appChannel = z.enum(['sms', 'whatsapp', 'waba', 'telegram', 'viber', 'email', 'voice', 'other']);
+export type AppChannel = z.infer<typeof appChannel>;
+
+export const gaDataStreamOut = z.object({ id: z.string(), streamId: z.string(), formLabel: z.string(), createdAt: z.string() });
+
 export const appInstallOut = z.object({
   id: z.string(),
   appId: z.string(),
@@ -120,6 +127,18 @@ export const appInstallOut = z.object({
   lastEventKind: z.enum(['sync', 'message', 'booking']).optional(),
   recentErrors: z.array(z.object({ id: z.string(), at: z.string(), reason: z.string() })).optional(),
   lastTest: z.object({ at: z.string(), ok: z.boolean(), reason: z.string().optional() }).optional(),
+  // ── этап 21 (лейн notify+integrations), попытка 3: b03/b04 настройки конкретного приложения (Р19: наше
+  // хранение статуса/настроек чужого приложения, без настоящего обмена) — IntegrationConnection.config JSON ──
+  authKey: z.string().optional(),
+  senderName: z.string().optional(),
+  senderNameStatus: z.enum(['none', 'pending', 'approved']).optional(),
+  whatsappNumberMode: z.enum(['default', 'own']).optional(),
+  metaTemplatesApproved: z.boolean().optional(),
+  gaStreams: z.array(gaDataStreamOut).optional(),
+  kommoSyncMode: z.enum(['conditional', 'unconditional', 'none']).optional(),
+  kommoDedupe: z.boolean().optional(),
+  cascadeOrder: z.array(appChannel).optional(),
+  negativeReviewIntercept: z.boolean().optional(),
 });
 export type AppInstallOut = z.infer<typeof appInstallOut>;
 
@@ -139,3 +158,26 @@ export const systemUserOut = z.object({
   billedInSubscription: z.boolean(),
 });
 export type SystemUserOut = z.infer<typeof systemUserOut>;
+
+// ─────────── Этап 21 (лейн notify+integrations), попытка 3: b03/b04 настройки install-а (Р19) ───────────
+
+export const setSmsAggregatorAuthBody = z.object({ authKey: z.string().max(200), senderName: z.string().min(1).max(40) });
+export const setWhatsappNumberModeBody = z.object({ mode: z.enum(['default', 'own']) });
+export const setCascadeOrderBody = z.object({ order: z.array(appChannel).max(8) });
+export const setNegativeReviewInterceptBody = z.object({ on: z.boolean() });
+export const addGaStreamBody = z.object({ streamId: z.string().min(1).max(40), formLabel: z.string().min(1).max(120) });
+export const updateGaStreamBody = z.object({ streamId: z.string().min(1).max(40), formLabel: z.string().min(1).max(120) });
+export const setKommoSyncModeBody = z.object({ mode: z.enum(['conditional', 'unconditional', 'none']) });
+export const setKommoDedupeBody = z.object({ dedupe: z.boolean() });
+
+// ─────────── Идентификаторы для внешних систем (F-13-056) ───────────
+
+export const identifiersOut = z.object({
+  businessId: z.string(),
+  locations: z.array(z.object({ id: z.string(), name: z.string() })),
+  staff: z.array(z.object({ id: z.string(), name: z.string() })),
+  services: z.array(z.object({ id: z.string(), name: z.string() })),
+});
+export type IdentifiersOut = z.infer<typeof identifiersOut>;
+
+export const locationOptionOut = z.object({ id: z.string(), name: z.string() });

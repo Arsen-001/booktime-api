@@ -137,6 +137,9 @@ export const ID_PREFIX = {
   networkField: 'nf',
   networkGoodsCategoryLink: 'ngcl',
   networkBroadcast: 'nbc',
+  // этап 21 (лейн network+reports) — подразделение nsd, тип нерабочего дня сети nodt
+  networkSubdivision: 'nsd',
+  networkOffDayType: 'nodt',
   // этап 16 — отчёты: только на сервере — выгрузка rex
   reportExport: 'rex',
   // этап 17 — интеграции: только на сервере (мок хранит id произвольными строками) — ключ/токен apik,
@@ -205,6 +208,9 @@ export const ID_PREFIX = {
   // 'wh' занят warehouse на сервере, поэтому свой префикс. Хранится в BusinessSetting (JSON, area
   // 'notify-webhooks'), не своя таблица — см. notify-more.service.ts.
   notifyWebhook: 'nwh',
+  // этап 21 (лейн notify+integrations), попытка 3 — GA-поток install-а (F-13-080/b04, мок newId('ga'));
+  // хранится в IntegrationConnection.config JSON (b03/b04 «свои» поля AppInstall, см. connections.service.ts).
+  gaDataStream: 'ga',
   // этап 21 (лейн rest), попытка 2 — журнал рассылок CRM/сообщения из окна записи (F-04-038…040/100,
   // мок newId('msg')): своя таблица ClientBroadcastMessage, префикс свой ('msg' ни за кем не закреплён
   // на сервере, но короче и понятнее свой)

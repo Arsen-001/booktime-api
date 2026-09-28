@@ -605,6 +605,22 @@ export class JournalService {
     return { bookingId, ...(r.data as object), authorName: r.authorName, updatedAt: utcToLocal(r.updatedAt) };
   }
 
+  // ─────────── своё напоминание и приглашение на повтор (F-04-100, этап 21 «rest») ───────────
+
+  async getReminder(businessIds: string[], bookingId: string) {
+    const row = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId: { in: businessIds } }, select: { id: true, reminderOverride: true } });
+    if (!row) throw new ApiError('not_found', 'Booking not found');
+    return { bookingId: row.id, ...((row.reminderOverride as { remindAt?: string; revisitInviteDays?: number } | null) ?? {}) };
+  }
+
+  async setReminder(businessIds: string[], bookingId: string, patch: { remindAt?: string; revisitInviteDays?: number }) {
+    const row = await this.bookings.find(this.prisma, businessIds, bookingId);
+    const current = (row.reminderOverride as { remindAt?: string; revisitInviteDays?: number } | null) ?? {};
+    const next = { ...current, ...patch };
+    await this.prisma.booking.update({ where: { id: row.id }, data: { reminderOverride: next } });
+    return { bookingId: row.id, ...next };
+  }
+
   async medicalCard(businessId: string, clientId: string) {
     const r = await this.prisma.medicalCard.findFirst({ where: { clientId, businessId } });
     return r ? { clientId, ...(r.data as object), updatedAt: utcToLocal(r.updatedAt) } : null;

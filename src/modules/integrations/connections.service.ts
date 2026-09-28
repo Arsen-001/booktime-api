@@ -1,11 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { ApiError } from '../../common/errors/api-error.js';
-import type { IntegrationConnection } from '../../generated/prisma/client.js';
+import type { IntegrationConnection, Prisma } from '../../generated/prisma/client.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import type { AppInstallOut, ConnectAppBody, RequestedScope, SystemUserOut } from './integrations.schemas.js';
 
 const ACTIVATION_WINDOW_MS = 60 * 60 * 1000;
+const J = (v: unknown) => v as Prisma.InputJsonValue;
+
+/** b03/b04 «свои» поля AppInstall фронта (Р19) — один JSON вместо колонки на каждое, см. schema.prisma комментарий */
+interface AppInstallConfig {
+  authKey?: string;
+  senderName?: string;
+  senderNameStatus?: 'none' | 'pending' | 'approved';
+  whatsappNumberMode?: 'default' | 'own';
+  metaTemplatesApproved?: boolean;
+  gaStreams?: { id: string; streamId: string; formLabel: string; createdAt: string }[];
+  kommoSyncMode?: 'conditional' | 'unconditional' | 'none';
+  kommoDedupe?: boolean;
+  cascadeOrder?: string[];
+  negativeReviewIntercept?: boolean;
+}
 
 interface ConnectionRow {
   id: string;
@@ -25,9 +40,11 @@ interface ConnectionRow {
   lastEventKind?: string | null;
   recentErrors?: unknown;
   lastTest?: unknown;
+  config?: unknown;
 }
 
 function view(row: ConnectionRow): AppInstallOut {
+  const cfg = (row.config as AppInstallConfig | null) ?? {};
   return {
     id: row.id,
     appId: row.appId,
@@ -46,6 +63,16 @@ function view(row: ConnectionRow): AppInstallOut {
     lastEventKind: (row.lastEventKind as AppInstallOut['lastEventKind']) ?? undefined,
     recentErrors: (row.recentErrors as AppInstallOut['recentErrors']) ?? undefined,
     lastTest: (row.lastTest as AppInstallOut['lastTest']) ?? undefined,
+    authKey: cfg.authKey,
+    senderName: cfg.senderName,
+    senderNameStatus: cfg.senderNameStatus,
+    whatsappNumberMode: cfg.whatsappNumberMode,
+    metaTemplatesApproved: cfg.metaTemplatesApproved,
+    gaStreams: cfg.gaStreams,
+    kommoSyncMode: cfg.kommoSyncMode,
+    kommoDedupe: cfg.kommoDedupe,
+    cascadeOrder: cfg.cascadeOrder as AppInstallOut['cascadeOrder'],
+    negativeReviewIntercept: cfg.negativeReviewIntercept,
   };
 }
 

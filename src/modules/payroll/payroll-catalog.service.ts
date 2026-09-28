@@ -121,6 +121,14 @@ export class PayrollCatalogService {
     return row ? schemeView(row) : undefined;
   }
 
+  /** F-09-001/010: «Схемы расчёта» — все схемы бизнеса разом (этап 21, лейн rest), тот же приём, что listStaffRights */
+  async listSchemesByBusiness(businessId: string): Promise<Record<string, ReturnType<typeof schemeView>>> {
+    const rows = await this.prisma.payrollScheme.findMany({ where: { businessId } });
+    const out: Record<string, ReturnType<typeof schemeView>> = {};
+    for (const row of rows) out[row.staffId] = schemeView(row);
+    return out;
+  }
+
   async saveScheme(ctx: RequestContext, staffId: string, body: SchemeBlocksBody) {
     const businessId = ctx.member!.businessId;
     const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });

@@ -134,7 +134,125 @@ export class ClientsExtrasService {
     if (input.birthday) data.birthday = input.birthday;
     data.adConsent = { given: input.adConsentGiven, at: new Date().toISOString(), method: 'link' } as Prisma.InputJsonValue;
     const updated = await this.prisma.client.update({ where: { id: clientId }, data });
-    return updated;
+    // Только поля ядра (domain/core.ts::Client) — тот же набор, что `toClient()` в src/api/clients/card.ts,
+    // экран анкеты (`ConsentFormScreen`) не знает про ClientRow-агрегаты (visits/sold/…)
+    return {
+      id: updated.id,
+      businessId: updated.businessId,
+      phone: updated.phone,
+      name: updated.name,
+      gender: updated.gender as 'female' | 'male' | 'unknown',
+      birthday: updated.birthday ?? undefined,
+      email: updated.email ?? undefined,
+      note: updated.note ?? undefined,
+      tags: (updated.tags as string[] | null) ?? [],
+      appUserId: updated.appUserId ?? undefined,
+      noShowCount: updated.noShowCount,
+      blocked: updated.blocked ?? undefined,
+      createdAt: updated.createdAt.toISOString(),
+    };
+  }
+
+  // ─────────── визиты, лояльность клиента, напоминание (F-04-091/093/099/100, этап 21, лейн rest, попытка 2) ───────────
+
+  /**
+   * F-04-091: люди, записанные на номер этого клиента (ребёнок/питомец/другое, F-00-125). Считаем по ВСЕМ
+   * записям, включая мягко удалённые (deletedAt) — карточка не теряет посетителя, когда все записи удалены
+   * (проверено на Altegio: «Посетители: …» остаётся); визит засчитан только если статус arrived и запись жива.
+   */
+  async listVisitors(businessId: string, clientId: string) {
+    const bookings = await this.prisma.booking.findMany({
+      where: { businessId, clientId, forWhom: { not: 'self' }, visitorName: { not: null } },
+      select: { forWhom: true, visitorName: true, status: true, deletedAt: true, startAt: true },
+      orderBy: { startAt: 'asc' },
+    });
+    const map = new Map<string, { key: string; name: string; forWhom: string; visits: number; lastVisit?: string }>();
+    for (const b of bookings) {
+      const name = (b.visitorName ?? '').trim();
+      if (!name) continue;
+      const key = `${b.forWhom}:${name}`;
+      const row = map.get(key) ?? { key, name, forWhom: b.forWhom, visits: 0, lastVisit: undefined };
+      if (!b.deletedAt && b.status === 'arrived') row.visits += 1;
+      if (!b.deletedAt) {
+        const d = b.startAt.toISOString().slice(0, 10);
+        if (!row.lastVisit || d > row.lastVisit) row.lastVisit = d;
+      }
+      map.set(key, row);
+    }
+    return Array.from(map.values());
+  }
+
+  /**
+   * F-04-093: лояльность одного клиента для мини-карточки в окне записи — сертификаты и абонементы с
+   * балансами. Читает уже готовые таблицы раздела loyalty (`Certificate`/`MembershipSale`, этап 11/21) сама
+   * (запрос на чтение, без правки чужой схемы) — не завожу параллельный сервис в модуле loyalty, которым
+   * сейчас занят другой лейн.
+   */
+  async getClientLoyalty(businessId: string, clientId: string) {
+    const [certs, subs] = await Promise.all([
+      this.prisma.certificate.findMany({ where: { businessId, clientId }, include: { type: true }, orderBy: { soldAt: 'desc' } }),
+      this.prisma.membershipSale.findMany({ where: { businessId, clientId }, include: { type: true }, orderBy: { soldAt: 'desc' } }),
+    ]);
+    return {
+      certificates: certs.map((c) => ({
+        id: c.id,
+        businessId: c.businessId,
+        clientId: c.clientId as string,
+        name: c.type.name,
+        total: Number(c.total),
+        balance: Number(c.balance),
+        soldAt: c.soldAt.toISOString().slice(0, 10),
+        expiresAt: c.expiresAt.toISOString().slice(0, 10),
+        code: c.code,
+      })),
+      subscriptions: subs.map((s) => ({
+        id: s.id,
+        businessId: s.businessId,
+        clientId: s.clientId as string,
+        name: s.type.name,
+        status: (s.status === 'active' ? 'active' : 'expired') as 'active' | 'expired',
+        frozen: s.status === 'frozen',
+        soldAt: s.soldAt.toISOString().slice(0, 10),
+        expiresAt: s.expiresAt.toISOString().slice(0, 10),
+        totalVisits: s.totalVisits ?? 0,
+        remainingVisits: s.remainingVisits ?? 0,
+        code: s.code,
+      })),
+    };
+  }
+
+  /** F-04-099: клиент по номеру абонемента/сертификата (showLoyaltySearchInBookingWindow) */
+  async findClientByLoyaltyCode(businessId: string, code: string): Promise<{ clientId: string; clientName: string } | undefined> {
+    const trimmed = code.trim();
+    if (!trimmed) return undefined;
+    const [sub, cert] = await Promise.all([
+      this.prisma.membershipSale.findFirst({ where: { businessId, code: trimmed } }),
+      this.prisma.certificate.findFirst({ where: { businessId, code: trimmed } }),
+    ]);
+    const clientId = sub?.clientId ?? cert?.clientId;
+    if (!clientId) return undefined;
+    const client = await this.prisma.client.findFirst({ where: { id: clientId, businessId, deletedAt: null } });
+    if (!client) return undefined;
+    return { clientId, clientName: client.name };
+  }
+
+  /** F-04-100: своё напоминание/приглашение на повтор поверх одной записи */
+  async getBookingReminder(bookingId: string) {
+    const row = await this.prisma.bookingReminder.findUnique({ where: { bookingId } });
+    if (!row) return undefined;
+    return { bookingId: row.bookingId, remindAt: row.remindAt?.toISOString(), revisitInviteDays: row.revisitInviteDays ?? undefined };
+  }
+
+  async setBookingReminder(bookingId: string, patch: { remindAt?: string; revisitInviteDays?: number }) {
+    if (patch.revisitInviteDays !== undefined && (patch.revisitInviteDays < 0 || patch.revisitInviteDays > 365)) {
+      throw new ApiError('invalid_days', 'Between 0 and 365 days');
+    }
+    const row = await this.prisma.bookingReminder.upsert({
+      where: { bookingId },
+      create: { bookingId, remindAt: patch.remindAt ? new Date(patch.remindAt) : undefined, revisitInviteDays: patch.revisitInviteDays },
+      update: { ...(patch.remindAt !== undefined ? { remindAt: patch.remindAt ? new Date(patch.remindAt) : null } : {}), ...(patch.revisitInviteDays !== undefined ? { revisitInviteDays: patch.revisitInviteDays } : {}) },
+    });
+    return { bookingId: row.bookingId, remindAt: row.remindAt?.toISOString(), revisitInviteDays: row.revisitInviteDays ?? undefined };
   }
 
   // ─────────── доп. поля (F-04-060, 139…145) ───────────

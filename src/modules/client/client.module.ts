@@ -5,10 +5,14 @@ import { PlatformModule } from '../platform/platform.module.js';
 import { ScheduleModule } from '../schedule/schedule.module.js';
 import { AppReportsController } from './app-reports.controller.js';
 import { AppReportsService } from './app-reports.service.js';
+import { AppStaffController } from './app-staff.controller.js';
+import { AppStaffService } from './app-staff.service.js';
 import { CatalogService } from './catalog.service.js';
 import { PublicCatalogController } from './catalog.controller.js';
 import { MeController } from './me.controller.js';
 import { MeService } from './me.service.js';
+import { TranslationsController } from './translations.controller.js';
+import { TranslationsService } from './translations.service.js';
 
 /**
  * Этап 9: приложение клиента (PLAN §6 №9, docs/backend/02 §2). Каталог/карточки/окна считает тот же фундамент,
@@ -23,10 +27,15 @@ import { MeService } from './me.service.js';
  * (см. докстринг `app-reports.service.ts`). Только `reports-common.ts` (чистые функции) и
  * `loyalty.owner.ts::resolveScopeBusinessIds` (тоже чистая функция) — не тянет ни `ReportsModule`, ни второй раз
  * `LoyaltyModule` (он уже в импортах строкой выше).
+ *
+ * `AppStaffController/Service`, `TranslationsController/Service` — этап 21 (лейн client+online, попытка 2):
+ * `client.ts::listAppStaff/setEmployeeAppAccess/getDayZReport/getAppPayrollCalculation/getAppPayrollPayouts/
+ * recordPayrollPayout` и `::getTranslationOverride/listTranslatable/setTranslationOverride`. `AppStaffService`
+ * зовёт `BookingsService.view()` для Z-отчёта — уже в импортах через `JournalModule`.
  */
 @Module({
   imports: [ScheduleModule, JournalModule, LoyaltyModule, PlatformModule],
-  controllers: [PublicCatalogController, MeController, AppReportsController],
-  providers: [CatalogService, MeService, AppReportsService],
+  controllers: [PublicCatalogController, MeController, AppReportsController, AppStaffController, TranslationsController],
+  providers: [CatalogService, MeService, AppReportsService, AppStaffService, TranslationsService],
 })
 export class ClientModule {}

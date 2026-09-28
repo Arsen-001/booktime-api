@@ -2,11 +2,48 @@ import { z } from 'zod';
 
 export const localizedText = z.object({ ru: z.string().min(1).max(600), hy: z.string().max(600).optional(), en: z.string().max(600).optional() });
 
+const richChannel = z.enum(['push', 'adminApp', 'email', 'sms', 'brandedApp', 'whatsapp', 'telegram']);
+const richScenario = z.enum(['off', 'always', 'fallback']);
+const richLocalizedTextPartial = z.object({ ru: z.string().max(600).optional(), hy: z.string().max(600).optional(), en: z.string().max(600).optional() });
+const richEmailExtra = z.object({
+  enabled: z.boolean(),
+  indent: z.boolean(),
+  text: z.string().max(2000),
+  imageUrl: z.string().max(2000).optional(),
+  videoUrl: z.string().max(2000).optional(),
+  linkUrl: z.string().max(2000).optional(),
+  linkLabel: z.string().max(200).optional(),
+});
+const richConditions = z
+  .object({
+    timingHours: z.number().min(0).max(720).optional(),
+    emailTimingHours: z.number().min(0).max(720).optional(),
+    useSpecificTime: z.boolean().optional(),
+    specificTime: z.string().max(5).optional(),
+    rescheduleThresholdMinutes: z.number().optional(),
+    rescheduleSource: z.enum(['client', 'staff', 'all']).optional(),
+    inviteAfterHours: z.number().min(0).max(720).optional(),
+    inviteStatusFilter: z.enum(['cancelled', 'noShow', 'all']).optional(),
+    reviewDelayMinutes: z.number().min(0).max(10080).optional(),
+    reviewExcludeServiceIds: z.array(z.string().max(32)).optional(),
+    reviewExcludeIfReviewed: z.object({ location: z.boolean().optional(), staff: z.boolean().optional(), service: z.boolean().optional() }).optional(),
+    birthdayMode: z.enum(['onDay', 'daysBefore']).optional(),
+    birthdayDaysBefore: z.number().min(0).max(30).optional(),
+    birthdayTimeOfDay: z.string().max(5).optional(),
+    discountExpiryDaysBefore: z.number().min(0).max(90).optional(),
+    winbackAfterDays: z.number().min(0).max(365).optional(),
+    serviceTimingHours: z.record(z.string(), z.number()).optional(),
+  })
+  .partial();
+
 export const updateTypeBody = z.object({
-  kind: z.string().min(1).max(32),
+  code: z.number().int(),
   patch: z.object({
     enabled: z.boolean().optional(),
-    channels: z.array(z.object({ channel: z.literal('push'), scenario: z.enum(['off', 'always']) })).optional(),
+    channels: z.array(z.object({ channel: richChannel, scenario: richScenario })).optional(),
+    templates: z.record(richChannel, richLocalizedTextPartial).optional(),
+    emailExtra: richEmailExtra.optional(),
+    conditions: richConditions.optional(),
   }),
 });
 
@@ -120,3 +157,23 @@ export const bookingNotifyOverrideBody = z.object({
   emailEnabled: z.boolean(),
   emailTimingHours: z.number().int().min(0).max(168),
 });
+
+// ─────────── уведомления сотрудника — богатая матрица (F-05-055…060), этап 21 попытка 3 ───────────
+
+const staffNotifyEventRich = z.enum(['createdByClient', 'createdByAdmin', 'deleted', 'moved', 'cancelledByAdmin', 'licenseExpiring', 'billingDocs']);
+const staffNotifyChannelRich = z.enum(['sms', 'email', 'push']);
+const staffNotifyMatrixRich = z.record(staffNotifyEventRich, z.record(staffNotifyChannelRich, z.boolean()));
+
+export const staffPrefsRichPatchBody = z.object({
+  view: z.enum(['admin', 'staff', 'byAccess', 'off']).optional(),
+  matrix: staffNotifyMatrixRich.optional(),
+  sendClientContacts: z.boolean().optional(),
+});
+
+export const staffPrefsRichCellBody = z.object({
+  event: staffNotifyEventRich,
+  channel: staffNotifyChannelRich,
+  value: z.boolean(),
+});
+
+export const anyStaffPrefsConfiguredBody = z.object({ staffIds: z.array(z.string().min(1).max(32)).min(1).max(500) });

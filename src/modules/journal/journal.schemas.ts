@@ -189,6 +189,8 @@ export const waitlistPatchBody = waitlistBody.partial();
 export const waitlistCloseBody = z.object({ bookingId: id });
 
 export const medicalVisitBody = z.object({ patch: z.record(z.string(), z.string().max(10000)), authorName: z.string().max(160) });
+/// F-04-100 (этап 21, лейн rest): своё напоминание клиенту и срок приглашения на повторный визит для ОДНОЙ записи
+export const bookingReminderBody = z.object({ remindAt: localDateTime.optional(), revisitInviteDays: z.number().int().min(0).max(365).optional() });
 export const medicalCardBody = z.record(z.string(), z.string().max(2000));
 export const planBody = z.object({ title: z.string().min(1).max(300), serviceIds: z.array(id).max(100) });
 

@@ -1050,7 +1050,10 @@ export class OnlineService {
     const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
     if (!staff) return [] as Candidate[];
     const bookings = await this.prisma.booking.findMany({ where: { businessId, staffId, deletedAt: null } });
-    const clients = await this.prisma.client.findMany({ where: { businessId, blocked: false, deletedAt: null } });
+    // `Client.blocked` — `Boolean?`: непроставленное (NULL) значит «не заблокирован», а SQL `blocked = false` NULL
+    // не ловит — нашёл настоящим HTTP: на 97 реальных записях мастера список кандидатов был пуст до фикса, с
+    // `{ not: true }` регулярные клиенты находятся.
+    const clients = await this.prisma.client.findMany({ where: { businessId, blocked: { not: true }, deletedAt: null } });
     const clientsById = new Map(clients.map((c) => [c.id, c] as const));
     const out: Candidate[] = [];
     let cursor = utcToLocal(new Date()).slice(0, 10);
