@@ -180,6 +180,10 @@ export const ERROR_STATUS = {
   integration_unavailable: HttpStatus.UNPROCESSABLE_ENTITY,
   invalid_input: HttpStatus.UNPROCESSABLE_ENTITY,
   phone_not_verified: HttpStatus.UNPROCESSABLE_ENTITY,
+  // этап 21, лейн rest, попытка 2 — рассылки CRM (src/api/clients/bulk.ts) — коды мока как есть
+  sms_not_connected: HttpStatus.UNPROCESSABLE_ENTITY,
+  empty_text: HttpStatus.UNPROCESSABLE_ENTITY,
+  no_app_user: HttpStatus.UNPROCESSABLE_ENTITY,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

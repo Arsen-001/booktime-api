@@ -205,6 +205,10 @@ export const ID_PREFIX = {
   // 'wh' занят warehouse на сервере, поэтому свой префикс. Хранится в BusinessSetting (JSON, area
   // 'notify-webhooks'), не своя таблица — см. notify-more.service.ts.
   notifyWebhook: 'nwh',
+  // этап 21 (лейн rest), попытка 2 — журнал рассылок CRM/сообщения из окна записи (F-04-038…040/100,
+  // мок newId('msg')): своя таблица ClientBroadcastMessage, префикс свой ('msg' ни за кем не закреплён
+  // на сервере, но короче и понятнее свой)
+  clientBroadcastMessage: 'cbm',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

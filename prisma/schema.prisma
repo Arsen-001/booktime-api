@@ -4045,3 +4045,41 @@ model CashShift {
 }
 
 // === end stage 21 (лейн finance+stock) ===
+
+// === stage 21 (лейн rest), попытка 2 ===
+
+/// Своё напоминание клиенту и приглашение на повторный визит поверх одной записи (F-04-100,
+/// clients/settings.ts::getBookingReminder/setBookingReminder) — не общие настройки уведомлений раздела
+/// «журнал», а точечная правка одной строки Booking; bookingId не связан внешним ключом намеренно (Booking
+/// живёт в модуле journal, чужой лейн — здесь только сама пометка, читающая сторона проверяет businessId сама).
+model BookingReminder {
+  bookingId         String    @id @map("booking_id") @db.VarChar(32)
+  remindAt          DateTime? @map("remind_at") @db.DateTime(3)
+  /// 0/NULL — не приглашать отдельно
+  revisitInviteDays Int?      @map("revisit_invite_days")
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("booking_reminders")
+}
+
+/// Журнал массовых рассылок CRM (F-04-038…040) и разового сообщения из окна записи (F-04-100,
+/// clients/bulk.ts). Одна строка на рассылку (audienceCount) или на одно сообщение клиенту (clientId).
+model ClientBroadcastMessage {
+  id            String   @id @db.VarChar(32)
+  businessId    String   @map("business_id") @db.VarChar(32)
+  /// sms | push | whatsapp
+  channel       String   @db.VarChar(10)
+  text          String   @db.VarChar(1000)
+  audienceCount Int      @default(1) @map("audience_count")
+  /// F-04-100: сообщение из окна записи адресовано одному клиенту, а не рассылке
+  clientId      String?  @map("client_id") @db.VarChar(32)
+  /// bulk | bookingWindow
+  source        String   @default("bulk") @db.VarChar(16)
+  sentAt        DateTime @default(now()) @map("sent_at") @db.DateTime(3)
+
+  @@index([businessId, sentAt])
+  @@index([clientId, sentAt])
+  @@map("client_broadcast_messages")
+}
+
+// === end stage 21 (лейн rest), попытка 2 ===
