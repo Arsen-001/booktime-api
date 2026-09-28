@@ -23,6 +23,7 @@ import { PlatformNotesController } from './notes.controller.js';
 import { PlatformNotesService } from './notes.service.js';
 import { PlatformConnectController, PlatformConnectResultController } from './connect.controller.js';
 import { ConnectService } from './connect.service.js';
+import { PlatformTeamController } from './team.controller.js';
 
 /**
  * Этап 19 — модерация и наша панель (docs/backend/02 §19, 06 §1). Попытка 3 достроила последнее, что оставалось:
@@ -32,6 +33,7 @@ import { ConnectService } from './connect.service.js';
  */
 @Module({
   controllers: [
+    PlatformTeamController,
     PlatformModerationController,
     BizModerationController,
     ModerationStatusController,

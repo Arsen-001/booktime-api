@@ -4320,3 +4320,18 @@ model VisitCashRecord {
 }
 
 // === end stage 21 (лейн client+online), попытка 4 ===
+
+// === stage 21 (сдача, попытка 4) ===
+/// Настройки сети одной строкой на область (как BusinessSetting у бизнеса): `planEmailSchedule` (F-12-081),
+/// `telephony` (F-11-146…152 — Р19: чужая телефония, сервер хранит только «подключено» + маршруты/правила).
+model NetworkSetting {
+  networkId String   @map("network_id") @db.VarChar(32)
+  area      String   @db.VarChar(40)
+  data      Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy String?  @map("updated_by") @db.VarChar(32)
+
+  @@id([networkId, area])
+  @@map("network_settings")
+}
+// === end stage 21 (сдача, попытка 4) ===

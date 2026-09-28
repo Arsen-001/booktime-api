@@ -161,6 +161,12 @@ export const bulkIdsBody = z.object({ clientIds: z.array(id32).min(1).max(5000) 
 export const bulkCategoryBody = z.object({ clientIds: z.array(id32).min(1).max(5000), category: z.string().min(1).max(80), color: z.string().max(20).optional() });
 export const mergeBody = z.object({ keepId: id32, duplicateId: id32 });
 
+// ─────────── рассылки CRM и сообщение из окна записи (F-04-038…040, F-04-100; этап 21, сдача) ───────────
+const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const bulkTextBody = z.object({ clientIds: z.array(id32).max(5000), text: z.string().min(1).max(1000) });
+export const bookingWindowMessageBody = z.object({ clientId: id32, text: z.string().min(1).max(1000), channel: z.enum(['push', 'whatsapp']) });
+export const messageLogQuery = z.object({ from: ymd, to: ymd });
+
 // ─────────── доп. поля (F-04-060, 139…145) ───────────
 
 export const customFieldType = z.enum(['text', 'number', 'list', 'date']);

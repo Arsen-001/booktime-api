@@ -225,6 +225,9 @@ export const ID_PREFIX = {
   // этап 21 (лейн network+reports), попытка 3 — архив товаров сети (F-11-118, мок newId('goodsarch'));
   // тот же 5-буквенный предел префикса
   networkGoodsArchiveEntry: 'ngar',
+  // этап 21 (сдача, попытка 4) — маршрут и правило телефонии сети (мок newId('net-route')/newId('net-rule'))
+  networkTelRoute: 'ntrt',
+  networkTelRule: 'ntrl',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

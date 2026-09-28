@@ -4,6 +4,7 @@ import type { BusinessMessenger } from '../../adapters/business-sms/business-sms
 import { ApiError } from '../../common/errors/api-error.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { localDayRangeUtc, utcToLocal } from '../../common/time/time.js';
 import { enqueueClientNotification } from '../notify/outbox.js';
 
 const SMS_AREA = 'notify-sms';
@@ -116,7 +117,7 @@ export class ClientsBroadcastService {
   /** F-04-038 «Готово, когда»: отправленное видно в отчёте сообщений бизнеса */
   async listLog(businessId: string, from: string, to: string): Promise<BroadcastMessageOut[]> {
     const rows = await this.prisma.clientBroadcastMessage.findMany({
-      where: { businessId, sentAt: { gte: new Date(`${from}T00:00:00.000Z`), lte: new Date(`${to}T23:59:59.999Z`) } },
+      where: { businessId, sentAt: { gte: localDayRangeUtc(from).from, lt: localDayRangeUtc(to).to } },
       orderBy: { sentAt: 'desc' },
     });
     return rows.map(toOut);
@@ -125,6 +126,12 @@ export class ClientsBroadcastService {
   /** F-04-100: сообщение из окна записи видно в истории сообщений клиента */
   async listClientLog(clientId: string): Promise<BroadcastMessageOut[]> {
     const rows = await this.prisma.clientBroadcastMessage.findMany({ where: { clientId }, orderBy: { sentAt: 'desc' } });
+    return rows.map(toOut);
+  }
+
+  /** То же, но клиент обязан принадлежать бизнесу из пути (маршрут кабинета) */
+  async listClientLogFor(businessId: string, clientId: string): Promise<BroadcastMessageOut[]> {
+    const rows = await this.prisma.clientBroadcastMessage.findMany({ where: { clientId, businessId }, orderBy: { sentAt: 'desc' } });
     return rows.map(toOut);
   }
 
@@ -142,7 +149,8 @@ function toOut(r: { id: string; businessId: string; channel: string; text: strin
     channel: r.channel as BroadcastMessageOut['channel'],
     text: r.text,
     audienceCount: r.audienceCount,
-    sentAt: r.sentAt.toISOString(),
+    // Местное время бизнеса «YYYY-MM-DDTHH:mm», как ISODateTime фронта (экран режет [0,10] под день)
+    sentAt: utcToLocal(r.sentAt),
     clientId: r.clientId ?? undefined,
     source: r.source as BroadcastMessageOut['source'],
   };

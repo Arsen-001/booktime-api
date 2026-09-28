@@ -126,6 +126,13 @@ export class ClientsExtrasService {
     return consent;
   }
 
+  /** Анкета под сессией бизнеса (этап 21): клиент обязан принадлежать бизнесу из пути */
+  async submitConsentFormFor(businessId: string, clientId: string, input: { name?: string; birthday?: string; adConsentGiven: boolean }) {
+    const own = await this.prisma.client.findFirst({ where: { id: clientId, businessId, deletedAt: null }, select: { id: true } });
+    if (!own) throw new ApiError('not_found', 'Client not found');
+    return this.submitConsentForm(clientId, input);
+  }
+
   async submitConsentForm(clientId: string, input: { name?: string; birthday?: string; adConsentGiven: boolean }) {
     const client = await this.prisma.client.findUnique({ where: { id: clientId } });
     if (!client) throw new ApiError('not_found', 'Client not found');

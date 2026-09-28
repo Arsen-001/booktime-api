@@ -7,6 +7,7 @@ import { NetworkCatalogController, NetworkCatalogService } from './network-catal
 import { NetworkClientsController, NetworkClientsService } from './network-clients.controller.js';
 import { NetworkReportsController, NetworkReportsService } from './network-reports.controller.js';
 import { NetworkUsersController, NetworkUsersService } from './network-users.controller.js';
+import { NetworkSettingsController, NetworkSettingsService } from './network-settings.controller.js';
 
 /**
  * Этап 15 — Сеть (docs/backend/02 §15, PLAN.md §6 №15): пользователи сети, общая база клиентов, рассылки,
@@ -17,7 +18,7 @@ import { NetworkUsersController, NetworkUsersService } from './network-users.con
  */
 @Module({
   imports: [NotifyModule],
-  controllers: [NetworkUsersController, NetworkClientsController, NetworkBroadcastController, NetworkReportsController, NetworkCatalogController, NetworkBusinessController],
-  providers: [NetworkAccessService, NetworkUsersService, NetworkClientsService, NetworkBroadcastService, NetworkReportsService, NetworkCatalogService],
+  controllers: [NetworkUsersController, NetworkClientsController, NetworkBroadcastController, NetworkReportsController, NetworkCatalogController, NetworkBusinessController, NetworkSettingsController],
+  providers: [NetworkAccessService, NetworkUsersService, NetworkClientsService, NetworkBroadcastService, NetworkReportsService, NetworkCatalogService, NetworkSettingsService],
 })
 export class NetworkModule {}

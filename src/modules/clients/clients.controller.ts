@@ -15,6 +15,10 @@ import {
   bookingWindowFavoriteBody,
   bulkCategoryBody,
   bulkIdsBody,
+  bulkTextBody,
+  bookingWindowMessageBody,
+  consentFormBody,
+  messageLogQuery,
   categoryUpsertBody,
   changeLogEntryOut,
   clientListPageOut,
@@ -43,6 +47,7 @@ import {
 import { ClientsService } from './clients.service.js';
 import { ClientsExtrasService } from './clients-extras.service.js';
 import { ClientsImportExportService } from './clients-import-export.service.js';
+import { ClientsBroadcastService } from './clients-broadcast.service.js';
 
 /** Клиенты / CRM — /v1/biz (docs/backend/01 §5, 02 §6, PLAN §6 №5) */
 @ApiTags('clients')
@@ -52,6 +57,7 @@ export class ClientsController {
     private readonly svc: ClientsService,
     private readonly extras: ClientsExtrasService,
     private readonly importExport: ClientsImportExportService,
+    private readonly broadcast: ClientsBroadcastService,
   ) {}
 
   // ─────────── список / поиск (K8: фильтр и подсчёт — на сервере) ───────────
@@ -335,6 +341,68 @@ export class ClientsController {
   @ZodBody(adConsentBody)
   recordConsent(@Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(adConsentBody)) body: z.infer<typeof adConsentBody>) {
     return this.extras.recordAdConsent(businessId, id, body.given, body.method);
+  }
+
+  /**
+   * F-04-154: анкета клиента (имя, день рождения, согласие на рекламу). Экран открывается в кабинете бизнеса
+   * (мастер даёт клиенту планшет) — поэтому под сессией бизнеса, а не публичный маршрут по одному clientId
+   * (решение этапа 21: публичная запись в чужие данные без токена небезопасна, см. PROGRESS «Вопросы владельцу»).
+   */
+  @Post('clients/:id/consent-form')
+  @Biz('clients.view')
+  @ZodBody(consentFormBody)
+  @ApiOperation({ summary: 'Анкета клиента по ссылке мастера: имя/ДР/согласие (F-04-154)' })
+  submitConsentForm(@Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(consentFormBody)) body: z.infer<typeof consentFormBody>) {
+    return this.extras.submitConsentFormFor(businessId, id, body);
+  }
+
+  // ─────────── рассылки CRM, журнал сообщений (F-04-038…040, F-04-100) ───────────
+
+  @Post('clients/bulk/audience')
+  @Biz('clients.view')
+  @ZodBody(bulkIdsBody)
+  @ApiOperation({ summary: 'Кому уйдёт рассылка из выбранных: sms / push (F-04-227)' })
+  bulkAudience(@Param('businessId') businessId: string, @Body(new Zod(bulkIdsBody)) body: z.infer<typeof bulkIdsBody>) {
+    return this.broadcast.audience(businessId, body.clientIds);
+  }
+
+  @Post('clients/bulk/sms')
+  @Biz('notify.mailings')
+  @ZodBody(bulkTextBody)
+  @ApiOperation({ summary: 'SMS группе клиентов через провайдера бизнеса (F-04-038, В-08)' })
+  async bulkSms(@Param('businessId') businessId: string, @Body(new Zod(bulkTextBody)) body: z.infer<typeof bulkTextBody>) {
+    return { sent: await this.broadcast.sendMessage(businessId, body.clientIds, body.text) };
+  }
+
+  @Post('clients/bulk/push')
+  @Biz('notify.mailings')
+  @ZodBody(bulkTextBody)
+  @ApiOperation({ summary: 'Пуш группе клиентов с приложением, недельный лимит (F-04-039/040)' })
+  async bulkPush(@Param('businessId') businessId: string, @Body(new Zod(bulkTextBody)) body: z.infer<typeof bulkTextBody>) {
+    return { sent: await this.broadcast.sendPush(businessId, body.clientIds, body.text) };
+  }
+
+  @Get('client-messages')
+  @Biz('clients.view')
+  @ApiOperation({ summary: 'Журнал сообщений CRM за период (F-04-038 «видно в отчёте»)' })
+  messageLog(@Param('businessId') businessId: string, @Query(new Zod(messageLogQuery)) q: z.infer<typeof messageLogQuery>) {
+    return this.broadcast.listLog(businessId, q.from, q.to);
+  }
+
+  @Get('clients/:id/messages')
+  @Biz('clients.view')
+  @ApiOperation({ summary: 'История сообщений клиенту (F-04-100)' })
+  clientMessages(@Param('businessId') businessId: string, @Param('id') id: string) {
+    return this.broadcast.listClientLogFor(businessId, id);
+  }
+
+  @Post('clients/booking-window-message')
+  @Biz('clients.view')
+  @ZodBody(bookingWindowMessageBody)
+  @ApiOperation({ summary: 'Разовое сообщение клиенту из окна записи: пуш или WhatsApp мастера (F-04-100)' })
+  async bookingWindowMessage(@Param('businessId') businessId: string, @Body(new Zod(bookingWindowMessageBody)) body: z.infer<typeof bookingWindowMessageBody>) {
+    await this.broadcast.sendBookingWindowMessage(businessId, body.clientId, body.text, body.channel);
+    return { ok: true };
   }
 
   // ─────────── доп. поля (F-04-060, 139…145) ───────────
