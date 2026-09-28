@@ -48,10 +48,16 @@ export class NetworkUsersService {
     private readonly audit: AuditService,
   ) {}
 
+  /** F-11-024: строка «Владелец» (мок держит её прямо в списке users) — не своя таблица, `Network.ownerStaffId`
+   * (этап 21 «network+reports» попытка 2: экран `UsersScreen.tsx` кладёт owner в те же `rows`, что и приглашённых). */
   async list(ctx: RequestContext, networkId: string) {
-    await this.access.require(ctx, networkId, 'users');
+    const { network } = await this.access.require(ctx, networkId, 'users');
     const rows = await this.prisma.networkUser.findMany({ where: { networkId }, orderBy: { createdAt: 'asc' } });
-    return rows.map(out);
+    const owner = network.ownerStaffId ? await this.prisma.staff.findFirst({ where: { id: network.ownerStaffId }, select: { name: true, phone: true, email: true } }) : null;
+    const ownerRow = owner
+      ? [{ id: `owner_${network.id}`, networkId, name: owner.name, phone: owner.phone ?? '', email: owner.email ?? undefined, permissions: [] as string[], lastVisitAt: undefined as string | undefined, isOwner: true as const, pending: false, planReportFrequency: undefined as string | undefined, version: 1 }]
+      : [];
+    return [...ownerRow, ...rows.map(out)];
   }
 
   /** F-11-025: пригласить существующего пользователя (у него уже есть аккаунт по номеру) */

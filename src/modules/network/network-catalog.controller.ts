@@ -271,6 +271,24 @@ export class NetworkCatalogService {
     return { key: source.id, good: goodView(source), businessIds: rows.map((r) => r.businessId) };
   }
 
+  /** Этап 21 «network+reports» попытка 2 (мок `searchNetworkGoods`): построчный поиск, не группировка по имени —
+   * LIKE по трём полям, до 50 строк (та же граница, что мок `.slice(0, 50)`); коллация БД уже без учёта регистра
+   * (utf8mb4_unicode_ci, см. миграции), второй `.toLowerCase()` не нужен. */
+  async searchGoods(ctx: RequestContext, networkId: string, q: string) {
+    const { network } = await this.access.require(ctx, networkId, 'goods');
+    const needle = q.trim();
+    const rows = await this.prisma.product.findMany({
+      where: {
+        businessId: { in: network.businessIds },
+        archived: false,
+        ...(needle ? { OR: [{ name: { contains: needle } }, { sku: { contains: needle } }, { barcode: { contains: needle } }] } : {}),
+      },
+      take: 50,
+      orderBy: { name: 'asc' },
+    });
+    return rows.map(goodView);
+  }
+
   /** F-11-113: создать сетевой товар в первом филиале и раздать по остальным; F-08-135 — networkGroupId/isNetworkSource */
   async saveGoodsProduct(ctx: RequestContext, networkId: string, input: z.infer<typeof networkGoodsProductBody>) {
     const { network } = await this.access.require(ctx, networkId, 'goods');
@@ -598,6 +616,15 @@ export class NetworkCatalogController {
   @ZodBody(networkGoodsCategoryBody)
   saveGoodsCategory(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkGoodsCategoryBody)) body: z.infer<typeof networkGoodsCategoryBody>) {
     return this.svc.saveGoodsCategory(ctx, n, body);
+  }
+
+  /** Этап 21 «network+reports» попытка 2 (мок `searchNetworkGoods`): построчный поиск по имени/SKU/штрихкоду —
+   * СВОЙ маршрут (не группа по имени, как остальной каталог товаров сети выше), нужен экрану выбора товара в
+   * окне записи (клиент несёт услугу + расходники ЛЮБОГО филиала сети). Регистрируется ДО `goods/:groupId`,
+   * иначе `:groupId` съел бы `search` как id. */
+  @Get('goods/search')
+  searchGoods(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query('q') q: string = '') {
+    return this.svc.searchGoods(ctx, n, q);
   }
 
   @Get('goods/:groupId')
