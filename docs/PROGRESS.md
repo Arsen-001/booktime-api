@@ -6545,3 +6545,130 @@ the files on disk»).
 Prisma-модели (~14: локации-порядок, аналитика/записи/миграция сети, должности сети `NetworkPosition`, архив
 товаров) — не по объёму одного захода, следующий заход строит их по одной новой подсистеме за раз, как этот
 заход построил пользователей сети.
+
+## Этап 21, лейн «rest», попытка 4 (28.09.2026)
+
+Начал с `node scripts/facade-audit.mjs` (фронт) и с чтения «Этап 21, лейн «rest», попытка 3» полностью. На старте
+попытки 3 оставила лейну ровно 2 пункта: `clients/bulk.ts` (6, ждёт `notify.ts`) и `clients/extras.ts::submitConsentForm`
+(1, вопрос владельцу). Владелец в этом заходе явно назвал ДРУГИЕ пункты — `platform/*` (блок бизнеса, пакетная
+модерация, «фото в галерее скрывается строкой») и «промокод подписки» в `settings` — все они оказались либо уже
+закрытыми раньше, либо не дырами вовсе, кроме одной реальной находки за пределами аудита фасадов (см. ниже).
+
+**1. Галерея/портфолио на публичной странице не фильтровались модерацией — реальный, честный разрыв (F-00-168).**
+Не входит в аудит фасадов вообще: `src/api/online.ts::getPublicBusinessData` уже стоит за `isApiMode()` (закрыта
+лейном client+online раньше), скрипт `facade-audit.mjs` смотрит только на код внутри мок-ветки и не умеет
+сравнивать её ПОВЕДЕНИЕ с серверной. Нашёл прямым чтением мок-функции: она фильтрует `business.photos` и
+`staff[].photos` через `moderationHiddenIds()` (`hiddenByModeration` из `src/domain/rules/visibility.ts` —
+refId скрыт, если у него есть хоть одна заявка модерации не в статусе approved/auto), а серверный
+`OnlineService.publicBusinessData`/`businessOut` отдавал фото как есть, без единой проверки. Комментарий в самом
+`moderation.service.ts` подтверждал разрыв прямо: «подключение публичных выборок к moderation_status — отдельный
+проход (P7), ничего снаружи модуля сейчас isVisibleToClients не читает» — честно задокументированная, но не
+закрытая дыра.
+
+Закрыто: `ModerationService.hiddenRefIds(refIds: string[]): Promise<Set<string>>` — пакетный вариант уже
+существовавшего `isVisibleToClients(refId)` (один запрос `moderation_items.refId IN (...) AND status NOT IN
+(approved, auto)`, `distinct: ['refId']`), та же семантика, что фронтовый `hiddenByModeration`: скрыт, если у
+refId есть хоть ОДНА заявка не approved/auto — включая давно отклонённую, даже если тот же refId позже одобрен
+другой заявкой (фронт считает так же, не «только последняя»); нет ни одной заявки вовсе — refId не в результате,
+виден как старый контент до проверки. Плюс `photoModerationRefId(url)` — порт `fnv1a`-хеша фронта
+(`src/api/settings.ts::fnv1a`/`mediaRefId`, `img_${hash}`) на бэкенд, чтобы вычислять тот же refId для сырого
+URL фото. Вызов — в `OnlineService.publicBusinessData` (бизнес + весь видимый персонал одним пакетным запросом,
+не N+1) и в `businessOut` (используется тем же методом ещё и в `viewByHash`, свой запрос на бизнес). `OnlineModule`
+теперь импортирует `PlatformModule` ради `ModerationService` — цикла нет, проверено (`PlatformModule` не
+импортирует ни `OnlineModule`, ни `JournalModule`, ни `ScheduleModule`).
+
+**2. `schedule/table.ts::getViewConfig`/`setViewConfig`/`getFilters`/`setFilters` — 4 реальные дыры аудита.**
+Вид таблицы графика (F-02-004) и её фильтры (F-02-003) — во всём файле НИ ОДНОГО `isApiMode()` для этих четырёх
+функций, `ScheduleScreen.tsx` вызывает их напрямую без гейта вообще: в api-режиме «Настроить (N)» и панель
+фильтров молча читали/писали браузерный мок, ничего не долетало до сервера ни разу. Не путать с уже существующим
+`GET/PATCH schedule/settings` (`ScheduleSettings` — anySpecialistAllowed/planningPeriodYears/…, другая сущность,
+трогать не стал).
+
+Закрыто: новые `GET/PUT /v1/biz/:businessId/schedule/view-config` и `GET/PUT /v1/biz/:businessId/schedule/
+table-filters` (`ScheduleController`/`ScheduleService`, zod-схемы `scheduleViewConfigBody`/`scheduleFiltersBody`
+в `schedule.schemas.ts`). Хранение — существующая общая `business_settings` (businessId+area→JSON), свои `area`
+(`scheduleTableView`/`scheduleTableFilters`), без новой таблицы и без миграции. Гейт — голый `@Biz()` на GET и PUT
+(как в самом моке — там нет `assertCan` вообще, это персональная настройка экрана, не бизнес-правило). Фронт:
+`schedule.server.ts` — 4 новых обёртки (`trackRead('areas.schedule')` на GET, `changed()`→`syncSchedule` на PUT,
+тот же приём, что соседний `getSettings`/`patchSettings`); `schedule/table.ts` — `isApiMode()`-ветки в этих
+четырёх, мок-ветки не тронуты.
+
+**Перепроверено и подтверждено НЕ дырами** (тот же класс ложных срабатываний аудита, что документированный
+`computeOverlap`/`computeResourceFree` — регекс ловит обращение к `readArea`/`mutateArea` в теле, не видит, что
+единственный вызывающий уже стоит за `isApiMode()` и возвращается раньше):
+- `journal.ts::computeOverlap`/`computeResourceFree`, `payroll.ts::staffSalaryForSheetSync`,
+  `staff.ts::ownerCountOf`, `platform/demand.ts::reportSearchDemand`, `core.ts::moderationHiddenIds` (сам его
+  единственный вызывающий, `txPlaceBooking`, — мок-ветка уже гейтнутого `placeBooking`) — все перепроверены
+  заново `grep`ом по вызывающим, подтверждаю выводы прошлых попыток.
+- `clients/loyalty.ts::recalcClientLoyaltyImpl`/`recalcAllClientsLoyalty`, `clients/shared.ts` (все 9 функций) —
+  внутренние помощники уже закрытых `clients/*`, не дыры.
+- `schedule/staff.ts::snapshotBeforeRemoveFromSchedule` — **не дыра, а мёртвый код**: `grep -rl` по всему `src`
+  не нашёл ни одного импорта, кроме самого файла определения — ни один экран его не вызывает. Аудит засчитал
+  ложное «(self)»-использование: в том же файле есть JSDoc-комментарий у соседней функции, буквально
+  упоминающий имя со скобкой («Возвращает график к слепку из snapshotBeforeRemoveFromSchedule (реализация
+  «Отменить»…») — под простой регекс аудита (`name` + `\s*\(`) это неотличимо от вызова. Не трогал (удаление
+  мёртвого кода — не мой мандат без явного запроса, и оно не влияет ни на одного живого пользователя).
+
+**Перепроверено по прямому указанию владельца, изменений не внёс** (уже закрыто раньше или архитектурное
+решение, не дыра):
+- `platform/businesses.ts::setBusinessBlocked` (`POST /v1/platform/businesses/{id}/block`) — закрыт попыткой 3
+  этого же лейна, работает end-to-end (проверено `tsc`+живым маршрутом в `openapi.json`).
+- `platform/moderation.ts` пакетная модерация (`approveModerationItems`/`rejectModerationItems`/
+  `reopenModerationItems`) — закрыта попыткой 1 этого лейна (`/v1/platform/moderation/bulk/*`, транзакция).
+- `platform/promo.ts::redeemPromo` («промокод подписки») — перепроверен третий раз за три разных попытки (1, 3,
+  этот заход). 06 §4.2 явно ограничивает применение промокода регистрацией бизнеса или первой оплатой подписки;
+  отдельного маршрута «ввести код» у уже работающего бизнеса в доке нет вовсе — мок-путь без `isApiMode()`
+  остаётся верным поведением и в api-режиме. Не дыра, задокументированное архитектурное решение (комментарий уже
+  стоит в `promo.ts` с попытки 1).
+- `platform/team.ts::listTeam` — прежняя честная архитектурная дыра: на бэкенде нет модели «сотрудник платформы»
+  (вход команды — общий логин `platform`/пароль+код, Р11), заводить `PlatformStaff` ради дропдауна — отдельный
+  кусок этапа входа команды, не «Сдача». Не строил, вне объёма этого захода.
+
+**Проверено настоящим HTTP** на `biz_atam`/`+37400130001`/код `0000` (владелец, `st_atam_armen`), после
+`npm run build`+рестарт `:4010`/`:worker` под `/tmp/booktime-db.lock` (~3 минуты, отпущен сразу — миграция не
+понадобилась, обе фичи легли в уже существующие `business_settings`/`moderation_items`, `prisma migrate status`
+подтвердил «up to date» до и после):
+- `GET/PUT/GET schedule/view-config` — `{showShiftTotals:true,showHeadcount:true}` (дефолт) → `PUT
+  {showShiftTotals:false,...}` → прочитано обратно верно.
+- `GET/PUT/GET schedule/table-filters` — дефолт → `PUT {staffIds:['st_atam_armen'],hasSchedule:'with',
+  fired:'only',...}` → прочитано обратно верно.
+- Галерея: бизнес `biz_atam` (слаг `atam-dental`) имеет 3 фото — `GET /v1/public/b/atam-dental` вернул все 3 на
+  чистой базе (нет заявок модерации — «старый контент», видно по правилу). Вставил SQL-строку
+  `moderation_items` со статусом `pending` на хеш (посчитанный тем же `fnv1a`, что и бэкенд) реального первого
+  фото галереи → повторный запрос вернул 2 фото. Вставил вторую строку `rejected` на хеш реального фото
+  `st_atam_karen` → его портфолио 2→1, и заодно (ожидаемо, не баг) у `st_atam_armen` тоже 2→1 — сид переиспользует
+  один и тот же SVG-плейсхолдер для нескольких сотрудников, хеш общий, контент-адресация работает как задумано.
+  Обе тестовые строки удалены после проверки, `GET .../b/atam-dental` вернул 3/2/2/2 фото как до теста.
+- Тестовые значения `schedule/view-config`/`table-filters` тоже удалены (`DELETE FROM business_settings WHERE
+  business_id='biz_atam' AND area IN ('scheduleTableView','scheduleTableFilters')`) — оба эндпоинта снова
+  отдают дефолт.
+
+**Проверено настоящим браузером** (Playwright, сессия впрыснута cookie `bt_session` из живого curl-логина +
+`bt_data=api`, уже поднятый `:3710`, второй `next dev` не запускал): `/biz/schedule` и `/b/atam-dental` — оба
+200, `textLen` > 900 (не пустой экран), 0 `pageerror`/console-error.
+
+**Проверки**: backend `tsc --noEmit -p tsconfig.json` (весь проект) — 0; `tsc -p tsconfig.build.json --noEmit` —
+0 (использован для реального `npm run build`). Frontend `npx tsc --noEmit --incremental` — 0 во всём проекте.
+`eslint src/api/schedule/table.ts src/api/schedule/schedule.server.ts` — 0 ошибок (3 предсуществующих warning
+неиспользуемых импортов в `table.ts`, не мои строки). `node scripts/fids.mjs` — 2892/2896 (без потерь, то же
+число, что и во всех прошлых попытках). `node scripts/renders.mjs --check-compiler` — 0. `node scripts/
+facade-audit.mjs`: `schedule/table.ts` 6→2 (оставшиеся 2 — `used:0`, без потребителей, не дыры). `openapi.json`
+подтверждает оба новых маршрута (`schedule/view-config`, `schedule/table-filters`).
+
+**`prisma migrate reset --force` на чистой базе — не гонял.** Не трогал `schema.prisma` вообще: обе фичи этого
+захода легли в уже существующие generic-таблицы (`business_settings`, `moderation_items`), новых моделей/полей
+нет. Гонять `reset --force` на ОБЩЕЙ dev-базе во время параллельной работы пяти других лейнов означало бы стереть
+их незакоммиченные тестовые данные — вместо этого использовал уже существующую живую базу под коротким локом
+(как и предыдущие попытки этого лейна для проверок без схемных изменений).
+
+### Вопросы владельцу (этап 21, лейн rest, попытка 4)
+Новых денежных/юридических решений не принимал. Вопрос по `submitConsentForm`, поднятый попыткой 3, остаётся
+открытым без ответа — не поднимаю повторно, ждёт владельца. `platform/team.ts::listTeam` — не вопрос, а честная
+архитектурная дыра вне объёма «Сдача» (см. выше), решения не требует прямо сейчас.
+
+лейн rest: закрыто 5 реальных (4 функции `schedule/table.ts` + 1 внеаудитный, но явно названный владельцем баг —
+фильтр галереи/портфолио по модерации на публичной странице), подтверждено НЕ дырами ещё ~20 (список выше,
+включая 1 находку мёртвого кода), осталось: `clients/bulk.ts` (6, всё ещё ждёт лейн notify+integrations —
+`notify.ts::listMailings/createMailing/countAudience` там всё ещё на моке), `clients/extras.ts::submitConsentForm`
+(1, вопрос владельцу от попытки 3, ответа ещё нет), `platform/team.ts::listTeam` (1, честная архитектурная дыра,
+вне объёма «Сдача»).
