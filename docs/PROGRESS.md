@@ -5709,6 +5709,17 @@ getActivityFeed 2) либо блокировано `src/areas/**` (`canSeeNetwor
   чтений ×3 — все 200 (после починки deadlock); без сессии 401, чужой бизнес клиенту 403, неизвестная функция 404,
   публичный маршрут не отдаёт `listCards` (404). Клиент приложения `au_02`: `listMyLoyalty` — карты/сертификаты.
 - Общая база: досеяна `seed/loyalty.ts` (лок 11 с); :4010 перезапущен на новой сборке (лок 4 с).
+- **Экраны в режиме api, настоящий вход** (Playwright, `bt_session`+`bt_data=api`, :3710→:4010; временный скрипт удалён):
+  33 маршрута раздела (`/biz/loyalty/**`, `/biz/clients/loyalty`, `/biz/notifications/loyalty`,
+  `/biz/network/loyalty`, `/loyalty-cards`). Первый прогон (владелец сети manana) нашёл 500 — это и был
+  deadlock замка (см. выше), починен. После починки (владелец atam): 20 экранов без ошибок страницы и без 4xx/5xx
+  от API, вызовы `…/loyalty/x/*` видны в сети; 10 — таймаут навигации 90 с (dev-сервер :3710 в тот момент
+  не отвечал и на `curl`: компилировал полуготовую правку `notify.ts` другого лейна, до API страница не дошла). Из этих
+  10 шесть уже прошли в первом прогоне; четыре (`/biz/loyalty`, `/certificates`, `/memberships`,
+  `/memberships/types/[id]`) в браузере повторно **не проверены**: у всех владельцев кончился дневной лимит
+  кодов, потом лимит кодов с IP (30 за 10 мин, общий с другими лейнами). Их функции (`getLoyaltyHubOverview`,
+  `getLoyaltyCostReport`, `listCertificates`, `listMembershipTypes`, `listServiceScopeOptions`) проверены
+  curl в параллель — 200. Страницы с чужой ошибкой `notify.ts: Export getType doesn't exist` — не мои.
 - Frontend `tsc` — 0 ошибок в моих файлах (51 чужая, все в `notify` — полуготовая правка другого лейна);
   eslint `loyalty.ts/loyalty.server.ts/resources.ts` — 0; `fids.mjs` 2892/2896; `renders.mjs --check-compiler` 0.
 
