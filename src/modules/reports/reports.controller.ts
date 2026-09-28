@@ -19,7 +19,6 @@ import { ReportsSalesService } from './reports-sales.service.js';
 import { ReportsSettingsService } from './reports-settings.service.js';
 import { ReportsStockService } from './reports-stock.service.js';
 import {
-  activityQuery,
   clientVisitsQuery,
   exportsListQuery,
   importAppointmentsBody,
@@ -35,7 +34,6 @@ import {
   stockWriteOffQuery,
   workloadIncludedBody,
 } from './reports.schemas.js';
-import { csv } from '../journal/access.js';
 
 /**
  * Отчёты (docs/backend/02 §16): «один маршрут на отчёт» — `GET /v1/biz/{b}/reports/{name}`, диспетчер
@@ -230,6 +228,16 @@ export class ReportsController {
   @Biz('reports.view')
   stockTurnover(@Param('businessId') businessId: string, @Query(new Zod(stockTurnoverQuery)) q: z.infer<typeof stockTurnoverQuery>) {
     return this.stock.turnover(businessId, q.locationId, { from: q.from, to: q.to }, q.categoryId, q.warehouseId);
+  }
+
+  // ─────────────────────────── F-12-037: перенос старых записей из Excel/CSV ───────────────────────────
+
+  @Post('import-appointments')
+  @Biz('journal.edit')
+  @ApiOperation({ summary: 'Загрузка визитов «как есть» из CSV (F-12-037) — поверх BookingsService.createRaw журнала' })
+  @ZodBody(importAppointmentsBody)
+  importAppointments(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(importAppointmentsBody)) body: z.infer<typeof importAppointmentsBody>) {
+    return this.journal.importAppointments(ctx, businessId, body.locationId, body.rows);
   }
 
   // ─────────────────────────── docs/backend/02 §16: `GET …/reports/{name}` ───────────────────────────

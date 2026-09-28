@@ -6,6 +6,7 @@ import { ReportsJournalService } from './reports-journal.service.js';
 import { ReportsMarketingService } from './reports-marketing.service.js';
 import { ReportsSalesService } from './reports-sales.service.js';
 import {
+  activityQuery,
   byClientQuery,
   byServiceQuery,
   byStaffQuery,
@@ -143,6 +144,13 @@ export const REPORT_REGISTRY: Record<string, ReportDef> = {
     schema: dataChangesQuery,
     requiredPermission: 'reports.view',
     run: (svc, businessId, q) => svc.audit.dataChanges(businessId, { from: q.from as string, to: q.to as string, entity: q.entity as DataChangeEntity | undefined, authorName: q.authorName as string | undefined, action: q.action as DataChangeAction | undefined }),
+    rowsOf: (r) => r as Record<string, unknown>[],
+  },
+  /** F-12-030/038, этап 21 «network+reports» попытка 2: «Лента активности» — canSeePhones=true как у visits/records выше (то же упрощение, не заведена права-матрица под неё) */
+  activity: {
+    schema: activityQuery,
+    requiredPermission: 'reports.view',
+    run: (svc, businessId, q) => svc.journal.activityFeed(businessId, splitCsv(q.locationIds as string | undefined), (q.filter as never) ?? 'all', true),
     rowsOf: (r) => r as Record<string, unknown>[],
   },
 };
