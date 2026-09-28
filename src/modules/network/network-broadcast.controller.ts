@@ -9,6 +9,8 @@ import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { ApiError } from '../../common/errors/api-error.js';
+import { utcToLocal } from '../../common/time/time.js';
 import { NotifyChannelsService } from '../notify/notify-channels.service.js';
 import { enqueueClientNotification } from '../notify/outbox.js';
 import { NetworkAccessService } from './network-access.service.js';
@@ -29,10 +31,12 @@ const broadcastOut = z.object({
   cost: z.number(),
   status: z.enum(['sent', 'insufficientFunds']),
   createdAt: z.string(),
+  /** Местное время «YYYY-MM-DDTHH:mm» — поле `at` журнала фронта (этап 21, сдача) */
+  at: z.string(),
 });
 
 function out(b: { id: string; networkId: string; channel: string; scope: string; text: string; recipients: number; optedOut: number; cost: bigint; status: string; createdAt: Date }) {
-  return { id: b.id, networkId: b.networkId, channel: b.channel as 'sms' | 'push', scope: b.scope as 'selected' | 'found', text: b.text, recipients: b.recipients, optedOut: b.optedOut, cost: Number(b.cost), status: b.status as 'sent' | 'insufficientFunds', createdAt: b.createdAt.toISOString() };
+  return { id: b.id, networkId: b.networkId, channel: b.channel as 'sms' | 'push', scope: b.scope as 'selected' | 'found', text: b.text, recipients: b.recipients, optedOut: b.optedOut, cost: Number(b.cost), status: b.status as 'sent' | 'insufficientFunds', createdAt: b.createdAt.toISOString(), at: utcToLocal(b.createdAt) };
 }
 
 /**
@@ -71,7 +75,11 @@ export class NetworkBroadcastService {
     const { network } = await this.access.require(ctx, networkId, 'clients');
     const scopeBusinessIds = input.businessIds?.length ? network.businessIds.filter((id) => input.businessIds!.includes(id)) : network.businessIds;
     let groups = await this.clientsGroupsFor(scopeBusinessIds);
-    if (input.scope === 'selected' && input.clientKeys?.length) {
+    if (input.phones?.length) {
+      // Экран сети шлёт уже склеенные телефоны (F-11-041: один человек = один телефон) — этап 21, сдача
+      const wanted = new Set(input.phones);
+      groups = groups.filter((g) => wanted.has(g.phone));
+    } else if (input.scope === 'selected' && input.clientKeys?.length) {
       const wanted = new Set(input.clientKeys.map((k) => k.clientId));
       groups = groups.filter((g) => g.clientIds.some((id) => wanted.has(id)));
     } else if (input.search?.trim()) {
@@ -88,6 +96,9 @@ export class NetworkBroadcastService {
     const recipients = eligible.length;
 
     if (input.channel === 'sms') {
+      // F-11-056: без подключённого SMS-провайдера главной локации рассылка не уходит (как мок)
+      const mainForCheck = network.mainBusinessId ?? network.businessIds[0];
+      if (!mainForCheck || !(await this.channels.get(mainForCheck)).connected) throw new ApiError('validation', 'sms_not_connected');
       const cost = BigInt(recipients) * BigInt(NETWORK_SMS_UNIT_PRICE);
       if (network.smsBalance < cost) {
         const row = await this.prisma.networkBroadcast.create({ data: { id, networkId, channel: 'sms', scope: input.scope, text: input.text, recipients, optedOut, cost, status: 'insufficientFunds', createdBy: ctx.session!.userId } });

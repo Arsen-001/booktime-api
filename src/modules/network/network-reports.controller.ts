@@ -152,9 +152,13 @@ export class NetworkReportsService {
   }
 
   /** F-11-068: выполнение плана — факт по тому же kind за месяц против плановой цифры */
-  async planExecution(ctx: RequestContext, networkId: string, month: string) {
+  async planExecution(ctx: RequestContext, networkId: string, month: string, kind?: 'revenue' | 'clients' | 'avgCheck') {
     const { network } = await this.access.require(ctx, networkId, 'plans');
-    const cells = await this.prisma.networkPlanCell.findMany({ where: { networkId, month } });
+    const saved = await this.prisma.networkPlanCell.findMany({ where: { networkId, month, ...(kind ? { kind } : {}) } });
+    // Этап 21 (сдача): с `kind` — строка на КАЖДЫЙ филиал сети (план 0, если не задан), как экран «Выполнение плана»
+    const cells = kind
+      ? network.businessIds.map((businessId) => saved.find((c) => c.businessId === businessId) ?? { businessId, kind, month, value: 0n })
+      : saved;
     const out: { businessId: string; kind: 'revenue' | 'clients' | 'avgCheck'; month: string; value: number; actual: number; pct: number }[] = [];
     for (const cell of cells) {
       if (!network.businessIds.includes(cell.businessId)) continue;
@@ -388,8 +392,10 @@ export class NetworkReportsController {
   @Get('plans/execution')
   @ApiOperation({ summary: 'Выполнение плана (F-11-068)' })
   @ZodOk(planExecutionOut)
-  execution(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query('month') month: string) {
-    return this.svc.planExecution(ctx, n, month);
+  execution(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query('month') month: string, @Query('kind') kind?: string) {
+    if (!/^\d{4}-\d{2}$/.test(month ?? '')) throw new ApiError('validation', 'month must be YYYY-MM');
+    const k = kind === 'revenue' || kind === 'clients' || kind === 'avgCheck' ? kind : undefined;
+    return this.svc.planExecution(ctx, n, month, k);
   }
 
   // ─────────── Этап 21 «network+reports», попытка 3 ───────────

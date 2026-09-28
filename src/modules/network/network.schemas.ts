@@ -87,6 +87,29 @@ export const networkClientSearchBody = z.object({
   pageSize: z.number().int().min(1).max(200).default(20),
 });
 
+const ymdDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** F-11-041/042: фильтры базы сети — ровно NetworkClientFilters фронта (этап 21, сдача) */
+export const networkClientListBody = z.object({
+  query: z.string().max(200).optional(),
+  sort: z.enum(['name', 'spend', 'visits']).optional(),
+  memberLocationIds: z.array(id32).max(50).optional(),
+  visitedLocationIds: z.array(id32).max(50).optional(),
+  gender: z.enum(['male', 'female', 'unknown']).optional(),
+  onlineOnly: z.boolean().optional(),
+  importance: z.enum(['gold', 'silver', 'bronze', 'none']).optional(),
+  spendMin: z.number().optional(),
+  spendMax: z.number().optional(),
+  visitsMin: z.number().optional(),
+  visitsMax: z.number().optional(),
+  hasBookingsFrom: ymdDate.optional(),
+  hasBookingsTo: ymdDate.optional(),
+  noBookingsFrom: ymdDate.optional(),
+  noBookingsTo: ymdDate.optional(),
+  smsReceived: z.enum(['received', 'notReceived']).optional(),
+  smsFrom: ymdDate.optional(),
+  smsTo: ymdDate.optional(),
+});
+
 // ─────────────────────── Рассылки (F-11-054…061) ───────────────────────
 
 export const broadcastBody = z.object({
@@ -96,6 +119,8 @@ export const broadcastBody = z.object({
   businessIds: z.array(id32).max(50).optional(),
   search: z.string().max(200).optional(),
   clientKeys: z.array(z.object({ businessId: id32, clientId: id32 })).max(5000).optional(),
+  /** Этап 21 (сдача): получатели по телефону — так их отдаёт экран сети */
+  phones: z.array(z.string().max(32)).max(5000).optional(),
 });
 
 // ─────────────────────── Аналитика и планы (F-11-062…078) ───────────────────────

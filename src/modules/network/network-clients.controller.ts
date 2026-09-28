@@ -8,7 +8,9 @@ import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { NetworkAccessService } from './network-access.service.js';
-import { networkClientSearchBody } from './network.schemas.js';
+import { utcToLocal, utcToLocalDate } from '../../common/time/time.js';
+import { bookingView } from '../journal/journal.views.js';
+import { networkClientListBody, networkClientSearchBody } from './network.schemas.js';
 
 const ONLINE_SOURCES = ['app', 'link', 'widget'];
 
@@ -73,7 +75,7 @@ export class NetworkClientsService {
     const onlineSet = new Set(onlineRows.map((r) => r.clientId!));
     const byPhone = new Map<
       string,
-      { phone: string; name: string; email?: string; gender: string; spend: number; visitsCount: number; lastVisitAt?: string; memberLocationIds: string[]; onlineBooked: boolean; clientIds: string[] }
+      { phone: string; name: string; email?: string; gender: string; spend: number; visitsCount: number; lastVisitAt?: string; memberLocationIds: string[]; visitedLocationIds: string[]; onlineBooked: boolean; clientIds: string[] }
     >();
     for (const c of clients) {
       const agg = byClientId.get(c.id);
@@ -83,11 +85,12 @@ export class NetworkClientsService {
       const online = onlineSet.has(c.id);
       const row = byPhone.get(c.phone);
       if (!row) {
-        byPhone.set(c.phone, { phone: c.phone, name: c.name, email: c.email ?? undefined, gender: c.gender, spend, visitsCount, lastVisitAt, memberLocationIds: [c.businessId], onlineBooked: online, clientIds: [c.id] });
+        byPhone.set(c.phone, { phone: c.phone, name: c.name, email: c.email ?? undefined, gender: c.gender, spend, visitsCount, lastVisitAt, memberLocationIds: [c.businessId], visitedLocationIds: visitsCount ? [c.businessId] : [], onlineBooked: online, clientIds: [c.id] });
       } else {
         row.spend += spend;
         row.visitsCount += visitsCount;
         row.memberLocationIds.push(c.businessId);
+        if (visitsCount) row.visitedLocationIds.push(c.businessId);
         row.onlineBooked = row.onlineBooked || online;
         row.clientIds.push(c.id);
         if (lastVisitAt && (!row.lastVisitAt || lastVisitAt > row.lastVisitAt)) row.lastVisitAt = lastVisitAt;
@@ -109,6 +112,105 @@ export class NetworkClientsService {
     const total = rows.length;
     const page = rows.slice((input.page - 1) * input.pageSize, (input.page - 1) * input.pageSize + input.pageSize);
     return { rows: page, total, page: input.page, pageSize: input.pageSize };
+  }
+
+  /**
+   * F-11-041/042: вся база сети под фильтрами экрана (тот же набор и порядок проверок, что мок listNetworkClients).
+   * Р14: SMS-провайдер ещё заглушка — журнала SMS по клиенту нет, `smsReceivedAt` пуст («получал SMS» — никто).
+   */
+  async list(ctx: RequestContext, networkId: string, f: z.infer<typeof networkClientListBody>) {
+    const { network } = await this.access.require(ctx, networkId, 'clients');
+    let rows = await this.rowsFor(network.businessIds);
+    const q = f.query?.trim().toLowerCase();
+    if (q) {
+      const qDigits = q.replace(/\D/g, '');
+      rows = rows.filter((r) => r.name.toLowerCase().includes(q) || (qDigits && r.phone.replace(/\D/g, '').includes(qDigits)) || (r.email ?? '').toLowerCase().includes(q));
+    }
+    if (f.memberLocationIds?.length) rows = rows.filter((r) => f.memberLocationIds!.some((id) => r.memberLocationIds.includes(id)));
+    if (f.visitedLocationIds?.length) rows = rows.filter((r) => f.visitedLocationIds!.some((id) => r.visitedLocationIds.includes(id)));
+    if (f.gender) rows = rows.filter((r) => r.gender === f.gender);
+    if (f.onlineOnly) rows = rows.filter((r) => r.onlineBooked);
+    if (f.importance) rows = rows.filter((r) => r.importance === f.importance);
+    if (f.spendMin != null) rows = rows.filter((r) => r.spend >= f.spendMin!);
+    if (f.spendMax != null) rows = rows.filter((r) => r.spend <= f.spendMax!);
+    if (f.visitsMin != null) rows = rows.filter((r) => r.visitsCount >= f.visitsMin!);
+    if (f.visitsMax != null) rows = rows.filter((r) => r.visitsCount <= f.visitsMax!);
+    const tz = 'Asia/Yerevan';
+    const dayOf = (iso?: string) => (iso ? utcToLocalDate(new Date(iso), tz) : undefined);
+    if (f.hasBookingsFrom || f.hasBookingsTo) {
+      rows = rows.filter((r) => {
+        const v = dayOf(r.lastVisitAt);
+        if (!v) return false;
+        if (f.hasBookingsFrom && v < f.hasBookingsFrom) return false;
+        if (f.hasBookingsTo && v > f.hasBookingsTo) return false;
+        return true;
+      });
+    }
+    if (f.noBookingsFrom || f.noBookingsTo) {
+      rows = rows.filter((r) => {
+        const v = dayOf(r.lastVisitAt);
+        if (!v) return true;
+        return !(f.noBookingsFrom && v >= f.noBookingsFrom);
+      });
+    }
+    if (f.smsReceived === 'received') rows = [];
+    const sort = f.sort ?? 'name';
+    rows.sort((a, b) => (sort === 'spend' ? b.spend - a.spend : sort === 'visits' ? b.visitsCount - a.visitsCount : a.name.localeCompare(b.name, 'ru')));
+    return rows.slice(0, 5000).map((r) => ({ ...r, lastVisitAt: r.lastVisitAt ? utcToLocal(new Date(r.lastVisitAt), tz) : undefined }));
+  }
+
+  /** F-11-045 в форме экрана: по филиалам — категория (первый тег), скидка карты лояльности, сумма */
+  async cardView(ctx: RequestContext, networkId: string, phone: string) {
+    const { network } = await this.access.require(ctx, networkId, 'clients');
+    const clients = await this.prisma.client.findMany({ where: { businessId: { in: network.businessIds }, phone, deletedAt: null }, include: { business: { select: { name: true } } }, orderBy: { createdAt: 'asc' } });
+    if (!clients.length) throw new ApiError('not_found', 'Client not found');
+    const clientIds = clients.map((c) => c.id);
+    const [agg, cards] = await Promise.all([
+      this.prisma.booking.groupBy({ by: ['clientId'], where: { clientId: { in: clientIds }, status: 'arrived' }, _sum: { total: true } }),
+      this.prisma.loyaltyCard.findMany({ where: { clientId: { in: clientIds } }, select: { clientId: true, data: true } }),
+    ]);
+    const spendOf = new Map(agg.map((a) => [a.clientId!, Number(a._sum.total ?? 0)]));
+    const first = clients[0]!;
+    return {
+      phone: first.phone,
+      name: first.name,
+      email: first.email ?? undefined,
+      gender: first.gender,
+      birthday: first.birthday ?? undefined,
+      byLocation: clients.map((c) => ({
+        businessId: c.businessId,
+        businessName: c.business.name,
+        clientId: c.id,
+        category: ((c.tags as string[] | null) ?? [])[0] ?? '—',
+        discountPct: Number((cards.find((k) => k.clientId === c.id)?.data as { maxPercentDiscount?: number } | null)?.maxPercentDiscount ?? 0),
+        spend: spendOf.get(c.id) ?? 0,
+      })),
+    };
+  }
+
+  /** F-11-047: все записи клиента во всех филиалах сети, с названием филиала и услуг (новые сверху) */
+  async history(ctx: RequestContext, networkId: string, phone: string) {
+    const { network } = await this.access.require(ctx, networkId, 'clients');
+    if (!network.businessIds.length) return [];
+    const clients = await this.prisma.client.findMany({ where: { businessId: { in: network.businessIds }, phone }, select: { id: true } });
+    if (!clients.length) return [];
+    const [bookings, businesses, locs] = await Promise.all([
+      this.prisma.booking.findMany({ where: { clientId: { in: clients.map((c) => c.id) } }, orderBy: { startAt: 'desc' }, take: 500 }),
+      this.prisma.business.findMany({ where: { id: { in: network.businessIds } }, select: { id: true, name: true } }),
+      this.prisma.location.findMany({ where: { businessId: { in: network.businessIds }, deletedAt: null }, orderBy: { sortOrder: 'asc' }, select: { businessId: true, tz: true } }),
+    ]);
+    const serviceIds = [...new Set(bookings.flatMap((b) => ((b.services as { serviceId?: string }[] | null) ?? []).map((l) => l.serviceId).filter((x): x is string => Boolean(x))))];
+    const services = serviceIds.length ? await this.prisma.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, name: true } }) : [];
+    const svcName = new Map(services.map((sv) => [sv.id, (sv.name as { ru?: string } | null)?.ru ?? sv.id]));
+    const bizName = new Map(businesses.map((b) => [b.id, b.name]));
+    const tzOf = new Map<string, string>();
+    for (const l of locs) if (!tzOf.has(l.businessId)) tzOf.set(l.businessId, l.tz);
+    return bookings.map((b) => ({
+      booking: bookingView(b, tzOf.get(b.businessId) ?? 'Asia/Yerevan'),
+      businessId: b.businessId,
+      businessName: bizName.get(b.businessId) ?? '—',
+      serviceNames: ((b.services as { serviceId?: string }[] | null) ?? []).map((l) => svcName.get(l.serviceId ?? '') ?? l.serviceId ?? ''),
+    }));
   }
 
   async card(ctx: RequestContext, networkId: string, phone: string) {
@@ -139,6 +241,25 @@ export class NetworkClientsController {
   @ZodOk(searchOut)
   search(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkClientSearchBody)) body: z.infer<typeof networkClientSearchBody>) {
     return this.svc.search(ctx, n, body);
+  }
+
+  @Post('list')
+  @ApiOperation({ summary: 'Вся база сети под фильтрами экрана (F-11-041/042), до 5000 строк' })
+  @ZodBody(networkClientListBody)
+  list(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkClientListBody)) body: z.infer<typeof networkClientListBody>) {
+    return this.svc.list(ctx, n, body);
+  }
+
+  @Get(':phone/history')
+  @ApiOperation({ summary: 'Все записи клиента во всех филиалах сети (F-11-047)' })
+  history(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('phone') phone: string) {
+    return this.svc.history(ctx, n, phone);
+  }
+
+  @Get(':phone/view')
+  @ApiOperation({ summary: 'Карточка клиента сети в форме экрана: категория/скидка/сумма по филиалам (F-11-045)' })
+  cardView(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('phone') phone: string) {
+    return this.svc.cardView(ctx, n, phone);
   }
 
   @Get(':phone')
