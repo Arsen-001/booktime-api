@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
 import { Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { localToUtc } from '../../common/time/time.js';
+import { ApiError } from '../../common/errors/api-error.js';
 import { Zod } from '../../common/http/validation.js';
 import {
   assistantSettingsBody,
@@ -260,6 +261,21 @@ export class ResourcesController {
   @ZodOk(resourceOut)
   update(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(resourceUpdateBody)) body: z.infer<typeof resourceUpdateBody>) {
     return this.svc.update(ctx, businessId, id, body);
+  }
+
+  @Get(':id/future-usage-by-instance')
+  @Biz()
+  @ApiOperation({ summary: 'Будущие записи/события по каждому экземпляру ресурса (этап 21)' })
+  futureUsageByInstance(@Param('businessId') businessId: string, @Param('id') id: string) {
+    return this.svc.futureUsageByInstance(businessId, id);
+  }
+
+  @Get(':id/day-load')
+  @Biz()
+  @ApiOperation({ summary: 'Занятость ресурса на день по экземплярам (F-16-019)' })
+  dayLoad(@Param('businessId') businessId: string, @Param('id') id: string, @Query('date') date: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) throw new ApiError('validation', 'date must be YYYY-MM-DD');
+    return this.svc.dayLoad(businessId, id, date);
   }
 
   @Get(':id/future-usage')

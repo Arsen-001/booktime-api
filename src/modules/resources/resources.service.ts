@@ -8,6 +8,9 @@ import { PrismaService } from '../../common/prisma.service.js';
 import type { ResourceCreateBody, RestoreResourceBody, ResourceUpdateBody } from './resources.schemas.js';
 import { resourceView } from './resources.views.js';
 import { staffView } from '../businesses/views.js';
+import { localDayRangeUtc, utcToLocal } from '../../common/time/time.js';
+
+import { CANCELLED_STATUSES as CANCELLED } from '../journal/rules.js';
 
 const J = (v: unknown) => (v === undefined || v === null ? Prisma.DbNull : (v as Prisma.InputJsonValue));
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
@@ -155,6 +158,65 @@ export class ResourcesService {
   async countFutureUsage(businessId: string, id: string): Promise<number> {
     const rows = await this.prisma.resourceBusy.findMany({ where: { businessId, resourceId: id, active: true, startAt: { gt: new Date() } }, select: { sourceId: true } });
     return new Set(rows.map((r) => r.sourceId)).size;
+  }
+
+  /** Будущие записи и события по каждому экземпляру ресурса — предупреждение перед удалением экземпляра (этап 21, сдача) */
+  async futureUsageByInstance(businessId: string, id: string): Promise<Record<string, number>> {
+    const row = await this.prisma.resource.findFirst({ where: { id, businessId } });
+    if (!row) return {};
+    const out: Record<string, number> = {};
+    for (const inst of resourceView(row).instances) out[inst.id] = 0;
+    const now = new Date();
+    const [bookings, events] = await Promise.all([
+      this.prisma.booking.findMany({ where: { businessId, startAt: { gte: now }, deletedAt: null, groupEventId: null, status: { notIn: [...CANCELLED] } }, select: { resourceIds: true } }),
+      this.prisma.groupEvent.findMany({ where: { businessId, startAt: { gte: now }, status: 'scheduled' }, select: { resourceIds: true } }),
+    ]);
+    for (const x of [...bookings, ...events]) for (const rid of (x.resourceIds as string[] | null) ?? []) if (rid in out) out[rid]! += 1;
+    return out;
+  }
+
+  /** Занятость ресурса на день по экземплярам (F-16-019): записи и групповые события, местное время филиала */
+  async dayLoad(businessId: string, id: string, date: string) {
+    const row = await this.prisma.resource.findFirst({ where: { id, businessId } });
+    if (!row) throw new ApiError('not_found', 'Resource not found');
+    const loc = await this.prisma.location.findFirst({ where: { businessId, deletedAt: null }, orderBy: { sortOrder: 'asc' }, select: { tz: true } });
+    const tz = loc?.tz ?? 'Asia/Yerevan';
+    const { from, to } = localDayRangeUtc(date, tz);
+    const [bookings, events] = await Promise.all([
+      this.prisma.booking.findMany({ where: { businessId, startAt: { gte: from, lt: to }, deletedAt: null, groupEventId: null, status: { notIn: [...CANCELLED] } }, select: { id: true, startAt: true, durationMin: true, services: true, staffId: true, resourceIds: true } }),
+      this.prisma.groupEvent.findMany({ where: { businessId, startAt: { gte: from, lt: to }, status: 'scheduled' } }),
+    ]);
+    const serviceIds = new Set<string>();
+    for (const b of bookings) for (const l of (b.services as { serviceId?: string }[] | null) ?? []) if (l.serviceId) serviceIds.add(l.serviceId);
+    for (const e of events) if (e.serviceId) serviceIds.add(e.serviceId);
+    const staffIds = new Set<string>([...bookings.map((b) => b.staffId), ...events.map((e) => e.staffId)]);
+    const [services, staff] = await Promise.all([
+      this.prisma.service.findMany({ where: { id: { in: [...serviceIds] } }, select: { id: true, name: true } }),
+      this.prisma.staff.findMany({ where: { id: { in: [...staffIds] } }, select: { id: true, name: true } }),
+    ]);
+    const svcName = new Map(services.map((x) => [x.id, x.name as Record<string, string>]));
+    const stName = new Map(staff.map((x) => [x.id, x.name]));
+    const byInstance = new Map(resourceView(row).instances.map((i) => [i.id, [] as Array<Record<string, unknown>>] as const));
+    for (const b of bookings) {
+      for (const rid of (b.resourceIds as string[] | null) ?? []) {
+        byInstance.get(rid)?.push({
+          id: b.id,
+          kind: 'booking',
+          start: utcToLocal(b.startAt, tz),
+          durationMin: b.durationMin,
+          services: ((b.services as { serviceId?: string }[] | null) ?? []).map((l) => svcName.get(l.serviceId ?? '')).filter(Boolean),
+          staffName: stName.get(b.staffId),
+        });
+      }
+    }
+    for (const e of events) {
+      for (const rid of (e.resourceIds as string[] | null) ?? []) {
+        byInstance.get(rid)?.push({ id: e.id, kind: 'event', start: utcToLocal(e.startAt, tz), durationMin: e.durationMin, services: [svcName.get(e.serviceId)].filter(Boolean), staffName: stName.get(e.staffId) });
+      }
+    }
+    return {
+      instances: resourceView(row).instances.map((i) => ({ id: i.id, name: i.name, items: (byInstance.get(i.id) ?? []).sort((a, b) => String(a.start).localeCompare(String(b.start))) })),
+    };
   }
 
   async delete(ctx: RequestContext, businessId: string, id: string) {
