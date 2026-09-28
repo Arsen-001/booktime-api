@@ -1,9 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { RequestContext } from '../../common/http/context.js';
+import { normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { BookingsService, staffActor } from '../journal/bookings.service.js';
+import type { BookingStatus } from '../journal/rules.js';
+import { ReportsExportService } from './reports-export.service.js';
 import { ScheduleService } from '../schedule/schedule.service.js';
 import { ReportsSettingsService } from './reports-settings.service.js';
 import { inRange, localDateAt, locationsOf, tzMapOf, wideUtcBounds, type ReportRange } from './reports-common.js';
 import { DEFAULT_TZ, utcToLocal } from '../../common/time/time.js';
+
+const ONLINE_SOURCES = new Set(['app', 'link', 'widget']);
+const norm = (s: string) => s.trim().toLowerCase();
 
 type LocalizedText = { ru: string; hy?: string; en?: string };
 const ruOf = (v: unknown): string => (v as LocalizedText | null)?.ru ?? '';
@@ -27,6 +35,8 @@ export class ReportsJournalService {
     private readonly prisma: PrismaService,
     @Inject(ScheduleService) private readonly schedule: ScheduleHoursSource,
     private readonly settings: ReportsSettingsService,
+    private readonly bookings: BookingsService,
+    private readonly exports: ReportsExportService,
   ) {}
 
   private async staffNames(businessId: string, ids: string[]): Promise<Map<string, { name: string; specialty?: string; deletedAt: Date | null }>> {
@@ -382,6 +392,138 @@ export class ReportsJournalService {
       staffName: staffMap.get(b.staffId)?.name ?? '',
       amount: Number(b.total),
     }));
+  }
+
+  // ─────────────────────────── F-12-037: загрузка Excel/CSV «как есть» ───────────────────────────
+
+  /**
+   * Этап 21 «network+reports»: перенос прошлого без правил ядра (`BookingsService.createRaw`, та же «как есть»
+   * логика, что журнал/пакет — F-12-037 докстринг мока). Строка с неопознанным сотрудником — отбраковывается
+   * (не бросаем, копим счётчик `failed`, как экран `ImportAppointmentsSheet` уже ожидает). Услуги — по имени,
+   * неопознанные молча выпадают из строки (запись всё равно создаётся, мок делает то же).
+   */
+  async importAppointments(
+    ctx: RequestContext,
+    businessId: string,
+    locationId: string,
+    rows: { staffName: string; clientName: string; clientPhone: string; visitStart: string; durationMin: number; serviceNames: string[]; status: BookingStatus; comment?: string }[],
+  ): Promise<{ created: number; failed: number }> {
+    const staffList = await this.prisma.staff.findMany({ where: { businessId, deletedAt: null }, select: { id: true, name: true } });
+    const staffByName = new Map(staffList.map((s) => [norm(s.name), s] as const));
+    const services = await this.prisma.service.findMany({ where: { businessId, deletedAt: null }, select: { id: true, name: true, priceMin: true, durationMin: true } });
+    const serviceByName = new Map(services.map((s) => [norm(ruOf(s.name)), s] as const));
+    let created = 0;
+    for (const row of rows) {
+      const staff = staffByName.get(norm(row.staffName));
+      if (!staff) continue;
+      const lines = row.serviceNames
+        .map((n) => serviceByName.get(norm(n)))
+        .filter((s): s is NonNullable<typeof s> => Boolean(s))
+        .map((s) => ({ serviceId: s.id, staffId: staff.id, price: Number(s.priceMin), durationMin: s.durationMin, qty: 1 }));
+      const phone = row.clientPhone ? normalizePhone(row.clientPhone) : undefined;
+      const client = phone ? await this.prisma.client.findFirst({ where: { businessId, phone, deletedAt: null }, select: { id: true } }) : null;
+      await this.bookings.createRaw(staffActor(ctx), {
+        businessId,
+        locationId,
+        staffId: staff.id,
+        clientId: client?.id,
+        start: row.visitStart,
+        durationMin: row.durationMin || 15,
+        status: row.status,
+        services: lines,
+        resourceIds: [],
+        workplace: 'salon',
+        source: 'import',
+        createdBy: staff.id,
+        forWhom: 'self',
+        visitorName: client ? undefined : row.clientName,
+        comment: row.comment,
+      });
+      created++;
+    }
+    const failed = rows.length - created;
+    // DataExportOperationType мока не несёт 'import' (только upload|copyFromExcel|emailLink|browserDownload,
+    // src/domain/reports.ts) — ближайшее по смыслу 'upload' (файл был загружен), решение записано, не меняю тип.
+    if (created > 0) await this.exports.logManual(ctx, businessId, { type: 'appointmentsImport', operation: 'upload', fileName: `appointments-import-${Date.now()}.csv`, rowCount: created });
+    return { created, failed };
+  }
+
+  // ─────────────────────────── F-12-030, F-12-038: «Лента активности по записям» ───────────────────────────
+
+  /**
+   * Этап 21 «network+reports»: последние 60 записей филиала(ов) с полной историей переходов — готовый
+   * `BookingEvent` журнала (этап 7) уже несёт структурированное «было → стало» для переноса (kind='moved':
+   * prevStart/prevStaffId/startLocal), не только полу-текстовый `AuditEvent`/`BookingHistory` — см. вывод
+   * попытки 1 в PROGRESS.md, уточнено этой попыткой.
+   */
+  async activityFeed(businessId: string, locationIds: string[] | undefined, filter: 'all' | 'online' | 'offline' | 'newOnline', canSeePhones: boolean) {
+    const locations = await locationsOf(this.prisma, businessId, locationIds);
+    const rows = await this.prisma.booking.findMany({
+      where: {
+        businessId,
+        locationId: { in: locations.map((l) => l.id) },
+        ...(filter === 'online' ? { source: { in: [...ONLINE_SOURCES] } } : filter === 'offline' ? { source: { notIn: [...ONLINE_SOURCES] } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 60,
+      select: { id: true, staffId: true, clientId: true, visitorName: true, services: true, startAt: true, durationMin: true, locationId: true, source: true },
+    });
+    if (!rows.length) return [];
+    const bookingIds = rows.map((r) => r.id);
+    const events = await this.prisma.bookingEvent.findMany({ where: { bookingId: { in: bookingIds } }, orderBy: { at: 'asc' } });
+    const eventsByBooking = new Map<string, typeof events>();
+    for (const e of events) {
+      const list = eventsByBooking.get(e.bookingId) ?? [];
+      list.push(e);
+      eventsByBooking.set(e.bookingId, list);
+    }
+    const staffIds = new Set(rows.map((r) => r.staffId));
+    for (const e of events) {
+      if (e.byRef !== 'client' && e.byRef !== 'system') staffIds.add(e.byRef);
+      if (e.prevStaffId) staffIds.add(e.prevStaffId);
+    }
+    const staffMap = await this.staffNames(businessId, [...staffIds]);
+    const clientIds = [...new Set(rows.map((r) => r.clientId).filter((x): x is string => Boolean(x)))];
+    const clients = clientIds.length ? await this.prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, name: true, phone: true, deletedAt: true } }) : [];
+    const clientMap = new Map(clients.map((c) => [c.id, c] as const));
+    const serviceIds = [...new Set(rows.flatMap((r) => (r.services as { serviceId: string }[]).map((s) => s.serviceId)))];
+    const services = serviceIds.length ? await this.prisma.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, name: true } }) : [];
+    const serviceMap = new Map(services.map((s) => [s.id, ruOf(s.name)] as const));
+    const tzMap = tzMapOf(locations);
+
+    return rows.map((b) => {
+      const client = b.clientId ? clientMap.get(b.clientId) : undefined;
+      const clientDeleted = Boolean(client?.deletedAt);
+      const tz = tzMap.get(b.locationId) ?? DEFAULT_TZ;
+      const history = (eventsByBooking.get(b.id) ?? []).map((e) => {
+        const action = e.kind === 'created' ? 'created' : e.kind === 'deleted' ? 'deleted' : e.kind === 'status' ? 'statusChanged' : e.kind === 'moved' ? 'moved' : 'updated';
+        const summary = e.kind === 'status' ? `${e.fromStatus ?? ''} → ${e.toStatus ?? ''}` : e.kind === 'created' ? 'created' : e.kind === 'delayed' ? `+${e.delayMin ?? 0}` : 'updated';
+        return {
+          id: e.id,
+          authorName: e.byRef === 'client' ? 'client' : e.byRef === 'system' ? 'system' : (staffMap.get(e.byRef)?.name ?? '—'),
+          action,
+          summary,
+          ...(e.kind === 'moved'
+            ? { moved: { prevStart: e.prevStart ?? undefined, start: e.startLocal, ...(e.prevStaffId ? { prevStaffName: staffMap.get(e.prevStaffId)?.name ?? '—', staffName: staffMap.get(b.staffId)?.name ?? '—' } : {}) } }
+            : {}),
+          at: utcToLocal(e.at, tz),
+        };
+      });
+      return {
+        bookingId: b.id,
+        date: localDateAt(b.startAt, b.locationId, tzMap),
+        sourceLabel: b.source,
+        online: ONLINE_SOURCES.has(b.source),
+        serviceNames: (b.services as { serviceId: string }[]).map((l) => serviceMap.get(l.serviceId) ?? '').join(', '),
+        time: utcToLocal(b.startAt, tz).slice(11, 16),
+        staffName: staffMap.get(b.staffId)?.name ?? '',
+        clientName: clientDeleted ? undefined : (b.visitorName ?? client?.name),
+        clientPhone: clientDeleted ? undefined : canSeePhones ? client?.phone : undefined,
+        clientDeleted,
+        durationMin: b.durationMin,
+        history,
+      };
+    });
   }
 }
 

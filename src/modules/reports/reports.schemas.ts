@@ -148,3 +148,28 @@ export const stockWriteOffQuery = z.object({
 });
 
 export const stockTurnoverQuery = z.object({ locationId: id32, from: z.string(), to: z.string(), categoryId: id32.optional(), warehouseId: id32.optional() });
+
+// ─────────────────────────── Этап 21 «network+reports», попытка 2 ───────────────────────────
+
+/** F-12-030/038: «Лента активности» — последние 60 записей филиала(ов) */
+export const activityQuery = z.object({
+  locationIds: z.string().max(2000).optional(),
+  filter: z.enum(['all', 'online', 'offline', 'newOnline']).default('all'),
+});
+
+const importAppointmentRow = z.object({
+  staffName: z.string().min(1).max(160),
+  clientName: z.string().max(160).default(''),
+  clientPhone: z.string().max(32).default(''),
+  visitStart: z.string().min(1),
+  durationMin: z.coerce.number().int().min(1).max(1440),
+  serviceNames: z.array(z.string().max(160)).default([]),
+  status: z.string().min(1).max(24),
+  comment: z.string().max(1000).optional(),
+});
+
+/** F-12-037: загрузка Excel/CSV «как есть» — `locationId` в теле (мок несёт его отдельным аргументом, не query) */
+export const importAppointmentsBody = z.object({
+  locationId: id32,
+  rows: z.array(importAppointmentRow).min(1).max(2000),
+});

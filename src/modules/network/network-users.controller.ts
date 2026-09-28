@@ -12,12 +12,12 @@ import { PrismaService } from '../../common/prisma.service.js';
 import { NetworkAccessService } from './network-access.service.js';
 import { addNewUserBody, inviteExistingBody, networkUserOut, setPermissionsBody, setPlanReportFreqBody } from './network.schemas.js';
 
-function out(u: { id: string; networkId: string; name: string; phone: string; email: string | null; permissions: unknown; lastVisitAt: Date | null; planReportFrequency: string | null; version: number }) {
+function out(u: { id: string; networkId: string; name: string; phone: string | null; email: string | null; permissions: unknown; lastVisitAt: Date | null; planReportFrequency: string | null; version: number }) {
   return {
     id: u.id,
     networkId: u.networkId,
     name: u.name,
-    phone: u.phone,
+    phone: u.phone ?? '',
     email: u.email ?? undefined,
     permissions: Array.isArray(u.permissions) ? u.permissions : [],
     lastVisitAt: u.lastVisitAt?.toISOString(),

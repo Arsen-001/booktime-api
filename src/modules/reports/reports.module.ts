@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { JournalModule } from '../journal/journal.module.js';
 import { ScheduleModule } from '../schedule/schedule.module.js';
 import { ReportsAuditService } from './reports-audit.service.js';
 import { ReportsDashboardService } from './reports-dashboard.service.js';
@@ -15,9 +16,11 @@ import { ReportsController } from './reports.controller.js';
  * (`ScheduleService.hours()`, этап 6) вместо второго расчёта графика внутри отчётов. `ReportsReviewsService`/
  * `ReportsStockService` — этап 21 «network+reports»: отзывы (F-12-068…069) читают модели `client`-модуля
  * (StarRating/StaffReview/LocationReview), «Товары» (F-12-057…062) — таблицы `stock`-модуля, оба напрямую через
- * Prisma, без импорта тех модулей (нет циклической зависимости, нет правки чужих файлов лейнов «client»/«finance+stock»). */
+ * Prisma, без импорта тех модулей (нет циклической зависимости, нет правки чужих файлов лейнов «client»/«finance+stock»).
+ * `JournalModule` — этап 21 «network+reports», попытка 2: `importAppointments`/`activityFeed` зовут
+ * `BookingsService.createRaw`/читают `BookingEvent` журнала напрямую, не второй раз изобретают создание записи. */
 @Module({
-  imports: [ScheduleModule],
+  imports: [ScheduleModule, JournalModule],
   controllers: [ReportsController],
   providers: [ReportsDashboardService, ReportsJournalService, ReportsSalesService, ReportsMarketingService, ReportsAuditService, ReportsSettingsService, ReportsExportService, ReportsReviewsService, ReportsStockService],
   exports: [ReportsSettingsService, ReportsExportService],
