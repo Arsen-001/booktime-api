@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { Biz } from '../../common/http/guards.js';
+import type { RequestContext } from '../../common/http/context.js';
+import { Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
-import { branchDailyStatsQuery } from './network.schemas.js';
+import { branchDailyStatsQuery, servicesCsvImportBody } from './network.schemas.js';
 import { NetworkCatalogService } from './network-catalog.controller.js';
 
 const marketingOptOutBody = z.object({ phone: z.string().trim().min(1).max(32), optOut: z.boolean() });
@@ -69,5 +70,14 @@ export class NetworkBusinessController {
   @ZodOk(branchDailyStatsOut)
   branchDailyStats(@Param('businessId') businessId: string, @Query(new Zod(branchDailyStatsQuery)) query: z.infer<typeof branchDailyStatsQuery>) {
     return this.catalog.branchDailyStats(businessId, query.businessIds.split(',').filter(Boolean), query.date);
+  }
+
+  /** `src/api/network.ts::importBusinessServicesCsv(targetId, rows)` — см. докстринг `importServicesCsv` (F-11-010) */
+  @Post('services-csv-import')
+  @Biz('services.edit')
+  @ApiOperation({ summary: 'Импорт услуг из CSV в филиал (F-11-010)' })
+  @ZodBody(servicesCsvImportBody)
+  importServicesCsv(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(servicesCsvImportBody)) body: z.infer<typeof servicesCsvImportBody>) {
+    return this.catalog.importServicesCsv(ctx, businessId, body.rows);
   }
 }

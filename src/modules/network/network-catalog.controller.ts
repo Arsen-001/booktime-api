@@ -11,7 +11,8 @@ import { newId } from '../../common/ids/ids.js';
 import { money, moneyToJson } from '../../common/money/money.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { localDayRangeUtc, utcToLocal, utcToLocalDate } from '../../common/time/time.js';
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
+import { serviceView } from '../services/services.views.js';
 import { goodView } from '../stock/stock-catalog.service.js';
 import { businessView, locationView, networkView, staffView } from '../businesses/views.js';
 import { NetworkAccessService } from './network-access.service.js';
@@ -21,8 +22,10 @@ import {
   networkFieldBody,
   networkGoodsCategoryBody,
   networkGoodsProductBody,
+  networkCopyBranchBody,
   networkLocationsOrderBody,
   networkOffDayTypeBody,
+  networkPackageBody,
   networkPositionBody,
   networkPositionDefBody,
   networkServiceBody,
@@ -32,6 +35,7 @@ import {
   networkStaffOrderBody,
   networkStaffQuery,
   networkSubdivisionBody,
+  servicesCsvImportBody,
   staffMergeBody,
   staffMigrateBody,
 } from './network.schemas.js';
@@ -1029,6 +1033,196 @@ export class NetworkCatalogService {
       update: { orderedIds: filtered, updatedBy: ctx.session!.userId },
     });
   }
+
+  // ───────────── Этап 21 «Сдача» (28.09): пакеты сети, остатки товаров сети, перенос филиала, CSV услуг ─────────────
+
+  /** F-11-095 (мок `listNetworkPackages`): пакеты = Service с servicePackage, сгруппированные по имени, как услуги */
+  async listPackages(ctx: RequestContext, networkId: string) {
+    const { network } = await this.access.require(ctx, networkId, 'services');
+    if (!network.businessIds.length) return [];
+    const rows = await this.prisma.service.findMany({
+      where: { businessId: { in: network.businessIds }, NOT: { servicePackage: { equals: Prisma.DbNull } } },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+    const byKey = new Map<string, { key: string; service: ReturnType<typeof serviceView>; businessIds: string[] }>();
+    for (const s of rows) {
+      const key = nameKeyOf(s.name);
+      if (!key) continue;
+      const g = byKey.get(key);
+      if (g) g.businessIds.push(s.businessId);
+      else byKey.set(key, { key, service: serviceView(s), businessIds: [s.businessId] });
+    }
+    return [...byKey.values()];
+  }
+
+  /**
+   * F-11-095 (мок `createNetworkPackage`): в каждом отмеченном филиале — пакет из его копий сетевых услуг
+   * (по имени). Филиал, куда раздали не все услуги пакета, пропускается; ни одного — ошибка, как в моке.
+   * Цена/длительность — суммы состава; категория — первая категория филиала, нет ни одной — «Пакеты».
+   */
+  async createPackage(ctx: RequestContext, networkId: string, input: z.infer<typeof networkPackageBody>) {
+    const { network } = await this.access.require(ctx, networkId, 'services');
+    if (!input.name.ru?.trim()) throw new ApiError('validation', 'name required');
+    const scope = input.businessIds.filter((id) => network.businessIds.includes(id));
+    if (!scope.length) throw new ApiError('validation', 'no locations');
+    const services = await this.prisma.service.findMany({ where: { businessId: { in: scope }, servicePackage: { equals: Prisma.DbNull } } });
+    let newKey = '';
+    await this.prisma.$transaction(async (tx) => {
+      for (const businessId of scope) {
+        const items = input.itemKeys.map((k) => services.find((s) => s.businessId === businessId && nameKeyOf(s.name) === k)).filter((s): s is (typeof services)[number] => Boolean(s));
+        if (items.length !== input.itemKeys.length) continue; // не все услуги пакета розданы в этот филиал
+        let category = await tx.serviceCategory.findFirst({ where: { businessId }, orderBy: { sortOrder: 'asc' } });
+        if (!category) category = await tx.serviceCategory.create({ data: { id: newId('serviceCategory'), businessId, name: J({ ru: 'Пакеты' }), sortOrder: 0, createdBy: ctx.session!.userId, updatedBy: ctx.session!.userId } });
+        const count = await tx.service.count({ where: { businessId } });
+        const created = await tx.service.create({
+          data: {
+            id: newId('service'), businessId, categoryId: category.id, sphereId: items[0]!.sphereId, name: J(input.name), kind: 'individual',
+            durationMin: items.reduce((sum, s) => sum + s.durationMin, 0), priceMin: items.reduce((sum, s) => sum + s.priceMin, 0n),
+            photos: [], materials: [], staffIds: [], workplaces: ['salon'], onlineBookable: true, active: true, order: count,
+            servicePackage: J({ items: items.map((s, i) => ({ serviceId: s.id, order: i })), mode: input.mode }),
+            createdBy: ctx.session!.userId, updatedBy: ctx.session!.userId,
+          },
+        });
+        newKey = nameKeyOf(created.name);
+        await this.audit.record(tx, ctx, { action: 'create', entityType: 'service', entityId: created.id, businessId, networkId, after: { name: input.name, package: true } });
+      }
+    });
+    if (!newKey) throw new ApiError('validation', 'services not distributed to any location');
+    return { key: newKey };
+  }
+
+  /**
+   * F-11-120 (мок `getNetworkGoodsStock`): остаток каждого сетевого товара (группа networkGroupId, ≥2 филиала)
+   * по филиалам. Тот же счёт, что `StockCatalogService.computeLevels` (строки неотменённых документов, приёмник
+   * перемещения), но одним проходом на всю сеть, а не запросом на товар.
+   */
+  async goodsStock(ctx: RequestContext, networkId: string) {
+    const { network } = await this.access.require(ctx, networkId, 'goods');
+    if (!network.businessIds.length) return [];
+    const goods = await this.prisma.product.findMany({ where: { businessId: { in: network.businessIds }, networkGroupId: { not: null } }, select: { id: true, businessId: true, name: true, networkGroupId: true } });
+    const groups = new Map<string, typeof goods>();
+    for (const g of goods) groups.set(g.networkGroupId!, [...(groups.get(g.networkGroupId!) ?? []), g]);
+    const inGroups = [...groups.values()].filter((l) => l.length >= 2).flat();
+    if (!inGroups.length) return [];
+    const lines = await this.prisma.stockOpLine.findMany({ where: { goodId: { in: inGroups.map((g) => g.id) } }, select: { goodId: true, qtySale: true, opId: true } });
+    const ops = lines.length ? await this.prisma.stockOp.findMany({ where: { id: { in: [...new Set(lines.map((l) => l.opId))] }, cancelledAt: null }, select: { id: true, type: true, toWarehouseId: true } }) : [];
+    const opById = new Map(ops.map((o) => [o.id, o]));
+    const qtyByGood = new Map<string, number>();
+    for (const l of lines) {
+      const op = opById.get(l.opId);
+      if (!op) continue;
+      let q = (qtyByGood.get(l.goodId) ?? 0) + l.qtySale;
+      if (op.type === 'move' && op.toWarehouseId) q += Math.abs(l.qtySale);
+      qtyByGood.set(l.goodId, q);
+    }
+    const round = (n: number) => Math.round(n * 1000) / 1000;
+    return [...groups.entries()]
+      .filter(([, list]) => list.length >= 2)
+      .map(([key, list]) => {
+        const byBusiness = list.map((g) => ({ businessId: g.businessId, qty: round(qtyByGood.get(g.id) ?? 0) }));
+        return { key, name: list[0]!.name, byBusiness, total: round(byBusiness.reduce((s, b) => s + b.qty, 0)) };
+      });
+  }
+
+  /**
+   * F-11-009 (мок `copyBranchData`): перенос услуг и товаров филиала в другой филиал той же сети. Услуги — копии
+   * строк (категория по имени, нет — создаётся), пакеты — после обычных услуг, состав переписан на id копий;
+   * мастера у копий не привязаны (у нового филиала свои). Товары — `copyGoodToBusiness` (товар, уже
+   * разданный в филиал сетью, не дублируется). Сотрудников фасад копирует сам через `staff.server.ts`.
+   */
+  async copyBranch(ctx: RequestContext, networkId: string, input: z.infer<typeof networkCopyBranchBody>) {
+    const { network } = await this.access.require(ctx, networkId, 'settings');
+    if (!network.businessIds.includes(input.fromBusinessId) || !network.businessIds.includes(input.toBusinessId)) throw new ApiError('validation', 'not_in_network');
+    let servicesCopied = 0;
+    let goodsCopied = 0;
+    if (input.services) {
+      const source = await this.prisma.service.findMany({ where: { businessId: input.fromBusinessId }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
+      const sourceCategories = await this.prisma.serviceCategory.findMany({ where: { businessId: input.fromBusinessId } });
+      const ordered = [...source.filter((s) => s.servicePackage == null), ...source.filter((s) => s.servicePackage != null)];
+      await this.prisma.$transaction(async (tx) => {
+        const targetCategories = await tx.serviceCategory.findMany({ where: { businessId: input.toBusinessId } });
+        const idMap = new Map<string, string>();
+        let order = await tx.service.count({ where: { businessId: input.toBusinessId } });
+        for (const s of ordered) {
+          const srcCat = sourceCategories.find((c) => c.id === s.categoryId);
+          let categoryId: string | null = null;
+          if (srcCat) {
+            let cat = targetCategories.find((c) => nameKeyOf(c.name) === nameKeyOf(srcCat.name));
+            if (!cat) {
+              cat = await tx.serviceCategory.create({ data: { id: newId('serviceCategory'), businessId: input.toBusinessId, name: srcCat.name as object, sortOrder: targetCategories.length, createdBy: ctx.session!.userId, updatedBy: ctx.session!.userId } });
+              targetCategories.push(cat);
+            }
+            categoryId = cat.id;
+          }
+          const pkg = s.servicePackage as { items: { serviceId: string; order: number }[]; mode: string } | null;
+          const id = newId('service');
+          await tx.service.create({
+            data: {
+              id, businessId: input.toBusinessId, categoryId, sphereId: s.sphereId, name: s.name as object, description: s.description ?? undefined, kind: s.kind,
+              durationMin: s.durationMin, durationMax: s.durationMax, priceMin: s.priceMin, priceMax: s.priceMax, bufferAfterMin: s.bufferAfterMin, repeatIntervalDays: s.repeatIntervalDays,
+              capacity: s.capacity, photos: s.photos as object, materials: s.materials as object, staffIds: [], workplaces: s.workplaces as object, onlineBookable: s.onlineBookable,
+              active: s.active, order: order++, shadeChoice: s.shadeChoice,
+              ...(pkg ? { servicePackage: J({ ...pkg, items: pkg.items.filter((it) => idMap.has(it.serviceId)).map((it) => ({ ...it, serviceId: idMap.get(it.serviceId)! })) }) } : {}),
+              createdBy: ctx.session!.userId, updatedBy: ctx.session!.userId,
+            },
+          });
+          idMap.set(s.id, id);
+          servicesCopied += 1;
+        }
+        await this.audit.record(tx, ctx, { action: 'create', entityType: 'service', entityId: input.toBusinessId, businessId: input.toBusinessId, networkId, after: { copiedFrom: input.fromBusinessId, servicesCopied } });
+      });
+    }
+    if (input.goods) {
+      const goods = await this.prisma.product.findMany({ where: { businessId: input.fromBusinessId, archived: false }, select: { id: true, networkGroupId: true } });
+      const existing = await this.prisma.product.findMany({ where: { businessId: input.toBusinessId }, select: { networkGroupId: true } });
+      const existingGroups = new Set(existing.map((e) => e.networkGroupId).filter((v): v is string => Boolean(v)));
+      for (const g of goods) {
+        const groupId = g.networkGroupId ?? g.id;
+        if (existingGroups.has(groupId)) continue; // уже роздан в филиал сетью — не копия, не считаем
+        if (await this.copyGoodToBusiness(ctx, g.id, input.toBusinessId)) {
+          existingGroups.add(groupId);
+          goodsCopied += 1;
+        }
+      }
+    }
+    return { servicesCopied, goodsCopied };
+  }
+
+  /**
+   * F-11-010 (мок `importBusinessServicesCsv`): новые услуги из CSV в филиал, старые не трогаются. Категория — по
+   * точному русскому имени, нет — создаётся; пустая категория — первая категория филиала. Вызов — из кабинета
+   * филиала (`@Biz('services.edit')`), не из панели сети: экран миграции открывает и владелец одного салона.
+   */
+  async importServicesCsv(ctx: RequestContext, businessId: string, rows: z.infer<typeof servicesCsvImportBody>['rows']) {
+    const business = await this.prisma.business.findUnique({ where: { id: businessId }, select: { sphereIds: true } });
+    if (!business) throw new ApiError('not_found', 'Business not found');
+    const sphereId = (business.sphereIds as string[])[0] ?? 'beauty';
+    let created = 0;
+    await this.prisma.$transaction(async (tx) => {
+      const categories = await tx.serviceCategory.findMany({ where: { businessId }, orderBy: { sortOrder: 'asc' } });
+      let order = await tx.service.count({ where: { businessId } });
+      for (const row of rows) {
+        const name = row.name.trim();
+        if (!name) continue;
+        const catName = row.category.trim();
+        let category = categories.find((c) => (c.name as LocalizedText | null)?.ru === row.category) ?? null;
+        if (!category && catName) {
+          category = await tx.serviceCategory.create({ data: { id: newId('serviceCategory'), businessId, name: J({ ru: row.category, hy: row.category, en: row.category }), sortOrder: categories.length, createdBy: ctx.session!.userId, updatedBy: ctx.session!.userId } });
+          categories.push(category);
+        }
+        await tx.service.create({
+          data: {
+            id: newId('service'), businessId, categoryId: category?.id ?? categories[0]?.id ?? null, sphereId, name: J({ ru: name, hy: name, en: name }), kind: 'individual',
+            durationMin: row.duration || 30, priceMin: money(row.price || 0), photos: [], materials: [], staffIds: [], workplaces: ['salon'], onlineBookable: true, active: true,
+            order: order++, createdBy: ctx.session!.userId, updatedBy: ctx.session!.userId,
+          },
+        });
+        created += 1;
+      }
+      await this.audit.record(tx, ctx, { action: 'create', entityType: 'service', entityId: businessId, businessId, after: { csvImported: created } });
+    });
+    return { created };
+  }
 }
 
 function fieldOut(f: { id: string; networkId: string; kind: string; name: string; dataType: string; apiKey: string; listOptions: unknown; editableByUser: boolean; showInAdmin: boolean; alwaysShowInBookingWindow: boolean; requiredOnCreate: boolean; requiredOnArrived: boolean; alwaysShowInClientCard: boolean; showInWidget: boolean; requiredInWidget: boolean; businessIds: unknown; createdAt: Date }) {
@@ -1368,5 +1562,32 @@ export class NetworkCatalogController {
   async deletePositionDef(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('id') id: string) {
     await this.svc.deletePositionDef(ctx, n, id);
     return { ok: true as const };
+  }
+
+  // Этап 21 «Сдача» (28.09)
+  @Get('packages')
+  @ApiOperation({ summary: 'Сетевые пакеты по имени (F-11-095)' })
+  listPackages(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.listPackages(ctx, n);
+  }
+
+  @Post('packages')
+  @ApiOperation({ summary: 'Создать сетевой пакет в филиалах (F-11-095)' })
+  @ZodBody(networkPackageBody)
+  createPackage(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkPackageBody)) body: z.infer<typeof networkPackageBody>) {
+    return this.svc.createPackage(ctx, n, body);
+  }
+
+  @Get('goods-stock')
+  @ApiOperation({ summary: 'Остатки сетевых товаров по филиалам (F-11-120)' })
+  goodsStock(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.goodsStock(ctx, n);
+  }
+
+  @Post('copy-branch')
+  @ApiOperation({ summary: 'Перенести услуги/товары филиала в другой филиал сети (F-11-009)' })
+  @ZodBody(networkCopyBranchBody)
+  copyBranch(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkCopyBranchBody)) body: z.infer<typeof networkCopyBranchBody>) {
+    return this.svc.copyBranch(ctx, n, body);
   }
 }

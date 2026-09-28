@@ -25,6 +25,9 @@ const AREA_ALTEGIO_WHATSAPP = 'notify-altegio-whatsapp';
 const AREA_AGENT_FLAGS = 'notify-agent-flags';
 const AREA_SERVICE_REMINDER_HOURS = 'notify-service-reminder-hours';
 const AREA_WEBHOOKS = 'notify-webhooks';
+/** Этап 21 «Сдача»: правила уведомлений лояльности (F-05-100…106) — правки поверх LOYALTY_NOTIFY_DEFS фронта */
+const AREA_LOYALTY_RULES = 'notify-loyalty-rules';
+export type LoyaltyRulePatch = { enabled?: boolean; selectedPresetId?: string; customText?: string; daysBefore?: number; visitsLeftTrigger?: number };
 
 export interface NotifyQuietHoursOut {
   enabled: boolean;
@@ -237,6 +240,26 @@ export class NotifyMoreService {
       update: { data: J(settings), version: { increment: 1 } },
     });
     return settings;
+  }
+
+  // ─────────── правила уведомлений лояльности (F-05-100…106), этап 21 «Сдача» ───────────
+  // Сервер хранит только ПРАВКИ владельца по коду события; сами события/пресеты/умолчания — каталог фронта
+  // (LOYALTY_NOTIFY_DEFS), как у мока, который досеивал список на лету из того же каталога.
+
+  async getLoyaltyRulePatches(businessId: string): Promise<Record<string, LoyaltyRulePatch>> {
+    const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: AREA_LOYALTY_RULES } } });
+    return (row?.data as Record<string, LoyaltyRulePatch> | null) ?? {};
+  }
+
+  async updateLoyaltyRule(businessId: string, code: string, patch: LoyaltyRulePatch): Promise<Record<string, LoyaltyRulePatch>> {
+    const current = await this.getLoyaltyRulePatches(businessId);
+    const next = { ...current, [code]: { ...(current[code] ?? {}), ...patch } };
+    await this.prisma.businessSetting.upsert({
+      where: { businessId_area: { businessId, area: AREA_LOYALTY_RULES } },
+      create: { businessId, area: AREA_LOYALTY_RULES, data: J(next) },
+      update: { data: J(next), version: { increment: 1 } },
+    });
+    return next;
   }
 
   // ─────────── Open Slots — только расписание рассылки, вычисление окон не входит в этот заход ───────────

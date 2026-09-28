@@ -177,3 +177,12 @@ export const staffPrefsRichCellBody = z.object({
 });
 
 export const anyStaffPrefsConfiguredBody = z.object({ staffIds: z.array(z.string().min(1).max(32)).min(1).max(500) });
+
+// === stage 21 (сдача, 28.09): правила уведомлений лояльности ===
+export const loyaltyRulePatchBody = z.object({
+  enabled: z.boolean().optional(),
+  selectedPresetId: z.string().max(64).optional(),
+  customText: z.string().max(2000).optional(),
+  daysBefore: z.number().int().min(0).max(365).optional(),
+  visitsLeftTrigger: z.number().int().min(0).max(1000).optional(),
+});

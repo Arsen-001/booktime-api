@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { ApiError } from '../../common/errors/api-error.js';
@@ -30,6 +30,7 @@ import {
   dismissBannerBody,
   emailChannelBody,
   giftShowcaseBody,
+  loyaltyRulePatchBody,
   inboxReadBody,
   notifySettingsBody,
   openSlotsScheduleBody,
@@ -359,6 +360,21 @@ export class NotifyController {
   @Biz('notify.manage')
   setGiftShowcase(@Param('businessId') businessId: string, @Body(new Zod(giftShowcaseBody)) body: z.infer<typeof giftShowcaseBody>) {
     return this.more.updateGiftShowcase(businessId, body);
+  }
+
+  // ── правила уведомлений лояльности (F-05-100…106), этап 21 «Сдача» ──
+
+  @Get('notify/loyalty-rules')
+  @Biz('notify.manage')
+  getLoyaltyRules(@Param('businessId') businessId: string) {
+    return this.more.getLoyaltyRulePatches(businessId);
+  }
+
+  @Patch('notify/loyalty-rules/:code')
+  @Biz('notify.manage')
+  updateLoyaltyRule(@Param('businessId') businessId: string, @Param('code') code: string, @Body(new Zod(loyaltyRulePatchBody)) body: z.infer<typeof loyaltyRulePatchBody>) {
+    if (!/^[a-z0-9_.-]{1,64}$/i.test(code)) throw new ApiError('validation', 'bad code');
+    return this.more.updateLoyaltyRule(businessId, code, body);
   }
 
   // ── Open Slots — расписание (F-05-124) ──

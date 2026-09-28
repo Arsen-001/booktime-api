@@ -317,3 +317,31 @@ export const networkPayrollRunBody = z.object({
 });
 
 // === /stage 21 (lane network) ===
+
+// === stage 21 (сдача, 28.09) ===
+
+/** F-11-095: `src/api/network.ts::createNetworkPackage` — пакет из 2–10 сетевых услуг в отмеченных филиалах */
+export const networkPackageBody = z.object({
+  name: localized,
+  itemKeys: z.array(z.string().max(160)).min(2).max(10),
+  mode: z.enum(['parallel', 'sequentialSame', 'sequentialAny']),
+  businessIds: z.array(id32).min(1).max(50),
+});
+
+/** F-11-009: `src/api/network.ts::copyBranchData` — услуги/товары (сотрудников фасад копирует через staff.server) */
+export const networkCopyBranchBody = z.object({
+  fromBusinessId: id32,
+  toBusinessId: id32,
+  services: z.boolean(),
+  goods: z.boolean(),
+});
+
+/** F-11-010: `src/api/network.ts::importBusinessServicesCsv` — ≤500 строк, новые услуги, старые не трогаются */
+export const servicesCsvImportBody = z.object({
+  rows: z
+    .array(z.object({ name: z.string().max(200), category: z.string().max(200), price: z.number().min(0).max(1e10), duration: z.number().int().min(0).max(24 * 60) }))
+    .min(1)
+    .max(500),
+});
+
+// === /stage 21 (сдача) ===
