@@ -4542,3 +4542,25 @@ model IntegrationPartnerApplication {
   @@map("integration_partner_applications")
 }
 // === end stage 21 (сдача, попытка 6) ===
+
+// === stage 21 (сдача, попытка 6: чат через партнёра) ===
+/// Переписка с клиентом через бота-партнёра (F-05-087/088). Настоящего обмена с партнёром нет (Р19): входящие
+/// приходят демо-кнопкой «клиент написал» (место будущего вебхука партнёра), исходящие хранятся здесь.
+model NotifyChatMessage {
+  id             String    @id @db.VarChar(32)
+  businessId     String    @map("business_id") @db.VarChar(32)
+  phone          String    @db.VarChar(20)
+  clientId       String?   @map("client_id") @db.VarChar(32)
+  /// in | out
+  direction      String    @db.VarChar(3)
+  text           String    @db.Text
+  attachmentName String?   @map("attachment_name") @db.VarChar(200)
+  /// Входящее прочитано (счётчик «непрочитанных» F-05-088 — входящие без readAt)
+  readAt         DateTime? @map("read_at") @db.DateTime(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId, phone, createdAt])
+  @@index([businessId, direction, readAt])
+  @@map("notify_chat_messages")
+}
+// === end stage 21 (сдача, попытка 6: чат через партнёра) ===

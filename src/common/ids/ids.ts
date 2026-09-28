@@ -241,6 +241,8 @@ export const ID_PREFIX = {
   integrationDevAppEvent: 'iaev',
   integrationPartnerApplication: 'ipa',
   integrationPartnerPayment: 'iapay',
+  // этап 21 (сдача, попытка 6) — чат через партнёра (мок newId('chat'))
+  notifyChatMessage: 'chat',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

@@ -22,13 +22,14 @@ import { StockModule } from './modules/stock/stock.module.js';
 import { BillingModule } from './modules/billing/billing.module.js';
 import { SettingsModule } from './modules/settings/settings.module.js';
 import { IntegrationsModule } from './modules/integrations/integrations.module.js';
+import { NotifyChatModule } from './modules/notify/notify-chat.controller.js';
 import { PlatformModule } from './modules/platform/platform.module.js';
 import { DataRetentionModule } from './modules/data-retention/data-retention.module.js';
 import { ShortLinksModule } from './modules/shortlinks/shortlinks.module.js';
 
 /** Корневой модуль API. Разделы (PLAN.md §6) добавляются сюда по этапам. */
 @Module({
-  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule, ClientsModule, ScheduleModule, JournalModule, JournalMoreModule, OnlineModule, ClientModule, NotifyModule, LoyaltyModule, FinanceModule, StockModule, PayrollModule, NetworkModule, ReportsModule, BillingModule, SettingsModule, IntegrationsModule, PlatformModule, DataRetentionModule, ShortLinksModule],
+  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule, ClientsModule, ScheduleModule, JournalModule, JournalMoreModule, OnlineModule, ClientModule, NotifyModule, LoyaltyModule, FinanceModule, StockModule, PayrollModule, NetworkModule, ReportsModule, BillingModule, SettingsModule, IntegrationsModule, NotifyChatModule, PlatformModule, DataRetentionModule, ShortLinksModule],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {
