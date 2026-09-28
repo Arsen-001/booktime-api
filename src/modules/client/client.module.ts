@@ -13,6 +13,8 @@ import { MeController } from './me.controller.js';
 import { MeService } from './me.service.js';
 import { TranslationsController } from './translations.controller.js';
 import { TranslationsService } from './translations.service.js';
+import { VisitCashController } from './visit-cash.controller.js';
+import { VisitCashService } from './visit-cash.service.js';
 
 /**
  * Этап 9: приложение клиента (PLAN §6 №9, docs/backend/02 §2). Каталог/карточки/окна считает тот же фундамент,
@@ -32,10 +34,15 @@ import { TranslationsService } from './translations.service.js';
  * `client.ts::listAppStaff/setEmployeeAppAccess/getDayZReport/getAppPayrollCalculation/getAppPayrollPayouts/
  * recordPayrollPayout` и `::getTranslationOverride/listTranslatable/setTranslationOverride`. `AppStaffService`
  * зовёт `BookingsService.view()` для Z-отчёта — уже в импортах через `JournalModule`.
+ *
+ * `VisitCashController/Service` — этап 21 (лейн client+online, попытка 4): «визит-микрокасса» (F-14-092…098),
+ * `client.ts::listVisitCandidates/getVisitDetail/addVisitSaleLine/removeVisitSaleLine/addVisitPayment/
+ * removeVisitPayment/refundVisitPayment/listNoAppRemindersTomorrow/sendVisitReceipt/isVisitReceiptSent`. Тоже
+ * зовёт `BookingsService.view()/.find()/.tzOfBusiness()` — `JournalModule` уже в импортах.
  */
 @Module({
   imports: [ScheduleModule, JournalModule, LoyaltyModule, PlatformModule],
-  controllers: [PublicCatalogController, MeController, AppReportsController, AppStaffController, TranslationsController],
-  providers: [CatalogService, MeService, AppReportsService, AppStaffService, TranslationsService],
+  controllers: [PublicCatalogController, MeController, AppReportsController, AppStaffController, TranslationsController, VisitCashController],
+  providers: [CatalogService, MeService, AppReportsService, AppStaffService, TranslationsService, VisitCashService],
 })
 export class ClientModule {}

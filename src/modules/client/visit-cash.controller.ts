@@ -53,13 +53,8 @@ export class VisitCashController {
   @Biz('journal.edit')
   @ApiOperation({ summary: 'Отправить клиенту квитанцию об оплате визита (F-14-095)' })
   @ZodBody(sendVisitReceiptBody)
-  sendReceipt(
-    @Param('businessId') businessId: string,
-    @Param('bookingId') bookingId: string,
-    @Query('appUserId') appUserId: string,
-    @Body(new Zod(sendVisitReceiptBody)) body: z.infer<typeof sendVisitReceiptBody>,
-  ) {
-    return this.svc.sendVisitReceipt(businessId, bookingId, { appUserId, total: body.total });
+  sendReceipt(@Param('businessId') businessId: string, @Param('bookingId') bookingId: string, @Body(new Zod(sendVisitReceiptBody)) body: z.infer<typeof sendVisitReceiptBody>) {
+    return this.svc.sendVisitReceipt(businessId, bookingId, body);
   }
 
   @Post(':bookingId/sale-lines')

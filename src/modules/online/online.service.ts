@@ -17,6 +17,7 @@ import { businessView, locationView, staffView } from '../businesses/views.js';
 import { OtpService } from '../auth/otp.service.js';
 import { categoryView, serviceView } from '../services/services.views.js';
 import { BookingsService, clientActor, coreClient, staffActor } from '../journal/bookings.service.js';
+import { ModerationService, photoModerationRefId } from '../platform/moderation.service.js';
 import type { BusinessOnlineRulesBody, CreateLinkBody, StaffClientRulesBody, UpdateLinkBody } from './online.schemas.js';
 
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
@@ -78,6 +79,7 @@ export class OnlineService {
     private readonly availability: AvailabilityService,
     private readonly otp: OtpService,
     private readonly bookings: BookingsService,
+    private readonly moderation: ModerationService,
   ) {}
 
   // ─────────────────────────── бизнес по slug ───────────────────────────
@@ -161,12 +163,22 @@ export class OnlineService {
     const onlineArea = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId: business.id, area: 'online' } } });
     const hourCycle = ((onlineArea?.data as Record<string, unknown> | undefined)?.hourCycle as '24' | '12' | undefined) ?? '24';
 
+    // F-00-168 (этап 21, лейн rest): один пакетный запрос вместо N+1 — бизнес + весь видимый персонал сразу.
+    const allPhotoRefIds = [...arr<string>(business.photos), ...visibleStaff.flatMap((s) => arr<string>(s.photos))].map(photoModerationRefId);
+    const hiddenPhotoRefIds = await this.moderation.hiddenRefIds(allPhotoRefIds);
+    const staffOut = visibleStaff.map(sanitizePublicStaff).map((s) => {
+      const photos = arr<string>(s.photos);
+      if (!photos.length) return s;
+      const visible = photos.filter((p) => !hiddenPhotoRefIds.has(photoModerationRefId(p)));
+      return visible.length === photos.length ? s : { ...s, photos: visible };
+    });
+
     return {
-      business: await this.businessOut(business),
+      business: await this.businessOut(business, hiddenPhotoRefIds),
       location: location ? locationView(location) : undefined,
       categories: categories.map(categoryView),
       services: services.map(serviceView),
-      staff: visibleStaff.map(sanitizePublicStaff),
+      staff: staffOut,
       link: linkOut,
       regularsCount: await this.countRegulars(business.id),
       serviceConfigs: await this.serviceConfigsMap(business.id, services.map((s) => s.id)),
@@ -182,9 +194,20 @@ export class OnlineService {
     };
   }
 
-  private async businessOut(b: Business) {
+  /**
+   * `hiddenBusinessPhotoRefIds` — набор, уже посчитанный вызывающей стороной, если она знает его заранее
+   * (`publicBusinessData` считает один пакетный запрос сразу на бизнес+весь персонал, чтобы не бить N+1);
+   * без параметра метод посчитает свой пакет сам (второй вызывающий, `viewByHash`, — один бизнес без персонала).
+   */
+  private async businessOut(b: Business, hiddenBusinessPhotoRefIds?: ReadonlySet<string>) {
     const locationIds = (await this.prisma.location.findMany({ where: { businessId: b.id, deletedAt: null }, select: { id: true } })).map((l) => l.id);
-    return businessView(b, locationIds);
+    const view = businessView(b, locationIds);
+    const photos = arr<string>(view.photos);
+    if (!photos.length) return view;
+    const hidden = hiddenBusinessPhotoRefIds ?? (await this.moderation.hiddenRefIds(photos.map(photoModerationRefId)));
+    if (!hidden.size) return view;
+    const visiblePhotos = photos.filter((p) => !hidden.has(photoModerationRefId(p)));
+    return visiblePhotos.length === photos.length ? view : { ...view, photos: visiblePhotos };
   }
 
   /** F-00-117: постоянные клиенты (3+ визита за 12 мес, В-38) — то же правило, что карточка мастера приложения */

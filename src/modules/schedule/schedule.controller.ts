@@ -21,6 +21,8 @@ import {
   removeFromScheduleBody,
   restoreAfterRemoveBody,
   restoreCellsBody,
+  scheduleFiltersBody,
+  scheduleViewConfigBody,
   setCellsBody,
   settingsPatch,
   snapshotBody,
@@ -180,6 +182,34 @@ export class ScheduleController {
   @ApiOperation({ summary: 'История правок графика и правил окон (F-02-102)' })
   history(@Param('businessId') businessId: string, @Query('staffIds') staffIds?: string) {
     return this.svc.history(businessId, staffIds ? staffIds.split(',').filter(Boolean) : undefined);
+  }
+
+  @Get('schedule/view-config')
+  @Biz()
+  @ApiOperation({ summary: 'Вид таблицы графика (F-02-004)' })
+  getViewConfig(@Param('businessId') businessId: string) {
+    return this.svc.getViewConfig(businessId);
+  }
+
+  @Put('schedule/view-config')
+  @Biz()
+  @ZodBody(scheduleViewConfigBody)
+  setViewConfig(@Param('businessId') businessId: string, @Body(new Zod(scheduleViewConfigBody)) body: z.infer<typeof scheduleViewConfigBody>) {
+    return this.svc.setViewConfig(businessId, body);
+  }
+
+  @Get('schedule/table-filters')
+  @Biz()
+  @ApiOperation({ summary: 'Фильтры таблицы графика (F-02-003)' })
+  getTableFilters(@Param('businessId') businessId: string) {
+    return this.svc.getTableFilters(businessId);
+  }
+
+  @Put('schedule/table-filters')
+  @Biz()
+  @ZodBody(scheduleFiltersBody)
+  setTableFilters(@Param('businessId') businessId: string, @Body(new Zod(scheduleFiltersBody)) body: z.infer<typeof scheduleFiltersBody>) {
+    return this.svc.setTableFilters(businessId, body);
   }
 
   @Get('schedule/settings')

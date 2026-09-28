@@ -6289,3 +6289,98 @@ scripts/renders.mjs --check-compiler` — 0 опасных `x!.y`.
 для «моей записи без входа», B8/B19), либо сознательно оставить как есть (мастер сам решает, кому давать
 ссылку, риск малый). Сам не решал — оставил на моке до ответа.
 кликом не проверены мутации экранов (только curl + открытие экранов).
+
+## Этап 21, лейн «client+online», попытка 4 — «визит-микрокасса» `src/api/client.ts` (28.09.2026)
+
+Начал с `node scripts/facade-audit.mjs`: `online.ts` — 0 (уже закрыт параллельным заходом попытки 2, не
+трогал). `client.ts` — 55 реальных дыр (56 флагов, 55 с потребителями). Прочитал журнал попытки 3: три кластера
+остатка — мемберства/сертификаты/кэшбэк (~26, ждёт решения loyalty/port vs свой Prisma-слой), сторис/новости/
+буст (~15, не начинал), визит-микрокасса (~10, «архитектурный выбор не мой»).
+
+**Взял в работу «визит-микрокасса» + напоминание без приложения (11 функций)**: `listNoAppRemindersTomorrow`,
+`listVisitCandidates`, `getVisitDetail`, `buildVisitReceiptText`, `sendVisitReceipt`, `isVisitReceiptSent`,
+`addVisitSaleLine`, `removeVisitSaleLine`, `addVisitPayment`, `removeVisitPayment`, `refundVisitPayment`.
+
+**Архитектурное решение, принятое самостоятельно** (деньги не решал — решал только техническую форму, как уже
+делал попытка 2/3 для `AppPayrollPayout`): своя лёгкая таблица `VisitCashRecord` (одна на sale-строки и оплаты,
+`kind` различает), НЕ витрина над `Booking`/`FinOp`/`BookingPayment` раздела «Финансы». Основание — сам мок это
+документирует явно (докстринг `VisitCashDesk` в `domain/client.ts`): «настоящие кассы живут в разделе finance и
+сюда не проброшены». «Квитанция отправлена» не хранит отдельный маркер — проверяется существованием
+`InboxItem(kind='receipt', bookingId)`, тем же приёмом, что `sendOneOffPush` пишет `kind='broadcast'`.
+
+**Backend** (`booktime-backend`): `prisma/schema.prisma` — блок `// === stage 21 (лейн client+online), попытка 4
+===` (модель `VisitCashRecord`: businessId/bookingId/kind/data JSON/refundedAt); `src/common/ids/ids.ts` —
+`visitSaleLine: 'vsl'`/`visitPayment: 'vpay'` (id той же формы, что у мока). Новые файлы:
+`src/modules/client/visit-cash.service.ts`, `visit-cash.controller.ts` (`GET/POST .../visit-cash/...` под
+`v1/biz/:businessId/visit-cash`, права `journal.view`/`journal.edit` — тот же корень, что журнал визита);
+правки: `client.module.ts` (регистрация), `client.schemas.ts` (`addVisitSaleLineBody`/`addVisitPaymentBody`/
+`sendVisitReceiptBody`). Миграцию `prisma migrate dev` под локом провёл я, но CLI применил её под именем
+чужого параллельного захода (`20260928005606_stage21_network_reports_users_login`) — тот же эффект дрейфа, что
+уже документировала попытка 3 для другой миграции: держал лок только на сам вызов, файл `schema.prisma` читает
+кто угодно между вызовами. SQL проверил вручную — таблица `visit_cash_records` ровно с моими колонками/
+индексами. `tzOfBusiness`/`view`/`find` — переиспользовал `BookingsService` (`JournalModule` уже в импортах
+`ClientModule`), не дублировал маппинг брони. Текст напоминания — переиспользовал уже существующий
+`t(locale,'booking.remindTemplate',…)`/`waLink` из `notify/wa-link.js` (та же строка, что уже отдаёт
+`GET journal/bookings/:id/remind-text`, а не копия текста мока — в моке нет «в {business}», в реальном шаблоне
+есть; посчитал более верным переиспользовать уже принятый в проекте текст, чем плодить второй с иным словом).
+
+**Frontend**: `client.ts` — 10 функций получили ветку `isApiMode()` (без неё осталась только `buildVisitReceiptText`,
+но и туда добавлен `isApiMode()` — читает `detail.businessName`, которое сервер теперь кладёт в `VisitDetail`
+(новое опциональное поле, аддитивно, мок его не заполняет и продолжает работать через старый `readCore()`).
+`client.server.ts` — 10 новых `*Server()` функций (тот же приём, что app-staff/translations: businessId из
+`apiIdentity()`, кроме `sendVisitReceipt`/`listVisitCandidates`/`listNoAppRemindersTomorrow` — там businessId уже
+явный параметр мока).
+
+**Проверено настоящим HTTP** (дев `:4010`, лок на build+restart+migrate держал ~4 минуты, отпустил сразу):
+вход `+37400120001` (`biz_kaytsak`) — `getVisitDetail` на реальной записи (`total=4500`), `addVisitSaleLine`
+(product, 3000−500), `addVisitPayment` (cash 4000, card+visa 3000 → `commissionPercent=2.5` посчитан сервером),
+детализация сошлась (`salesTotal=2500`, `dueTotal=7000`, `paidTotal=7000`, `remaining=0`); `refundVisitPayment`
+убрал оплату из `paidTotal`, но не удалил строку (`remaining` вернулся к 4000); `removeVisitSaleLine`/
+`removeVisitPayment` — 200; `listVisitCandidates` — реальный список сегодняшних визитов; `listNoAppRemindersTomorrow`
+— реальный список завтрашних без приложения с рабочей `wa.me` ссылкой; `sendVisitReceipt` → `isVisitReceiptSent`
+false→true, проверено сквозным чтением `GET /v1/me/inbox` под сессией самого клиента (тот же приём, что
+попытка 3 проверяла `sendOneOffPush`). Тестовые строки/уведомление убраны SQL после проверки.
+
+**Проверено настоящим браузером** (Playwright, сессия через `/v1/auth/*` + `?data=api`, без пересборки):
+`/biz/apps/visit` под `biz_kaytsak` (владелец `+37400120001`) — список из 18 реальных визитов с именами/
+временем, 0 ошибок консоли/страницы; под `biz_nuri` (владелец `+37400110001`, 24 визита сегодня) — открыл модалку
+визита кликом (`getVisitDetail` в реальном UI: «К оплате 9 500 ֏», вкладки Продажа/Оплата/Лояльность), заполнил
+форму «Добавить продажу» (название+цена) и отправил — «К оплате» пересчиталось на 10 734 ֏ (9500+1234), строка
+появилась в списке продаж, 0 ошибок; тестовую строку убрал SQL после проверки. `getBookingMembershipOption`/
+`countVisitLoyaltyOptions` в той же модалке (вкладка «Лояльность») по-прежнему на моке — не мой кластер этого
+захода, эффект в api-режиме — «0 доступно» (не крash, просто неверное число до лейна лояльности/кэшбэка).
+
+**Проверки**: backend `tsc --noEmit -p tsconfig.json` (весь проект) — 0 ошибок. Frontend
+`npx tsc --noEmit --incremental --tsBuildInfoFile .tsbuild/backend.tsbuildinfo` — 0 ошибок. `eslint src/api/client.ts
+src/api/client.server.ts` — 0 (тот же старый warning `Location`, не мой). `node scripts/fids.mjs` — 2892/2896
+(без изменений). `node scripts/renders.mjs --check-compiler` — 0. `node scripts/facade-audit.mjs`: `client.ts`
+55→44 (−11, ровно взятые в работу), `online.ts` — по-прежнему 0.
+
+**Осталось в `client.ts` — 44** (не выполнено «make EVERY function» по объёму, следующий заход продолжает):
+- **Мемберства/сертификаты/кэшбэк (~26)** — `getBookingMembershipOption`/`listMemberships`/`getMembership`/
+  `toggleMembershipFreeze`/`toggleMembershipAutoRenew`/`listCertificates`/`getCertificate`/`listLoyaltyCards`/
+  `getCashbackForBusiness`/`listPurchasableMemberships`/`listPurchasableCertificates`/`purchaseMembership`/
+  `purchaseCertificate`/`markMembershipPaymentSent`/`markCertificatePaymentSent`/`listPurchaseRequests`/
+  `countPendingPurchaseRequests`/`confirmMembershipPurchase`/`confirmCertificatePurchase`/
+  `rejectMembershipPurchase`/`rejectCertificatePurchase`/`findRenewTemplate`/`listPendingMembershipReminders`/
+  `markMembershipReminderSeen` + `countVisitLoyaltyOptions`/`issueLoyaltyCard`/`findLoyaltyByCode`/
+  `setCashbackVisibleForBusiness`/`getCashbackVisibleForBusiness` (эти 5 сознательно НЕ взял в этот заход —
+  тот же `CashbackCard`/`certificates`/`memberships`, что и весь кластер выше: закрыть только запись, оставив
+  чтение (`listLoyaltyCards`/`getCashbackForBusiness`) на моке, значит выданная в api-режиме карта не появится
+  в списке — реальная рассинхронизация, не half-done прогресс). Путь описан попыткой 3: (а) расширить
+  `loyalty/port` (`ME_OPS`/`BIZ_OPS`, переиспользует готовый расчётный слой) — рекомендация в силе, инфраструктура
+  уже оплачена лейном loyalty.
+- **Сторис/новости/буст/coin (~15)** — не смотрел, самостоятельный домен (покупка бизнесом рекламных мест/монет,
+  своя денежная сущность `CoinBalance`/`CoinLedger` не строена ни одним лейном).
+
+### Вопросы владельцу (этап 21, лейн client+online, попытка 4)
+Ничего денежного/юридического не решал сам. Одна мелкая текстовая развилка, отмечена явно (не блокирует):
+текст напоминания клиенту без приложения (`listNoAppRemindersTomorrow`) на сервере теперь включает название
+бизнеса («…в {business}»), которого нет в исходном тексте мока — переиспользовал уже принятый в проекте
+`i18n` шаблон `booking.remindTemplate` (тот же, что у одиночного `remind-text` в журнале) вместо копирования
+текста мока слово в слово. Кажется более верным (единый текст на весь продукт), но это правка на строку без
+явного решения владельца — если это неверно, вернуть точную мок-строку тривиально.
+
+лейн client+online, попытка 4: закрыто 11 из 55 (визит-микрокасса + напоминание без приложения, online.ts не
+трогал — уже 0); осталось в client.ts 44 — мемберства/сертификаты/кэшбэк (~26, путь через loyalty/port описан
+выше, включая 5 функций кэшбэка визита), сторис/новости/буст/coin (~15, не начинал).

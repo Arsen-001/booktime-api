@@ -419,7 +419,7 @@ export class ReportsJournalService {
   ): Promise<{ created: number; failed: number }> {
     const staffList = await this.prisma.staff.findMany({ where: { businessId, deletedAt: null }, select: { id: true, name: true } });
     const staffByName = new Map(staffList.map((s) => [norm(s.name), s] as const));
-    const services = await this.prisma.service.findMany({ where: { businessId, deletedAt: null }, select: { id: true, name: true, priceMin: true, durationMin: true } });
+    const services = await this.prisma.service.findMany({ where: { businessId, active: true }, select: { id: true, name: true, priceMin: true, durationMin: true } });
     const serviceByName = new Map(services.map((s) => [norm(ruOf(s.name)), s] as const));
     let created = 0;
     for (const row of rows) {

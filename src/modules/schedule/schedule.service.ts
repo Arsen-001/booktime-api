@@ -27,12 +27,14 @@ import {
   type DayHours,
   type ScheduleLike,
 } from '../availability/engine.js';
-import type { SetCellsBody, SettingsPatch, TableBody } from './schedule.schemas.js';
+import type { ScheduleFiltersBody, ScheduleViewConfigBody, SetCellsBody, SettingsPatch, TableBody } from './schedule.schemas.js';
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaService | Tx;
 
 export const DEFAULT_DAY_RANGE = { from: '10:00', to: '19:00' };
+const DEFAULT_TABLE_VIEW_CONFIG: ScheduleViewConfigBody = { showShiftTotals: true, showHeadcount: true };
+const DEFAULT_TABLE_FILTERS: ScheduleFiltersBody = { staffIds: [], positions: [], specializations: [], hasSchedule: 'all', deleted: 'active', fired: 'active' };
 const EMPTY_WEEK = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
 const WORKING_TYPES = new Set(['work']);
 const isWorkingType = (typeId: string) => WORKING_TYPES.has(typeId);
@@ -774,6 +776,35 @@ export class ScheduleService {
     }));
     if (!staffIds?.length) return list;
     return list.filter((h) => h.targetStaffIds.some((id) => staffIds.includes(id))).slice(0, 200);
+  }
+
+  // ─────────── вид таблицы и фильтры (F-02-003/004) ───────────
+  // Личная настройка экрана «График» — под своим `area`, не мешает `settings()`/`patchSettings()` ниже.
+
+  async getViewConfig(businessId: string): Promise<ScheduleViewConfigBody> {
+    const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'scheduleTableView' } } });
+    return { ...DEFAULT_TABLE_VIEW_CONFIG, ...((row?.data as Partial<ScheduleViewConfigBody> | undefined) ?? {}) };
+  }
+
+  async setViewConfig(businessId: string, config: ScheduleViewConfigBody): Promise<void> {
+    await this.prisma.businessSetting.upsert({
+      where: { businessId_area: { businessId, area: 'scheduleTableView' } },
+      create: { businessId, area: 'scheduleTableView', data: config as unknown as Prisma.InputJsonValue },
+      update: { data: config as unknown as Prisma.InputJsonValue },
+    });
+  }
+
+  async getTableFilters(businessId: string): Promise<ScheduleFiltersBody> {
+    const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'scheduleTableFilters' } } });
+    return { ...DEFAULT_TABLE_FILTERS, ...((row?.data as Partial<ScheduleFiltersBody> | undefined) ?? {}) };
+  }
+
+  async setTableFilters(businessId: string, filters: ScheduleFiltersBody): Promise<void> {
+    await this.prisma.businessSetting.upsert({
+      where: { businessId_area: { businessId, area: 'scheduleTableFilters' } },
+      create: { businessId, area: 'scheduleTableFilters', data: filters as unknown as Prisma.InputJsonValue },
+      update: { data: filters as unknown as Prisma.InputJsonValue },
+    });
   }
 
   // ─────────── настройки раздела ───────────

@@ -12,6 +12,27 @@ export type ModerationKind = 'staffPhoto' | 'salonPhoto' | 'servicePhoto' | 'ser
 export type ModerationStatus = 'pending' | 'approved' | 'rejected' | 'auto';
 export type ModerationSource = 'user' | 'visit' | 'template' | 'reuse';
 
+/**
+ * Тот же хеш, что фронт (`src/api/settings.ts::fnv1a`) — `ModerationItem.refId` VARCHAR(64), url фото туда не
+ * влезает (десятки килобайт data:URL), а картинка ссылается на свой refId по хешу самого url (та же картинка →
+ * тот же refId, без общего хранилища между отправкой и публичной выдачей). Не крипто — только повторяемость.
+ */
+function fnv1a(s: string): string {
+  let h1 = 0x811c9dc5,
+    h2 = 0x9e3779b9;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 16777619);
+    h2 = Math.imul(h2 ^ c, 2246822519);
+  }
+  return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36);
+}
+
+/** refId фото в очереди модерации (F-00-168) — совпадает с `mediaRefId(businessId, refKey, imageUrl)` фронта для фото */
+export function photoModerationRefId(url: string): string {
+  return `img_${fnv1a(url)}`;
+}
+
 export interface ModerationSubmitInput {
   kind: ModerationKind;
   businessId: string;
@@ -269,5 +290,25 @@ export class ModerationService {
   async isVisibleToClients(refId: string): Promise<boolean> {
     const row = await this.prisma.moderationItem.findFirst({ where: { refId }, orderBy: { submittedAt: 'desc' }, select: { status: true } });
     return !row || row.status === 'approved' || row.status === 'auto';
+  }
+
+  /**
+   * Множество refId из кандидатов, скрытых модерацией — пакетный `isVisibleToClients` для галерей (F-00-168,
+   * этап 21 лейн rest: публичная страница /b/<slug> отдавала фото галереи и портфолио мастера БЕЗ этой проверки
+   * вообще, docs/backend/07-mock-only.md P7 честно фиксировал разрыв). Та же логика, что фронтовый
+   * `hiddenByModeration` (src/domain/rules/visibility.ts): refId скрыт, если у него есть хоть ОДНА заявка не в
+   * approved/auto — включая давно отклонённую, даже если по этому же refId позже была одобрена другая (тот же
+   * URL переотправили) — фронт считает так же, не «только последняя», и остаётся так же здесь для одинакового
+   * поведения в обоих режимах. Ничего не отправляли вовсе — refId не попадает в результат, видно как старый
+   * контент до проверки.
+   */
+  async hiddenRefIds(refIds: readonly string[]): Promise<Set<string>> {
+    if (!refIds.length) return new Set();
+    const rows = await this.prisma.moderationItem.findMany({
+      where: { refId: { in: [...refIds] }, NOT: { status: { in: ['approved', 'auto'] } } },
+      select: { refId: true },
+      distinct: ['refId'],
+    });
+    return new Set(rows.map((r) => r.refId));
   }
 }

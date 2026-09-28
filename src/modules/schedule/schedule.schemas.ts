@@ -34,6 +34,27 @@ export const tableBody = z.object({
 });
 export type TableBody = z.infer<typeof tableBody>;
 
+/**
+ * Вид таблицы (F-02-004) и фильтры (F-02-003) — своя личная настройка экрана, не «настройки раздела»
+ * (`settingsPatch` выше, area='schedule'); хранится под другим `area` в той же `business_settings` (этап 21,
+ * лейн rest: были только в моке, `ScheduleScreen` в api-режиме их вообще не сохранял — F-02-003/004 не работали).
+ */
+export const scheduleViewConfigBody = z.object({
+  showShiftTotals: z.boolean(),
+  showHeadcount: z.boolean(),
+});
+export type ScheduleViewConfigBody = z.infer<typeof scheduleViewConfigBody>;
+
+export const scheduleFiltersBody = z.object({
+  staffIds: z.array(id32).max(200),
+  positions: z.array(z.string().max(120)).max(50),
+  specializations: z.array(z.string().max(40)).max(100),
+  hasSchedule: z.enum(['all', 'with', 'without']),
+  deleted: z.enum(['active', 'only']),
+  fired: z.enum(['active', 'only']),
+});
+export type ScheduleFiltersBody = z.infer<typeof scheduleFiltersBody>;
+
 export const setCellsBody = z.object({
   staffIds,
   dates,
