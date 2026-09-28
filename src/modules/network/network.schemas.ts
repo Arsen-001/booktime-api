@@ -153,6 +153,9 @@ export const networkServiceBody = z.object({
   capacity: z.number().int().min(1).max(500).optional(),
   priceLocked: z.boolean().default(false),
   descriptionLocked: z.boolean().default(false),
+  /** Сеть4 (мок `NetworkServiceFormInput.priceMode`): 'keepLocal' — цена НЕ трогается там, где услуга уже есть,
+   * новая цена применяется только к филиалам, куда услуга только сейчас добавляется. По умолчанию 'all'. */
+  priceMode: z.enum(['all', 'keepLocal']).default('all'),
   businessIds: z.array(id32).min(1).max(50),
 });
 
@@ -286,5 +289,31 @@ export const networkHrReportQuery = z.object({ query: z.string().max(120).option
 
 /** F-11-156: `getNetworkBranchDailyStats` — по филиалу (мок без networkId в подписи), как `marketing-opt-out` рядом */
 export const branchDailyStatsQuery = z.object({ businessIds: z.string().min(1).max(2000), date: isoDate });
+
+// === stage 21 (lane network), попытка 3 ===
+
+/** Сеть4: `src/api/network.ts::previewNetworkServiceSave` — превью ДО записи, по филиалу */
+export const networkServicePreviewBody = z.object({
+  key: z.string().max(160).optional(),
+  categoryKey: z.string().max(160),
+  businessIds: z.array(id32).min(1).max(50),
+});
+
+/** F-11-093: `src/api/network.ts::mergeNetworkServices` — слить 2+ сетевые услуги (разные имена) в одну */
+export const networkServiceMergeBody = z.object({
+  keys: z.array(z.string().max(160)).min(2).max(50),
+  name: localized,
+});
+
+/** F-11-109: `src/api/network.ts::createNetworkPayrollRun` — запись факта запуска (расчёт уже идёт через
+ * finance.createSettlementSheet в цикле на фронте, см. докстринг мока); хранится в `NetworkSetting` area
+ * 'payrollRuns', как `exportLog` рядом. */
+export const networkPayrollRunBody = z.object({
+  from: isoDate,
+  to: isoDate,
+  businessIds: z.array(id32).min(1).max(50),
+  staffCount: z.number().int().min(0).max(100_000),
+  authorName: z.string().max(160),
+});
 
 // === /stage 21 (lane network) ===

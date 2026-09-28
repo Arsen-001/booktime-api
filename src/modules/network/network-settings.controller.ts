@@ -12,6 +12,7 @@ import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { nowLocal, utcToLocal, utcToLocalDate } from '../../common/time/time.js';
 import { NetworkAccessService } from './network-access.service.js';
+import { networkPayrollRunBody } from './network.schemas.js';
 
 // ─────────── схемы ───────────
 
@@ -34,6 +35,15 @@ interface ExportEntry {
   kind: 'clients' | 'records' | 'staff';
   count: number;
   expiresAt: string;
+}
+interface NetworkPayrollRunRow {
+  id: string;
+  networkId: string;
+  period: { from: string; to: string };
+  businessIds: string[];
+  staffCount: number;
+  createdAt: string;
+  authorName: string;
 }
 interface TelRoute {
   id: string;
@@ -199,6 +209,35 @@ export class NetworkSettingsService {
     return (await this.read<ExportEntry[]>(networkId, 'exportLog')) ?? [];
   }
 
+  /**
+   * F-11-109 (этап 21 «network», попытка 3): `src/api/network.ts::listNetworkPayrollRuns`/`createNetworkPayrollRun`
+   * — сам расчёт и начисление зарплаты уже идут по-настоящему (фронт зовёт `finance.createSettlementSheet` в
+   * цикле по каждому сотруднику каждого выбранного филиала, у неё уже есть ветка `isApiMode()` — этап 21,
+   * qa/requests/payroll.md). Не хватало только ЖУРНАЛА самих запусков (список «Ведомости сети») — как
+   * `exportLog` рядом, своя область `NetworkSetting`, без новой таблицы/миграции.
+   */
+  async payrollRuns(ctx: RequestContext, networkId: string) {
+    await this.access.require(ctx, networkId, 'payroll');
+    const rows = (await this.read<NetworkPayrollRunRow[]>(networkId, 'payrollRuns')) ?? [];
+    return [...rows].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async addPayrollRun(ctx: RequestContext, networkId: string, input: z.infer<typeof networkPayrollRunBody>) {
+    await this.access.require(ctx, networkId, 'payroll');
+    const entry: NetworkPayrollRunRow = {
+      id: newId('networkPayrollRun'),
+      networkId,
+      period: { from: input.from, to: input.to },
+      businessIds: input.businessIds,
+      staffCount: input.staffCount,
+      authorName: input.authorName,
+      createdAt: nowLocal(),
+    };
+    const log = (await this.read<NetworkPayrollRunRow[]>(networkId, 'payrollRuns')) ?? [];
+    await this.write(networkId, 'payrollRuns', [entry, ...log].slice(0, 200), ctx.session?.userId);
+    return entry;
+  }
+
   async addExport(ctx: RequestContext, networkId: string, input: z.infer<typeof exportBody>) {
     const { network } = await this.access.require(ctx, networkId, 'clients');
     const kind = input.kind ?? 'clients';
@@ -339,5 +378,17 @@ export class NetworkSettingsController {
   @ApiOperation({ summary: 'Журнал «Изменения данных» сети (F-11-023)' })
   auditLog(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
     return this.svc.auditLog(ctx, n);
+  }
+
+  @Get('payroll-runs')
+  @ApiOperation({ summary: 'Журнал запусков «Создать ведомость и начислить» по сети (F-11-109)' })
+  payrollRuns(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.payrollRuns(ctx, n);
+  }
+
+  @Post('payroll-runs')
+  @ZodBody(networkPayrollRunBody)
+  addPayrollRun(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkPayrollRunBody)) body: z.infer<typeof networkPayrollRunBody>) {
+    return this.svc.addPayrollRun(ctx, n, body);
   }
 }

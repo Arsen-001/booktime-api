@@ -38,6 +38,20 @@ export class NetworkBusinessController {
     return this.catalog.listPriceLockedServiceIdsForBusiness(businessId);
   }
 
+  /** `src/api/network.ts::getServiceNetworkInfo(serviceId)` — см. докстринг `getServiceNetworkInfoForService` */
+  @Get('service-info/:serviceId')
+  @Biz('services.view')
+  serviceNetworkInfo(@Param('businessId') businessId: string, @Param('serviceId') serviceId: string) {
+    return this.catalog.getServiceNetworkInfoForService(businessId, serviceId);
+  }
+
+  /** `src/api/network.ts::getStaffNetworkInfo(staffId)` — см. докстринг `getStaffNetworkInfoForStaff` */
+  @Get('staff-info/:staffId')
+  @Biz('staff.view')
+  staffNetworkInfo(@Param('businessId') businessId: string, @Param('staffId') staffId: string) {
+    return this.catalog.getStaffNetworkInfoForStaff(businessId, staffId);
+  }
+
   /** `src/api/network.ts::setNetworkMarketingOptOut(phone, optOut)` — см. докстринг `setMarketingOptOutByBusiness` */
   @Patch('marketing-opt-out')
   @Biz('clients.edit')

@@ -27,12 +27,18 @@ import {
   networkPositionDefBody,
   networkServiceBody,
   networkServiceCategoryBody,
+  networkServiceMergeBody,
+  networkServicePreviewBody,
   networkStaffOrderBody,
   networkStaffQuery,
   networkSubdivisionBody,
   staffMergeBody,
   staffMigrateBody,
 } from './network.schemas.js';
+
+/** Сеть5 (мок `occupiesTime`, как в `getNetworkFinanceSummary` — см. докстринг в network-reports.controller.ts):
+ * НЕ два более широких набора `CANCELLED_LIKE`/`PENDING_LIKE` того файла, а ровно эти два статуса. */
+const CANCELLED_OCCUPIES = new Set(['cancelled_by_client', 'cancelled_by_master']);
 
 type LocalizedText = { ru: string; hy?: string; en?: string };
 const J = (v: unknown) => v as import('../../generated/prisma/client.js').Prisma.InputJsonValue;
@@ -56,21 +62,44 @@ export class NetworkCatalogService {
 
   // ───────────────────────── Услуги / категории (F-11-079…093) ─────────────────────────
 
+  /**
+   * Этап 21 «network», попытка 3: контракт мока (`NetworkCategoryRow`) хочет `category: ServiceCategory`
+   * (строка ядра — id/businessId/order/name, не только имя) и реальный `servicesCount` — переход первого
+   * захода (`попытка 1`) отдавал урезанную форму и хардкодил `servicesCount: 0`, экран `ServicesScreen`
+   * этого не видел, потому что до сих пор не был переключён (`src/api/network.ts::listNetworkServiceCategories`
+   * не имел ветки `isApiMode()`). `category` — первая попавшаяся строка группы (мок делает то же: первая
+   * строка задаёт форму, остальные молча совпадают по имени).
+   */
   async listServiceCategories(ctx: RequestContext, networkId: string) {
     const { network } = await this.access.require(ctx, networkId, 'services');
     if (!network.businessIds.length) return [];
     const rows = await this.prisma.serviceCategory.findMany({ where: { businessId: { in: network.businessIds } } });
     const links = await this.prisma.networkServiceCategoryLink.findMany({ where: { networkId } });
     const linkByKey = new Map(links.map((l) => [l.key, l]));
-    const byKey = new Map<string, { key: string; name: LocalizedText; businessIds: string[] }>();
+    const services = await this.prisma.service.findMany({ where: { categoryId: { in: rows.map((r) => r.id) } }, select: { categoryId: true } });
+    const servicesByCategory = new Map<string, number>();
+    for (const s of services) if (s.categoryId) servicesByCategory.set(s.categoryId, (servicesByCategory.get(s.categoryId) ?? 0) + 1);
+    const byKey = new Map<string, { key: string; category: (typeof rows)[number]; servicesCount: number; businessCount: number }>();
     for (const r of rows) {
       const key = nameKeyOf(r.name);
       if (!key) continue;
+      const count = servicesByCategory.get(r.id) ?? 0;
       const g = byKey.get(key);
-      if (!g) byKey.set(key, { key, name: r.name as LocalizedText, businessIds: [r.businessId] });
-      else g.businessIds.push(r.businessId);
+      if (!g) byKey.set(key, { key, category: r, servicesCount: count, businessCount: 1 });
+      else {
+        g.servicesCount += count;
+        g.businessCount += 1;
+      }
     }
-    return [...byKey.values()].map((g) => ({ ...g, servicesCount: 0, subdivisionId: linkByKey.get(g.key)?.subdivisionId ?? undefined, onlineName: linkByKey.get(g.key)?.onlineName ?? undefined }));
+    return [...byKey.values()].map((g) => ({
+      key: g.key,
+      category: { ...g.category, name: g.category.name as LocalizedText },
+      servicesCount: g.servicesCount,
+      businessCount: g.businessCount,
+      isNetwork: g.businessCount > 1,
+      subdivisionId: linkByKey.get(g.key)?.subdivisionId ?? undefined,
+      onlineName: linkByKey.get(g.key)?.onlineName ?? undefined,
+    }));
   }
 
   async getServiceCategory(ctx: RequestContext, networkId: string, key: string) {
@@ -153,6 +182,7 @@ export class NetworkCatalogService {
       for (const businessId of scope) {
         const category = allCategories.find((c) => c.businessId === businessId && nameKeyOf(c.name) === input.categoryKey);
         if (!category) continue; // категория ещё не раздана в этот филиал (как в моке — пропускаем)
+        const found = existingByBiz.get(businessId);
         const patch = {
           name: J(input.name),
           description: J(input.description),
@@ -163,9 +193,12 @@ export class NetworkCatalogService {
           priceMax: input.priceMax != null ? money(input.priceMax) : null,
           capacity: input.kind === 'group' ? (input.capacity ?? null) : null,
         };
-        const found = existingByBiz.get(businessId);
         if (found) {
-          await tx.service.update({ where: { id: found.id }, data: { ...patch, version: { increment: 1 } } });
+          // Сеть4: priceMode 'keepLocal' — цена НЕ трогается там, где услуга уже есть (мок `saveNetworkService`,
+          // keepLocalPrice = Boolean(found) && priceMode === 'keepLocal').
+          const { priceMin: _pMin, priceMax: _pMax, ...rest } = patch;
+          const updateData = input.priceMode === 'keepLocal' ? rest : patch;
+          await tx.service.update({ where: { id: found.id }, data: { ...updateData, version: { increment: 1 } } });
         } else {
           const count = await tx.service.count({ where: { businessId } });
           await tx.service.create({
@@ -220,6 +253,72 @@ export class NetworkCatalogService {
       await this.audit.record(tx, ctx, { action: 'update', entityType: 'networkService', entityId: key, networkId, after: { removedFrom, addedTo } });
     });
     return { removedFrom, addedTo };
+  }
+
+  /**
+   * Сеть4 (этап 21 «network», попытка 3): `src/api/network.ts::previewNetworkServiceSave` — что сделает
+   * сохранение сетевой услуги ДО записи (превью по каждому филиалу). Мок 1:1: create/update строки не считают
+   * `futureBookings` (всегда 0 — они не удаляют услугу), только `remove`-строки (услуга покидает филиал) считают
+   * будущие живые записи с этой услугой (`occupiesTime`, см. `CANCELLED_OCCUPIES` — тот же узкий набор статусов,
+   * что и `getNetworkFinanceSummary`, НЕ `CANCELLED_LIKE` соседнего файла).
+   */
+  async previewServiceSave(ctx: RequestContext, networkId: string, input: z.infer<typeof networkServicePreviewBody>) {
+    const { network } = await this.access.require(ctx, networkId, 'services');
+    const allServices = input.key ? await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds } } }) : [];
+    const existing = input.key ? allServices.filter((s) => nameKeyOf(s.name) === input.key) : [];
+    const businesses = await this.prisma.business.findMany({ where: { id: { in: [...new Set([...network.businessIds, ...input.businessIds])] } }, select: { id: true, name: true } });
+    const nameOf = (id: string) => businesses.find((b) => b.id === id)?.name ?? id;
+    const allCategories = await this.prisma.serviceCategory.findMany({ where: { businessId: { in: input.businessIds } } });
+    const rows: Array<{ businessId: string; businessName: string; action: 'create' | 'update' | 'remove'; currentPriceMin?: number; currentPriceMax?: number; createsCategory: boolean; futureBookings: number }> = [];
+    for (const businessId of input.businessIds) {
+      const found = existing.find((s) => s.businessId === businessId);
+      rows.push({
+        businessId,
+        businessName: nameOf(businessId),
+        action: found ? 'update' : 'create',
+        currentPriceMin: found ? Number(found.priceMin) : undefined,
+        currentPriceMax: found?.priceMax != null ? Number(found.priceMax) : undefined,
+        createsCategory: !allCategories.some((c) => c.businessId === businessId && nameKeyOf(c.name) === input.categoryKey),
+        futureBookings: 0,
+      });
+    }
+    const removed = existing.filter((s) => !input.businessIds.includes(s.businessId));
+    for (const s of removed) {
+      const future = await this.prisma.booking.findMany({ where: { businessId: s.businessId, deletedAt: null, startAt: { gte: new Date() }, status: { notIn: [...CANCELLED_OCCUPIES] } }, select: { services: true } });
+      const count = future.filter((b) => Array.isArray(b.services) && (b.services as { serviceId: string }[]).some((l) => l.serviceId === s.id)).length;
+      rows.push({ businessId: s.businessId, businessName: nameOf(s.businessId), action: 'remove', currentPriceMin: Number(s.priceMin), currentPriceMax: s.priceMax != null ? Number(s.priceMax) : undefined, createsCategory: false, futureBookings: count });
+    }
+    return rows;
+  }
+
+  /**
+   * F-11-093 (этап 21 «network», попытка 3): `src/api/network.ts::mergeNetworkServices` — «Объединить»: 2+
+   * сетевые услуги с РАЗНЫМИ именами становятся одной под новым именем (мок: переименовывает каждую строку
+   * `Service` из всех переданных ключей). Замки (`NetworkServiceLock`) старых ключей сводятся в один под новым
+   * ключом — первый найденный лок задаёт `priceLocked`/`descriptionLocked`/`onlineName`, как «первая строка
+   * побеждает» у `saveServiceCategory` рядом.
+   */
+  async mergeServices(ctx: RequestContext, networkId: string, input: z.infer<typeof networkServiceMergeBody>) {
+    const { network } = await this.access.require(ctx, networkId, 'services');
+    const name = input.name.ru?.trim();
+    if (!name) throw new ApiError('bad_name', 'Name required');
+    const newKey = nameKeyOf(input.name);
+    const allServices = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds } } });
+    const matching = allServices.filter((s) => input.keys.includes(nameKeyOf(s.name)));
+    if (!matching.length) throw new ApiError('not_found', 'Service not found');
+    const locks = await this.prisma.networkServiceLock.findMany({ where: { networkId, key: { in: [...input.keys, newKey] } } });
+    const primaryLock = locks.find((l) => l.key === newKey) ?? locks[0];
+    await this.prisma.$transaction(async (tx) => {
+      for (const s of matching) await tx.service.update({ where: { id: s.id }, data: { name: J(input.name), version: { increment: 1 } } });
+      for (const l of locks) if (l.key !== newKey) await tx.networkServiceLock.delete({ where: { networkId_key: { networkId, key: l.key } } });
+      await tx.networkServiceLock.upsert({
+        where: { networkId_key: { networkId, key: newKey } },
+        create: { networkId, key: newKey, priceLocked: primaryLock?.priceLocked ?? false, descriptionLocked: primaryLock?.descriptionLocked ?? false, onlineName: primaryLock?.onlineName },
+        update: { priceLocked: primaryLock?.priceLocked ?? false, descriptionLocked: primaryLock?.descriptionLocked ?? false, onlineName: primaryLock?.onlineName },
+      });
+      await this.audit.record(tx, ctx, { action: 'update', entityType: 'networkService', entityId: newKey, networkId, after: { name: input.name, mergedFrom: input.keys, count: matching.length } });
+    });
+    return { key: newKey };
   }
 
   // ───────────────────────── Товары / категории (F-11-111…118) ─────────────────────────
@@ -794,6 +893,47 @@ export class NetworkCatalogService {
   }
 
   /**
+   * F-11-082/083 (этап 21 «network», попытка 3): `src/api/network.ts::getServiceNetworkInfo(serviceId)` — «сетевой
+   * ли этот локальный сервис» для карточки услуги филиала (host `serviceCard`, не панель сети). Тот же приём, что
+   * `listPriceLockedServiceIdsForBusiness` рядом (≥2 тёзок в сети = сетевая), но по ОДНОЙ услуге.
+   */
+  async getServiceNetworkInfoForService(businessId: string, serviceId: string) {
+    const service = await this.prisma.service.findUnique({ where: { id: serviceId } });
+    if (!service || service.businessId !== businessId) return undefined;
+    const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { networkId: true } });
+    if (!biz?.networkId) return undefined;
+    const key = nameKeyOf(service.name);
+    const network = await this.prisma.network.findUnique({ where: { id: biz.networkId }, include: { businesses: { where: { leftAt: null }, select: { id: true } } } });
+    const networkBusinessIds = network?.businesses.map((b) => b.id) ?? [];
+    if (!networkBusinessIds.length) return undefined;
+    const rows = await this.prisma.service.findMany({ where: { businessId: { in: networkBusinessIds } }, select: { name: true } });
+    const siblingCount = rows.filter((s) => nameKeyOf(s.name) === key).length;
+    if (siblingCount < 2) return undefined;
+    const lock = await this.prisma.networkServiceLock.findUnique({ where: { networkId_key: { networkId: biz.networkId, key } } });
+    return { networkId: biz.networkId, key, priceLocked: lock?.priceLocked ?? false, descriptionLocked: lock?.descriptionLocked ?? false, businessCount: siblingCount };
+  }
+
+  /**
+   * F-11-099 (этап 21 «network», попытка 3): `src/api/network.ts::getStaffNetworkInfo(staffId)` — «сетевой ли
+   * этот локальный сотрудник» для карточки сотрудника филиала (host `staffCard`). Ключ — `Staff.name` целиком
+   * (мок `staffKeyOf`: `s.name.trim() || s.id`, регистр НЕ нормализует — в отличие от `nameKeyOf` услуг/категорий).
+   */
+  async getStaffNetworkInfoForStaff(businessId: string, staffId: string) {
+    const staff = await this.prisma.staff.findUnique({ where: { id: staffId } });
+    if (!staff || staff.businessId !== businessId) return undefined;
+    const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { networkId: true } });
+    if (!biz?.networkId) return undefined;
+    const key = staff.name.trim() || staff.id;
+    const network = await this.prisma.network.findUnique({ where: { id: biz.networkId }, include: { businesses: { where: { leftAt: null }, select: { id: true } } } });
+    const networkBusinessIds = network?.businesses.map((b) => b.id) ?? [];
+    if (!networkBusinessIds.length) return undefined;
+    const rows = await this.prisma.staff.findMany({ where: { businessId: { in: networkBusinessIds } }, select: { id: true, name: true } });
+    const siblingCount = rows.filter((s) => (s.name.trim() || s.id) === key).length;
+    if (siblingCount < 2) return undefined;
+    return { networkId: biz.networkId, key, businessCount: siblingCount };
+  }
+
+  /**
    * F-11-058 (этап 21, лейн network): `src/api/network.ts::setNetworkMarketingOptOut(phone, optOut)` — фасад
    * НЕ несёт `networkId` в подписи («список общий по номеру, сеть не разделяет его», qa/requests/network.md), а
    * менять сигнатуру запрещено (общие правила захода) — фронт вместо этого достаёт `businessId` активного
@@ -969,6 +1109,20 @@ export class NetworkCatalogController {
   @ZodBody(businessIdsBody)
   sync(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('key') key: string, @Body(new Zod(businessIdsBody)) body: z.infer<typeof businessIdsBody>) {
     return this.svc.syncServiceToLocations(ctx, n, key, body.businessIds);
+  }
+
+  @Post('services/preview')
+  @ApiOperation({ summary: 'Превью сохранения сетевой услуги по филиалам, Сеть4 (F-11-081…083)' })
+  @ZodBody(networkServicePreviewBody)
+  previewService(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkServicePreviewBody)) body: z.infer<typeof networkServicePreviewBody>) {
+    return this.svc.previewServiceSave(ctx, n, body);
+  }
+
+  @Post('services/merge')
+  @ApiOperation({ summary: 'Объединить сетевые услуги под новым именем (F-11-093)' })
+  @ZodBody(networkServiceMergeBody)
+  mergeServices(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkServiceMergeBody)) body: z.infer<typeof networkServiceMergeBody>) {
+    return this.svc.mergeServices(ctx, n, body);
   }
 
   @Get('goods-categories')

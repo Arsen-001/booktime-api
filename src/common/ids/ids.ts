@@ -229,6 +229,8 @@ export const ID_PREFIX = {
   networkTelRoute: 'ntrt',
   networkTelRule: 'ntrl',
   networkExport: 'nexp',
+  // этап 21 (лейн network), попытка 3 — журнал запусков «Создать ведомость и начислить» по сети (мок newId('netpay'))
+  networkPayrollRun: 'npay',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;
