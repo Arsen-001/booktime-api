@@ -184,6 +184,9 @@ export const ERROR_STATUS = {
   sms_not_connected: HttpStatus.UNPROCESSABLE_ENTITY,
   empty_text: HttpStatus.UNPROCESSABLE_ENTITY,
   no_app_user: HttpStatus.UNPROCESSABLE_ENTITY,
+  // этап 21, лейн notify-log+mailings — разовое сообщение/ссылка на оплату без разрешённого канала, тест без телефона (коды мока)
+  no_allowed_channel: HttpStatus.UNPROCESSABLE_ENTITY,
+  'notify/no-test-phone': HttpStatus.UNPROCESSABLE_ENTITY,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

@@ -4335,3 +4335,98 @@ model NetworkSetting {
   @@map("network_settings")
 }
 // === end stage 21 (сдача, попытка 4) ===
+
+// === stage 21 (лейн notify-log+mailings) ===
+// Журнал отправок экрана «Уведомления → Журнал» (F-05-107/108/130, Ув11/Ув16) и рассылки (F-05-095…099, Ув13).
+// Строки журнала — материализованный вывод каталога типов (NotifyRichTypesService, 29+2) из booking_events/bookings/
+// clients (порт src/areas/notify/lib/liveLog.ts) + служебные (рассылка, тест, разовое сообщение). Один ключ дубля на
+// строку: повторный проход синхронизации не плодит строки. Пагинация по (business_id, sent_at) — фильтры экрана
+// (канал/статус/тип/клиент/запись) индексированы.
+
+model NotifyLogEntry {
+  id           String    @id @db.VarChar(32)
+  businessId   String    @map("business_id") @db.VarChar(32)
+  /// Детерминированный ключ вывода (live:ev_<eventId>, live:rm_<bookingId>…) или ml:<mailingId> — повтор не плодит строку
+  dedupeKey    String    @unique @map("dedupe_key") @db.VarChar(120)
+  /// Когда ушло (UTC)
+  sentAt       DateTime  @map("sent_at") @db.DateTime(3)
+  /// Код типа каталога (F-05-004); нет — служебная строка (рассылка, тест…)
+  typeCode     Int?      @map("type_code")
+  /// LocalizedText
+  typeLabel    Json      @map("type_label")
+  /// push | adminApp | email | sms | brandedApp | whatsapp | telegram
+  channel      String    @db.VarChar(12)
+  /// LogStatus фронта
+  status       String    @db.VarChar(24)
+  contact      String    @db.VarChar(160)
+  /// LocalizedText — текст на всех языках, `sentLanguage` — на каком ушло
+  text         Json
+  clientId     String?   @map("client_id") @db.VarChar(32)
+  staffId      String?   @map("staff_id") @db.VarChar(32)
+  bookingId    String?   @map("booking_id") @db.VarChar(32)
+  sentLanguage String?   @map("sent_language") @db.VarChar(2)
+  costAmd      Int       @default(0) @map("cost_amd")
+  smsParts     Int?      @map("sms_parts")
+  /// Исходный момент, если тихие часы перенесли отправку (Ув12)
+  deferredFrom DateTime? @map("deferred_from") @db.DateTime(3)
+  /// live | mailing | test | oneOff | service
+  source       String    @db.VarChar(8)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId, sentAt])
+  @@index([businessId, channel, sentAt])
+  @@index([businessId, status, sentAt])
+  @@index([businessId, typeCode, sentAt])
+  @@index([clientId, sentAt])
+  @@index([bookingId])
+  @@map("notify_log_entries")
+}
+
+/// До какого момента журнал бизнеса уже выведен из событий (синхронизация идёт окном от этого момента)
+model NotifyLogSync {
+  businessId  String   @id @map("business_id") @db.VarChar(32)
+  syncedUntil DateTime @map("synced_until") @db.DateTime(3)
+
+  @@map("notify_log_sync")
+}
+
+/// Рассылка (F-05-095…099, Ув13): сразу или по расписанию; по сети — одна строка у бизнеса-отправителя
+model NotifyMailing {
+  id              String    @id @db.VarChar(32)
+  businessId      String    @map("business_id") @db.VarChar(32)
+  /// sms | pushOwnApp | pushClientApp
+  channel         String    @db.VarChar(16)
+  text            String    @db.Text
+  audienceLabel   String    @map("audience_label") @db.VarChar(400)
+  recipientsCount Int       @default(0) @map("recipients_count")
+  /// sent | sending | failed | scheduled
+  status          String    @db.VarChar(10)
+  network         Boolean   @default(false)
+  /// string[] — филиалы-получатели
+  businessIds     Json      @map("business_ids")
+  /// AudienceFilter фронта — для отложенной отправки аудитория считается в момент отправки
+  filter          Json
+  scheduledAt     DateTime? @map("scheduled_at") @db.DateTime(3)
+  sentAt          DateTime? @map("sent_at") @db.DateTime(3)
+  costAmd         Int       @default(0) @map("cost_amd")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy       String?   @map("created_by") @db.VarChar(32)
+
+  @@index([businessId, createdAt])
+  @@index([status, scheduledAt])
+  @@map("notify_mailings")
+}
+
+/// Кто получил рассылку (F-05-096 «получал / не получал рассылку за N дней»)
+model NotifyMailingRecipient {
+  mailingId  String   @map("mailing_id") @db.VarChar(32)
+  clientId   String   @map("client_id") @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@id([mailingId, clientId])
+  @@index([businessId, createdAt])
+  @@index([clientId])
+  @@map("notify_mailing_recipients")
+}
+// === end stage 21 (лейн notify-log+mailings) ===

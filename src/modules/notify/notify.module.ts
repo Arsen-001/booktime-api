@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
 import { BusinessesModule } from '../businesses/businesses.module.js';
 import { ScheduleModule } from '../schedule/schedule.module.js';
+import { ShortLinksModule } from '../shortlinks/shortlinks.module.js';
 import { NotifyChannelsService } from './notify-channels.service.js';
 import { NotifyClientPrefsService } from './notify-client-prefs.service.js';
 import { NotifyDispatchService } from './notify-dispatch.service.js';
 import { NotifyInboxService } from './notify-inbox.service.js';
+import { NotifyLogController } from './notify-log.controller.js';
+import { NotifyLogService } from './notify-log.service.js';
+import { NotifyMailingsService } from './notify-mailings.service.js';
 import { NotifyMiscService } from './notify-misc.service.js';
 import { NotifyMoreService } from './notify-more.service.js';
 import { NotifyNewsService } from './notify-news.service.js';
@@ -26,8 +30,9 @@ import { NotifyController } from './notify.controller.js';
  * настоящем движке свободных окон, не свой параллельный расчёт.
  */
 @Module({
-  imports: [BusinessesModule, ScheduleModule],
-  controllers: [NotifyController],
+  // этап 21 лейн notify-log+mailings: журнал отправок/рассылки (NotifyLog*/NotifyMailings*), ShortLinks — ссылки в SMS
+  imports: [BusinessesModule, ScheduleModule, ShortLinksModule],
+  controllers: [NotifyController, NotifyLogController],
   providers: [
     NotifyTypesService,
     NotifyNewsService,
@@ -39,6 +44,8 @@ import { NotifyController } from './notify.controller.js';
     NotifyMiscService,
     NotifyMoreService,
     NotifyRichTypesService,
+    NotifyLogService,
+    NotifyMailingsService,
   ],
   exports: [NotifyTypesService, NotifyStaffPrefsService, NotifyDispatchService, NotifyChannelsService],
 })

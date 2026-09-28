@@ -8,6 +8,7 @@ import { scheduleEmptyWeek } from './jobs/schedule-empty-week.js';
 import { journalHolds, journalSeries, journalServices } from './jobs/journal-jobs.js';
 import { notifyServices } from './jobs/notify-jobs.js';
 import { notifyBookingReminders } from './jobs/notify-reminders.js';
+import { notifyMailingsJob } from './jobs/notify-mailings.js';
 import { reportsExportDispatch } from './jobs/reports-export.js';
 import { notifyEmptyWeek } from './modules/notify/notify-empty-week.js';
 import { billingDispatch } from './jobs/billing-tick.js';
@@ -32,6 +33,8 @@ await queue.upsertJobScheduler('journal-series', { pattern: '0 3 * * *', tz: 'As
 // Этап 10: отправитель очереди пушей — часто (сообщение должно уйти за секунды, не минуты); напоминания — раз в 5 мин
 await queue.upsertJobScheduler('notify-dispatch', { every: 20_000 }, { name: 'notify.dispatch', data: {} });
 await queue.upsertJobScheduler('notify-reminders', { every: 300_000 }, { name: 'notify.reminders', data: {} });
+// Этап 21 (лейн notify-log+mailings): рассылки по расписанию (Ув13) — раз в минуту
+await queue.upsertJobScheduler('notify-mailings', { every: 60_000 }, { name: 'notify.mailings', data: {} });
 // Этап 16: выгрузка отчёта — CSV должен быть готов быстро, не в час по расписанию
 await queue.upsertJobScheduler('reports-export', { every: 15_000 }, { name: 'reports.export', data: {} });
 // Этап 18: подписка — 03:00 по Еревану предупреждения/списания/заморозка, каждые 5 мин повтор списаний (06 §3.3)
@@ -45,6 +48,7 @@ await queue.upsertJobScheduler('business-retention', { pattern: '0 4 * * *', tz:
 const prisma = new PrismaService();
 const journal = journalServices(prisma, createRedis('worker-journal'));
 const notify = notifyServices(prisma);
+const notifyMailings = notifyMailingsJob(prisma);
 
 const worker = new Worker(
   SYSTEM,
@@ -76,6 +80,11 @@ const worker = new Worker(
     if (job.name === 'notify.dispatch') {
       const res = await notify.dispatch.processDue();
       if (res.sent || res.failed) logger.info(res, 'notify.dispatch');
+      return;
+    }
+    if (job.name === 'notify.mailings') {
+      const sent = await notifyMailings();
+      if (sent) logger.info({ sent }, 'notify.mailings');
       return;
     }
     if (job.name === 'notify.reminders') {
