@@ -46,6 +46,15 @@ export async function seedClientLoyalty(prisma: PrismaService, core: MockCore): 
       await prisma.loyaltyCard.update({ where: { id: card.id }, data: { cardTypeId: typeId, ...(data ? { data: data as never } : {}) } });
       moved++;
     }
+    // клиент приложения этого бизнеса без карты с бонусной программой — выдать (демо «кэшбэк в приложении»)
+    const appClients = await prisma.client.findMany({ where: { businessId: promo.businessId, appUserId: { not: null }, deletedAt: null }, orderBy: { id: 'asc' } });
+    for (const [i, c] of appClients.entries()) {
+      const has = await prisma.loyaltyCard.findFirst({ where: { clientId: c.id, cardTypeId: typeId } });
+      if (has) continue;
+      const id = `lc_app_${c.id}`.slice(0, 32);
+      await prisma.loyaltyCard.upsert({ where: { id }, create: { id, cardTypeId: typeId, businessId: promo.businessId, clientId: c.id, number: `91${String(i + 1).padStart(7, '0')}`, balance: 1200n + BigInt(i * 300) }, update: {} });
+      moved++;
+    }
   }
 
   // Заявки В-17 клиента au_01 (если он есть в сиде) в первом бизнесе с витриной

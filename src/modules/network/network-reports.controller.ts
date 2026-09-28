@@ -12,7 +12,20 @@ import { DEFAULT_TZ, isLocalDate, localDayRangeUtc, utcToLocalDate } from '../..
 import { bookingView } from '../journal/journal.views.js';
 import { serviceView } from '../services/services.views.js';
 import { NetworkAccessService } from './network-access.service.js';
-import { analyticsQuery, lostClientDaysBody, networkAnalyticsRangeQuery, networkRecordsQuery, planCellBody } from './network.schemas.js';
+import {
+  analyticsQuery,
+  lostClientDaysBody,
+  networkAnalyticsRangeQuery,
+  networkHrReportQuery,
+  networkLocationsDetailQuery,
+  networkParamSeriesQuery,
+  networkRecordsQuery,
+  networkServicesReportQuery,
+  networkStaffReportQuery,
+  planCellBody,
+} from './network.schemas.js';
+
+type LocalizedText = { ru: string; hy?: string; en?: string };
 
 const summaryOut = z.object({
   from: z.string(),
@@ -59,11 +72,76 @@ const analyticsBreakdownOut = z.object({
 });
 const serviceMigrationOut = z.array(z.object({ service: z.record(z.string(), z.unknown()), availableIn: z.array(z.string()) }));
 
+// ─────────── Этап 21 «network», лейн network (попытка 2): 7 «глубоких» отчётов сети, мок `src/api/network.ts` ───────────
+// Контракт мока 1:1 (`getNetworkLocationsDetail`/`getNetworkDailyDetail`/`getNetworkParamSeries`/
+// `getNetworkServicesReport`/`getNetworkStaffReport`/`getNetworkHrReport`/`getNetworkFinanceSummary`) — «чистые
+// чтения» поверх Booking/Service/ServiceCategory/Staff, без новых таблиц (по прецеденту `analyticsSummaryV2`/
+// `analyticsBreakdown` выше). Раньше числились «требуют инфраструктуры раздела „Отчёты“» — не потребовалось,
+// повторного размера в 500 салонов (Р20) хватает без отдельного слоя.
+
+const networkLocationDetailOut = z.array(
+  z.object({
+    businessId: z.string(),
+    businessName: z.string(),
+    revenue: z.number(),
+    servicesRevenue: z.number(),
+    goodsRevenue: z.number(),
+    avgCheck: z.number(),
+    avgCheckServices: z.number(),
+    occupancy: z.number(),
+    newClients: z.number(),
+    notNewClients: z.number(),
+    totalBookings: z.number(),
+    cancelled: z.number(),
+    completed: z.number(),
+    pending: z.number(),
+  }),
+);
+const networkDailyDetailOut = z.array(
+  z.object({
+    date: z.string(),
+    businessId: z.string(),
+    businessName: z.string(),
+    revenue: z.number(),
+    servicesSharePct: z.number(),
+    goodsSharePct: z.number(),
+    avgCheck: z.number(),
+    occupancy: z.number(),
+    newClients: z.number(),
+    totalBookings: z.number(),
+  }),
+);
+const networkParamSeriesOut = z.array(z.object({ businessId: z.string(), businessName: z.string(), points: z.array(z.object({ key: z.string(), value: z.number() })) }));
+const networkServicesReportOut = z.array(
+  z.object({ serviceId: z.string(), name: z.string(), categoryName: z.string(), count: z.number(), revenue: z.number(), avgPrice: z.number(), pctOfRevenue: z.number() }),
+);
+const networkStaffReportOut = z.array(
+  z.object({
+    staffId: z.string(),
+    name: z.string(),
+    position: z.string(),
+    revenue: z.number(),
+    visitsCount: z.number(),
+    avgCheck: z.number(),
+    clientsCount: z.number(),
+    servicesSum: z.number(),
+    servicesCount: z.number(),
+    avgCheckServices: z.number(),
+    hoursWorked: z.number(),
+    hourCost: z.number(),
+    pctOfRevenue: z.number(),
+  }),
+);
+const networkHrReportOut = z.array(
+  z.object({ staffId: z.string(), name: z.string(), phone: z.string(), businessName: z.string(), position: z.string(), hiredAt: z.string(), fired: z.boolean() }),
+);
+const networkFinanceSummaryOut = z.array(z.object({ businessId: z.string(), businessName: z.string(), revenue: z.number(), visits: z.number(), avgCheck: z.number(), cancelled: z.number() }));
+
 /**
  * Аналитика и планы сети (F-11-062…078, docs/backend/02 §15): сводка «оборот/визиты/клиенты» по реальным
  * Booking (status=arrived, «пришёл · сумма» — F-00-131), день считается в поясе ФИЛИАЛА (PLAN.md §4.1: не
- * общий пояс сети). Углублённые отчёты (по сотрудникам/услугам/параметрам, F-11-069…075) требуют инфраструктуры
- * раздела «Отчёты» (этап 16, ещё не построен) — не строены здесь, см. docs/PROGRESS.md «не строил».
+ * общий пояс сети). 7 углублённых отчётов (по сотрудникам/услугам/параметрам/локациям/дням/HR/финансам,
+ * F-11-069…075/156) — этап 21 «network», лейн network, попытка 2, см. блок ниже перед контроллером.
  */
 @Injectable()
 export class NetworkReportsService {
@@ -332,6 +410,343 @@ export class NetworkReportsService {
     }
     return [...byName.values()].map((r) => ({ service: serviceView(r.service), availableIn: r.availableIn }));
   }
+
+  // ─────────── Этап 21 «network», лейн network, попытка 2 ───────────
+
+  /** F-11-065: `getNetworkLocationsDetail` — сравнение локаций сети за период; метрики оборота НЕ фильтруются
+   *  подразделением (совпадает с моком: `summaryFor()` там тоже зовётся без categoryIds) — фильтр по подразделению
+   *  сужает только счётчики записей (totalBookings/cancelled/completed/pending/newClients). */
+  async locationsDetail(ctx: RequestContext, networkId: string, input: z.infer<typeof networkLocationsDetailQuery>) {
+    const { network } = await this.access.require(ctx, networkId, 'analytics');
+    let categoryIds: Set<string> | undefined;
+    if (input.subdivisionId) {
+      const sub = await this.prisma.networkSubdivision.findFirst({ where: { id: input.subdivisionId, networkId } });
+      categoryIds = new Set(Array.isArray(sub?.categoryIds) ? (sub.categoryIds as string[]) : []);
+    }
+    const tzByBiz = await this.tzMap(network.businessIds);
+    const businesses = network.businessIds.length ? await this.prisma.business.findMany({ where: { id: { in: network.businessIds } }, select: { id: true, name: true } }) : [];
+    const nameOf = new Map(businesses.map((b) => [b.id, b.name]));
+    const rows: z.infer<typeof networkLocationDetailOut> = [];
+    for (const businessId of network.businessIds) {
+      const businessName = nameOf.get(businessId);
+      if (!businessName) continue;
+      const s = await this.summaryFor([businessId], input.from, input.to);
+      let serviceIdsInCategories: Set<string> | undefined;
+      if (categoryIds) {
+        const svcRows = await this.prisma.service.findMany({ where: { businessId, categoryId: { in: [...categoryIds] } }, select: { id: true } });
+        serviceIdsInCategories = new Set(svcRows.map((r) => r.id));
+      }
+      const tz = tzByBiz.get(businessId) ?? DEFAULT_TZ;
+      const allBookings = await this.prisma.booking.findMany({ where: { businessId, deletedAt: null }, select: { startAt: true, status: true, clientId: true, services: true } });
+      const inCategory = (services: unknown) => {
+        if (!serviceIdsInCategories) return true;
+        const lines = Array.isArray(services) ? (services as { serviceId: string }[]) : [];
+        return lines.some((l) => serviceIdsInCategories!.has(l.serviceId));
+      };
+      const withDay = allBookings.map((b) => ({ ...b, day: utcToLocalDate(b.startAt, tz) }));
+      const inPeriod = withDay.filter((b) => b.day >= input.from && b.day <= input.to && inCategory(b.services));
+      const arrivedInPeriod = inPeriod.filter((b) => b.status === 'arrived');
+      const arrivedAll = withDay.filter((b) => b.status === 'arrived');
+      const clientIds = [...new Set(arrivedAll.map((b) => b.clientId).filter((x): x is string => Boolean(x)))];
+      const clients = clientIds.length ? await this.prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, phone: true } }) : [];
+      const phoneOf = new Map(clients.map((c) => [c.id, c.phone]));
+      const firstVisitByPhone = new Map<string, string>();
+      for (const b of arrivedAll) {
+        const phone = b.clientId ? phoneOf.get(b.clientId) : undefined;
+        if (!phone) continue;
+        const cur = firstVisitByPhone.get(phone);
+        if (!cur || b.day < cur) firstVisitByPhone.set(phone, b.day);
+      }
+      let newClients = 0;
+      let notNewClients = 0;
+      const seen = new Set<string>();
+      for (const b of arrivedInPeriod) {
+        const phone = b.clientId ? phoneOf.get(b.clientId) : undefined;
+        if (!phone || seen.has(phone)) continue;
+        seen.add(phone);
+        const first = firstVisitByPhone.get(phone);
+        if (first && first >= input.from) newClients += 1;
+        else notNewClients += 1;
+      }
+      rows.push({
+        businessId,
+        businessName,
+        revenue: s.revenue,
+        servicesRevenue: s.servicesRevenue,
+        goodsRevenue: s.goodsRevenue,
+        avgCheck: s.avgCheck,
+        avgCheckServices: s.avgCheckServices,
+        occupancy: s.occupancy,
+        newClients,
+        notNewClients,
+        totalBookings: inPeriod.length,
+        cancelled: inPeriod.filter((b) => CANCELLED_LIKE.has(b.status)).length,
+        completed: arrivedInPeriod.length,
+        pending: inPeriod.filter((b) => PENDING_LIKE.has(b.status)).length,
+      });
+    }
+    return rows;
+  }
+
+  /** F-11-066: `getNetworkDailyDetail` — те же метрики по каждой локации на каждую дату периода */
+  async dailyDetail(ctx: RequestContext, networkId: string, input: z.infer<typeof networkAnalyticsRangeQuery>) {
+    const { network } = await this.access.require(ctx, networkId, 'analytics');
+    const tzByBiz = await this.tzMap(network.businessIds);
+    const businesses = network.businessIds.length ? await this.prisma.business.findMany({ where: { id: { in: network.businessIds } }, select: { id: true, name: true } }) : [];
+    const nameOf = new Map(businesses.map((b) => [b.id, b.name]));
+    const rows: z.infer<typeof networkDailyDetailOut> = [];
+    const span = Math.max(1, daysBetweenLocal(input.from, input.to));
+    for (let i = 0; i < span; i++) {
+      const date = dayjs(input.from).add(i, 'day').format('YYYY-MM-DD');
+      for (const businessId of network.businessIds) {
+        const businessName = nameOf.get(businessId);
+        if (!businessName) continue;
+        const s = await this.summaryFor([businessId], date, date);
+        const tz = tzByBiz.get(businessId) ?? DEFAULT_TZ;
+        const { from, to } = localDayRangeUtc(date, tz);
+        const bookings = await this.prisma.booking.findMany({ where: { businessId, deletedAt: null, startAt: { gte: from, lt: to } }, select: { status: true, clientId: true } });
+        const newClients = new Set(bookings.filter((b) => b.status === 'arrived' && b.clientId).map((b) => b.clientId)).size;
+        rows.push({
+          date,
+          businessId,
+          businessName,
+          revenue: s.revenue,
+          servicesSharePct: s.revenue ? Math.round((s.servicesRevenue / s.revenue) * 100) : 0,
+          goodsSharePct: s.revenue ? Math.round((s.goodsRevenue / s.revenue) * 100) : 0,
+          avgCheck: s.avgCheck,
+          occupancy: s.occupancy,
+          newClients,
+          totalBookings: bookings.length,
+        });
+      }
+    }
+    return rows;
+  }
+
+  /** F-11-067: `getNetworkParamSeries` — один показатель по всем локациям во времени, группировка день/месяц/год */
+  async paramSeries(ctx: RequestContext, networkId: string, input: z.infer<typeof networkParamSeriesQuery>) {
+    const { network } = await this.access.require(ctx, networkId, 'analytics');
+    const businesses = network.businessIds.length ? await this.prisma.business.findMany({ where: { id: { in: network.businessIds } }, select: { id: true, name: true } }) : [];
+    const tzByBiz = await this.tzMap(network.businessIds);
+    const rows: z.infer<typeof networkParamSeriesOut> = [];
+    const span = Math.max(1, daysBetweenLocal(input.from, input.to));
+    const avgMetrics = new Set(['avgCheck', 'occupancy']);
+    for (const b of businesses) {
+      const tz = tzByBiz.get(b.id) ?? DEFAULT_TZ;
+      const { from } = localDayRangeUtc(input.from, tz);
+      const { to } = localDayRangeUtc(input.to, tz);
+      const bookings = await this.prisma.booking.findMany({
+        where: { businessId: b.id, deletedAt: null, startAt: { gte: from, lt: to } },
+        select: { startAt: true, status: true, total: true, clientId: true, prepayment: true },
+      });
+      const byDay = new Map<string, typeof bookings>();
+      for (const bk of bookings) {
+        const day = utcToLocalDate(bk.startAt, tz);
+        const arr = byDay.get(day) ?? [];
+        arr.push(bk);
+        byDay.set(day, arr);
+      }
+      const buckets = new Map<string, number[]>();
+      for (let i = 0; i < span; i++) {
+        const date = dayjs(input.from).add(i, 'day').format('YYYY-MM-DD');
+        const dayBookings = byDay.get(date) ?? [];
+        const arrived = dayBookings.filter((x) => x.status === 'arrived');
+        let value = 0;
+        if (input.metric === 'revenueSold') value = arrived.reduce((s, x) => s + Number(x.total), 0);
+        else if (input.metric === 'revenuePaid')
+          value = arrived.filter((x) => (x.prepayment as { paid?: boolean } | null)?.paid !== false).reduce((s, x) => s + Number(x.total), 0);
+        else if (input.metric === 'avgCheck') value = arrived.length ? arrived.reduce((s, x) => s + Number(x.total), 0) / arrived.length : 0;
+        else if (input.metric === 'occupancy') value = (await this.summaryFor([b.id], date, date)).occupancy;
+        else if (input.metric === 'newClients') value = new Set(arrived.map((x) => x.clientId).filter(Boolean)).size;
+        else if (input.metric === 'totalBookings') value = dayBookings.length;
+        else if (input.metric === 'cancelled') value = dayBookings.filter((x) => CANCELLED_LIKE.has(x.status)).length;
+        else if (input.metric === 'completed') value = arrived.length;
+        else if (input.metric === 'pending') value = dayBookings.filter((x) => PENDING_LIKE.has(x.status)).length;
+        const key = bucketKeyOf(date, input.groupBy);
+        const list = buckets.get(key) ?? [];
+        list.push(value);
+        buckets.set(key, list);
+      }
+      const points = [...buckets.entries()]
+        .map(([key, values]) => ({
+          key,
+          value: avgMetrics.has(input.metric) ? Math.round(values.reduce((s, v) => s + v, 0) / values.length) : Math.round(values.reduce((s, v) => s + v, 0)),
+        }))
+        .sort((a, c) => a.key.localeCompare(c.key));
+      rows.push({ businessId: b.id, businessName: b.name, points });
+    }
+    return rows;
+  }
+
+  /** F-11-069: `getNetworkServicesReport` — без себестоимости/зарплаты, как и мок (те источники ещё не отданы разделу) */
+  async servicesReport(ctx: RequestContext, networkId: string, input: z.infer<typeof networkServicesReportQuery>) {
+    const { network } = await this.access.require(ctx, networkId, 'analytics');
+    const businessIds = input.businessId ? (network.businessIds.includes(input.businessId) ? [input.businessId] : []) : network.businessIds;
+    if (!businessIds.length) return [];
+    const tzByBiz = await this.tzMap(businessIds);
+    const bookings = await this.prisma.booking.findMany({
+      where: { businessId: { in: businessIds }, status: 'arrived', deletedAt: null, ...(input.staffId ? { staffId: input.staffId } : {}) },
+      select: { businessId: true, startAt: true, services: true, total: true },
+    });
+    const arrived = bookings.filter((b) => {
+      const day = utcToLocalDate(b.startAt, tzByBiz.get(b.businessId) ?? DEFAULT_TZ);
+      return day >= input.from && day <= input.to;
+    });
+    const totalRevenue = arrived.reduce((s, b) => s + Number(b.total), 0);
+    const byService = new Map<string, { count: number; revenue: number }>();
+    for (const b of arrived) {
+      const lines = Array.isArray(b.services) ? (b.services as { serviceId: string; price: number; qty: number }[]) : [];
+      for (const line of lines) {
+        const cur = byService.get(line.serviceId) ?? { count: 0, revenue: 0 };
+        cur.count += line.qty;
+        cur.revenue += Number(line.price) * line.qty;
+        byService.set(line.serviceId, cur);
+      }
+    }
+    const serviceIds = [...byService.keys()];
+    const services = serviceIds.length ? await this.prisma.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, name: true, categoryId: true } }) : [];
+    const svcById = new Map(services.map((s) => [s.id, s]));
+    const categoryIds = [...new Set(services.map((s) => s.categoryId).filter((x): x is string => Boolean(x)))];
+    const categories = categoryIds.length ? await this.prisma.serviceCategory.findMany({ where: { id: { in: categoryIds } }, select: { id: true, name: true } }) : [];
+    const catById = new Map(categories.map((c) => [c.id, c]));
+    return [...byService.entries()]
+      .map(([serviceId, v]) => {
+        const svc = svcById.get(serviceId);
+        const cat = svc?.categoryId ? catById.get(svc.categoryId) : undefined;
+        return {
+          serviceId,
+          name: (svc?.name as LocalizedText | undefined)?.ru ?? '—',
+          categoryName: (cat?.name as LocalizedText | undefined)?.ru ?? '—',
+          count: v.count,
+          revenue: v.revenue,
+          avgPrice: v.count ? Math.round(v.revenue / v.count) : 0,
+          pctOfRevenue: totalRevenue ? Math.round((v.revenue / totalRevenue) * 1000) / 10 : 0,
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+  }
+
+  /** F-11-070: `getNetworkStaffReport` — смены одного сетевого мастера из разных филиалов сводятся в одну строку */
+  async staffReport(ctx: RequestContext, networkId: string, input: z.infer<typeof networkStaffReportQuery>) {
+    const { network } = await this.access.require(ctx, networkId, 'analytics');
+    const businessIds = input.businessId ? (network.businessIds.includes(input.businessId) ? [input.businessId] : []) : network.businessIds;
+    if (!businessIds.length) return [];
+    const tzByBiz = await this.tzMap(businessIds);
+    const bookings = await this.prisma.booking.findMany({
+      where: { businessId: { in: businessIds }, status: 'arrived', deletedAt: null },
+      select: { businessId: true, startAt: true, staffId: true, clientId: true, total: true, services: true, durationMin: true },
+    });
+    const arrived = bookings.filter((b) => {
+      const day = utcToLocalDate(b.startAt, tzByBiz.get(b.businessId) ?? DEFAULT_TZ);
+      return day >= input.from && day <= input.to;
+    });
+    const totalRevenue = arrived.reduce((s, b) => s + Number(b.total), 0);
+    const byStaff = new Map<string, { revenue: number; visits: number; clients: Set<string>; servicesSum: number; servicesCount: number; minutes: number }>();
+    for (const b of arrived) {
+      const cur = byStaff.get(b.staffId) ?? { revenue: 0, visits: 0, clients: new Set<string>(), servicesSum: 0, servicesCount: 0, minutes: 0 };
+      cur.revenue += Number(b.total);
+      cur.visits += 1;
+      if (b.clientId) cur.clients.add(b.clientId);
+      const lines = Array.isArray(b.services) ? (b.services as { price: number; qty: number }[]) : [];
+      cur.servicesSum += lines.reduce((s, l) => s + Number(l.price) * l.qty, 0);
+      cur.servicesCount += lines.reduce((s, l) => s + l.qty, 0);
+      cur.minutes += b.durationMin;
+      byStaff.set(b.staffId, cur);
+    }
+    const staffIds = [...byStaff.keys()];
+    const staffRows = staffIds.length ? await this.prisma.staff.findMany({ where: { id: { in: staffIds } }, select: { id: true, name: true, position: true } }) : [];
+    const staffById = new Map(staffRows.map((s) => [s.id, s]));
+    const rows: z.infer<typeof networkStaffReportOut> = [];
+    for (const [staffId, v] of byStaff) {
+      const st = staffById.get(staffId);
+      const hoursWorked = Math.round((v.minutes / 60) * 10) / 10;
+      rows.push({
+        staffId,
+        name: st?.name ?? '—',
+        position: (st?.position as LocalizedText | null)?.ru ?? '—',
+        revenue: v.revenue,
+        visitsCount: v.visits,
+        avgCheck: v.visits ? Math.round(v.revenue / v.visits) : 0,
+        clientsCount: v.clients.size,
+        servicesSum: v.servicesSum,
+        servicesCount: v.servicesCount,
+        avgCheckServices: v.visits ? Math.round(v.servicesSum / v.visits) : 0,
+        hoursWorked,
+        hourCost: hoursWorked ? Math.round(v.revenue / hoursWorked) : 0,
+        pctOfRevenue: totalRevenue ? Math.round((v.revenue / totalRevenue) * 1000) / 10 : 0,
+      });
+    }
+    return rows.sort((a, b) => b.revenue - a.revenue);
+  }
+
+  /**
+   * F-11-071: `getNetworkHrReport` — «Дата создания сотрудника», «Уволены» (дата) и «ИНН» ещё не поля ядра Staff
+   * (только `hiredAt` и `status`), как и в моке — используем то, что есть.
+   */
+  async hrReport(ctx: RequestContext, networkId: string, input: z.infer<typeof networkHrReportQuery>) {
+    const { network } = await this.access.require(ctx, networkId, 'analytics');
+    if (!network.businessIds.length) return [];
+    const staffRows = await this.prisma.staff.findMany({
+      where: { businessId: { in: network.businessIds }, deletedAt: null },
+      select: { id: true, name: true, phone: true, businessId: true, position: true, hiredAt: true, status: true },
+    });
+    const businesses = await this.prisma.business.findMany({ where: { id: { in: network.businessIds } }, select: { id: true, name: true } });
+    const nameOf = new Map(businesses.map((b) => [b.id, b.name]));
+    let rows = staffRows.map((s) => ({
+      staffId: s.id,
+      name: s.name,
+      phone: s.phone,
+      businessName: nameOf.get(s.businessId) ?? '—',
+      position: (s.position as LocalizedText | null)?.ru ?? '—',
+      hiredAt: s.hiredAt,
+      fired: s.status === 'fired',
+    }));
+    const q = input.query?.trim().toLowerCase();
+    if (q) {
+      const qDigits = q.replace(/\D/g, '');
+      rows = rows.filter((r) => r.name.toLowerCase().includes(q) || r.phone.replace(/\D/g, '').includes(qDigits));
+    }
+    if (input.fired === 'fired') rows = rows.filter((r) => r.fired);
+    if (input.fired === 'notFired') rows = rows.filter((r) => !r.fired);
+    return rows.sort((a, b) => b.hiredAt.localeCompare(a.hiredAt));
+  }
+
+  /**
+   * Сеть14: `getNetworkFinanceSummary` — сводные финансы сети по филиалам за период; «отменено» — только настоящая
+   * отмена (мок зовёт `!occupiesTime(b)`, которое после фильтра `!deletedAt` сводится к 2 статусам, БЕЗ no_show —
+   * не тот же набор, что `CANCELLED_LIKE`/`CANCELLED_STATUSES` выше в этом файле).
+   */
+  async financeSummary(ctx: RequestContext, networkId: string, input: z.infer<typeof networkAnalyticsRangeQuery>) {
+    const { network } = await this.access.require(ctx, networkId, 'analytics');
+    if (!network.businessIds.length) return [];
+    const businesses = await this.prisma.business.findMany({ where: { id: { in: network.businessIds } }, select: { id: true, name: true } });
+    const nameOf = new Map(businesses.map((b) => [b.id, b.name]));
+    const tzByBiz = await this.tzMap(network.businessIds);
+    const rows: z.infer<typeof networkFinanceSummaryOut> = [];
+    for (const businessId of network.businessIds) {
+      const tz = tzByBiz.get(businessId) ?? DEFAULT_TZ;
+      const { from } = localDayRangeUtc(input.from, tz);
+      const { to } = localDayRangeUtc(input.to, tz);
+      const bookings = await this.prisma.booking.findMany({ where: { businessId, deletedAt: null, startAt: { gte: from, lt: to } }, select: { status: true, total: true } });
+      const arrived = bookings.filter((b) => b.status === 'arrived');
+      const revenue = arrived.reduce((s, b) => s + Number(b.total), 0);
+      rows.push({
+        businessId,
+        businessName: nameOf.get(businessId) ?? businessId,
+        revenue,
+        visits: arrived.length,
+        avgCheck: arrived.length ? Math.round(revenue / arrived.length) : 0,
+        cancelled: bookings.filter((b) => b.status === 'cancelled_by_client' || b.status === 'cancelled_by_master').length,
+      });
+    }
+    return rows;
+  }
+}
+
+function bucketKeyOf(date: string, groupBy: 'day' | 'month' | 'year'): string {
+  if (groupBy === 'year') return date.slice(0, 4);
+  if (groupBy === 'month') return date.slice(0, 7);
+  return date;
 }
 
 const ONLINE_SOURCES = new Set(['app', 'link', 'widget']);
@@ -426,5 +841,56 @@ export class NetworkReportsController {
   @ZodOk(serviceMigrationOut)
   serviceMigration(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
     return this.svc.serviceMigration(ctx, n);
+  }
+
+  // ─────────── Этап 21 «network», лейн network, попытка 2 ───────────
+
+  @Get('reports/locations-detail')
+  @ApiOperation({ summary: 'Сравнение локаций сети за период (F-11-065)' })
+  @ZodOk(networkLocationDetailOut)
+  locationsDetail(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query(new Zod(networkLocationsDetailQuery)) query: z.infer<typeof networkLocationsDetailQuery>) {
+    return this.svc.locationsDetail(ctx, n, query);
+  }
+
+  @Get('reports/daily-detail')
+  @ApiOperation({ summary: 'Метрики каждой локации по каждому дню периода (F-11-066)' })
+  @ZodOk(networkDailyDetailOut)
+  dailyDetail(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query(new Zod(networkAnalyticsRangeQuery)) query: z.infer<typeof networkAnalyticsRangeQuery>) {
+    return this.svc.dailyDetail(ctx, n, query);
+  }
+
+  @Get('reports/param-series')
+  @ApiOperation({ summary: 'Один показатель по всем локациям во времени (F-11-067)' })
+  @ZodOk(networkParamSeriesOut)
+  paramSeries(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query(new Zod(networkParamSeriesQuery)) query: z.infer<typeof networkParamSeriesQuery>) {
+    return this.svc.paramSeries(ctx, n, query);
+  }
+
+  @Get('reports/services')
+  @ApiOperation({ summary: 'Отчёт по услугам сети (F-11-069)' })
+  @ZodOk(networkServicesReportOut)
+  servicesReport(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query(new Zod(networkServicesReportQuery)) query: z.infer<typeof networkServicesReportQuery>) {
+    return this.svc.servicesReport(ctx, n, query);
+  }
+
+  @Get('reports/staff')
+  @ApiOperation({ summary: 'Отчёт по сотрудникам сети (F-11-070)' })
+  @ZodOk(networkStaffReportOut)
+  staffReport(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query(new Zod(networkStaffReportQuery)) query: z.infer<typeof networkStaffReportQuery>) {
+    return this.svc.staffReport(ctx, n, query);
+  }
+
+  @Get('reports/hr')
+  @ApiOperation({ summary: 'HR-отчёт сети (F-11-071)' })
+  @ZodOk(networkHrReportOut)
+  hrReport(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query(new Zod(networkHrReportQuery)) query: z.infer<typeof networkHrReportQuery>) {
+    return this.svc.hrReport(ctx, n, query);
+  }
+
+  @Get('reports/finance-summary')
+  @ApiOperation({ summary: 'Сводные финансы сети по филиалам за период (Сеть14)' })
+  @ZodOk(networkFinanceSummaryOut)
+  financeSummary(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Query(new Zod(networkAnalyticsRangeQuery)) query: z.infer<typeof networkAnalyticsRangeQuery>) {
+    return this.svc.financeSummary(ctx, n, query);
   }
 }

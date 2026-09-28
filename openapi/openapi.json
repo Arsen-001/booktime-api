@@ -15883,6 +15883,43 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/resources/events/{eventId}/mark-series-unique": {
+      "post": {
+        "operationId": "ResourcesEventsController_markSeriesUnique",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Пометить одно событие серии «уникальным» после отдельной правки/отмены (F-16-075)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/resources/events/count-future/{serviceId}": {
       "get": {
         "operationId": "ResourcesEventsController_countFutureForService",
@@ -20068,6 +20105,88 @@
             "cookie": []
           }
         ],
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/{id}/future-usage-by-instance": {
+      "get": {
+        "operationId": "ResourcesController_futureUsageByInstance",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Будущие записи/события по каждому экземпляру ресурса (этап 21)",
+        "tags": [
+          "resources"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/resources/{id}/day-load": {
+      "get": {
+        "operationId": "ResourcesController_dayLoad",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Занятость ресурса на день по экземплярам (F-16-019)",
         "tags": [
           "resources"
         ]
@@ -33196,6 +33315,161 @@
           }
         },
         "summary": "Страница записи без входа: getOnlineRequireMembership, hasOnlineMembership (F-06-128)",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/me/loyalty/app/{op}": {
+      "post": {
+        "description": "Функция src/api/client.ts фронта (абонементы/сертификаты/кэшбэк приложения, заявки В-17) с её аргументами без appUserId/businessId — они из сессии/пути. Список — client-loyalty.service.ts.",
+        "operationId": "MeClientLoyaltyController_call",
+        "parameters": [
+          {
+            "name": "op",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "args": {
+                    "default": [],
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Абонементы/сертификаты/кэшбэк клиента приложения (op — функция client.ts)",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/public/loyalty/{businessId}/app/{op}": {
+      "post": {
+        "description": "Функция src/api/client.ts фронта (абонементы/сертификаты/кэшбэк приложения, заявки В-17) с её аргументами без appUserId/businessId — они из сессии/пути. Список — client-loyalty.service.ts.",
+        "operationId": "PublicClientLoyaltyController_call",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "op",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "args": {
+                    "default": [],
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Страница места: абонементы/сертификаты на продажу (F-14-044/045)",
+        "tags": [
+          "loyalty"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/loyalty/app/{op}": {
+      "post": {
+        "description": "Функция src/api/client.ts фронта (абонементы/сертификаты/кэшбэк приложения, заявки В-17) с её аргументами без appUserId/businessId — они из сессии/пути. Список — client-loyalty.service.ts.",
+        "operationId": "BizClientLoyaltyController_call",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "op",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "args": {
+                    "default": [],
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Кабинет: заявки приложения (В-17), лояльность визита (F-14-098/102), показ кэшбэка (F-14-053)",
         "tags": [
           "loyalty"
         ]
@@ -67268,6 +67542,43 @@
         ]
       }
     },
+    "/v1/net/{networkId}/clients/{phone}/messages": {
+      "get": {
+        "operationId": "NetworkClientsController_messages",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "phone",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Все сообщения клиенту по всем каналам во всех локациях сети (F-11-048)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
     "/v1/net/{networkId}/clients/{phone}/view": {
       "get": {
         "operationId": "NetworkClientsController_cardView",
@@ -67426,6 +67737,35 @@
             "cookie": []
           }
         ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/marketing-opt-out": {
+      "get": {
+        "operationId": "NetworkBroadcastController_marketingOptOut",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Телефоны клиентов сети, отказавшихся от рекламы (F-11-058)",
         "tags": [
           "network"
         ]
@@ -68487,6 +68827,562 @@
           }
         ],
         "summary": "Таблица «Услуга / Доступно в локациях» (F-11-087)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/reports/locations-detail": {
+      "get": {
+        "operationId": "NetworkReportsController_locationsDetail",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "businessName": {
+                        "type": "string"
+                      },
+                      "revenue": {
+                        "type": "number"
+                      },
+                      "servicesRevenue": {
+                        "type": "number"
+                      },
+                      "goodsRevenue": {
+                        "type": "number"
+                      },
+                      "avgCheck": {
+                        "type": "number"
+                      },
+                      "avgCheckServices": {
+                        "type": "number"
+                      },
+                      "occupancy": {
+                        "type": "number"
+                      },
+                      "newClients": {
+                        "type": "number"
+                      },
+                      "notNewClients": {
+                        "type": "number"
+                      },
+                      "totalBookings": {
+                        "type": "number"
+                      },
+                      "cancelled": {
+                        "type": "number"
+                      },
+                      "completed": {
+                        "type": "number"
+                      },
+                      "pending": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "businessId",
+                      "businessName",
+                      "revenue",
+                      "servicesRevenue",
+                      "goodsRevenue",
+                      "avgCheck",
+                      "avgCheckServices",
+                      "occupancy",
+                      "newClients",
+                      "notNewClients",
+                      "totalBookings",
+                      "cancelled",
+                      "completed",
+                      "pending"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сравнение локаций сети за период (F-11-065)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/reports/daily-detail": {
+      "get": {
+        "operationId": "NetworkReportsController_dailyDetail",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "date": {
+                        "type": "string"
+                      },
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "businessName": {
+                        "type": "string"
+                      },
+                      "revenue": {
+                        "type": "number"
+                      },
+                      "servicesSharePct": {
+                        "type": "number"
+                      },
+                      "goodsSharePct": {
+                        "type": "number"
+                      },
+                      "avgCheck": {
+                        "type": "number"
+                      },
+                      "occupancy": {
+                        "type": "number"
+                      },
+                      "newClients": {
+                        "type": "number"
+                      },
+                      "totalBookings": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "date",
+                      "businessId",
+                      "businessName",
+                      "revenue",
+                      "servicesSharePct",
+                      "goodsSharePct",
+                      "avgCheck",
+                      "occupancy",
+                      "newClients",
+                      "totalBookings"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Метрики каждой локации по каждому дню периода (F-11-066)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/reports/param-series": {
+      "get": {
+        "operationId": "NetworkReportsController_paramSeries",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "businessName": {
+                        "type": "string"
+                      },
+                      "points": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "value"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "businessId",
+                      "businessName",
+                      "points"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Один показатель по всем локациям во времени (F-11-067)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/reports/services": {
+      "get": {
+        "operationId": "NetworkReportsController_servicesReport",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "serviceId": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "categoryName": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "type": "number"
+                      },
+                      "revenue": {
+                        "type": "number"
+                      },
+                      "avgPrice": {
+                        "type": "number"
+                      },
+                      "pctOfRevenue": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "serviceId",
+                      "name",
+                      "categoryName",
+                      "count",
+                      "revenue",
+                      "avgPrice",
+                      "pctOfRevenue"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Отчёт по услугам сети (F-11-069)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/reports/staff": {
+      "get": {
+        "operationId": "NetworkReportsController_staffReport",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "staffId": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      },
+                      "revenue": {
+                        "type": "number"
+                      },
+                      "visitsCount": {
+                        "type": "number"
+                      },
+                      "avgCheck": {
+                        "type": "number"
+                      },
+                      "clientsCount": {
+                        "type": "number"
+                      },
+                      "servicesSum": {
+                        "type": "number"
+                      },
+                      "servicesCount": {
+                        "type": "number"
+                      },
+                      "avgCheckServices": {
+                        "type": "number"
+                      },
+                      "hoursWorked": {
+                        "type": "number"
+                      },
+                      "hourCost": {
+                        "type": "number"
+                      },
+                      "pctOfRevenue": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "staffId",
+                      "name",
+                      "position",
+                      "revenue",
+                      "visitsCount",
+                      "avgCheck",
+                      "clientsCount",
+                      "servicesSum",
+                      "servicesCount",
+                      "avgCheckServices",
+                      "hoursWorked",
+                      "hourCost",
+                      "pctOfRevenue"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Отчёт по сотрудникам сети (F-11-070)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/reports/hr": {
+      "get": {
+        "operationId": "NetworkReportsController_hrReport",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "staffId": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "phone": {
+                        "type": "string"
+                      },
+                      "businessName": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      },
+                      "hiredAt": {
+                        "type": "string"
+                      },
+                      "fired": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "staffId",
+                      "name",
+                      "phone",
+                      "businessName",
+                      "position",
+                      "hiredAt",
+                      "fired"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "HR-отчёт сети (F-11-071)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/reports/finance-summary": {
+      "get": {
+        "operationId": "NetworkReportsController_financeSummary",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "businessName": {
+                        "type": "string"
+                      },
+                      "revenue": {
+                        "type": "number"
+                      },
+                      "visits": {
+                        "type": "number"
+                      },
+                      "avgCheck": {
+                        "type": "number"
+                      },
+                      "cancelled": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "businessId",
+                      "businessName",
+                      "revenue",
+                      "visits",
+                      "avgCheck",
+                      "cancelled"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сводные финансы сети по филиалам за период (Сеть14)",
         "tags": [
           "network"
         ]
@@ -70949,6 +71845,114 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/network/marketing-opt-out": {
+      "patch": {
+        "operationId": "NetworkBusinessController_marketingOptOut",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "optOut": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "optOut"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Согласие на рекламу клиента сети по телефону (F-11-058)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/network/branch-daily-stats": {
+      "get": {
+        "operationId": "NetworkBusinessController_branchDailyStats",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "businessId": {
+                        "type": "string"
+                      },
+                      "revenue": {
+                        "type": "number"
+                      },
+                      "bookingsCount": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "businessId",
+                      "revenue",
+                      "bookingsCount"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Статистика каждого филиала своей сети за один день (F-11-156)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
     "/v1/net/{networkId}/plan-email-schedule": {
       "get": {
         "operationId": "NetworkSettingsController_getPlanEmail",
@@ -71580,6 +72584,35 @@
           }
         ],
         "summary": "История звонков сети — пусто: чужая АТС, обмена нет (Р19)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/audit-log": {
+      "get": {
+        "operationId": "NetworkSettingsController_auditLog",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Журнал «Изменения данных» сети (F-11-023)",
         "tags": [
           "network"
         ]

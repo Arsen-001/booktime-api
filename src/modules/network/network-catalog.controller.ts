@@ -10,7 +10,7 @@ import { Zod } from '../../common/http/validation.js';
 import { newId } from '../../common/ids/ids.js';
 import { money, moneyToJson } from '../../common/money/money.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { utcToLocal, utcToLocalDate } from '../../common/time/time.js';
+import { localDayRangeUtc, utcToLocal, utcToLocalDate } from '../../common/time/time.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { goodView } from '../stock/stock-catalog.service.js';
 import { businessView, locationView, networkView, staffView } from '../businesses/views.js';
@@ -808,6 +808,38 @@ export class NetworkCatalogService {
       ? (await this.prisma.network.findUnique({ where: { id: biz.networkId }, include: { businesses: { where: { leftAt: null }, select: { id: true } } } }))?.businesses.map((b) => b.id) ?? [businessId]
       : [businessId];
     await this.prisma.client.updateMany({ where: { businessId: { in: businessIds }, phone }, data: { adConsent: J({ given: !optOut, at: new Date().toISOString(), method: 'network' }) } });
+  }
+
+  /**
+   * F-11-156 (этап 21, лейн network): `src/api/network.ts::getNetworkBranchDailyStats(businessIds, date)` — тоже
+   * без `networkId` в подписи (мок зовёт его без единого гейта вообще — «своя» сеть определяется на экране по
+   * `branchIds`, а не передаётся сюда), тот же приём, что `setMarketingOptOutByBusiness` выше: маршрут ПО ФИЛИАЛУ
+   * (`businessId` вызывающего сотрудника), а `requestedIds` пересекаются с бизнесами ЕГО сети — так чужой филиал
+   * не сунуть в список. Без сети — доступен только сам `businessId`.
+   */
+  async branchDailyStats(businessId: string, requestedIds: string[], date: string) {
+    const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { networkId: true } });
+    const allowedIds = biz?.networkId
+      ? (await this.prisma.network.findUnique({ where: { id: biz.networkId }, include: { businesses: { where: { leftAt: null }, select: { id: true } } } }))?.businesses.map((b) => b.id) ?? [businessId]
+      : [businessId];
+    const allowed = new Set(allowedIds);
+    const wanted = requestedIds.filter((id) => allowed.has(id));
+    if (!wanted.length) return [];
+    const locs = await this.prisma.location.findMany({ where: { businessId: { in: wanted }, deletedAt: null }, orderBy: { sortOrder: 'asc' }, select: { businessId: true, tz: true } });
+    const tzByBiz = new Map<string, string>();
+    for (const l of locs) if (!tzByBiz.has(l.businessId)) tzByBiz.set(l.businessId, l.tz);
+    const rows: { businessId: string; revenue: number; bookingsCount: number }[] = [];
+    // Сеть5 (мок): без отменённых и удалённых — occupiesTime = !deletedAt && status not in (cancelled_by_client, cancelled_by_master)
+    for (const id of wanted) {
+      const tz = tzByBiz.get(id) ?? 'Asia/Yerevan';
+      const { from, to } = localDayRangeUtc(date, tz);
+      const bookings = await this.prisma.booking.findMany({
+        where: { businessId: id, deletedAt: null, startAt: { gte: from, lt: to }, status: { notIn: ['cancelled_by_client', 'cancelled_by_master'] } },
+        select: { status: true, total: true },
+      });
+      rows.push({ businessId: id, revenue: bookings.filter((b) => b.status === 'arrived').reduce((s, b) => s + Number(b.total), 0), bookingsCount: bookings.length });
+    }
+    return rows;
   }
 
   /**

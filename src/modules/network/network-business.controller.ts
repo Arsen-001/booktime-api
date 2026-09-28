@@ -1,12 +1,14 @@
-import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { Biz } from '../../common/http/guards.js';
-import { ZodBody } from '../../common/http/openapi.js';
+import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
+import { branchDailyStatsQuery } from './network.schemas.js';
 import { NetworkCatalogService } from './network-catalog.controller.js';
 
 const marketingOptOutBody = z.object({ phone: z.string().trim().min(1).max(32), optOut: z.boolean() });
+const branchDailyStatsOut = z.array(z.object({ businessId: z.string(), revenue: z.number(), bookingsCount: z.number() }));
 
 /**
  * Сеть с точки зрения ФИЛИАЛА (docs/backend/02 §15), а не панели сети — вызывает любой сотрудник кабинета,
@@ -44,5 +46,14 @@ export class NetworkBusinessController {
   async marketingOptOut(@Param('businessId') businessId: string, @Body(new Zod(marketingOptOutBody)) body: z.infer<typeof marketingOptOutBody>) {
     await this.catalog.setMarketingOptOutByBusiness(businessId, body.phone, body.optOut);
     return { ok: true as const };
+  }
+
+  /** `src/api/network.ts::getNetworkBranchDailyStats(businessIds, date)` — см. докстринг `branchDailyStats` (F-11-156) */
+  @Get('branch-daily-stats')
+  @Biz()
+  @ApiOperation({ summary: 'Статистика каждого филиала своей сети за один день (F-11-156)' })
+  @ZodOk(branchDailyStatsOut)
+  branchDailyStats(@Param('businessId') businessId: string, @Query(new Zod(branchDailyStatsQuery)) query: z.infer<typeof branchDailyStatsQuery>) {
+    return this.catalog.branchDailyStats(businessId, query.businessIds.split(',').filter(Boolean), query.date);
   }
 }

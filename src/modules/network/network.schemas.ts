@@ -258,3 +258,33 @@ export const networkFieldBody = z.object({
   requiredInWidget: z.boolean().default(false),
   businessIds: z.array(id32).max(50).default([]),
 });
+
+// === stage 21 (lane network), попытка 2: отчёты сети, мок src/api/network.ts ===
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** F-11-065: `getNetworkLocationsDetail` — сравнение локаций сети за период */
+export const networkLocationsDetailQuery = z.object({ from: isoDate, to: isoDate, subdivisionId: id32.optional() });
+
+/** F-11-067: `getNetworkParamSeries` — один показатель по всем локациям во времени */
+export const NETWORK_PARAM_METRICS = ['revenueSold', 'revenuePaid', 'avgCheck', 'occupancy', 'newClients', 'totalBookings', 'cancelled', 'completed', 'pending'] as const;
+export const networkParamSeriesQuery = z.object({
+  metric: z.enum(NETWORK_PARAM_METRICS),
+  groupBy: z.enum(['day', 'month', 'year']),
+  from: isoDate,
+  to: isoDate,
+});
+
+/** F-11-069: `getNetworkServicesReport` */
+export const networkServicesReportQuery = z.object({ from: isoDate, to: isoDate, businessId: id32.optional(), staffId: id32.optional() });
+
+/** F-11-070: `getNetworkStaffReport` */
+export const networkStaffReportQuery = z.object({ from: isoDate, to: isoDate, businessId: id32.optional() });
+
+/** F-11-071: `getNetworkHrReport` */
+export const networkHrReportQuery = z.object({ query: z.string().max(120).optional(), fired: z.enum(['fired', 'notFired']).optional() });
+
+/** F-11-156: `getNetworkBranchDailyStats` — по филиалу (мок без networkId в подписи), как `marketing-opt-out` рядом */
+export const branchDailyStatsQuery = z.object({ businessIds: z.string().min(1).max(2000), date: isoDate });
+
+// === /stage 21 (lane network) ===
