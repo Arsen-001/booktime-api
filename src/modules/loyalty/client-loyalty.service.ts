@@ -140,8 +140,7 @@ export class ClientLoyaltyService {
         const kind: Kind = op === 'confirmMembershipPurchase' ? 'membership' : 'certificate';
         const row = await this.ownRequest(kind, businessId, str(args[0]));
         const clientId = await this.linkClient(businessId, row.appUserId!);
-        if (kind === 'membership') await this.instances.confirmMembership(ctx, row.id, clientId);
-        else await this.instances.confirmCertificate(ctx, row.id, clientId);
+        await this.decide(ctx, kind, row, 'confirm', clientId);
         return run(kind === 'membership' ? 'appGetMembership' : 'appGetCertificate', [row.appUserId, row.id]);
       }
       case 'rejectMembershipPurchase':
@@ -149,8 +148,7 @@ export class ClientLoyaltyService {
         requireAny(ctx, SELL);
         const kind: Kind = op === 'rejectMembershipPurchase' ? 'membership' : 'certificate';
         const row = await this.ownRequest(kind, businessId, str(args[0]));
-        if (kind === 'membership') await this.instances.rejectMembership(ctx, row.id);
-        else await this.instances.rejectCertificate(ctx, row.id);
+        await this.decide(ctx, kind, row, 'reject');
         const [pending] = await this.pendingRows({ appUserId: row.appUserId!, kind, id: row.id });
         return run('appPendingView', [pending]);
       }
@@ -170,6 +168,20 @@ export class ClientLoyaltyService {
       default:
         throw new ApiError('not_found', `Unknown op ${op}`);
     }
+  }
+
+  /**
+   * Решение по заявке (В-17): подтвердить — актив действует и привязан к карточке клиента бизнеса; отклонить —
+   * остаётся видна клиенту отклонённой. Одна транзакция с условием «ещё ждёт» — два администратора не решат дважды.
+   * (Не через LoyaltyInstancesService.confirm*: тот ищет тип по владельцу сессии, а бизнес заявки уже проверен по пути.)
+   */
+  private async decide(ctx: RequestContext, kind: Kind, row: { id: string; businessId: string; total?: bigint }, action: 'confirm' | 'reject', clientId?: string) {
+    const data = action === 'confirm' ? { status: 'active', ...(clientId ? { clientId } : {}), updatedBy: ctx.member!.staffId, version: { increment: 1 } } : { status: 'rejected', updatedBy: ctx.member!.staffId, version: { increment: 1 } };
+    await this.prisma.$transaction(async (tx) => {
+      const res = kind === 'membership' ? await tx.membershipSale.updateMany({ where: { id: row.id, status: PENDING }, data }) : await tx.certificate.updateMany({ where: { id: row.id, status: PENDING }, data });
+      if (res.count !== 1) throw new ApiError('already_confirmed', 'Purchase already decided');
+      await tx.loyaltyTx.create({ data: { id: newId('loyaltyTx'), businessId: row.businessId, clientId: clientId ?? null, source: kind, refId: row.id, kind: action, amount: row.total ?? 0n, staffId: ctx.member!.staffId } });
+    });
   }
 
   /** Заявка приложения этого бизнеса (В-17) — чужой бизнес/не заявка приложения → 404 */
