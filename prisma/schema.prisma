@@ -4430,3 +4430,102 @@ model NotifyMailingRecipient {
   @@map("notify_mailing_recipients")
 }
 // === end stage 21 (лейн notify-log+mailings) ===
+
+// === stage 21 (сдача, попытка 6: маркетплейс интеграций) ===
+/// Каталог приложений маркетплейса (F-13-002…013, F-13-210). Раньше жил только во фронте (этап 17, Р19 — «витрина»);
+/// этап 21 требует все фасады на сервере, поэтому карточка целиком хранится здесь, сид — из того же каталога мока
+/// (src/mock/slices/integrations.ts, id совпадают). `data` — CatalogApp фронта целиком (имя/цена/FAQ/флаги
+/// конкретных приложений); колонки рядом — только то, по чему фильтруем и сортируем.
+model IntegrationCatalogApp {
+  id            String   @id @db.VarChar(40)
+  code          String   @unique @db.VarChar(80)
+  categoryId    String   @map("category_id") @db.VarChar(30)
+  builtin       Boolean  @default(false)
+  hidden        Boolean  @default(false)
+  featuredRank  Int?     @map("featured_rank")
+  installsCount Int      @default(0) @map("installs_count")
+  rating        Float    @default(0)
+  reviewsCount  Int      @default(0) @map("reviews_count")
+  data          Json
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([categoryId])
+  @@map("integration_catalog_apps")
+}
+
+/// Отзыв бизнеса о приложении (F-13-011) — оставить можно только с живым подключением
+model IntegrationAppReview {
+  id         String   @id @db.VarChar(32)
+  appId      String   @map("app_id") @db.VarChar(40)
+  businessId String   @map("business_id") @db.VarChar(32)
+  authorName String   @map("author_name") @db.VarChar(120)
+  rating     Int
+  text       String   @db.Text
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([appId, createdAt])
+  @@index([businessId])
+  @@map("integration_app_reviews")
+}
+
+/// «Сообщить, когда появится» на пустой категории (F-13-005)
+model IntegrationCategorySubscription {
+  businessId String   @map("business_id") @db.VarChar(32)
+  categoryId String   @map("category_id") @db.VarChar(30)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@id([businessId, categoryId])
+  @@map("integration_category_subscriptions")
+}
+
+/// Промоблок в виджете записи (F-13-172); `data` — headline/description/hasImage/icon/buttonText/buttonHref/placements
+model IntegrationPromoBlock {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  locationId String   @map("location_id") @db.VarChar(32)
+  enabled    Boolean  @default(true)
+  data       Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId, createdAt])
+  @@map("integration_promo_blocks")
+}
+
+/// Кабинет разработчика (F-13-028): виден только тому сотруднику, кто его завёл
+model IntegrationDeveloperAccount {
+  ownerStaffId String   @id @map("owner_staff_id") @db.VarChar(32)
+  businessId   String   @map("business_id") @db.VarChar(32)
+  data         Json
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("integration_developer_accounts")
+}
+
+/// Приложение разработчика (F-13-029…048); `data` — about/devSettings/apiAccess/monetization/publication/events/…
+model IntegrationDevApp {
+  id           String   @id @db.VarChar(32)
+  ownerStaffId String   @map("owner_staff_id") @db.VarChar(32)
+  businessId   String   @map("business_id") @db.VarChar(32)
+  appCode      String   @unique @map("app_code") @db.VarChar(80)
+  status       String   @db.VarChar(12)
+  data         Json
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([ownerStaffId, createdAt])
+  @@index([businessId])
+  @@map("integration_dev_apps")
+}
+
+/// Заявка партнёру напрямую (F-13-137: 2GIS, Earlyone, DOQ.kz — без листа подключения)
+model IntegrationPartnerApplication {
+  id         String   @id @db.VarChar(32)
+  appId      String   @map("app_id") @db.VarChar(40)
+  businessId String   @map("business_id") @db.VarChar(32)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@unique([businessId, appId])
+  @@map("integration_partner_applications")
+}
+// === end stage 21 (сдача, попытка 6) ===

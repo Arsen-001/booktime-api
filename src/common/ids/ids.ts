@@ -234,6 +234,13 @@ export const ID_PREFIX = {
   networkExport: 'nexp',
   // этап 21 (лейн network), попытка 3 — журнал запусков «Создать ведомость и начислить» по сети (мок newId('netpay'))
   networkPayrollRun: 'npay',
+  // этап 21 (сдача, попытка 6) — маркетплейс интеграций: те же префиксы, что у мока (src/api/integrations.ts)
+  integrationReview: 'iarev',
+  integrationPromoBlock: 'ipb',
+  integrationDevApp: 'iad',
+  integrationDevAppEvent: 'iaev',
+  integrationPartnerApplication: 'ipa',
+  integrationPartnerPayment: 'iapay',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

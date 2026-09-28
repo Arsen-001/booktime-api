@@ -12,6 +12,7 @@ import { seedLoyaltyFromMock } from './seed/loyalty.js';
 import { seedClientLoyalty } from './seed/client-loyalty.js';
 import { seedFinanceFromMock } from './seed/finance.js';
 import { seedNotifyLogFromMock } from './seed/notify-log.js';
+import { seedIntegrationsFromMock } from './seed/integrations.js';
 
 /**
  * Сид разработки (npx prisma db seed; его же зовёт prisma migrate reset). Строит те же данные, что демо фронта:
@@ -946,6 +947,8 @@ await seedClientLoyalty(prisma, core);
 await seedFinanceFromMock(prisma, core);
 // этап 21, лейн notify-log+mailings — служебные строки журнала отправок и прошлые рассылки
 await seedNotifyLogFromMock(prisma, core);
+// этап 21 (сдача, попытка 6) — маркетплейс интеграций: каталог, отзывы, промоблок, демо-подключения с настройками
+await seedIntegrationsFromMock(prisma, core);
 
 // ─────────── этап 12: финансы и касса — 15 системных статей, кассы «Наличные»/«Карта» на филиал, методы
 // оплаты cash/card, и одна реальная оплата визита на бизнес (чтобы касса дня/отчёты не были пустыми). Идемпотентно

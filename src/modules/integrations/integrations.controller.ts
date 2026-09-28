@@ -169,8 +169,8 @@ export class IntegrationsController {
   @Biz('integrations.manage')
   @ZodBody(connectAppBody)
   @ZodOk(z.array(appInstallOut))
-  connect(@Param('businessId') businessId: string, @Body(new Zod(connectAppBody)) body: z.infer<typeof connectAppBody>) {
-    return this.connections.connect(businessId, body);
+  connect(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(connectAppBody)) body: z.infer<typeof connectAppBody>) {
+    return this.connections.connect(businessId, body, ctx.member?.role);
   }
 
   @Post('installs/:id/activate')

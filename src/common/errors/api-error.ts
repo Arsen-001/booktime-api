@@ -187,6 +187,17 @@ export const ERROR_STATUS = {
   // этап 21, лейн notify-log+mailings — разовое сообщение/ссылка на оплату без разрешённого канала, тест без телефона (коды мока)
   no_allowed_channel: HttpStatus.UNPROCESSABLE_ENTITY,
   'notify/no-test-phone': HttpStatus.UNPROCESSABLE_ENTITY,
+  // этап 21 (сдача, попытка 6) — маркетплейс интеграций, коды мока src/api/integrations.ts как есть
+  not_installed: HttpStatus.UNPROCESSABLE_ENTITY,
+  owner_only: HttpStatus.FORBIDDEN,
+  coming_soon: HttpStatus.UNPROCESSABLE_ENTITY,
+  invalid_code: HttpStatus.UNPROCESSABLE_ENTITY,
+  code_taken: HttpStatus.CONFLICT,
+  registration_url_required: HttpStatus.UNPROCESSABLE_ENTITY,
+  not_in_review: HttpStatus.CONFLICT,
+  nothing_to_refund: HttpStatus.CONFLICT,
+  invalid_stream_id: HttpStatus.UNPROCESSABLE_ENTITY,
+  duplicate_stream_form: HttpStatus.CONFLICT,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

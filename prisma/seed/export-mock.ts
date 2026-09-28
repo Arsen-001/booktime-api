@@ -11,7 +11,9 @@ import { scheduleSlice } from '@/mock/slices/schedule';
 import { loyaltySlice } from '@/mock/slices/loyalty';
 // @ts-expect-error — путь из tsconfig фронта (этап 21, лейн finance+stock: политика оплаты, Adyen, ссылки, заказы, настройки)
 import { financeSlice } from '@/mock/slices/finance';
+// @ts-expect-error — путь из tsconfig фронта (этап 21, сдача, попытка 6: маркетплейс интеграций — каталог, отзывы, промоблоки, демо-подключения)
+import { integrationsSlice } from '@/mock/slices/integrations';
 
 const now = process.env.SEED_NOW ? new Date(process.env.SEED_NOW) : new Date();
 const core = seedCore(now);
-process.stdout.write(JSON.stringify({ ...core, areaSchedule: scheduleSlice.seed(core, now), areaLoyalty: loyaltySlice.seed(core, now), areaFinance: financeSlice.seed(core, now) }));
+process.stdout.write(JSON.stringify({ ...core, areaSchedule: scheduleSlice.seed(core, now), areaLoyalty: loyaltySlice.seed(core, now), areaFinance: financeSlice.seed(core, now), areaIntegrations: integrationsSlice.seed(core, now) }));

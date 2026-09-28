@@ -9,7 +9,7 @@ const ACTIVATION_WINDOW_MS = 60 * 60 * 1000;
 const J = (v: unknown) => v as Prisma.InputJsonValue;
 
 /** b03/b04 «свои» поля AppInstall фронта (Р19) — один JSON вместо колонки на каждое, см. schema.prisma комментарий */
-interface AppInstallConfig {
+export interface AppInstallConfig {
   authKey?: string;
   senderName?: string;
   senderNameStatus?: 'none' | 'pending' | 'approved';
@@ -20,9 +20,17 @@ interface AppInstallConfig {
   kommoDedupe?: boolean;
   cascadeOrder?: string[];
   negativeReviewIntercept?: boolean;
+  // этап 21 (сдача, попытка 6): остальные «свои» поля AppInstall фронта (b03/b04/b05) — см. marketplace.service.ts
+  messageBalanceAmd?: number;
+  demoLoyaltyStamps?: number;
+  fastSignFilledCount?: number;
+  paymentHistory?: { id: string; amount: number; currency: string; paidUntil: string; createdAt: string; refundedAt?: string }[];
+  lastChatbotTest?: { at: string; deliveredVia: string; confirmed: boolean };
+  interceptedReviewsCount?: number;
+  lastRetentionRunCount?: number;
 }
 
-interface ConnectionRow {
+export interface ConnectionRow {
   id: string;
   appId: string;
   businessId: string;
@@ -43,7 +51,7 @@ interface ConnectionRow {
   config?: unknown;
 }
 
-function view(row: ConnectionRow): AppInstallOut {
+export function view(row: ConnectionRow): AppInstallOut {
   const cfg = (row.config as AppInstallConfig | null) ?? {};
   return {
     id: row.id,
@@ -63,7 +71,8 @@ function view(row: ConnectionRow): AppInstallOut {
     lastEventKind: (row.lastEventKind as AppInstallOut['lastEventKind']) ?? undefined,
     recentErrors: (row.recentErrors as AppInstallOut['recentErrors']) ?? undefined,
     lastTest: (row.lastTest as AppInstallOut['lastTest']) ?? undefined,
-    authKey: cfg.authKey,
+    // И4: секрет подключения наружу — только маской (как withOverdue мока)
+    authKey: cfg.authKey ? `••••••••${cfg.authKey.slice(-4)}` : undefined,
     senderName: cfg.senderName,
     senderNameStatus: cfg.senderNameStatus,
     whatsappNumberMode: cfg.whatsappNumberMode,
@@ -73,6 +82,13 @@ function view(row: ConnectionRow): AppInstallOut {
     kommoDedupe: cfg.kommoDedupe,
     cascadeOrder: cfg.cascadeOrder as AppInstallOut['cascadeOrder'],
     negativeReviewIntercept: cfg.negativeReviewIntercept,
+    messageBalanceAmd: cfg.messageBalanceAmd,
+    demoLoyaltyStamps: cfg.demoLoyaltyStamps,
+    fastSignFilledCount: cfg.fastSignFilledCount,
+    paymentHistory: cfg.paymentHistory,
+    lastChatbotTest: cfg.lastChatbotTest as AppInstallOut['lastChatbotTest'],
+    interceptedReviewsCount: cfg.interceptedReviewsCount,
+    lastRetentionRunCount: cfg.lastRetentionRunCount,
   };
 }
 
@@ -117,7 +133,19 @@ export class ConnectionsService {
     return rows.map((r) => this.overdue(r)!).filter((i) => i.status === 'connected' || i.status === 'pendingActivation').map((i) => i.locationId);
   }
 
-  async connect(businessId: string, body: ConnectAppBody): Promise<AppInstallOut[]> {
+  async connect(businessId: string, body: ConnectAppBody, role?: string): Promise<AppInstallOut[]> {
+    // Этап 21 (попытка 6): каталог теперь на сервере — проверки карточки делаем здесь, признак «встроенное»
+    // берём из каталога, а не со слов клиента (приложение вне каталога — прежнее поведение, instant из тела)
+    const catalog = await this.prisma.integrationCatalogApp.findUnique({ where: { id: body.appId } });
+    if (catalog) {
+      const data = catalog.data as { ownerOnly?: boolean; price?: { model?: string } };
+      if (data.ownerOnly && role && role !== 'owner' && role !== 'individual') throw new ApiError('owner_only', 'Only the owner can connect this app');
+      if (data.price?.model === 'comingSoon') throw new ApiError('coming_soon', 'Not available in Armenia yet');
+      body = { ...body, instant: catalog.builtin };
+    }
+    if (!body.locationIds.length) throw new ApiError('validation', 'Choose at least one location');
+    const owned = await this.prisma.location.count({ where: { businessId, id: { in: body.locationIds } } });
+    if (owned !== new Set(body.locationIds).size) throw new ApiError('forbidden', 'Location is not in this business');
     const nowIso = new Date();
     const activatesBy = new Date(nowIso.getTime() + ACTIVATION_WINDOW_MS);
     const created: AppInstallOut[] = [];

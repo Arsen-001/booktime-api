@@ -139,6 +139,16 @@ export const appInstallOut = z.object({
   kommoDedupe: z.boolean().optional(),
   cascadeOrder: z.array(appChannel).optional(),
   negativeReviewIntercept: z.boolean().optional(),
+  // этап 21 (сдача, попытка 6) — остальные b03/b04/b05 поля
+  messageBalanceAmd: z.number().optional(),
+  demoLoyaltyStamps: z.number().optional(),
+  fastSignFilledCount: z.number().optional(),
+  paymentHistory: z
+    .array(z.object({ id: z.string(), amount: z.number(), currency: z.string(), paidUntil: z.string(), createdAt: z.string(), refundedAt: z.string().optional() }))
+    .optional(),
+  lastChatbotTest: z.object({ at: z.string(), deliveredVia: appChannel, confirmed: z.boolean() }).optional(),
+  interceptedReviewsCount: z.number().optional(),
+  lastRetentionRunCount: z.number().optional(),
 });
 export type AppInstallOut = z.infer<typeof appInstallOut>;
 
