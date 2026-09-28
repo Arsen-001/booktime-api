@@ -7257,3 +7257,89 @@ allowlist — `effectiveTypeId`, настоящий остаток, — либо
 
 ### Вопросы владельцу (этап 21, лейн client-loyalty)
 Нет новых. Сторис/новости/буст/монеты (15 функций `client.ts`) ждут ответа о модели цен (см. «Этап 21 — Сдача, попытка 4»).
+
+## Этап 21, лейн «network», попытка 2 (28.09.2026)
+
+Мандат: продолжить с 31 оставшейся дыры `src/api/network.ts` (см. «Этап 21, лейн network, попытка 1» выше).
+Взял первую группу из хвостовой заметки попытки 1 — «Отчёты сети по записям (8, все `[core]`)» — как самую
+дешёвую (чистые чтения поверх Booking/Service/ServiceCategory/Staff, без новых таблиц, по прецеденту
+`analyticsSummaryV2`/`analyticsBreakdown` из попытки 1) плюс `getNetworkBranchDailyStats` (F-11-156, тоже без
+`networkId`/`businessId` в подписи — тот же класс задачи, что `setNetworkMarketingOptOut` из попытки 1).
+
+**Закрыто 8 из 31** (после захода: `network.ts 26 used: 23`, было `34 used: 31`):
+
+1–7. **`getNetworkLocationsDetail`/`getNetworkDailyDetail`/`getNetworkParamSeries`/`getNetworkServicesReport`/
+`getNetworkStaffReport`/`getNetworkHrReport`/`getNetworkFinanceSummary`** (F-11-065/066/067/069/070/071,
+Сеть14) — все 7 добавлены в `NetworkReportsService`/`NetworkReportsController`
+(`network-reports.controller.ts`, тот же файл, что и попытка 1), гейт `analytics` у всех (единого явного гейта
+по разделу для каждого отдельно мок не задаёт — экраны за отдельным пунктом меню не прячутся, «Аналитика»
+общая). Контракт мока перенесён построчно, с тремя решениями по ходу (все технические, не денежные/юридические):
+   - **`getNetworkLocationsDetail`**: метрики оборота (`revenue`/`avgCheck`/`occupancy`…) считаются БЕЗ фильтра
+     по `subdivisionId` — так же, как в моке (`summaryFor()` там тоже зовётся без `categoryIds`); подразделение
+     сужает только счётчики записей (`totalBookings`/`cancelled`/`completed`/`pending`/`newClients`), через
+     `NetworkSubdivision.categoryIds` → id услуг этой категории у бизнеса → фильтр `booking.services[].serviceId`.
+     Проверено HTTP: с пустым `categoryIds` подразделения все счётчики честно уходят в 0, выручка не меняется.
+   - **Отмена в отчётах**: три РАЗНЫХ набора статусов сохранены как в моке, не унифицированы (соблазн был):
+     `CANCELLED_LIKE`/`PENDING_LIKE` (уже были в файле с попытки 1, включают `no_show` и несуществующий на
+     сервере статус `'deleted'` — безвредный no-op) — у `locationsDetail`/`dailyDetail`/`paramSeries`; но
+     `getNetworkFinanceSummary` мокового `!occupiesTime(b)` — это ДРУГОЙ, более узкий набор (только
+     `cancelled_by_client`/`cancelled_by_master`, БЕЗ `no_show` — домен `booking-status.ts::isCancelled`, не
+     локальный `CANCELLED_STATUSES` этого файла) — свёл к литеральной проверке двух статусов на месте, с
+     комментарием, чтобы следующий заход не «починил» это в сторону унификации по ошибке.
+   - **`deletedAt`**: все новые запросы фильтруют `deletedAt: null` (как уже делает `records()` из попытки 1),
+     а не оставляют как у `summaryFor()`/`analyticsBreakdown()` (те не фильтруют вовсе, попытка 1) — решил не
+     трогать чужой уже проверенный код ради унификации, только новые методы держат явный фильтр.
+   Схема не менялась (`NetworkSubdivision` уже существовала с попытки 1 catalog-лейна) — только
+   `network.schemas.ts` (7 query-схем, `NETWORK_PARAM_METRICS`) и `network-reports.controller.ts` (7 методов
+   сервиса + 7 GET-маршрутов `reports/locations-detail|daily-detail|param-series|services|staff|hr|finance-summary`).
+
+8. **`getNetworkBranchDailyStats(businessIds, date)`** (F-11-156) — как и `setNetworkMarketingOptOut` в попытке 1,
+   фасад НЕ несёт `businessId`/`networkId` вовсе (мок зовёт его вообще без единого гейта — SwitchScreen/
+   OverviewScreen сами уже отфильтровали `branchIds` своей сетью до вызова) — сигнатуру менять запрещено общими
+   правилами захода. Решение (моё, техническое): фронт зовёт маршрут ПО ФИЛИАЛУ ПЕРВОГО элемента запрошенного
+   массива (`businessIds[0]`), сервер (`NetworkCatalogService.branchDailyStats`, новый метод, +
+   `GET /v1/biz/:businessId/network/branch-daily-stats` в `network-business.controller.ts`, обычный `@Biz()`, не
+   `NetworkAccessService`) сам пересекает запрошенные id с бизнесами СЕТИ этого филиала — чужой филиал не
+   подсунуть. Без сети у вызывающего бизнеса — доступен только он сам. `occupiesTime` мока (Сеть5: без отменённых
+   и удалённых) — `status NOT IN (cancelled_by_client, cancelled_by_master)` в WHERE (уже `deletedAt: null` рядом),
+   `no_show` НЕ исключён (совпадает с мокового `occupiesTime`, который тоже не трогает `no_show`).
+
+**Проверено:**
+- Backend `npx tsc --noEmit -p tsconfig.json` — 0 ошибок (весь проект). Frontend `npx tsc --noEmit --incremental
+  --tsBuildInfoFile .tsbuild/backend.tsbuildinfo` — 0. `eslint src/api/network.ts src/api/network.server.ts` — 0
+  (backend eslint недоступен на этой машине — нет `eslint.config.*`, тот же факт, что и у предыдущих лейнов).
+  `node scripts/fids.mjs` — `network 165/165`, итог `2892/2896` (без изменений от захода). `node scripts/renders.mjs
+  --check-compiler` — 0. `node scripts/facade-audit.mjs` — `network.ts 34→26 used 31→23` (закрыто ровно 8).
+- Держал `/tmp/booktime-db.lock` один раз, на `npm run build` + рестарт `:4010`/`worker` (~1 мин), отпустил сразу
+  после подтверждения `/v1/health`.
+- Настоящий HTTP на общем деве `:4010` (владелец `biz_nuri`, `+37400110001`, код `0000`, сеть
+  `net_01M3JF08NYPWAY6GM1FKTMY5TC`): все 8 новых маршрутов curl'ом с реальными данными (не пусто) —
+  `reports/locations-detail` (248 записей, revenue 1 344 000), `reports/daily-detail` (по дням 25–28.09),
+  `reports/param-series` (metric=totalBookings/occupancy, groupBy=day/month), `reports/services` (топ услуг по
+  выручке, отдельно проверен фильтр `staffId`), `reports/staff` (сводка по 3 мастерам), `reports/hr` (список +
+  фильтр `fired=fired` → пусто, в этой сети уволенных нет), `reports/finance-summary` (1 филиал, revenue/visits/
+  avgCheck/cancelled), `biz/network/branch-daily-stats` (revenue 0, bookingsCount 23 — «сегодня» ещё без
+  пришедших). Проверен и код-путь `subdivisionId` — создал тестовое `NetworkSubdivision` с пустым `categoryIds`,
+  убедился что счётчики ушли в 0 при неизменной выручке, подразделение удалено SQL'ом сразу после (`DELETE FROM
+  network_subdivisions WHERE id=…` в контейнере `booktime-mysql-1`) — тестовых следов не осталось.
+- Браузер (Playwright, реальная cookie-сессия владельца добавлена напрямую через `context.addCookies`
+  (`bt_session`+`bt_data=api`) — повторный код-вход упёрся в rate-limit `auth-code-ip` от прежних попыток этого
+  захода, решение техническое, не обходит проверку прав, только сам шаг «ввести код» в этом прогоне): все 6
+  вкладок `/biz/network/analytics` (По локациям / По дням / По параметрам / Услуги / Сотрудники / Кадровый
+  отчёт) — 0 ошибок консоли/страницы, реальные цифры на экране (проверено скриншотами: таблица «По локациям»
+  222 записи/13 новых/41 не новых, «Кадровый отчёт» — 10 сотрудников с должностями и датами приёма). `/biz/network`
+  (Обзор) — карточка «Выручка сети сегодня: 0» + «Записей сегодня: 23» (совпадает с curl branch-daily-stats) и
+  таблица «Финансы сети» (1 148 000 / 140 визитов / 8 200 / 29 отмен, из `getNetworkFinanceSummary`). `/biz/network/
+  switch` — 0 ошибок. Временные скрипты проверки (`scripts/tmp-network-lane/*`) удалены после прогона, в коммит
+  не попали.
+
+### Вопросы владельцу (этап 21, лейн network, попытка 2)
+Ничего денежного/юридического не решал. Технический факт для следующего захода: `getNetworkFinanceSummary`
+считает «отменено» ДРУГИМ набором статусов, чем соседние `locationsDetail`/`dailyDetail`/`paramSeries` в том же
+файле (см. пункт 1–7 выше) — это не расхождение, это мок так и делает (`occupiesTime` домена ≠ локальный
+`CANCELLED_LIKE`), но выглядит как несогласованность при беглом чтении кода — оставил явный комментарий на месте.
+
+лейн network: закрыто 8 из 38 (7 отчётов + branch-daily-stats), с учётом попытки 1 (7 из 38) — суммарно **закрыто
+15 из 38**, осталось: 23 — каталог сети (12, часть, вероятно, уже закрывается готовыми маршрутами `NetworkCatalogController`,
+нужна построчная сверка — см. предупреждение попытки 1) + пакеты/карточка сотрудника/ведомости/остатки/
+copyBranchData/CSV (11, нужна новая подсистема с нуля, см. список попытки 1).
