@@ -57493,6 +57493,528 @@
         ]
       }
     },
+    "/v1/public/stories/home": {
+      "get": {
+        "operationId": "ClientPromoPublicController_home",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/public/stories/slots": {
+      "get": {
+        "operationId": "ClientPromoPublicController_slotsPublic",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/public/stories/business/{businessId}": {
+      "get": {
+        "operationId": "ClientPromoPublicController_byBusiness",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/public/stories/{id}": {
+      "get": {
+        "operationId": "ClientPromoPublicController_one",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/public/stories/{id}/view": {
+      "post": {
+        "operationId": "ClientPromoPublicController_view",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/public/stories/{id}/click": {
+      "post": {
+        "operationId": "ClientPromoPublicController_click",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/promo/stories": {
+      "get": {
+        "operationId": "ClientPromoBizController_stories",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "client-promo"
+        ]
+      },
+      "post": {
+        "operationId": "ClientPromoBizController_purchase",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "generated",
+                      "photo"
+                    ]
+                  },
+                  "imageUrl": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 6000000
+                  },
+                  "lang": {
+                    "maxItems": 3,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "ru",
+                        "hy",
+                        "en"
+                      ]
+                    }
+                  },
+                  "showStaffNames": {
+                    "type": "boolean"
+                  },
+                  "windows": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "staffId": {
+                          "type": "string",
+                          "maxLength": 32
+                        },
+                        "staffName": {
+                          "type": "string",
+                          "maxLength": 120
+                        },
+                        "times": {
+                          "maxItems": 10,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 5
+                          }
+                        }
+                      },
+                      "required": [
+                        "times"
+                      ]
+                    }
+                  },
+                  "bookingTarget": {
+                    "type": "object",
+                    "properties": {
+                      "staffId": {
+                        "type": "string",
+                        "maxLength": 32
+                      },
+                      "serviceId": {
+                        "type": "string",
+                        "maxLength": 32
+                      }
+                    }
+                  },
+                  "caption": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "kind",
+                  "imageUrl",
+                  "lang",
+                  "showStaffNames",
+                  "windows"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/promo/stories/slots": {
+      "get": {
+        "operationId": "ClientPromoBizController_slots",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/promo/news": {
+      "get": {
+        "operationId": "ClientPromoBizController_news",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "client-promo"
+        ]
+      },
+      "post": {
+        "operationId": "ClientPromoBizController_createNews",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "photoUrl": {
+                    "type": "string",
+                    "maxLength": 6000000
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/promo/news/week": {
+      "get": {
+        "operationId": "ClientPromoBizController_newsWeek",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/promo/settings": {
+      "get": {
+        "operationId": "ClientPromoBizController_promotion",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/promo/hot-slot": {
+      "put": {
+        "operationId": "ClientPromoBizController_hotSlot",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "percent": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 90
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "percent"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/promo/boost": {
+      "post": {
+        "operationId": "ClientPromoBizController_boost",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "search",
+                      "home"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "client-promo"
+        ]
+      }
+    },
     "/v1/me/bookings": {
       "post": {
         "operationId": "MeController_createBooking",
@@ -79269,6 +79791,83 @@
                       },
                       "negativeReviewIntercept": {
                         "type": "boolean"
+                      },
+                      "messageBalanceAmd": {
+                        "type": "number"
+                      },
+                      "demoLoyaltyStamps": {
+                        "type": "number"
+                      },
+                      "fastSignFilledCount": {
+                        "type": "number"
+                      },
+                      "paymentHistory": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "amount": {
+                              "type": "number"
+                            },
+                            "currency": {
+                              "type": "string"
+                            },
+                            "paidUntil": {
+                              "type": "string"
+                            },
+                            "createdAt": {
+                              "type": "string"
+                            },
+                            "refundedAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "amount",
+                            "currency",
+                            "paidUntil",
+                            "createdAt"
+                          ]
+                        }
+                      },
+                      "lastChatbotTest": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "deliveredVia": {
+                            "type": "string",
+                            "enum": [
+                              "sms",
+                              "whatsapp",
+                              "waba",
+                              "telegram",
+                              "viber",
+                              "email",
+                              "voice",
+                              "other"
+                            ]
+                          },
+                          "confirmed": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "deliveredVia",
+                          "confirmed"
+                        ]
+                      },
+                      "interceptedReviewsCount": {
+                        "type": "number"
+                      },
+                      "lastRetentionRunCount": {
+                        "type": "number"
                       }
                     },
                     "required": [
@@ -79559,6 +80158,83 @@
                       },
                       "negativeReviewIntercept": {
                         "type": "boolean"
+                      },
+                      "messageBalanceAmd": {
+                        "type": "number"
+                      },
+                      "demoLoyaltyStamps": {
+                        "type": "number"
+                      },
+                      "fastSignFilledCount": {
+                        "type": "number"
+                      },
+                      "paymentHistory": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "amount": {
+                              "type": "number"
+                            },
+                            "currency": {
+                              "type": "string"
+                            },
+                            "paidUntil": {
+                              "type": "string"
+                            },
+                            "createdAt": {
+                              "type": "string"
+                            },
+                            "refundedAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "amount",
+                            "currency",
+                            "paidUntil",
+                            "createdAt"
+                          ]
+                        }
+                      },
+                      "lastChatbotTest": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "deliveredVia": {
+                            "type": "string",
+                            "enum": [
+                              "sms",
+                              "whatsapp",
+                              "waba",
+                              "telegram",
+                              "viber",
+                              "email",
+                              "voice",
+                              "other"
+                            ]
+                          },
+                          "confirmed": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "deliveredVia",
+                          "confirmed"
+                        ]
+                      },
+                      "interceptedReviewsCount": {
+                        "type": "number"
+                      },
+                      "lastRetentionRunCount": {
+                        "type": "number"
                       }
                     },
                     "required": [
@@ -79840,6 +80516,83 @@
                     },
                     "negativeReviewIntercept": {
                       "type": "boolean"
+                    },
+                    "messageBalanceAmd": {
+                      "type": "number"
+                    },
+                    "demoLoyaltyStamps": {
+                      "type": "number"
+                    },
+                    "fastSignFilledCount": {
+                      "type": "number"
+                    },
+                    "paymentHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "amount": {
+                            "type": "number"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "paidUntil": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "refundedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "amount",
+                          "currency",
+                          "paidUntil",
+                          "createdAt"
+                        ]
+                      }
+                    },
+                    "lastChatbotTest": {
+                      "type": "object",
+                      "properties": {
+                        "at": {
+                          "type": "string"
+                        },
+                        "deliveredVia": {
+                          "type": "string",
+                          "enum": [
+                            "sms",
+                            "whatsapp",
+                            "waba",
+                            "telegram",
+                            "viber",
+                            "email",
+                            "voice",
+                            "other"
+                          ]
+                        },
+                        "confirmed": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "deliveredVia",
+                        "confirmed"
+                      ]
+                    },
+                    "interceptedReviewsCount": {
+                      "type": "number"
+                    },
+                    "lastRetentionRunCount": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -80128,6 +80881,83 @@
                     },
                     "negativeReviewIntercept": {
                       "type": "boolean"
+                    },
+                    "messageBalanceAmd": {
+                      "type": "number"
+                    },
+                    "demoLoyaltyStamps": {
+                      "type": "number"
+                    },
+                    "fastSignFilledCount": {
+                      "type": "number"
+                    },
+                    "paymentHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "amount": {
+                            "type": "number"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "paidUntil": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "refundedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "amount",
+                          "currency",
+                          "paidUntil",
+                          "createdAt"
+                        ]
+                      }
+                    },
+                    "lastChatbotTest": {
+                      "type": "object",
+                      "properties": {
+                        "at": {
+                          "type": "string"
+                        },
+                        "deliveredVia": {
+                          "type": "string",
+                          "enum": [
+                            "sms",
+                            "whatsapp",
+                            "waba",
+                            "telegram",
+                            "viber",
+                            "email",
+                            "voice",
+                            "other"
+                          ]
+                        },
+                        "confirmed": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "deliveredVia",
+                        "confirmed"
+                      ]
+                    },
+                    "interceptedReviewsCount": {
+                      "type": "number"
+                    },
+                    "lastRetentionRunCount": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -80340,6 +81170,2153 @@
         ],
         "tags": [
           "integrations"
+        ]
+      }
+    },
+    "/v1/integrations/catalog": {
+      "get": {
+        "operationId": "IntegrationsCatalogController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/integrations/catalog/all": {
+      "get": {
+        "operationId": "IntegrationsCatalogController_all",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/integrations/catalog/featured": {
+      "get": {
+        "operationId": "IntegrationsCatalogController_featured",
+        "parameters": [
+          {
+            "name": "country",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/integrations/catalog/category-counts": {
+      "get": {
+        "operationId": "IntegrationsCatalogController_categoryCounts",
+        "parameters": [
+          {
+            "name": "country",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/integrations/catalog/by-code/{code}": {
+      "get": {
+        "operationId": "IntegrationsCatalogController_byCode",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/integrations/catalog/apps/{id}": {
+      "get": {
+        "operationId": "IntegrationsCatalogController_one",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/integrations/catalog/apps/{id}/reviews": {
+      "get": {
+        "operationId": "IntegrationsCatalogController_reviews",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/reviews": {
+      "post": {
+        "operationId": "IntegrationsMarketController_addReview",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "appId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "rating": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 5
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "appId",
+                  "rating",
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/category-subscriptions/{categoryId}": {
+      "get": {
+        "operationId": "IntegrationsMarketController_isSubscribed",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/category-subscriptions": {
+      "post": {
+        "operationId": "IntegrationsMarketController_subscribe",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "categoryId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "categoryId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/installs/{id}/action": {
+      "post": {
+        "operationId": "IntegrationsMarketController_installAction",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "payPartner"
+                      }
+                    },
+                    "required": [
+                      "action"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "refund"
+                      }
+                    },
+                    "required": [
+                      "action"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "smsAuth"
+                      },
+                      "authKey": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "senderName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "authKey",
+                      "senderName"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "approveSender"
+                      }
+                    },
+                    "required": [
+                      "action"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "topUp"
+                      },
+                      "amountAmd": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 100000000
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "amountAmd"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "sendTestMessage"
+                      },
+                      "pricePerMessageAmd": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1000000
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "pricePerMessageAmd"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "whatsappMode"
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "default",
+                          "own"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "mode"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "approveMeta"
+                      }
+                    },
+                    "required": [
+                      "action"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "cascadeOrder"
+                      },
+                      "order": {
+                        "maxItems": 8,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "sms",
+                            "whatsapp",
+                            "waba",
+                            "telegram",
+                            "viber",
+                            "email",
+                            "voice",
+                            "other"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "order"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "chatbotTest"
+                      },
+                      "channels": {
+                        "maxItems": 8,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "sms",
+                            "whatsapp",
+                            "waba",
+                            "telegram",
+                            "viber",
+                            "email",
+                            "voice",
+                            "other"
+                          ]
+                        }
+                      },
+                      "canConfirm": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "channels",
+                      "canConfirm"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "negativeIntercept"
+                      },
+                      "on": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "on"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "interceptReview"
+                      }
+                    },
+                    "required": [
+                      "action"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "retentionRun"
+                      },
+                      "days": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 3650
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "days"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "loyaltyVisit"
+                      }
+                    },
+                    "required": [
+                      "action"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "fastSign"
+                      }
+                    },
+                    "required": [
+                      "action"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "kommoMode"
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "conditional",
+                          "unconditional",
+                          "none"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "mode"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "kommoDedupe"
+                      },
+                      "dedupe": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "dedupe"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "gaAdd"
+                      },
+                      "streamId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "formLabel": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "streamId",
+                      "formLabel"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "gaUpdate"
+                      },
+                      "streamPk": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "streamId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "formLabel": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "streamPk",
+                      "streamId",
+                      "formLabel"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "gaDelete"
+                      },
+                      "streamPk": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "streamPk"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/promo-blocks": {
+      "get": {
+        "operationId": "IntegrationsMarketController_listPromo",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      },
+      "post": {
+        "operationId": "IntegrationsMarketController_createPromo",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "draft": {
+                    "type": "object",
+                    "properties": {
+                      "headline": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "description": {
+                        "type": "string",
+                        "maxLength": 1000
+                      },
+                      "hasImage": {
+                        "type": "boolean"
+                      },
+                      "icon": {
+                        "type": "string",
+                        "enum": [
+                          "gift",
+                          "megaphone",
+                          "star",
+                          "percent",
+                          "share2",
+                          "sparkles"
+                        ]
+                      },
+                      "buttonText": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "buttonHref": {
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      "placements": {
+                        "maxItems": 4,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "menu",
+                            "serviceSelect",
+                            "staffSelect",
+                            "successScreen"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "headline",
+                      "description",
+                      "hasImage",
+                      "icon",
+                      "buttonText",
+                      "buttonHref",
+                      "placements"
+                    ]
+                  }
+                },
+                "required": [
+                  "locationId",
+                  "draft"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/promo-blocks/{id}": {
+      "post": {
+        "operationId": "IntegrationsMarketController_updatePromo",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "draft": {
+                    "type": "object",
+                    "properties": {
+                      "headline": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "description": {
+                        "type": "string",
+                        "maxLength": 1000
+                      },
+                      "hasImage": {
+                        "type": "boolean"
+                      },
+                      "icon": {
+                        "type": "string",
+                        "enum": [
+                          "gift",
+                          "megaphone",
+                          "star",
+                          "percent",
+                          "share2",
+                          "sparkles"
+                        ]
+                      },
+                      "buttonText": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "buttonHref": {
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      "placements": {
+                        "maxItems": 4,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "menu",
+                            "serviceSelect",
+                            "staffSelect",
+                            "successScreen"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "headline",
+                      "description",
+                      "hasImage",
+                      "icon",
+                      "buttonText",
+                      "buttonHref",
+                      "placements"
+                    ]
+                  }
+                },
+                "required": [
+                  "draft"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      },
+      "delete": {
+        "operationId": "IntegrationsMarketController_deletePromo",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/promo-blocks/{id}/enabled": {
+      "post": {
+        "operationId": "IntegrationsMarketController_setPromoEnabled",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/developer": {
+      "get": {
+        "operationId": "IntegrationsMarketController_developer",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      },
+      "post": {
+        "operationId": "IntegrationsMarketController_registerDeveloper",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "companyName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "contactName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "contactPhone": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "contactEmail": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "contactWebsite": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "partnerBearer": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                },
+                "required": [
+                  "companyName",
+                  "purpose",
+                  "contactName",
+                  "contactPhone",
+                  "contactEmail"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/dev-apps": {
+      "get": {
+        "operationId": "IntegrationsMarketController_devApps",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      },
+      "post": {
+        "operationId": "IntegrationsMarketController_createDevApp",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "appCode": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "categoryId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 30
+                  },
+                  "isPrivate": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "appCode",
+                  "categoryId",
+                  "isPrivate"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/dev-apps/by-code/{code}": {
+      "get": {
+        "operationId": "IntegrationsMarketController_devAppByCode",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/dev-apps/{id}": {
+      "get": {
+        "operationId": "IntegrationsMarketController_devApp",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/dev-apps/{id}/action": {
+      "post": {
+        "operationId": "IntegrationsMarketController_devAppAction",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "about"
+                      },
+                      "locale": {
+                        "type": "string",
+                        "enum": [
+                          "ru",
+                          "en",
+                          "hy"
+                        ]
+                      },
+                      "galleryCount": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "videoUrl": {
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      "text": {
+                        "type": "object",
+                        "properties": {
+                          "description": {
+                            "type": "string",
+                            "maxLength": 10000
+                          },
+                          "features": {
+                            "maxItems": 100,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 300
+                            }
+                          },
+                          "faq": {
+                            "maxItems": 200,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "q": {
+                                  "type": "string",
+                                  "maxLength": 1000
+                                },
+                                "a": {
+                                  "type": "string",
+                                  "maxLength": 5000
+                                }
+                              },
+                              "required": [
+                                "q",
+                                "a"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "description",
+                          "features",
+                          "faq"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "locale",
+                      "text"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "devSettings"
+                      },
+                      "patch": {
+                        "type": "object",
+                        "properties": {
+                          "registrationUrl": {
+                            "type": "string",
+                            "maxLength": 500
+                          },
+                          "callbackUrl": {
+                            "type": "string",
+                            "maxLength": 500
+                          },
+                          "webhookUrl": {
+                            "type": "string",
+                            "maxLength": 500
+                          },
+                          "passUserData": {
+                            "type": "boolean"
+                          },
+                          "iframeMode": {
+                            "type": "boolean"
+                          },
+                          "allowMultiLocation": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "patch"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "apiAccess"
+                      },
+                      "systemUserId": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "permissions": {
+                        "maxItems": 100,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 80
+                        }
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "systemUserId",
+                      "permissions"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "submit"
+                      }
+                    },
+                    "required": [
+                      "action"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "moderate"
+                      },
+                      "decision": {
+                        "type": "string",
+                        "enum": [
+                          "published",
+                          "rejected"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "decision"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "testInstall"
+                      },
+                      "locationId": {
+                        "type": "string",
+                        "maxLength": 32
+                      }
+                    },
+                    "required": [
+                      "action"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "testUninstall"
+                      }
+                    },
+                    "required": [
+                      "action"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "monetization"
+                      },
+                      "patch": {
+                        "type": "object",
+                        "properties": {
+                          "isPaid": {
+                            "type": "boolean"
+                          },
+                          "priceAmount": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "currency": {
+                            "type": "string",
+                            "enum": [
+                              "AMD",
+                              "USD",
+                              "EUR"
+                            ]
+                          },
+                          "trialDays": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 365
+                          },
+                          "tariffPlans": {
+                            "maxItems": 20,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "maxLength": 120
+                                },
+                                "price": {
+                                  "type": "number"
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "maxLength": 3
+                                },
+                                "period": {
+                                  "type": "string",
+                                  "maxLength": 20
+                                },
+                                "features": {
+                                  "maxItems": 30,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "price",
+                                "currency",
+                                "period",
+                                "features"
+                              ],
+                              "additionalProperties": {}
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "patch"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "publication"
+                      },
+                      "patch": {
+                        "type": "object",
+                        "properties": {
+                          "connectInstructions": {
+                            "type": "string",
+                            "maxLength": 5000
+                          },
+                          "paymentInstructions": {
+                            "type": "string",
+                            "maxLength": 5000
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "patch"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "tariffSheet"
+                      },
+                      "fileName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "fileName"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/partner-applications/{appId}": {
+      "get": {
+        "operationId": "IntegrationsMarketController_hasApplied",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "appId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/partner-applications": {
+      "post": {
+        "operationId": "IntegrationsMarketController_apply",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "appId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "appId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/demo-incoming-call": {
+      "get": {
+        "operationId": "IntegrationsMarketController_demoIncomingCall",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/who-to-call": {
+      "get": {
+        "operationId": "IntegrationsMarketController_whoToCall",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/integrations/identifiers": {
+      "get": {
+        "operationId": "IntegrationsMarketController_identifiers",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/chat/unread": {
+      "get": {
+        "operationId": "NotifyChatController_unread",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/chat/unread/clear": {
+      "post": {
+        "operationId": "NotifyChatController_clear",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/chat/messages": {
+      "get": {
+        "operationId": "NotifyChatController_list",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "phone",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      },
+      "post": {
+        "operationId": "NotifyChatController_send",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "attachmentName": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "phone",
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/chat/simulate-incoming": {
+      "post": {
+        "operationId": "NotifyChatController_incoming",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "phone",
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/chat/simulate-partner-confirm": {
+      "post": {
+        "operationId": "NotifyChatController_partnerConfirm",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/whatsapp/test-message": {
+      "post": {
+        "operationId": "NotifyChatController_testWhatsApp",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/agent/simulate-booking": {
+      "post": {
+        "operationId": "NotifyChatController_agentBooking",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientPhone": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "sendToClient": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "clientPhone",
+                  "sendToClient"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
         ]
       }
     },
