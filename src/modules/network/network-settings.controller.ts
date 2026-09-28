@@ -10,7 +10,7 @@ import { ZodBody } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { nowLocal } from '../../common/time/time.js';
+import { nowLocal, utcToLocalDate } from '../../common/time/time.js';
 import { NetworkAccessService } from './network-access.service.js';
 
 // ─────────── схемы ───────────
@@ -25,6 +25,16 @@ const routeBody = z.object({
 });
 const ruleBody = z.object({ kind: z.enum(['phone', 'sip']), identifier: z.string().trim().regex(/^\d+$/).max(32), routeId: z.string().min(1).max(32) });
 
+const exportBody = z.object({ scope: z.enum(['found', 'all']), count: z.number().int().min(0).max(1_000_000), authorName: z.string().max(160), kind: z.enum(['clients', 'records', 'staff']).optional() });
+interface ExportEntry {
+  id: string;
+  networkId: string;
+  at: string;
+  authorName: string;
+  kind: 'clients' | 'records' | 'staff';
+  count: number;
+  expiresAt: string;
+}
 interface TelRoute {
   id: string;
   networkId: string;
@@ -165,6 +175,46 @@ export class NetworkSettingsService {
     return { ok: true };
   }
 
+  /** F-11-011: своей кнопки удаления локации нет — заявка команде платформы; храним факт и время запроса */
+  async requestDeletion(ctx: RequestContext, networkId: string, businessId: string) {
+    const { network } = await this.access.require(ctx, networkId);
+    if (!network.businessIds.includes(businessId)) throw new ApiError('not_found', 'Location is not in the network');
+    const all = (await this.read<Record<string, string>>(networkId, 'locationDeletions')) ?? {};
+    all[businessId] = nowLocal();
+    await this.write(networkId, 'locationDeletions', all, ctx.session?.userId);
+    return { businessId, at: all[businessId] };
+  }
+
+  async deletionRequests(ctx: RequestContext, networkId: string) {
+    await this.access.require(ctx, networkId);
+    return (await this.read<Record<string, string>>(networkId, 'locationDeletions')) ?? {};
+  }
+
+  /**
+   * F-11-044/076: выгрузка сети — ссылка на месяц «письмом» (почта — заглушка, Р14) + строка журнала выгрузок.
+   * «Вся база» клиентов считается здесь (один телефон = один человек), «найденные» — сколько прислал экран.
+   */
+  async exportLog(ctx: RequestContext, networkId: string) {
+    await this.access.require(ctx, networkId, 'clients');
+    return (await this.read<ExportEntry[]>(networkId, 'exportLog')) ?? [];
+  }
+
+  async addExport(ctx: RequestContext, networkId: string, input: z.infer<typeof exportBody>) {
+    const { network } = await this.access.require(ctx, networkId, 'clients');
+    const kind = input.kind ?? 'clients';
+    let count = input.count;
+    if (input.scope === 'all' && kind === 'clients') {
+      const phones = await this.prisma.client.findMany({ where: { businessId: { in: network.businessIds }, deletedAt: null }, select: { phone: true }, distinct: ['phone'] });
+      count = phones.length;
+    }
+    const at = nowLocal();
+    const expires = new Date(Date.now() + 30 * 24 * 3600 * 1000);
+    const entry: ExportEntry = { id: newId('networkExport'), networkId, at, authorName: input.authorName, kind, count, expiresAt: `${utcToLocalDate(expires)}T00:00` };
+    const log = (await this.read<ExportEntry[]>(networkId, 'exportLog')) ?? [];
+    await this.write(networkId, 'exportLog', [entry, ...log].slice(0, 100), ctx.session?.userId);
+    return entry;
+  }
+
   /** Р19: звонки идут через чужую АТС, обмена нет — сервер звонков не знает */
   async calls(ctx: RequestContext, networkId: string) {
     await this.access.require(ctx, networkId, 'telephony');
@@ -232,6 +282,29 @@ export class NetworkSettingsController {
   @Delete('telephony/rules/:id')
   deleteRule(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('id') id: string) {
     return this.svc.deleteRule(ctx, n, id);
+  }
+
+  @Get('location-deletions')
+  @ApiOperation({ summary: 'Заявки на удаление локаций сети: businessId → когда (F-11-011)' })
+  deletionRequests(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.deletionRequests(ctx, n);
+  }
+
+  @Post('location-deletions/:businessId')
+  requestDeletion(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('businessId') b: string) {
+    return this.svc.requestDeletion(ctx, n, b);
+  }
+
+  @Get('exports')
+  @ApiOperation({ summary: 'Журнал выгрузок сети (F-11-044/076)' })
+  exports(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.exportLog(ctx, n);
+  }
+
+  @Post('exports')
+  @ZodBody(exportBody)
+  addExport(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(exportBody)) body: z.infer<typeof exportBody>) {
+    return this.svc.addExport(ctx, n, body);
   }
 
   @Get('telephony/calls')

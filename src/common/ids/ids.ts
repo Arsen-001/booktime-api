@@ -228,6 +228,7 @@ export const ID_PREFIX = {
   // этап 21 (сдача, попытка 4) — маршрут и правило телефонии сети (мок newId('net-route')/newId('net-rule'))
   networkTelRoute: 'ntrt',
   networkTelRule: 'ntrl',
+  networkExport: 'nexp',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;
