@@ -27,6 +27,9 @@ const AREA_SERVICE_REMINDER_HOURS = 'notify-service-reminder-hours';
 const AREA_WEBHOOKS = 'notify-webhooks';
 /** Этап 21 «Сдача»: правила уведомлений лояльности (F-05-100…106) — правки поверх LOYALTY_NOTIFY_DEFS фронта */
 const AREA_LOYALTY_RULES = 'notify-loyalty-rules';
+/** Этап 21 «Сдача»: подключения партнёрских приложений (F-05-117/122/123) — Р19: статус и настройки, без обмена */
+const AREA_PARTNER_CONNECTIONS = 'notify-partner-connections';
+export interface PartnerConnectionOut { appId: string; businessIds: string[]; status: 'trial' | 'active' | 'autoDisconnected'; connectedAt: string; trialEndsAt?: string; systemUserLabel: string }
 export type LoyaltyRulePatch = { enabled?: boolean; selectedPresetId?: string; customText?: string; daysBefore?: number; visitsLeftTrigger?: number };
 
 export interface NotifyQuietHoursOut {
@@ -260,6 +263,42 @@ export class NotifyMoreService {
       update: { data: J(next), version: { increment: 1 } },
     });
     return next;
+  }
+
+  // ─────────── подключения партнёрских приложений (F-05-117/122/123), этап 21 «Сдача» ───────────
+  // Каталог приложений (PARTNER_APPS: имя, пробный срок) — витрина фронта; сервер хранит только подключение
+  // филиала: какое приложение, статус, когда подключено, до когда пробный период (Р19).
+
+  async listPartnerConnections(businessId: string): Promise<PartnerConnectionOut[]> {
+    const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: AREA_PARTNER_CONNECTIONS } } });
+    return (row?.data as PartnerConnectionOut[] | null) ?? [];
+  }
+
+  private async savePartnerConnections(businessId: string, list: PartnerConnectionOut[]): Promise<void> {
+    await this.prisma.businessSetting.upsert({
+      where: { businessId_area: { businessId, area: AREA_PARTNER_CONNECTIONS } },
+      create: { businessId, area: AREA_PARTNER_CONNECTIONS, data: J(list) },
+      update: { data: J(list), version: { increment: 1 } },
+    });
+  }
+
+  async connectPartner(businessId: string, connection: PartnerConnectionOut): Promise<PartnerConnectionOut> {
+    const list = (await this.listPartnerConnections(businessId)).filter((c) => c.appId !== connection.appId);
+    list.push(connection);
+    await this.savePartnerConnections(businessId, list);
+    return connection;
+  }
+
+  async disconnectPartner(businessId: string, appId: string): Promise<void> {
+    await this.savePartnerConnections(businessId, (await this.listPartnerConnections(businessId)).filter((c) => c.appId !== appId));
+  }
+
+  async setPartnerStatus(businessId: string, appId: string, status: PartnerConnectionOut['status']): Promise<void> {
+    const list = await this.listPartnerConnections(businessId);
+    const row = list.find((c) => c.appId === appId);
+    if (!row) return;
+    row.status = status;
+    await this.savePartnerConnections(businessId, list);
   }
 
   // ─────────── Open Slots — только расписание рассылки, вычисление окон не входит в этот заход ───────────

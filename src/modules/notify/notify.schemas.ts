@@ -186,3 +186,14 @@ export const loyaltyRulePatchBody = z.object({
   daysBefore: z.number().int().min(0).max(365).optional(),
   visitsLeftTrigger: z.number().int().min(0).max(1000).optional(),
 });
+
+/** Подключение партнёрского приложения (F-05-117/122) — форма PartnerConnection фронта */
+export const partnerConnectionBody = z.object({
+  appId: z.string().min(1).max(64),
+  businessIds: z.array(z.string().min(1).max(32)).min(1).max(50),
+  status: z.enum(['trial', 'active', 'autoDisconnected']),
+  connectedAt: z.string().max(32),
+  trialEndsAt: z.string().max(32).optional(),
+  systemUserLabel: z.string().max(200),
+});
+export const partnerStatusBody = z.object({ status: z.enum(['trial', 'active', 'autoDisconnected']) });

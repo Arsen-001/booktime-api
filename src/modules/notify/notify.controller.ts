@@ -31,6 +31,8 @@ import {
   emailChannelBody,
   giftShowcaseBody,
   loyaltyRulePatchBody,
+  partnerConnectionBody,
+  partnerStatusBody,
   inboxReadBody,
   notifySettingsBody,
   openSlotsScheduleBody,
@@ -375,6 +377,35 @@ export class NotifyController {
   updateLoyaltyRule(@Param('businessId') businessId: string, @Param('code') code: string, @Body(new Zod(loyaltyRulePatchBody)) body: z.infer<typeof loyaltyRulePatchBody>) {
     if (!/^[a-z0-9_.-]{1,64}$/i.test(code)) throw new ApiError('validation', 'bad code');
     return this.more.updateLoyaltyRule(businessId, code, body);
+  }
+
+  // ── подключения партнёрских приложений (F-05-117/122/123), этап 21 «Сдача», Р19 ──
+
+  @Get('notify/partner-connections')
+  @Biz('notify.manage')
+  listPartnerConnections(@Param('businessId') businessId: string) {
+    return this.more.listPartnerConnections(businessId);
+  }
+
+  @Put('notify/partner-connections/:appId')
+  @Biz('notify.manage')
+  connectPartner(@Param('businessId') businessId: string, @Param('appId') appId: string, @Body(new Zod(partnerConnectionBody)) body: z.infer<typeof partnerConnectionBody>) {
+    if (body.appId !== appId) throw new ApiError('validation', 'appId mismatch');
+    return this.more.connectPartner(businessId, body);
+  }
+
+  @Post('notify/partner-connections/:appId/delete')
+  @Biz('notify.manage')
+  async disconnectPartner(@Param('businessId') businessId: string, @Param('appId') appId: string) {
+    await this.more.disconnectPartner(businessId, appId);
+    return { ok: true as const };
+  }
+
+  @Post('notify/partner-connections/:appId/status')
+  @Biz('notify.manage')
+  async setPartnerStatus(@Param('businessId') businessId: string, @Param('appId') appId: string, @Body(new Zod(partnerStatusBody)) body: z.infer<typeof partnerStatusBody>) {
+    await this.more.setPartnerStatus(businessId, appId, body.status);
+    return { ok: true as const };
   }
 
   // ── Open Slots — расписание (F-05-124) ──
