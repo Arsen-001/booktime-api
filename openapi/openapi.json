@@ -60991,6 +60991,206 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/notify/loyalty-rules": {
+      "get": {
+        "operationId": "NotifyController_getLoyaltyRules",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/loyalty-rules/{code}": {
+      "patch": {
+        "operationId": "NotifyController_updateLoyaltyRule",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/partner-connections": {
+      "get": {
+        "operationId": "NotifyController_listPartnerConnections",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/partner-connections/{appId}": {
+      "put": {
+        "operationId": "NotifyController_connectPartner",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "appId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/partner-connections/{appId}/delete": {
+      "post": {
+        "operationId": "NotifyController_disconnectPartner",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "appId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/notify/partner-connections/{appId}/status": {
+      "post": {
+        "operationId": "NotifyController_setPartnerStatus",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "appId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "notify"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/notify/open-slots-schedule": {
       "get": {
         "operationId": "NotifyController_getOpenSlotsSchedule",
@@ -69718,6 +69918,14 @@
                     "default": false,
                     "type": "boolean"
                   },
+                  "priceMode": {
+                    "default": "all",
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "keepLocal"
+                    ]
+                  },
                   "businessIds": {
                     "minItems": 1,
                     "maxItems": 50,
@@ -69814,6 +70022,144 @@
           }
         ],
         "summary": "Синхронизировать услугу по филиалам (F-11-090)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/services/preview": {
+      "post": {
+        "operationId": "NetworkCatalogController_previewService",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "categoryKey": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "businessIds": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "categoryKey",
+                  "businessIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Превью сохранения сетевой услуги по филиалам, Сеть4 (F-11-081…083)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/services/merge": {
+      "post": {
+        "operationId": "NetworkCatalogController_mergeServices",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keys": {
+                    "minItems": 2,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 160
+                    }
+                  },
+                  "name": {
+                    "type": "object",
+                    "properties": {
+                      "ru": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "hy": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "en": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "ru"
+                    ],
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "keys",
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Объединить сетевые услуги под новым именем (F-11-093)",
         "tags": [
           "network"
         ]
@@ -71789,6 +72135,220 @@
         ]
       }
     },
+    "/v1/net/{networkId}/packages": {
+      "get": {
+        "operationId": "NetworkCatalogController_listPackages",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сетевые пакеты по имени (F-11-095)",
+        "tags": [
+          "network"
+        ]
+      },
+      "post": {
+        "operationId": "NetworkCatalogController_createPackage",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "object",
+                    "properties": {
+                      "ru": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "hy": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "en": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    },
+                    "required": [
+                      "ru"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "itemKeys": {
+                    "minItems": 2,
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 160
+                    }
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "parallel",
+                      "sequentialSame",
+                      "sequentialAny"
+                    ]
+                  },
+                  "businessIds": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "itemKeys",
+                  "mode",
+                  "businessIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Создать сетевой пакет в филиалах (F-11-095)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/goods-stock": {
+      "get": {
+        "operationId": "NetworkCatalogController_goodsStock",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Остатки сетевых товаров по филиалам (F-11-120)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/copy-branch": {
+      "post": {
+        "operationId": "NetworkCatalogController_copyBranch",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fromBusinessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "toBusinessId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "services": {
+                    "type": "boolean"
+                  },
+                  "goods": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "fromBusinessId",
+                  "toBusinessId",
+                  "services",
+                  "goods"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Перенести услуги/товары филиала в другой филиал сети (F-11-009)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/network/mine": {
       "get": {
         "operationId": "NetworkBusinessController_mine",
@@ -71823,6 +72383,78 @@
         "parameters": [
           {
             "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/network/service-info/{serviceId}": {
+      "get": {
+        "operationId": "NetworkBusinessController_serviceNetworkInfo",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serviceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/network/staff-info/{staffId}": {
+      "get": {
+        "operationId": "NetworkBusinessController_staffNetworkInfo",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
             "required": true,
             "in": "path",
             "schema": {
@@ -71948,6 +72580,84 @@
           }
         ],
         "summary": "Статистика каждого филиала своей сети за один день (F-11-156)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/network/services-csv-import": {
+      "post": {
+        "operationId": "NetworkBusinessController_importServicesCsv",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rows": {
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "category": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "price": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 10000000000
+                        },
+                        "duration": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1440
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "category",
+                        "price",
+                        "duration"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "rows"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Импорт услуг из CSV в филиал (F-11-010)",
         "tags": [
           "network"
         ]
@@ -72613,6 +73323,107 @@
           }
         ],
         "summary": "Журнал «Изменения данных» сети (F-11-023)",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/v1/net/{networkId}/payroll-runs": {
+      "get": {
+        "operationId": "NetworkSettingsController_payrollRuns",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Журнал запусков «Создать ведомость и начислить» по сети (F-11-109)",
+        "tags": [
+          "network"
+        ]
+      },
+      "post": {
+        "operationId": "NetworkSettingsController_addPayrollRun",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "to": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "businessIds": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "staffCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "authorName": {
+                    "type": "string",
+                    "maxLength": 160
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "businessIds",
+                  "staffCount",
+                  "authorName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "network"
         ]

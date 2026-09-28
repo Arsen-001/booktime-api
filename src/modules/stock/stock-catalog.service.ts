@@ -178,7 +178,14 @@ export class StockCatalogService {
     const row = await this.prisma.stockSettings.findUnique({ where: { businessId } });
     if (row) return row;
     // upsert, не create: два первых чтения раздела параллельно (каталог + настройки) ловили duplicate key → 500 (этап 21)
-    return this.prisma.stockSettings.upsert({ where: { businessId }, create: { businessId }, update: {} });
+    // Prisma upsert на MySQL — не атомарный (SELECT, затем INSERT): гонка двух запросов всё равно ловила 1062
+    // (сдача, 28.09 — /biz/stock в обходе api). Проигравший просто читает строку победителя.
+    try {
+      return await this.prisma.stockSettings.upsert({ where: { businessId }, create: { businessId }, update: {} });
+    } catch (e) {
+      if ((e as { code?: string }).code !== 'P2002') throw e;
+      return this.prisma.stockSettings.findUniqueOrThrow({ where: { businessId } });
+    }
   }
 
   // ─────────────────────────── Остатки ───────────────────────────
