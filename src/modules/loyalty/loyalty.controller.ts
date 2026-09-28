@@ -135,6 +135,20 @@ export class LoyaltyController {
     await this.catalog.deleteCardType(ctx, id);
   }
 
+  // ─────────── Мини-карточка клиента в окне записи (F-04-093/099, этап 21 «rest») ───────────
+
+  @Get('clients/:clientId/assets')
+  @Biz('clients.view')
+  listClientAssets(@Ctx() ctx: RequestContext, @Param('clientId') clientId: string) {
+    return this.instances.listClientAssets(ctx.member!.businessId, clientId);
+  }
+
+  @Get('find-by-code')
+  @Biz('clients.view')
+  findByCode(@Ctx() ctx: RequestContext, @Query('code') code: string) {
+    return this.instances.findClientByCode(ctx.member!.businessId, code ?? '');
+  }
+
   // ─────────── Карты клиентов (F-06-051…060) ───────────
 
   @Get('clients/:clientId/cards')

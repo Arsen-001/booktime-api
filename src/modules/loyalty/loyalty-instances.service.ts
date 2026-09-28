@@ -242,6 +242,55 @@ export class LoyaltyInstancesService {
     return { id: r.id, typeId: r.typeId, businessId: r.businessId, clientId: r.clientId, balance: moneyToJson(r.balance), version: r.version };
   }
 
+  // ─────────── CRM клиента: сертификаты+абонементы одного клиента, поиск по коду (F-04-093/099, этап 21 «rest») ───────────
+  // Форма ровно `@/domain/clients` (Certificate/Subscription простой мока, НЕ `@/domain/loyalty`'s более богатый тип
+  // порта этапа 21 «loyalty» — колонки Prisma достаточно, `data` JSON не нужен для этой пары экранов).
+
+  async listClientAssets(businessId: string, clientId: string) {
+    const [certs, subs] = await Promise.all([
+      this.prisma.certificate.findMany({ where: { businessId, clientId, status: 'active' }, include: { type: true } }),
+      this.prisma.membershipSale.findMany({ where: { businessId, clientId, status: { in: ['active', 'frozen'] } }, include: { type: true } }),
+    ]);
+    const now = Date.now();
+    return {
+      certificates: certs.map((c) => ({
+        id: c.id,
+        businessId: c.businessId,
+        clientId: c.clientId!,
+        name: c.type.name,
+        total: moneyToJson(c.total),
+        balance: moneyToJson(c.balance),
+        soldAt: c.soldAt.toISOString().slice(0, 10),
+        expiresAt: c.expiresAt.toISOString().slice(0, 10),
+        code: c.code,
+      })),
+      subscriptions: subs.map((s) => ({
+        id: s.id,
+        businessId: s.businessId,
+        clientId: s.clientId!,
+        name: s.type.name,
+        status: (s.expiresAt.getTime() < now ? 'expired' : 'active') as 'active' | 'expired',
+        frozen: s.status === 'frozen',
+        soldAt: s.soldAt.toISOString().slice(0, 10),
+        expiresAt: s.expiresAt.toISOString().slice(0, 10),
+        totalVisits: s.totalVisits ?? 0,
+        remainingVisits: s.remainingVisits ?? 0,
+        code: s.code,
+      })),
+    };
+  }
+
+  async findClientByCode(businessId: string, code: string): Promise<{ clientId: string; clientName: string } | undefined> {
+    const trimmed = code.trim();
+    if (!trimmed) return undefined;
+    const sub = await this.prisma.membershipSale.findFirst({ where: { businessId, code: trimmed } });
+    const clientId = sub?.clientId ?? (await this.prisma.certificate.findFirst({ where: { businessId, code: trimmed } }))?.clientId;
+    if (!clientId) return undefined;
+    const client = await this.prisma.client.findFirst({ where: { id: clientId, businessId, deletedAt: null } });
+    if (!client) return undefined;
+    return { clientId, clientName: client.name };
+  }
+
   async listClientAccounts(ctx: RequestContext, clientId: string) {
     const rows = await this.prisma.clientAccount.findMany({ where: { clientId, type: { ownerId: ownerOf(ctx) } }, orderBy: { createdAt: 'asc' } });
     return rows.map((r) => this.accountView(r));

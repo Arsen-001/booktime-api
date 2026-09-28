@@ -5,6 +5,7 @@ import type { RequestContext } from '../../common/http/context.js';
 import { Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
+import { Idempotent } from '../../common/idempotency/idempotency.js';
 import { BookingPaymentsService } from './booking-payments.service.js';
 import { bookingPaymentNoteBody, payBookingBody, refundBookingFullBody } from './finance.schemas.js';
 
@@ -32,6 +33,7 @@ export class BookingPaymentsController {
 
   @Post()
   @Biz('journal.edit')
+  @Idempotent()
   @ZodBody(payBookingBody)
   pay(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('bookingId') bookingId: string, @Body(new Zod(payBookingBody)) body: z.infer<typeof payBookingBody>) {
     return this.payments.pay(ctx, businessId, bookingId, body);
