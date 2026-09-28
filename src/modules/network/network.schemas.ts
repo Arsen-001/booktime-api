@@ -178,6 +178,40 @@ export const networkOffDayTypeBody = z.object({
 
 export const networkStaffOrderBody = z.object({ orderedKeys: z.array(z.string().max(120)).max(5000) });
 
+// ─────────── Этап 21 «network+reports», попытка 3 ───────────
+
+// Записи сети (F-11-075), мок `NetworkRecordFilters`
+export const networkRecordsQuery = z.object({
+  businessId: id32.optional(),
+  onlineOnly: z.coerce.boolean().optional(),
+  cancelled: z.enum(['all', 'cancelled', 'notCancelled']).optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+// Аналитика сети (F-11-062…078), мок `getNetworkAnalyticsSummary`/`getNetworkAnalyticsBreakdown` — контракт
+// с дельтами к прошлому периоду, отдельный от `analyticsQuery`/`summaryOut` (тот отчёт уже стоит по своему пути)
+export const networkAnalyticsRangeQuery = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
+
+// Сотрудники сети: перенос/объединение (F-11-102/103)
+export const staffMigrateBody = z.object({ fromBusinessId: id32, staffIds: z.union([z.array(id32).max(2000), z.literal('all')]) });
+export const staffMergeBody = z.object({ keys: z.array(z.string().max(160)).min(2).max(50), primaryKey: z.string().max(160) });
+
+// Порядок локаций сети (F-11-016/017, мок `reorderNetworkLocations`)
+export const networkLocationsOrderBody = z.object({ orderedIds: z.array(id32).max(50) });
+
+// Сетевые должности, полная форма (F-11-104…106, NetworkPosition фронта — не Position.networkId выше)
+export const networkPositionDefBody = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().max(500).optional(),
+  requirements: z.array(z.string().max(120)).max(50).default([]),
+  networkOnly: z.boolean().default(false),
+  businessIds: z.array(id32).max(50).default([]),
+  servicesMode: z.enum(['off', 'strict']).default('off'),
+  serviceIds: z.array(id32).max(500).default([]),
+  keepPriceAndDuration: z.boolean().default(true),
+});
+
 // === /stage 21 ===
 
 // ─────────────────────── Поля записи/клиента сети (F-11-126…134) ───────────────────────

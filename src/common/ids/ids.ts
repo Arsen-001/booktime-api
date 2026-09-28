@@ -219,6 +219,12 @@ export const ID_PREFIX = {
   // префиксы id — те же, что у мока (client.ts::newId('vsl')/newId('vpay'))
   visitSaleLine: 'vsl',
   visitPayment: 'vpay',
+  // этап 21 (лейн network+reports), попытка 3 — сетевая должность (F-11-104…106, мок newId('netpos'));
+  // префикс короче мокового — ID_RE ограничивает префикс 2–5 буквами (5+1+26=32=VARCHAR(32))
+  networkPositionDef: 'ntpos',
+  // этап 21 (лейн network+reports), попытка 3 — архив товаров сети (F-11-118, мок newId('goodsarch'));
+  // тот же 5-буквенный предел префикса
+  networkGoodsArchiveEntry: 'ngar',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

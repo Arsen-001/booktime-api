@@ -322,6 +322,9 @@ model Network {
   subdivisions         NetworkSubdivision[]
   offDayTypes          NetworkOffDayType[]
   staffOrder           NetworkStaffOrder?
+  locationOrder        NetworkLocationOrder?
+  positionDefs         NetworkPositionDef[]
+  goodsArchive         NetworkGoodsArchiveEntry[]
   // === /stage 21 ===
 
   @@index([ownerUserId])
@@ -3019,6 +3022,65 @@ model NetworkStaffOrder {
   network Network @relation(fields: [networkId], references: [id])
 
   @@map("network_staff_order")
+}
+
+/// Порядок филиалов в настройках сети (F-11-016) — «Локации», одна строка на сеть; своего поля порядка у
+/// Business/Network нет (join по createdAt), мок хранит массив businessId в extras[networkId].order
+model NetworkLocationOrder {
+  networkId   String   @id @map("network_id") @db.VarChar(32)
+  orderedIds  Json     @default("[]") @map("ordered_ids")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy   String?  @map("updated_by") @db.VarChar(32)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@map("network_location_order")
+}
+
+/// Сетевая должность (F-11-104…106, NetworkPosition фронта) — НЕ то же самое, что Position.networkId (этап 3,
+/// простая должность-строка): тут требования/«только в сети»/услуги должности/филиалы, своя форма
+model NetworkPositionDef {
+  id                   String   @id @db.VarChar(32)
+  networkId            String   @map("network_id") @db.VarChar(32)
+  name                 String   @db.VarChar(120)
+  description          String?  @db.VarChar(500)
+  /// string[] — обязательные кадровые поля (F-11-105)
+  requirements         Json     @default("[]")
+  /// «Назначать только в сети» — нельзя выбрать в филиале как обычную должность
+  networkOnly          Boolean  @default(false) @map("network_only")
+  /// Id[] филиалов, где действует (по умолчанию — нигде)
+  businessIds          Json     @default("[]") @map("business_ids")
+  /// off | strict (F-11-106)
+  servicesMode         String   @default("off") @map("services_mode") @db.VarChar(12)
+  serviceIds           Json     @default("[]") @map("service_ids")
+  keepPriceAndDuration Boolean  @default(true) @map("keep_price_and_duration")
+  createdAt            DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy            String?  @map("created_by") @db.VarChar(32)
+  updatedBy            String?  @map("updated_by") @db.VarChar(32)
+  version              Int      @default(1)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@index([networkId])
+  @@map("network_position_defs")
+}
+
+/// Архив товаров сети (F-11-118, NetworkGoodsArchiveEntry фронта) — карточка «был архивирован», ключ по ИМЕНИ
+/// (как весь каталог товаров сети): «Восстановить» доступно, только пока товар с тем же именем остаётся
+/// сетевым (2+ филиала) — считается на чтении из живых Product, тут только факт архивации и когда
+model NetworkGoodsArchiveEntry {
+  id         String   @id @db.VarChar(32)
+  networkId  String   @map("network_id") @db.VarChar(32)
+  /// category | good — сейчас пишем только 'good' (архивация категорий сети не построена)
+  kind       String   @default("good") @db.VarChar(8)
+  name       String   @db.VarChar(200)
+  archivedAt DateTime @default(now()) @map("archived_at") @db.DateTime(3)
+
+  network Network @relation(fields: [networkId], references: [id])
+
+  @@index([networkId])
+  @@map("network_goods_archive")
 }
 
 // === /stage 21 ===

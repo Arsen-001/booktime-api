@@ -10,8 +10,10 @@ import { Zod } from '../../common/http/validation.js';
 import { newId } from '../../common/ids/ids.js';
 import { money, moneyToJson } from '../../common/money/money.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { utcToLocal, utcToLocalDate } from '../../common/time/time.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { goodView } from '../stock/stock-catalog.service.js';
-import { networkView, staffView } from '../businesses/views.js';
+import { businessView, locationView, networkView, staffView } from '../businesses/views.js';
 import { NetworkAccessService } from './network-access.service.js';
 import {
   businessIdsBody,
@@ -19,13 +21,17 @@ import {
   networkFieldBody,
   networkGoodsCategoryBody,
   networkGoodsProductBody,
+  networkLocationsOrderBody,
   networkOffDayTypeBody,
   networkPositionBody,
+  networkPositionDefBody,
   networkServiceBody,
   networkServiceCategoryBody,
   networkStaffOrderBody,
   networkStaffQuery,
   networkSubdivisionBody,
+  staffMergeBody,
+  staffMigrateBody,
 } from './network.schemas.js';
 
 type LocalizedText = { ru: string; hy?: string; en?: string };
@@ -352,6 +358,109 @@ export class NetworkCatalogService {
     return { moved };
   }
 
+  // ───────────────────────── Архив товаров сети (F-11-114/117/118), этап 21 попытка 3 ─────────────────────────
+
+  private async goodUsedInTechCard(goodId: string): Promise<boolean> {
+    const cards = await this.prisma.techCard.findMany({ select: { lines: true } });
+    return cards.some((c) => Array.isArray(c.lines) && (c.lines as { goodId: string }[]).some((l) => l.goodId === goodId));
+  }
+
+  /** F-11-114 (мок `addAllGoodsToLocation`): копирует в целевой филиал каждый сетевой товар, которого там ещё нет */
+  async addAllGoodsToLocation(ctx: RequestContext, networkId: string, targetBusinessId: string) {
+    const { network } = await this.access.require(ctx, networkId, 'goods');
+    if (!network.businessIds.includes(targetBusinessId)) throw new ApiError('validation', 'business not in network');
+    const sourceGoods = await this.prisma.product.findMany({ where: { businessId: { in: network.businessIds.filter((id) => id !== targetBusinessId) }, isNetworkSource: true, archived: false } });
+    const existing = await this.prisma.product.findMany({ where: { businessId: targetBusinessId }, select: { networkGroupId: true } });
+    const existingGroups = new Set(existing.map((e) => e.networkGroupId).filter((v): v is string => Boolean(v)));
+    let added = 0;
+    for (const g of sourceGoods) {
+      const groupId = g.networkGroupId ?? g.id;
+      if (existingGroups.has(groupId)) continue;
+      const copy = await this.copyGoodToBusiness(ctx, g.id, targetBusinessId);
+      if (copy) {
+        existingGroups.add(groupId);
+        added += 1;
+      }
+    }
+    return { added };
+  }
+
+  /** F-11-114/118 (мок `archiveNetworkGoods`): архивировать сетевой товар во ВСЕХ филиалах, где он есть */
+  async archiveNetworkGoods(ctx: RequestContext, networkId: string, groupIds: string[]) {
+    const { network } = await this.access.require(ctx, networkId, 'goods');
+    for (const groupId of groupIds) {
+      const rows = await this.prisma.product.findMany({ where: { businessId: { in: network.businessIds }, archived: false, OR: [{ networkGroupId: groupId }, { id: groupId }] } });
+      if (!rows.length) continue;
+      const archivable = (await Promise.all(rows.map(async (r) => ((await this.goodUsedInTechCard(r.id)) ? null : r)))).filter((r): r is (typeof rows)[number] => Boolean(r));
+      if (!archivable.length) continue;
+      await this.prisma.$transaction(async (tx) => {
+        for (const r of archivable) await tx.product.update({ where: { id: r.id }, data: { archived: true, updatedBy: ctx.session!.userId, version: { increment: 1 } } });
+        await tx.networkGoodsArchiveEntry.create({ data: { id: newId('networkGoodsArchiveEntry'), networkId, kind: 'good', name: archivable[0]!.name } });
+        await this.audit.record(tx, ctx, { action: 'archive', entityType: 'networkGoods', entityId: groupId, networkId, after: { name: archivable[0]!.name, count: archivable.length } });
+      });
+    }
+  }
+
+  /** F-11-118 (мок `listNetworkGoodsArchive`): «Восстановить» доступно, только пока товар с тем же именем ещё сетевой (2+ филиала) */
+  async listGoodsArchive(ctx: RequestContext, networkId: string) {
+    const { network } = await this.access.require(ctx, networkId, 'goods');
+    const rows = await this.prisma.networkGoodsArchiveEntry.findMany({ where: { networkId }, orderBy: { archivedAt: 'desc' } });
+    if (!rows.length) return [];
+    const names = [...new Set(rows.map((r) => r.name))];
+    const counts = new Map<string, number>();
+    if (network.businessIds.length) {
+      const active = await this.prisma.product.findMany({ where: { businessId: { in: network.businessIds }, archived: false, name: { in: names } }, select: { name: true } });
+      for (const a of active) counts.set(a.name, (counts.get(a.name) ?? 0) + 1);
+    }
+    return rows.map((r) => ({ id: r.id, networkId: r.networkId, kind: r.kind as 'category' | 'good', name: r.name, archivedAt: utcToLocal(r.archivedAt), restorable: (counts.get(r.name) ?? 0) >= 2 }));
+  }
+
+  /** F-11-118 (мок `restoreNetworkGoods`): восстановить по ИМЕНИ во всех филиалах сети + снять из архива */
+  async restoreGoodsByName(ctx: RequestContext, networkId: string, name: string) {
+    const { network } = await this.access.require(ctx, networkId, 'goods');
+    const rows = await this.prisma.product.findMany({ where: { businessId: { in: network.businessIds }, archived: true, name } });
+    await this.prisma.$transaction(async (tx) => {
+      for (const r of rows) {
+        const category = await tx.stockCategory.findUnique({ where: { id: r.categoryId } });
+        const nameTaken = category?.archived ? false : await tx.product.count({ where: { businessId: r.businessId, locationId: r.locationId, archived: false, name: r.name, id: { not: r.id } } });
+        await tx.product.update({ where: { id: r.id }, data: { archived: false, updatedBy: ctx.session!.userId, version: { increment: 1 }, name: nameTaken && !r.name.endsWith('[Восстановлено]') ? `${r.name} [Восстановлено]` : r.name } });
+      }
+      await tx.networkGoodsArchiveEntry.deleteMany({ where: { networkId, name } });
+      await this.audit.record(tx, ctx, { action: 'restore', entityType: 'networkGoods', entityId: name, networkId, after: { count: rows.length } });
+    });
+  }
+
+  /** F-11-118 (мок `deleteNetworkGoodsArchiveEntry`): убрать строку архива, товары не трогает */
+  async deleteGoodsArchiveEntry(ctx: RequestContext, networkId: string, id: string) {
+    await this.access.require(ctx, networkId, 'goods');
+    await this.prisma.networkGoodsArchiveEntry.deleteMany({ where: { id, networkId } });
+  }
+
+  /** F-11-117 (мок `mergeGoodIntoNetworkGroup`): локальный товар филиала объединяется с сетевым (настройки — с сетевого) */
+  async mergeGoodIntoNetworkGroup(ctx: RequestContext, networkId: string, localGoodId: string, networkGroupId: string) {
+    const { network } = await this.access.require(ctx, networkId, 'goods');
+    const local = await this.prisma.product.findFirst({ where: { id: localGoodId, businessId: { in: network.businessIds } } });
+    const source = await this.prisma.product.findFirst({ where: { id: networkGroupId, businessId: { in: network.businessIds } } });
+    if (!local || !source) throw new ApiError('not_found', 'Good not found');
+    await this.prisma.product.update({
+      where: { id: local.id },
+      data: {
+        name: source.name,
+        saleUnit: source.saleUnit,
+        writeoffUnit: source.writeoffUnit,
+        unitRatio: source.unitRatio,
+        taxSystem: source.taxSystem,
+        taxRate: source.taxRate,
+        showToClients: source.showToClients,
+        clientName: source.clientName ?? undefined,
+        networkGroupId: source.networkGroupId ?? source.id,
+        isNetworkSource: false,
+        updatedBy: ctx.session!.userId,
+        version: { increment: 1 },
+      },
+    });
+  }
+
   // ───────────────────────── Должности сети — Position.networkId (этап 3) ─────────────────────────
 
   async listPositions(ctx: RequestContext, networkId: string) {
@@ -407,6 +516,141 @@ export class NetworkCatalogService {
       return true;
     });
     return filtered.map((s) => staffView(s));
+  }
+
+  /** Этап 21 «network+reports», попытка 3: мок `staffKeyOf` — сотрудник опознаётся по ИМЕНИ через филиалы сети */
+  private staffKeyOf(name: string): string {
+    return name.trim();
+  }
+
+  /**
+   * F-11-102 (мок `migrateStaffToNetwork`): «Перенести всех»/одного мастера из филиала в остальные филиалы
+   * сети — копия по ИМЕНИ (тот же ключ, что и весь раздел «Сотрудники сети»), не трогает исходника. Уже
+   * присутствующий в целевом филиале (то же имя) пропускается — идемпотентно, как в моке.
+   */
+  async migrateStaff(ctx: RequestContext, networkId: string, input: z.infer<typeof staffMigrateBody>) {
+    const { network } = await this.access.require(ctx, networkId, 'migrations');
+    if (!network.businessIds.includes(input.fromBusinessId)) throw new ApiError('validation', 'business not in network');
+    const targets = network.businessIds.filter((id) => id !== input.fromBusinessId);
+    if (!targets.length) return { moved: 0 };
+    const source = await this.prisma.staff.findMany({ where: { businessId: input.fromBusinessId, deletedAt: null, status: { not: 'disabled' }, ...(input.staffIds === 'all' ? {} : { id: { in: input.staffIds } }) } });
+    if (!source.length) return { moved: 0 };
+    const existingRows = await this.prisma.staff.findMany({ where: { businessId: { in: targets }, deletedAt: null }, select: { businessId: true, name: true } });
+    const existingKeys = new Set(existingRows.map((r) => `${r.businessId}\u0000${this.staffKeyOf(r.name)}`));
+    const locByBiz = new Map<string, string>();
+    for (const businessId of targets) {
+      const loc = await this.prisma.location.findFirst({ where: { businessId, deletedAt: null }, orderBy: { sortOrder: 'asc' }, select: { id: true } });
+      if (loc) locByBiz.set(businessId, loc.id);
+    }
+    let moved = 0;
+    const today = utcToLocalDate(new Date());
+    await this.prisma.$transaction(async (tx) => {
+      for (const s of source) {
+        for (const businessId of targets) {
+          if (existingKeys.has(`${businessId}\u0000${this.staffKeyOf(s.name)}`)) continue;
+          const siblings = await tx.staff.count({ where: { businessId } });
+          const locationId = locByBiz.get(businessId);
+          await tx.staff.create({
+            data: {
+              id: newId('staff'),
+              businessId,
+              name: s.name,
+              phone: s.phone,
+              email: s.email,
+              role: s.role,
+              position: s.position ?? undefined,
+              sphereIds: s.sphereIds as Prisma.InputJsonValue,
+              avatarUrl: s.avatarUrl,
+              bio: s.bio ?? undefined,
+              photos: [],
+              materials: [],
+              workplaces: s.workplaces as Prisma.InputJsonValue,
+              accepts: s.accepts,
+              calendarVisibility: s.calendarVisibility,
+              calendarMode: s.calendarMode,
+              confirmMode: s.confirmMode,
+              colorIndex: s.colorIndex,
+              serviceIds: [],
+              status: 'active',
+              hiredAt: today,
+              sortOrder: siblings,
+              createdBy: ctx.session!.userId,
+              updatedBy: ctx.session!.userId,
+              ...(locationId ? { locations: { create: [{ locationId }] } } : {}),
+            },
+          });
+          moved += 1;
+        }
+      }
+      await this.audit.record(tx, ctx, { action: 'update', entityType: 'networkStaff', entityId: input.fromBusinessId, networkId, after: { moved } });
+    });
+    return { moved };
+  }
+
+  /**
+   * F-11-103 (мок `mergeNetworkStaff`): «Объединить» дубли — все строки с ключами `keys` (кроме ведущей)
+   * получают имя/должность/описание ведущей (`primaryKey`), сами строки не удаляются (как в моке — правится
+   * карточка, а не список сотрудников).
+   */
+  async mergeStaff(ctx: RequestContext, networkId: string, input: z.infer<typeof staffMergeBody>) {
+    const { network } = await this.access.require(ctx, networkId, 'migrations');
+    if (!network.businessIds.length) throw new ApiError('not_found', 'Network has no locations');
+    const rows = await this.prisma.staff.findMany({ where: { businessId: { in: network.businessIds }, deletedAt: null } });
+    const primaryRow = rows.find((s) => this.staffKeyOf(s.name) === input.primaryKey);
+    if (!primaryRow) throw new ApiError('not_found', 'Primary staff not found');
+    await this.prisma.$transaction(async (tx) => {
+      for (const key of input.keys) {
+        if (key === input.primaryKey) continue;
+        const matching = rows.filter((s) => this.staffKeyOf(s.name) === key);
+        for (const r of matching) {
+          await tx.staff.update({ where: { id: r.id }, data: { name: primaryRow.name, position: primaryRow.position ?? undefined, bio: primaryRow.bio ?? undefined, version: { increment: 1 } } });
+        }
+      }
+      await this.audit.record(tx, ctx, { action: 'update', entityType: 'networkStaff', entityId: primaryRow.id, networkId, after: { mergedInto: input.primaryKey, keys: input.keys } });
+    });
+    return { key: this.staffKeyOf(primaryRow.name) };
+  }
+
+  // ───────────────────────── Сетевые должности, полная форма (F-11-104…106) ─────────────────────────
+  // NetworkPosition фронта — НЕ то же, что Position.networkId выше (простая должность-строка): требования,
+  // «только в сети», услуги должности, филиалы. Своя таблица NetworkPositionDef (этап 21, попытка 3).
+
+  async listPositionDefs(ctx: RequestContext, networkId: string) {
+    await this.access.require(ctx, networkId, 'staff');
+    const rows = await this.prisma.networkPositionDef.findMany({ where: { networkId }, orderBy: { createdAt: 'asc' } });
+    return rows.map(positionDefOut);
+  }
+
+  async savePositionDef(ctx: RequestContext, networkId: string, id: string | undefined, input: z.infer<typeof networkPositionDefBody>) {
+    const { network } = await this.access.require(ctx, networkId, 'staff');
+    const name = input.name.trim();
+    if (!name) throw new ApiError('bad_name', 'Name required');
+    const businessIds = input.businessIds.filter((bid) => network.businessIds.includes(bid));
+    const data = {
+      name,
+      description: input.description,
+      requirements: input.requirements,
+      networkOnly: input.networkOnly,
+      businessIds,
+      servicesMode: input.servicesMode,
+      serviceIds: input.serviceIds,
+      keepPriceAndDuration: input.keepPriceAndDuration,
+    };
+    if (id) {
+      const existing = await this.prisma.networkPositionDef.findFirst({ where: { id, networkId } });
+      if (!existing) throw new ApiError('not_found', 'Position not found');
+      const row = await this.prisma.networkPositionDef.update({ where: { id }, data: { ...data, updatedBy: ctx.session!.userId, version: { increment: 1 } } });
+      return positionDefOut(row);
+    }
+    const row = await this.prisma.networkPositionDef.create({ data: { id: newId('networkPositionDef'), networkId, ...data, createdBy: ctx.session!.userId, updatedBy: ctx.session!.userId } });
+    return positionDefOut(row);
+  }
+
+  async deletePositionDef(ctx: RequestContext, networkId: string, id: string) {
+    await this.access.require(ctx, networkId, 'staff');
+    const row = await this.prisma.networkPositionDef.findFirst({ where: { id, networkId } });
+    if (!row) return;
+    await this.prisma.networkPositionDef.delete({ where: { id } });
   }
 
   // ───────────────────────── Поля записи/клиента сети (F-11-126…134) ─────────────────────────
@@ -548,6 +792,54 @@ export class NetworkCatalogService {
     }
     return services.filter((s) => s.businessId === businessId && lockedKeys.has(nameKeyOf(s.name)) && (siblingCount.get(nameKeyOf(s.name)) ?? 0) >= 2).map((s) => s.id);
   }
+
+  /**
+   * Этап 21 «network+reports», попытка 3: `src/api/network.ts::listNetworkLocations` (F-11-016) — список
+   * «Локации» настроек сети, в СОХРАНЁННОМ порядке. Порядка у Business/Network своего нет (мок держит его в
+   * своём срезе `extras[networkId].order`) — здесь своя таблица `NetworkLocationOrder` (как `NetworkStaffOrder`
+   * рядом); неизвестные/новые филиалы дописываются в конец, как в моке `orderOf()`.
+   */
+  async locations(ctx: RequestContext, networkId: string) {
+    const { network } = await this.access.require(ctx, networkId, 'settings');
+    if (!network.businessIds.length) return [];
+    const orderRow = await this.prisma.networkLocationOrder.findUnique({ where: { networkId } });
+    const saved = Array.isArray(orderRow?.orderedIds) ? (orderRow!.orderedIds as string[]) : [];
+    const known = saved.filter((id) => network.businessIds.includes(id));
+    const missing = network.businessIds.filter((id) => !known.includes(id));
+    const order = [...known, ...missing];
+    const businesses = await this.prisma.business.findMany({ where: { id: { in: order } } });
+    const businessById = new Map(businesses.map((b) => [b.id, b]));
+    const locations = await this.prisma.location.findMany({ where: { businessId: { in: order }, deletedAt: null }, orderBy: { sortOrder: 'asc' } });
+    const locByBiz = new Map<string, (typeof locations)[number]>();
+    for (const l of locations) if (!locByBiz.has(l.businessId)) locByBiz.set(l.businessId, l);
+    const subs = await this.prisma.subscription.findMany({ where: { businessId: { in: order } } });
+    const subByBiz = new Map(subs.map((s) => [s.businessId, s]));
+    const mainId = network.mainBusinessId ?? network.businessIds[0];
+    return order
+      .map((businessId) => businessById.get(businessId))
+      .filter((b): b is NonNullable<typeof b> => Boolean(b))
+      .map((business) => {
+        const loc = locByBiz.get(business.id);
+        const sub = subByBiz.get(business.id);
+        return {
+          business: businessView(business, loc ? [loc.id] : []),
+          location: loc ? locationView(loc) : undefined,
+          isMain: mainId === business.id,
+          until: sub ? utcToLocalDate(sub.paidUntil) : undefined,
+        };
+      });
+  }
+
+  /** F-11-016: сохранить порядок филиалов (используется «Перетащить» в настройках сети) */
+  async setLocationsOrder(ctx: RequestContext, networkId: string, orderedIds: string[]) {
+    const { network } = await this.access.require(ctx, networkId, 'settings');
+    const filtered = orderedIds.filter((id) => network.businessIds.includes(id));
+    await this.prisma.networkLocationOrder.upsert({
+      where: { networkId },
+      create: { networkId, orderedIds: filtered, updatedBy: ctx.session!.userId },
+      update: { orderedIds: filtered, updatedBy: ctx.session!.userId },
+    });
+  }
 }
 
 function fieldOut(f: { id: string; networkId: string; kind: string; name: string; dataType: string; apiKey: string; listOptions: unknown; editableByUser: boolean; showInAdmin: boolean; alwaysShowInBookingWindow: boolean; requiredOnCreate: boolean; requiredOnArrived: boolean; alwaysShowInClientCard: boolean; showInWidget: boolean; requiredInWidget: boolean; businessIds: unknown; createdAt: Date }) {
@@ -557,6 +849,35 @@ function fieldOut(f: { id: string; networkId: string; kind: string; name: string
 /** Этап 21 «network+reports»: F-11-108, форма `NetworkOffDayType` фронта */
 function offDayTypeOut(o: { id: string; networkId: string; name: string; comment: string | null; colorIndex: number; businessIds: unknown }) {
   return { id: o.id, networkId: o.networkId, name: o.name, comment: o.comment ?? undefined, colorIndex: o.colorIndex, businessIds: Array.isArray(o.businessIds) ? (o.businessIds as string[]) : [] };
+}
+
+/** Этап 21 «network+reports», попытка 3: F-11-104…106, форма `NetworkPosition` фронта (не Position.networkId) */
+function positionDefOut(p: {
+  id: string;
+  networkId: string;
+  name: string;
+  description: string | null;
+  requirements: unknown;
+  networkOnly: boolean;
+  businessIds: unknown;
+  servicesMode: string;
+  serviceIds: unknown;
+  keepPriceAndDuration: boolean;
+  createdAt: Date;
+}) {
+  return {
+    id: p.id,
+    networkId: p.networkId,
+    name: p.name,
+    description: p.description ?? undefined,
+    requirements: Array.isArray(p.requirements) ? (p.requirements as string[]) : [],
+    networkOnly: p.networkOnly,
+    businessIds: Array.isArray(p.businessIds) ? (p.businessIds as string[]) : [],
+    servicesMode: p.servicesMode as 'off' | 'strict',
+    serviceIds: Array.isArray(p.serviceIds) ? (p.serviceIds as string[]) : [],
+    keepPriceAndDuration: p.keepPriceAndDuration,
+    createdAt: utcToLocal(p.createdAt),
+  };
 }
 
 @ApiTags('network')
@@ -627,6 +948,13 @@ export class NetworkCatalogController {
     return this.svc.searchGoods(ctx, n, q);
   }
 
+  /** Этап 21 «network+reports», попытка 3: `goods/archive` — тоже ДО `goods/:groupId`, иначе wildcard съест `archive` */
+  @Get('goods/archive')
+  @ApiOperation({ summary: 'Архив товаров сети (F-11-118)' })
+  listGoodsArchive(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.listGoodsArchive(ctx, n);
+  }
+
   @Get('goods/:groupId')
   getGoodsProduct(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('groupId') id: string) {
     return this.svc.getGoodsProduct(ctx, n, id);
@@ -644,6 +972,43 @@ export class NetworkCatalogController {
   @ZodBody(migrateGoodsBody)
   migrateGoods(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(migrateGoodsBody)) body: z.infer<typeof migrateGoodsBody>) {
     return this.svc.migrateGoodsToNetwork(ctx, n, body);
+  }
+
+  @Post('goods/add-all-to-location')
+  @ApiOperation({ summary: '«Добавить все товары в локацию» (F-11-114)' })
+  @ZodBody(z.object({ targetBusinessId: z.string().max(32) }))
+  addAllGoodsToLocation(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(z.object({ targetBusinessId: z.string().max(32) }))) body: { targetBusinessId: string }) {
+    return this.svc.addAllGoodsToLocation(ctx, n, body.targetBusinessId);
+  }
+
+  @Post('goods/archive')
+  @ApiOperation({ summary: 'Архивировать сетевые товары во всех филиалах (F-11-114/118)' })
+  @ZodBody(z.object({ groupIds: z.array(z.string().max(32)).min(1).max(200) }))
+  async archiveGoods(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(z.object({ groupIds: z.array(z.string().max(32)).min(1).max(200) }))) body: { groupIds: string[] }) {
+    await this.svc.archiveNetworkGoods(ctx, n, body.groupIds);
+    return { ok: true as const };
+  }
+
+  @Post('goods/archive/restore')
+  @ApiOperation({ summary: 'Восстановить товар из архива сети по имени (F-11-118)' })
+  @ZodBody(z.object({ name: z.string().max(200) }))
+  async restoreGoodsArchive(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(z.object({ name: z.string().max(200) }))) body: { name: string }) {
+    await this.svc.restoreGoodsByName(ctx, n, body.name);
+    return { ok: true as const };
+  }
+
+  @Delete('goods/archive/:id')
+  async deleteGoodsArchiveEntry(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('id') id: string) {
+    await this.svc.deleteGoodsArchiveEntry(ctx, n, id);
+    return { ok: true as const };
+  }
+
+  @Post('goods/merge')
+  @ApiOperation({ summary: 'Объединить локальный товар с сетевым (F-11-117)' })
+  @ZodBody(z.object({ localGoodId: z.string().max(32), networkGroupId: z.string().max(32) }))
+  async mergeGoodIntoNetworkGroup(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(z.object({ localGoodId: z.string().max(32), networkGroupId: z.string().max(32) }))) body: { localGoodId: string; networkGroupId: string }) {
+    await this.svc.mergeGoodIntoNetworkGroup(ctx, n, body.localGoodId, body.networkGroupId);
+    return { ok: true as const };
   }
 
   @Get('positions')
@@ -745,6 +1110,60 @@ export class NetworkCatalogController {
   @Delete('fields/:id')
   async deleteField(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('id') id: string) {
     await this.svc.deleteField(ctx, n, id);
+    return { ok: true as const };
+  }
+
+  // ─────────── Этап 21 «network+reports», попытка 3 ───────────
+
+  @Get('locations')
+  @ApiOperation({ summary: 'Список «Локации» настроек сети, в сохранённом порядке (F-11-016)' })
+  listLocations(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.locations(ctx, n);
+  }
+
+  @Put('locations/order')
+  @ApiOperation({ summary: 'Сохранить порядок филиалов (F-11-017)' })
+  @ZodBody(networkLocationsOrderBody)
+  async setLocationsOrder(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkLocationsOrderBody)) body: z.infer<typeof networkLocationsOrderBody>) {
+    await this.svc.setLocationsOrder(ctx, n, body.orderedIds);
+    return { ok: true as const };
+  }
+
+  @Post('staff/migrate')
+  @ApiOperation({ summary: '«Перенести всех»/одного мастера из филиала в сеть (F-11-102)' })
+  @ZodBody(staffMigrateBody)
+  migrateStaff(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(staffMigrateBody)) body: z.infer<typeof staffMigrateBody>) {
+    return this.svc.migrateStaff(ctx, n, body);
+  }
+
+  @Post('staff/merge')
+  @ApiOperation({ summary: 'Объединить дубли сотрудников сети (F-11-103)' })
+  @ZodBody(staffMergeBody)
+  mergeStaff(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(staffMergeBody)) body: z.infer<typeof staffMergeBody>) {
+    return this.svc.mergeStaff(ctx, n, body);
+  }
+
+  @Get('position-defs')
+  @ApiOperation({ summary: 'Сетевые должности, полная форма (F-11-104…106)' })
+  listPositionDefs(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.listPositionDefs(ctx, n);
+  }
+
+  @Post('position-defs')
+  @ZodBody(networkPositionDefBody)
+  addPositionDef(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Body(new Zod(networkPositionDefBody)) body: z.infer<typeof networkPositionDefBody>) {
+    return this.svc.savePositionDef(ctx, n, undefined, body);
+  }
+
+  @Patch('position-defs/:id')
+  @ZodBody(networkPositionDefBody)
+  editPositionDef(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('id') id: string, @Body(new Zod(networkPositionDefBody)) body: z.infer<typeof networkPositionDefBody>) {
+    return this.svc.savePositionDef(ctx, n, id, body);
+  }
+
+  @Delete('position-defs/:id')
+  async deletePositionDef(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('id') id: string) {
+    await this.svc.deletePositionDef(ctx, n, id);
     return { ok: true as const };
   }
 }
