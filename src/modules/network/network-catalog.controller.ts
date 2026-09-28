@@ -794,6 +794,23 @@ export class NetworkCatalogService {
   }
 
   /**
+   * F-11-058 (этап 21, лейн network): `src/api/network.ts::setNetworkMarketingOptOut(phone, optOut)` — фасад
+   * НЕ несёт `networkId` в подписи («список общий по номеру, сеть не разделяет его», qa/requests/network.md), а
+   * менять сигнатуру запрещено (общие правила захода) — фронт вместо этого достаёт `businessId` активного
+   * сотрудника (`currentActor()`, тем же приёмом, что и остальные гейты сети) и зовёт этот маршрут ПО ФИЛИАЛУ,
+   * как `mine`/`service-price-locks` рядом. Пишет `Client.adConsent.given` всем строкам клиента с этим телефоном
+   * ВО ВСЕЙ СЕТИ филиала (совпадает с `listMarketingOptOut` выше — то же поле, тот же охват); без сети — только
+   * в этом филиале. Согласие есть у `Client` per-филиал (не общее), поэтому пишутся все найденные строки.
+   */
+  async setMarketingOptOutByBusiness(businessId: string, phone: string, optOut: boolean): Promise<void> {
+    const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { networkId: true } });
+    const businessIds = biz?.networkId
+      ? (await this.prisma.network.findUnique({ where: { id: biz.networkId }, include: { businesses: { where: { leftAt: null }, select: { id: true } } } }))?.businesses.map((b) => b.id) ?? [businessId]
+      : [businessId];
+    await this.prisma.client.updateMany({ where: { businessId: { in: businessIds }, phone }, data: { adConsent: J({ given: !optOut, at: new Date().toISOString(), method: 'network' }) } });
+  }
+
+  /**
    * Этап 21 «network+reports», попытка 3: `src/api/network.ts::listNetworkLocations` (F-11-016) — список
    * «Локации» настроек сети, в СОХРАНЁННОМ порядке. Порядка у Business/Network своего нет (мок держит его в
    * своём срезе `extras[networkId].order`) — здесь своя таблица `NetworkLocationOrder` (как `NetworkStaffOrder`

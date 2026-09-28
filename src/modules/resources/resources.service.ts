@@ -15,7 +15,10 @@ import { CANCELLED_STATUSES as CANCELLED } from '../journal/rules.js';
 const J = (v: unknown) => (v === undefined || v === null ? Prisma.DbNull : (v as Prisma.InputJsonValue));
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 
+// stage 21 (лейн resources+helpers): entityType='event' (категория события) хранит `name` простой строкой, а
+// не `LocalizedText` (в отличие от resource/package) — до этой правки строка журнала показывала id вместо имени.
 function summaryOf(name: unknown, fallbackId: string): string {
+  if (typeof name === 'string') return name.trim() || fallbackId;
   const n = name as Record<string, string> | null | undefined;
   return n?.ru || n?.en || n?.hy || fallbackId;
 }
@@ -445,11 +448,15 @@ export class ResourcesService {
   async listEventCategories(businessId: string): Promise<ResourcesEventCategory[]> {
     return (await this.settings(businessId)).eventCategories ?? [];
   }
-  async createEventCategory(businessId: string, name: string, colorIndex: number): Promise<ResourcesEventCategory> {
+  async createEventCategory(ctx: RequestContext, businessId: string, name: string, colorIndex: number): Promise<ResourcesEventCategory> {
     const category: ResourcesEventCategory = { id: newId('bookingCategory'), businessId, name: name.trim(), colorIndex };
     await this.patchSettings(businessId, (s) => {
       s.eventCategories = [...(s.eventCategories ?? []), category];
     });
+    // stage 21 (лейн resources+helpers, F-16-171): категории — JSON-настройка, не Prisma-строка, поэтому не
+    // атомарно с patchSettings выше (тот же компромисс, что у самого patchSettings — нет $transaction); один
+    // недостающий audit.record не стоил отдельной переделки JSON-блоба под tx ради одной строки.
+    await this.prisma.$transaction((tx) => this.audit.record(tx, ctx, { action: 'create', entityType: 'event', entityId: category.id, businessId, after: { name: category.name } }));
     return category;
   }
   async updateEventCategory(businessId: string, id: string, patch: { name: string; colorIndex: number }): Promise<ResourcesEventCategory> {

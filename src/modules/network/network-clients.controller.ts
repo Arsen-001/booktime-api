@@ -213,6 +213,42 @@ export class NetworkClientsService {
     }));
   }
 
+  /**
+   * F-11-048 (этап 21, лейн network): все сообщения клиенту по всем каналам во всех локациях сети — переиспользует
+   * уже готовый журнал `ClientBroadcastMessage` (`ClientsBroadcastService`, этап 21 «rest»), а не заводит вторую
+   * таблицу — мок читал свой `notify.log` тем же приёмом (по `contact === phone` во всех бизнесах сети).
+   */
+  async messages(ctx: RequestContext, networkId: string, phone: string) {
+    const { network } = await this.access.require(ctx, networkId, 'clients');
+    if (!network.businessIds.length) return [];
+    const clients = await this.prisma.client.findMany({ where: { businessId: { in: network.businessIds }, phone }, select: { id: true } });
+    if (!clients.length) return [];
+    const clientIds = clients.map((c) => c.id);
+    const [rows, businesses] = await Promise.all([
+      this.prisma.clientBroadcastMessage.findMany({ where: { clientId: { in: clientIds } }, orderBy: { sentAt: 'desc' }, take: 200 }),
+      this.prisma.business.findMany({ where: { id: { in: network.businessIds } }, select: { id: true, name: true } }),
+    ]);
+    const bizName = new Map(businesses.map((b) => [b.id, b.name]));
+    return rows.map((r) => ({
+      businessId: r.businessId,
+      businessName: bizName.get(r.businessId) ?? '—',
+      message: {
+        id: r.id,
+        businessId: r.businessId,
+        createdAt: utcToLocal(r.sentAt),
+        typeLabel:
+          r.source === 'bookingWindow'
+            ? { ru: 'Сообщение из записи', hy: 'Հաղորդագրություն ամրագրումից', en: 'Booking window message' }
+            : { ru: 'Рассылка', hy: 'Ուղարկում', en: 'Broadcast' },
+        channel: r.channel as 'sms' | 'push' | 'whatsapp',
+        status: 'sent' as const,
+        contact: phone,
+        text: { ru: r.text, hy: r.text, en: r.text },
+        clientId: r.clientId ?? undefined,
+      },
+    }));
+  }
+
   async card(ctx: RequestContext, networkId: string, phone: string) {
     const { network } = await this.access.require(ctx, networkId, 'clients');
     if (!network.businessIds.length) throw new ApiError('not_found', 'Client not found');
@@ -254,6 +290,12 @@ export class NetworkClientsController {
   @ApiOperation({ summary: 'Все записи клиента во всех филиалах сети (F-11-047)' })
   history(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('phone') phone: string) {
     return this.svc.history(ctx, n, phone);
+  }
+
+  @Get(':phone/messages')
+  @ApiOperation({ summary: 'Все сообщения клиенту по всем каналам во всех локациях сети (F-11-048)' })
+  messages(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('phone') phone: string) {
+    return this.svc.messages(ctx, n, phone);
   }
 
   @Get(':phone/view')

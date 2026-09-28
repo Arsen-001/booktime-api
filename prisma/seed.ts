@@ -9,6 +9,7 @@ import { hashPassword } from '../src/modules/auth/passwords.js';
 import { SYSTEM_ITEMS } from '../src/modules/finance/finance-catalog.service.js';
 import { loadMockCore } from './seed/mock-core.js';
 import { seedLoyaltyFromMock } from './seed/loyalty.js';
+import { seedClientLoyalty } from './seed/client-loyalty.js';
 import { seedFinanceFromMock } from './seed/finance.js';
 
 /**
@@ -937,6 +938,8 @@ await prisma.client.createMany({
 
 // ─────────── этап 21, лейн loyalty: срез «loyalty» мока фронта — prisma/seed/loyalty.ts ───────────
 await seedLoyaltyFromMock(prisma, core);
+// этап 21, лейн client-loyalty: витрина покупок приложения + заявки В-17
+await seedClientLoyalty(prisma, core);
 
 // ─────────── этап 21, лейн finance+stock: настройки «Финансов» и демо-документы онлайн-платежей — prisma/seed/finance.ts ───────────
 await seedFinanceFromMock(prisma, core);

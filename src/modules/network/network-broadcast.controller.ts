@@ -129,6 +129,20 @@ export class NetworkBroadcastService {
     return out(row);
   }
 
+  /**
+   * F-11-058 (этап 21, лейн network): «Не отправлять» — список телефонов, у которых `adConsent.given === false`
+   * хоть в одном филиале сети. Мок держал свой глобальный по номеру массив (`marketingOptOut`, «сеть не
+   * разделяет его») — сервер уже несёт то же самое полем `Client.adConsent`, используемым `send()` выше; вторую
+   * копию не завожу, читаю то же поле.
+   */
+  async listMarketingOptOut(ctx: RequestContext, networkId: string): Promise<string[]> {
+    const { network } = await this.access.require(ctx, networkId, 'clients');
+    if (!network.businessIds.length) return [];
+    const rows = await this.prisma.client.findMany({ where: { businessId: { in: network.businessIds }, deletedAt: null }, select: { phone: true, adConsent: true } });
+    const optOut = new Set(rows.filter((c) => (c.adConsent as { given?: boolean } | null)?.given === false).map((c) => c.phone));
+    return [...optOut];
+  }
+
   private async clientsGroupsFor(businessIds: string[]) {
     // легче полного NetworkClientRow (без spend/visits — рассылке нужны только телефон/имя/участие)
     if (!businessIds.length) return [];
@@ -155,6 +169,12 @@ export class NetworkBroadcastController {
   @Get('sms-status')
   smsStatus(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
     return this.svc.smsStatus(ctx, n);
+  }
+
+  @Get('marketing-opt-out')
+  @ApiOperation({ summary: 'Телефоны клиентов сети, отказавшихся от рекламы (F-11-058)' })
+  marketingOptOut(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.listMarketingOptOut(ctx, n);
   }
 
   @Get('broadcasts')

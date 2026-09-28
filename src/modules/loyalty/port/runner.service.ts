@@ -7,6 +7,7 @@ import { clientRowView } from '../../clients/clients.views.js';
 import { BusinessService } from '../../businesses/business.service.js';
 import { resolveScopeBusinessIds } from '../loyalty.owner.js';
 import type { CoreData, Id } from './core-types.js';
+import * as appOps from './client-ops.js';
 import * as extra from './extra-ops.js';
 import * as logic from './logic.js';
 import { NeedBookings, runInPort } from './shim.js';
@@ -48,7 +49,7 @@ export class LoyaltyPortRunner {
   }
 
   async run(op: string, args: unknown[], opts: RunOptions): Promise<unknown> {
-    const fn = (extra as unknown as Record<string, LogicFn>)[op] ?? (logic as unknown as Record<string, LogicFn>)[op];
+    const fn = (appOps as unknown as Record<string, LogicFn>)[op] ?? (extra as unknown as Record<string, LogicFn>)[op] ?? (logic as unknown as Record<string, LogicFn>)[op];
     if (typeof fn !== 'function') throw new ApiError('not_found', `loyalty op ${op}`);
     if (opts.scope.length === 0) return this.runEmpty(fn, args);
     const withBookings = needsBookings.has(op);

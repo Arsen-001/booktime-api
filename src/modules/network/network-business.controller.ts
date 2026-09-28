@@ -1,7 +1,12 @@
-import { Controller, Get, Param } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
 import { Biz } from '../../common/http/guards.js';
+import { ZodBody } from '../../common/http/openapi.js';
+import { Zod } from '../../common/http/validation.js';
 import { NetworkCatalogService } from './network-catalog.controller.js';
+
+const marketingOptOutBody = z.object({ phone: z.string().trim().min(1).max(32), optOut: z.boolean() });
 
 /**
  * Сеть с точки зрения ФИЛИАЛА (docs/backend/02 §15), а не панели сети — вызывает любой сотрудник кабинета,
@@ -29,5 +34,15 @@ export class NetworkBusinessController {
   @Biz('services.view')
   servicePriceLocks(@Param('businessId') businessId: string) {
     return this.catalog.listPriceLockedServiceIdsForBusiness(businessId);
+  }
+
+  /** `src/api/network.ts::setNetworkMarketingOptOut(phone, optOut)` — см. докстринг `setMarketingOptOutByBusiness` */
+  @Patch('marketing-opt-out')
+  @Biz('clients.edit')
+  @ApiOperation({ summary: 'Согласие на рекламу клиента сети по телефону (F-11-058)' })
+  @ZodBody(marketingOptOutBody)
+  async marketingOptOut(@Param('businessId') businessId: string, @Body(new Zod(marketingOptOutBody)) body: z.infer<typeof marketingOptOutBody>) {
+    await this.catalog.setMarketingOptOutByBusiness(businessId, body.phone, body.optOut);
+    return { ok: true as const };
   }
 }

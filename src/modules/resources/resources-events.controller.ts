@@ -109,6 +109,14 @@ export class ResourcesEventsController {
     return this.svc.saveEventParams(ctx, businessId, eventId, body);
   }
 
+  @Post('events/:eventId/mark-series-unique')
+  @HttpCode(204)
+  @Biz('journal.edit')
+  @ApiOperation({ summary: 'Пометить одно событие серии «уникальным» после отдельной правки/отмены (F-16-075)' })
+  markSeriesUnique(@Param('businessId') businessId: string, @Param('eventId') eventId: string) {
+    return this.svc.markEventUniqueInSeries(businessId, eventId);
+  }
+
   @Get('events/count-future/:serviceId')
   @Biz()
   countFutureForService(@Param('businessId') businessId: string, @Param('serviceId') serviceId: string) {

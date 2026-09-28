@@ -201,8 +201,8 @@ export class ResourcesController {
   @Post('event-categories')
   @Biz('resources.manage')
   @ZodBody(eventCategoryBody)
-  createEventCategory(@Param('businessId') businessId: string, @Body(new Zod(eventCategoryBody)) body: z.infer<typeof eventCategoryBody>) {
-    return this.svc.createEventCategory(businessId, body.name, body.colorIndex);
+  createEventCategory(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(eventCategoryBody)) body: z.infer<typeof eventCategoryBody>) {
+    return this.svc.createEventCategory(ctx, businessId, body.name, body.colorIndex);
   }
 
   @Patch('event-categories/:id')

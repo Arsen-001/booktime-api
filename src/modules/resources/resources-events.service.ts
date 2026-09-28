@@ -267,6 +267,19 @@ export class ResourcesEventsService {
     return { tz, today, startOfToday: localToUtc(`${today}T00:00`, tz) };
   }
 
+  /**
+   * stage 21 (лейн «resources+helpers»): `src/api/resources.ts::updateSeriesEvent` — универсальный патч ОДНОГО
+   * события серии (F-16-075). Сам патч уже реально долетает до сервера через общий `PATCH .../events/:id`
+   * (journal-модуль, `GroupEventsService.update` + `replayCoreWrites`) — этот маршрут добирает только пометку
+   * «уникальное» в `eventSeriesDefs.uniqueEventIds`, которую generic-патч не знает. Нет seriesId → тихо ничего
+   * не делает (событие вне серии, звать не должны, но и не 404 — вызывающая сторона решает по месту).
+   */
+  async markEventUniqueInSeries(businessId: string, eventId: string): Promise<void> {
+    const event = await this.prisma.groupEvent.findFirst({ where: { id: eventId, businessId }, select: { seriesId: true } });
+    if (!event?.seriesId) return;
+    await this.markSeriesEventUnique(event.seriesId, eventId);
+  }
+
   private async markSeriesEventUnique(seriesId: string, eventId: string): Promise<void> {
     const def = await this.prisma.eventSeriesDef.findUnique({ where: { id: seriesId } });
     if (!def) return;

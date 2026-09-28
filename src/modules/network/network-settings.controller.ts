@@ -10,7 +10,7 @@ import { ZodBody } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { nowLocal, utcToLocalDate } from '../../common/time/time.js';
+import { nowLocal, utcToLocal, utcToLocalDate } from '../../common/time/time.js';
 import { NetworkAccessService } from './network-access.service.js';
 
 // ─────────── схемы ───────────
@@ -220,6 +220,28 @@ export class NetworkSettingsService {
     await this.access.require(ctx, networkId, 'telephony');
     return [] as unknown[];
   }
+
+  /**
+   * F-11-023 (этап 21, лейн network): журнал «Изменения данных» сети — переиспользует `audit_events` (этап 1,
+   * `AuditService.record`, уже пишет `entityType:'network'`/`networkId` из `NetworkService`/структурных правок
+   * сети), а не заводит вторую копию, как держал мок (`pushAudit` в браузере, до 200 строк). Мок знает только 4
+   * действия (`created`/`renamed`/`deleted`/`restored`) — остальные события сети (добавление/вывод филиала и т.п.)
+   * есть в `audit_events`, но вне контракта экрана; отфильтрованы, а не подогнаны под чужой тип.
+   */
+  async auditLog(ctx: RequestContext, networkId: string) {
+    await this.access.require(ctx, networkId, 'settings');
+    const rows = await this.prisma.auditEvent.findMany({
+      where: { networkId, entityType: 'network', action: { in: ['create', 'update', 'deleted', 'restored'] } },
+      orderBy: { at: 'desc' },
+      take: 200,
+    });
+    const ACTION_MAP: Record<string, 'created' | 'renamed' | 'deleted' | 'restored'> = { create: 'created', update: 'renamed', deleted: 'deleted', restored: 'restored' };
+    return rows.map((r) => {
+      const diff = r.diff as Record<string, [unknown, unknown]> | null;
+      const detail = diff?.name?.[1] != null ? String(diff.name[1]) : undefined;
+      return { id: r.id, networkId, action: ACTION_MAP[r.action]!, authorName: r.actorName, at: utcToLocal(r.at), detail };
+    });
+  }
 }
 
 @ApiTags('network')
@@ -311,5 +333,11 @@ export class NetworkSettingsController {
   @ApiOperation({ summary: 'История звонков сети — пусто: чужая АТС, обмена нет (Р19)' })
   calls(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
     return this.svc.calls(ctx, n);
+  }
+
+  @Get('audit-log')
+  @ApiOperation({ summary: 'Журнал «Изменения данных» сети (F-11-023)' })
+  auditLog(@Ctx() ctx: RequestContext, @Param('networkId') n: string) {
+    return this.svc.auditLog(ctx, n);
   }
 }
