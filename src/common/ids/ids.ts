@@ -215,6 +215,10 @@ export const ID_PREFIX = {
   // мок newId('msg')): своя таблица ClientBroadcastMessage, префикс свой ('msg' ни за кем не закреплён
   // на сервере, но короче и понятнее свой)
   clientBroadcastMessage: 'cbm',
+  // этап 21 (лейн client+online), попытка 4 — визит-микрокасса (F-14-092…098): одна таблица VisitCashRecord,
+  // префиксы id — те же, что у мока (client.ts::newId('vsl')/newId('vpay'))
+  visitSaleLine: 'vsl',
+  visitPayment: 'vpay',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

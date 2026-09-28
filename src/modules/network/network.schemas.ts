@@ -56,6 +56,28 @@ export const addNewUserBody = z.object({ phone: phoneAm, name: z.string().min(1)
 export const setPermissionsBody = z.object({ permissions: z.array(networkPermissionKey).max(20) });
 export const setPlanReportFreqBody = z.object({ frequency: z.enum(['off', 'daily', 'weekly', 'monthly']) });
 
+// ─────────── Этап 21 «network+reports», попытка 2: мок src/api/network.ts, F-11-025/026/028 ───────────
+
+/** F-11-025 (мок `inviteNetworkUser`): один вызов — уже зарегистрированный по телефону становится участником
+ * сразу, незнакомый телефон заводит «ожидающую» строку (`pending`), без выбора прав на этом шаге. */
+export const invitePhoneBody = z.object({ phone: phoneAm });
+
+/** F-11-026 (мок `createNetworkUser`): вход логином+паролем — то же решение, что StaffLogin администратора
+ * (businessId=null/staffId=null), телефон необязателен вовсе. */
+export const addWithPasswordBody = z.object({
+  name: z.string().min(1).max(160),
+  phone: phoneAm.optional(),
+  login: z.string().min(3).max(64),
+  password: z.string().min(6).max(200),
+});
+
+/** мок `updateNetworkUser` — правки карточки без смены прав/пароля */
+export const updateNetworkUserBody = z.object({
+  name: z.string().min(1).max(160),
+  phone: z.string().max(32).optional(),
+  email: z.string().max(160).optional(),
+});
+
 // ─────────────────────── Общая база клиентов сети (F-11-040…053) ───────────────────────
 
 export const networkClientSearchBody = z.object({

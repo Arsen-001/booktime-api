@@ -118,3 +118,23 @@ export const oneOffPushBody = z.object({ appUserId: id32, bookingId: id32.option
 
 export const translationOwner = z.enum(['staff', 'business', 'service']);
 export const translationOverrideBody = z.object({ owner: translationOwner, ownerId: id32, field: z.string().min(1).max(40), text: z.string().max(4000) });
+
+// ─────────────────────────── визит-микрокасса (F-14-092…098) — этап 21, лейн client+online, попытка 4 ───────────────────────────
+
+export const addVisitSaleLineBody = z.object({
+  kind: z.enum(['product', 'membership', 'certificate']),
+  title: z.string().min(1).max(200),
+  price: z.number().int().min(0),
+  discount: z.number().int().min(0).optional(),
+  sellerStaffId: id32.optional(),
+  code: z.string().max(60).optional(),
+});
+
+export const addVisitPaymentBody = z.object({
+  method: z.enum(['cash', 'card', 'loyalty']),
+  amount: z.number().int().min(1),
+  cashDeskId: id32.optional(),
+  cardBrand: z.enum(['visa', 'mastercard', 'arca']).optional(),
+});
+
+export const sendVisitReceiptBody = z.object({ appUserId: id32, total: z.number().int().min(0) });

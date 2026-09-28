@@ -247,9 +247,12 @@ export class LoyaltyInstancesService {
   // порта этапа 21 «loyalty» — колонки Prisma достаточно, `data` JSON не нужен для этой пары экранов).
 
   async listClientAssets(businessId: string, clientId: string) {
+    // Мок не фильтрует по статусу вообще (отдаёт всё, что есть у клиента) — держим то же самое: сид пишет
+    // статусы порта этапа 21 «loyalty» (`issued`/`used`/`deactivated`…, `port/domain.ts::MembershipStatus`),
+    // не старый список колонки, фильтр по одному-двум значениям молча терял бы половину сида.
     const [certs, subs] = await Promise.all([
-      this.prisma.certificate.findMany({ where: { businessId, clientId, status: 'active' }, include: { type: true } }),
-      this.prisma.membershipSale.findMany({ where: { businessId, clientId, status: { in: ['active', 'frozen'] } }, include: { type: true } }),
+      this.prisma.certificate.findMany({ where: { businessId, clientId }, include: { type: true } }),
+      this.prisma.membershipSale.findMany({ where: { businessId, clientId }, include: { type: true } }),
     ]);
     const now = Date.now();
     return {

@@ -4229,3 +4229,32 @@ model AppPayrollPayout {
 }
 
 // === end stage 21 (лейн client+online), попытка 2 ===
+
+// === stage 21 (лейн client+online), попытка 4 ===
+// Продолжение лейна client+online: «Визит-микрокасса» (F-14-092…098) — `client.ts::listVisitCandidates/
+// getVisitDetail/addVisitSaleLine/removeVisitSaleLine/addVisitPayment/removeVisitPayment/refundVisitPayment/
+// listNoAppRemindersTomorrow/sendVisitReceipt/isVisitReceiptSent`. Мок сам документирует архитектуру (комментарий
+// у VisitCashDesk в domain/client.ts): «настоящие кассы живут в разделе finance и сюда не проброшены» — то есть
+// это заведомо ОТДЕЛЬНАЯ, лёгкая демо-касса приложения, а не витрина над Booking/FinOp/BookingPayment раздела
+// finance (тот же принцип уже применён к AppPayrollPayout выше). Одна таблица на обе строки визита (продажа
+// товара/абонемента/сертификата и оплата), как OnlineRecord/FinRecord — различает `kind`. «Квитанция отправлена»
+// не хранится отдельной строкой: проверяется существованием InboxItem(kind='receipt', bookingId) — тот же приём,
+// что sendOneOffPush пишет 'broadcast'.
+model VisitCashRecord {
+  id         String    @id @db.VarChar(32)
+  businessId String    @map("business_id") @db.VarChar(32)
+  bookingId  String    @map("booking_id") @db.VarChar(32)
+  /// saleLine | payment
+  kind       String    @db.VarChar(12)
+  /// saleLine: VisitSaleLine фронта минус id/bookingId; payment: VisitPaymentLine фронта минус id/bookingId
+  data       Json
+  /// Только у payment — «Make a refund» не стирает строку (F-14-095)
+  refundedAt DateTime? @map("refunded_at") @db.DateTime(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([bookingId, kind])
+  @@index([businessId, kind])
+  @@map("visit_cash_records")
+}
+
+// === end stage 21 (лейн client+online), попытка 4 ===
