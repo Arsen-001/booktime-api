@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client.js';
-import { BUSINESS_MESSENGER } from '../../adapters/adapters.js';
+import { BUSINESS_MESSENGER, MAIL_SENDER } from '../../adapters/adapters.js';
+import type { MailSender } from '../../adapters/mail/mail.js';
 import type { BusinessMessenger } from '../../adapters/business-sms/business-sms.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { newId } from '../../common/ids/ids.js';
@@ -102,6 +103,18 @@ function toOut(r: EntryRow): LogMessageOut {
 const ONE_OFF_TYPE_CODE = 15;
 
 /**
+ * P1: «есть приложение» у клиента CRM — вычисляется на лету: пользователь приложения с тем же номером
+ * (users.phone = clients.phone, есть профиль клиента), а clients.app_user_id — только «записался через приложение».
+ */
+export async function resolveAppUsers<T extends { phone: string; appUserId: string | null }>(prisma: PrismaService, clients: T[]): Promise<T[]> {
+  const phones = [...new Set(clients.filter((c) => !c.appUserId && c.phone).map((c) => c.phone))];
+  if (!phones.length) return clients;
+  const users = await prisma.user.findMany({ where: { phone: { in: phones }, appProfile: { isNot: null } }, select: { id: true, phone: true } });
+  const byPhone = new Map(users.map((u) => [u.phone!, u.id]));
+  return clients.map((c) => (c.appUserId || !byPhone.has(c.phone) ? c : { ...c, appUserId: byPhone.get(c.phone)! }));
+}
+
+/**
  * Журнал отправок (F-05-107/108/130, Ув11/Ув12/Ув16) — этап 21, лейн notify-log+mailings. Строки выводятся из
  * booking_events/bookings/clients по каталогу типов «под экран» (NotifyRichTypesService, 29+2) — порт liveLog.ts
  * фронта (`notify-log-derive.ts`) — и материализуются в notify_log_entries окном от `notify_log_sync.synced_until`,
@@ -117,6 +130,7 @@ export class NotifyLogService {
     private readonly more: NotifyMoreService,
     private readonly shortLinks: ShortLinksService,
     @Inject(BUSINESS_MESSENGER) private readonly messenger: BusinessMessenger,
+    @Inject(MAIL_SENDER) private readonly mail: MailSender,
   ) {}
 
   // ─────────── чтение ───────────
@@ -250,8 +264,9 @@ export class NotifyLogService {
   ): Promise<{ sentChannels: string[] }> {
     const text = input.text.trim();
     if (!text) throw new ApiError('empty_text', 'Text is empty');
-    const client = await this.prisma.client.findFirst({ where: { id: input.clientId, businessId, deletedAt: null } });
-    if (!client) throw new ApiError('not_found', 'client not found');
+    const found = await this.prisma.client.findFirst({ where: { id: input.clientId, businessId, deletedAt: null } });
+    if (!found) throw new ApiError('not_found', 'client not found');
+    const client = (await resolveAppUsers(this.prisma, [found]))[0] ?? found;
     const pref = await this.prisma.clientNotifyPref.findUnique({ where: { clientId: client.id } });
     const ch = { push: true, sms: true, email: true, ...((pref?.channels as Partial<Record<'push' | 'sms' | 'email', boolean>> | null) ?? {}) };
     // F-05-084 п.1: только разрешённые клиенту каналы (F-05-090)
@@ -282,6 +297,9 @@ export class NotifyLogService {
         });
       } else if ((channel === 'sms' || channel === 'whatsapp') && smsConn?.connected) {
         delivered = (await this.messenger.send({ businessId, to: client.phone, text, channel: channel === 'whatsapp' ? 'whatsapp' : 'sms' })).delivered;
+      } else if (channel === 'email' && client.email) {
+        await this.mail.send({ to: client.email, subject: label.ru, text });
+        delivered = true;
       }
       const cost = costOf(channel, text);
       await this.write(businessId, {
@@ -290,7 +308,7 @@ export class NotifyLogService {
         typeLabel: label,
         channel,
         // Нет приложения / не подключён провайдер бизнеса (В-08) — сообщение не ушло, так и пишем
-        status: delivered ? 'sent' : channel === 'email' ? 'sent' : 'notDelivered',
+        status: delivered ? 'sent' : 'notDelivered',
         contact: channel === 'email' ? client.email || client.phone : client.phone,
         text: { ru: text },
         clientId: client.id,
@@ -444,7 +462,7 @@ export class NotifyLogService {
       w.winback ? this.prisma.client.findMany({ where: { businessId, deletedAt: null, purgedAt: null, birthday: { not: null } }, select: { id: true, name: true, phone: true, email: true, appUserId: true, birthday: true } }) : Promise.resolve([]),
     ]);
     const clients = new Map<string, DClient>();
-    for (const c of [...clientRows, ...birthdayRows]) clients.set(c.id, c);
+    for (const c of await resolveAppUsers(this.prisma, [...clientRows, ...birthdayRows])) clients.set(c.id, c);
     const prefRows = clients.size ? await this.prisma.clientNotifyPref.findMany({ where: { clientId: { in: [...clients.keys()] } } }) : [];
     const clientPrefs = new Map<string, DClientPrefs>(
       prefRows.map((p) => [
@@ -486,7 +504,7 @@ export class NotifyLogService {
     const rows = deriveLogRows(ctx, {
       events,
       arrived,
-      birthdayClients: birthdayRows,
+      birthdayClients: birthdayRows.map((c) => clients.get(c.id) ?? c),
       serviceReminderHours: (reminderRow?.data as Record<string, number> | undefined) ?? {},
       windowFrom: utcToLocal(w.winbackFrom ?? w.eventsFrom),
     });

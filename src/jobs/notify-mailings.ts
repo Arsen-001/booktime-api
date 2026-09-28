@@ -11,7 +11,7 @@ import { NotifyMailingsService } from '../modules/notify/notify-mailings.service
  */
 export function notifyMailingsJob(prisma: PrismaService) {
   const messenger = new FakeBusinessMessenger();
-  const log = new NotifyLogService(prisma, null as never, null as never, null as never, messenger);
+  const log = new NotifyLogService(prisma, null as never, null as never, null as never, messenger, null as never);
   const mailings = new NotifyMailingsService(prisma, log, messenger);
   return () => mailings.processDue();
 }

@@ -9,7 +9,7 @@ import { localToUtc, utcToLocal } from '../../common/time/time.js';
 import { enqueueClientNotification, enqueueOutbox } from './outbox.js';
 import { SMS_PART_PRICE_AMD, smsParts } from './notify-log-derive.js';
 import type { LText } from './notify-log-derive.js';
-import { NotifyLogService } from './notify-log.service.js';
+import { NotifyLogService, resolveAppUsers } from './notify-log.service.js';
 import type { LogMessageOut } from './notify-log.service.js';
 
 const J = (v: unknown) => v as Prisma.InputJsonValue;
@@ -143,9 +143,12 @@ export class NotifyMailingsService {
   async audience(businessIds: string[], filter: AudienceFilter): Promise<Recipient[]> {
     const where: Prisma.ClientWhereInput = { businessId: { in: businessIds }, deletedAt: null, purgedAt: null };
     if (filter.excludeBlocked !== false) where.OR = [{ blocked: null }, { blocked: false }];
-    if (filter.onlyWithApp) where.appUserId = { not: null };
     if (filter.onlyBirthdayMonth) where.birthday = { contains: `-${String(new Date().getMonth() + 1).padStart(2, '0')}-` };
-    const clients = await this.prisma.client.findMany({ where, select: { id: true, businessId: true, name: true, phone: true, appUserId: true, adConsent: true }, orderBy: { createdAt: 'asc' } });
+    const all = await resolveAppUsers(
+      this.prisma,
+      await this.prisma.client.findMany({ where, select: { id: true, businessId: true, name: true, phone: true, appUserId: true, adConsent: true }, orderBy: { createdAt: 'asc' } }),
+    );
+    const clients = filter.onlyWithApp ? all.filter((c) => c.appUserId) : all;
     if (!clients.length) return [];
     const ids = clients.map((c) => c.id);
     // F-05-090/098: отказ от рекламных рассылок (настройка уведомлений клиента или согласие CRM F-04-227)
