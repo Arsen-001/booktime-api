@@ -5824,3 +5824,96 @@ chargeBookingAutoDebit`.
 
 лейн loyalty: закрыто 100 из 100 (98 `loyalty.ts` + 2 `resources.ts`), осталось: 0 функций; не выполнено
 только проверка экранов браузером (стенд, см. выше).
+
+## Этап 21, лейн «notify+integrations», попытка 5 — `src/api/notify.ts` + `src/api/integrations.ts` (28.09.2026, 04:xx)
+
+Продолжение попыток 1–2 (см. выше) — между попыткой 2 и этим заходом кто-то (параллельный проход этого же
+лейна, без своей записи в журнале) уже успел построить решение владельца от 28.09 «сервер строит каталог типов
+ПОД экран» целиком: `notify-rich-types.service.ts`/`notify-type-registry.ts` (29+2 типа), `notify-more.service.ts`
+(настройки/тихие часы/витрина подарков/Open Slots расписание/сводки партнёров/Altegio WhatsApp статус/флаги
+агента/время напоминания/вебхуки/письма) и — судя по свежим меткам времени файлов (04:0x, за минуты до этого
+захода) — параллельно ещё один процесс того же лейна в реальном времени достраивал богатую матрицу уведомлений
+сотрудника (`getStaffNotifyPrefs`/`anyStaffNotifyConfigured`/`updateStaffNotifyPrefs`/`setStaffNotifyMatrixCell`
+→ `staff/:staffId/notify-prefs-rich*`, своя модель `nsp:<staffId>` в `BusinessSetting`, не трогая внутренний
+`StaffNotifyPref`). Работал одновременно с ним на разных функциях того же файла — конфликтов по коду не было
+(разные функции), но `notify.server.ts`/`notify.ts` несколько раз оказывались «изменены с последнего чтения» —
+перечитывал перед каждой правкой, ничего не терял.
+
+**Моё в этом заходе:**
+
+1. **`listOpenSlots`/`listWhoToInvite` (F-05-124/125, «Open Slots»/«Кого позвать»)** — были 2 последние
+   read-only функции своего домена (не каталог типов, не партнёрская интеграция), считавшие свободные окна
+   и тёплых клиентов САМИ поверх `readCore()`, вместо настоящего движка свободных окон. Backend:
+   `NotifyMoreService.listOpenSlots(businessId, day)`/`listWhoToInvite(businessId)` (новый метод в уже
+   существующем файле) — использует настоящий `AvailabilityService.freeSlots` (этап 6) на каждого активного
+   сотрудника, а для «кого позвать» — `Booking.findMany({distinct:['clientId']})` по мастеру + `Client`
+   (не удалён, не заблокирован). `NotifyModule` теперь импортирует `ScheduleModule` (за `AvailabilityService`) —
+   не циклическая зависимость, `ScheduleModule` ничего из `notify` не импортирует. Контроллер: `GET
+   notify/open-slots?day=today|tomorrow`, `GET notify/who-to-invite`. Фронт: `notify.server.ts` — 2 новые
+   функции; `notify.ts` — `isApiMode()`-ветки на обеих (сигнатуры не менял).
+2. **Найдена и исправлена та же «ловушка попытки 2»** ещё в 3 местах, вскрытая tsc, как только рядом
+   появилась типизированная api-ветка: `updateType` (мой) и `updateStaffNotifyPrefs`/`setStaffNotifyMatrixCell`
+   (параллельного прохода) в мок-режиме возвращали результат `mutateArea()` (весь `NotifyState`), а не
+   осмысленное значение (`NotificationType`/`StaffNotifyPrefs`) — типы `Promise<X> | Promise<NotifyState>` не
+   собирались в 5 местах вызова (`TypeDetailScreen.tsx`, `TypesTab.tsx`, `StaffCard.tsx`). Поправил все три —
+   каждая теперь читает своё состояние после мутации и возвращает то же, что настоящий сервер.
+
+**Финальный аудит (`facade-audit.mjs`, конец захода):**
+
+| Файл | было (после сдачи, попытка 3 «итог») | сейчас |
+|---|---|---|
+| `notify.ts` | 74 | **25** |
+| `integrations.ts` | 57 | **57** |
+
+**`notify.ts` — все 25 оставшихся объяснены (перепроверил каждую по имени, не только по группе):**
+- **8 — журнал/рассылки/аудитория** (`listLog`/`listScheduledLog`/`listMailings`/`createMailing`/
+  `sendTestMailing`/`countAudience`/`countRecentAppPushes`/`sendOneOffMessage`): решение попытки 2 —
+  многоязычный журнал с `typeLabel`/`costAmd`/`smsParts` завязан на каталог типов, который сервер строит
+  ýже экрана (29+2, не 88); отдельная модель `notify_outbox`-с-метаданными — не эта правка.
+- **15 — партнёрские интеграции** (`listPartnerConnections`/`connectPartnerApp`/`disconnectPartnerApp`/
+  `reactivatePartnerApp`/`expirePartnerApp`/`getPaymentLink`/`sendPaymentLink`/`hasActiveChatPartner`/
+  `clearChatUnread`/`listChatMessages`/`sendChatMessage`/`simulateIncomingChatMessage`/
+  `simulatePartnerConfirmBooking`/`sendTestWhatsAppMessage`/`simulateAgentBooking`) — Р19 «чужие сервисы,
+  статус без настоящего обмена»: Meta WhatsApp Business API, партнёрский чат-бот, AI-ресепшн. Часть этих
+  функций (`simulate*`) — намеренно ДЕМО-действия без реального адресата в принципе (показывают, как работал
+  бы партнёрский канал) — строить для них «настоящий» сервер означало бы имитировать имитацию.
+- **2 — правила уведомлений лояльности** (`listLoyaltyNotifyRules`/`updateLoyaltyNotifyRule`) — заблокированы
+  лейном «loyalty» (см. его же попытки выше): каталог правил лояльности живёт в разделе loyalty, не notify.
+
+**`integrations.ts` — все 57 подтверждены четвёртый раз тем же выводом**, что независимо делали лейны
+resources/services+rest/предыдущие попытки этого лейна на своих файлах: каталог приложений/кабинет
+разработчика/демо-настройки конкретных интеграций — Р19, не пробел.
+
+**Вывод: у обоих файлов не осталось функций, которые можно довязать без решения владельца** (расширить
+серверные модели каталога типов/матрицы сотрудника/журнала до параметров экрана — отдельная стадия; строить
+настоящий обмен с WhatsApp Business/партнёрскими ботами/AI-агентом — противоречит Р19) **или без чужого лейна**
+(loyalty). Довязал всё, что было доступно этому лейну самостоятельно.
+
+**Проверено:**
+- Backend `npx tsc --noEmit -p tsconfig.json` — 0 ошибок в файлах этого лейна (`notify-more.service.ts`,
+  `notify.controller.ts`, `notify.module.ts`); остаются только чужие (`network-users.controller.ts` — лейн
+  network, не мой, не трогал).
+- Frontend `npx tsc --noEmit --incremental --tsBuildInfoFile .tsbuild/backend.tsbuildinfo` — 0 ошибок в
+  `notify.ts`/`notify.server.ts` и во всех вызывающих экранах (`TypeDetailScreen.tsx`/`TypesTab.tsx`/
+  `StaffCard.tsx`, поправлены попутно); отдельно всплывающая `.next/dev/types/validator.ts` (`/s/[code]`) —
+  сгенерированный Next.js файл, не мой, похоже на ещё не остывший роут другого лейна (шорт-ссылки).
+- `npx eslint src/api/notify.ts src/api/notify.server.ts` — 0.
+- `node scripts/fids.mjs` — notify 139/139 (100%, экраны не менял).
+- `node scripts/renders.mjs --check-compiler` — 0 опасных `x!.y`.
+- `npx prisma validate` — схема валидна (мои изменения не тронули schema.prisma — `listOpenSlots`/
+  `listWhoToInvite` читают уже существующие таблицы, миграция не нужна).
+- **Не проверено живым HTTP**: `/tmp/booktime-db.lock` был занят почти всё время захода (проверял в 04:07,
+  04:28 — держит кто-то другой; правило лейна требует лок только на migrate+restart, у меня schema не менялась,
+  поэтому рестарт сервера не обязателен для моих двух функций — оставляю curl следующему заходу, который и так
+  будет перезапускать сервер под чужие миграции).
+
+**Итог лейна notify+integrations (с начала этапа 21):** закрыто фактически всё достижимое —
+`notify.ts` 74 → 25 (49 закрыто: 5 «интеграции»-пересечение попытки 1 не считая, 14 попытки 2, ~1 каталог типов
++ матрица сотрудника + Open Slots/Кого позвать не моим и моим проходами) и `integrations.ts` 62 → 57 (5 закрыто
+попыткой 1); из оставшихся 25+57=82 функций ни одна не является пробелом — все объяснены записанным решением
+владельца (Р19, отдельная стадия каталога типов/журнала) либо ждут лейна loyalty. Дальнейшее продвижение
+счётчика требует новой стадии (переписать каталог типов/журнал под 88-типовую модель Altegio) или решения
+владельца сузить экран — то же, что фиксировала попытка 2.
+
+### Вопросы владельцу — нет новых (см. попытку 2 выше, решение принято параллельным проходом: сервер строит
+каталог 29+2 ПОД экран, не наоборот).

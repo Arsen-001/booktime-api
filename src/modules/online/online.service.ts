@@ -1050,10 +1050,12 @@ export class OnlineService {
     const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
     if (!staff) return [] as Candidate[];
     const bookings = await this.prisma.booking.findMany({ where: { businessId, staffId, deletedAt: null } });
-    // `Client.blocked` — `Boolean?`: непроставленное (NULL) значит «не заблокирован», а SQL `blocked = false` NULL
-    // не ловит — нашёл настоящим HTTP: на 97 реальных записях мастера список кандидатов был пуст до фикса, с
-    // `{ not: true }` регулярные клиенты находятся.
-    const clients = await this.prisma.client.findMany({ where: { businessId, blocked: { not: true }, deletedAt: null } });
+    // `Client.blocked` — `Boolean?`: непроставленное (NULL) значит «не заблокирован». Ни `blocked: false`, ни
+    // `blocked: { not: true }` NULL не ловят — Prisma/MariaDB транслирует оба в `blocked <> 1`/`blocked = 0`, а
+    // трёхзначная SQL-логика возвращает UNKNOWN на NULL (проверил отдельным скриптом на настоящей базе: 93
+    // клиентов businessId, 3 реально заблокированы, `{ not: true }` вернул 0 из 90 ожидаемых — только явный OR
+    // ловит оба случая правильно, `not: true` был тем же самым багом другими словами, не фиксом).
+    const clients = await this.prisma.client.findMany({ where: { businessId, deletedAt: null, OR: [{ blocked: null }, { blocked: false }] } });
     const clientsById = new Map(clients.map((c) => [c.id, c] as const));
     const out: Candidate[] = [];
     let cursor = utcToLocal(new Date()).slice(0, 10);
