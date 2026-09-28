@@ -1840,7 +1840,7 @@ model LoyaltyCard {
   clientId   String?  @map("client_id") @db.VarChar(32)
   /// Заведена клиентом через приложение (В-06: своя видимость) — как и без CRM-карточки
   appUserId  String?  @map("app_user_id") @db.VarChar(32)
-  number     String   @unique @db.VarChar(40)
+  number     String   @db.VarChar(40)
   balance    BigInt   @default(0)
   createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
   createdBy  String?  @map("created_by") @db.VarChar(32)
@@ -1852,6 +1852,7 @@ model LoyaltyCard {
   /// Полная форма сущности фронта (domain/loyalty.ts) — этап 21, лейн loyalty; колонки выше — её проекция
   data     Json?
 
+  @@unique([businessId, number])
   @@index([businessId, clientId])
   @@index([appUserId])
   @@index([cardTypeId])

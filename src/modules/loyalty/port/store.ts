@@ -585,7 +585,13 @@ export async function saveState(db: Db, snapshot: Snapshot, state: LoyaltyState,
       if (before.get(e.id) === j) continue;
       if (e.businessId && !scope.has(e.businessId)) throw new ApiError('forbidden', `loyalty: ${c} ${e.id} belongs to another business`);
       if (e.id.length > 32) throw new ApiError('validation', `loyalty: id too long ${e.id}`);
-      await w[c].upsert(e as never);
+      try {
+        await w[c].upsert(e as never);
+      } catch (err) {
+        // номер карты / код продажи уже занят в бизнесе (@@unique) — ошибка клиента, не 500
+        if ((err as { code?: string }).code === 'P2002') throw new ApiError('conflict', `loyalty: ${c} ${e.id} duplicates a unique number/code`);
+        throw err;
+      }
       written++;
     }
     const gone = [...before.keys()].filter((id) => !seen.has(id));

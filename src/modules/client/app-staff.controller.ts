@@ -7,7 +7,7 @@ import { Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { AppStaffService } from './app-staff.service.js';
-import { employeeAppAccessBody, payoutBody } from './client.schemas.js';
+import { employeeAppAccessBody, oneOffPushBody, payoutBody } from './client.schemas.js';
 
 /**
  * Раздел «Приложение» кабинета (F-14-116…129), стадия 21 (лейн client+online, попытка 2):
@@ -64,5 +64,13 @@ export class AppStaffController {
   @ZodBody(payoutBody)
   recordPayout(@Param('businessId') businessId: string, @Param('staffId') staffId: string, @Body(new Zod(payoutBody)) body: z.infer<typeof payoutBody>) {
     return this.svc.recordPayrollPayout(businessId, staffId, body.amount);
+  }
+
+  @Post('messages')
+  @Biz('journal.edit')
+  @ApiOperation({ summary: 'F-14-074: отправить сообщение клиенту из окна записи' })
+  @ZodBody(oneOffPushBody)
+  sendMessage(@Param('businessId') businessId: string, @Body(new Zod(oneOffPushBody)) body: z.infer<typeof oneOffPushBody>) {
+    return this.svc.sendOneOffPush(businessId, body);
   }
 }

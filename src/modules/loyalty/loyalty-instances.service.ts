@@ -43,7 +43,8 @@ export class LoyaltyInstancesService {
     if (!client) throw new ApiError('not_found', 'Client not found');
     const id = newId('loyaltyCard');
     const num = number?.trim() || genCode();
-    const dup = await this.prisma.loyaltyCard.findUnique({ where: { number: num } });
+    // номер карты уникален в бизнесе (этап 21, лейн loyalty: @@unique([businessId, number]))
+    const dup = await this.prisma.loyaltyCard.findFirst({ where: { businessId: client.businessId, number: num } });
     if (dup) throw new ApiError('duplicate_number', 'Card number already issued');
     await this.prisma.$transaction(async (tx) => {
       await tx.loyaltyCard.create({ data: { id, cardTypeId, businessId: client.businessId, clientId, number: num, createdBy: ctx.member!.staffId, updatedBy: ctx.member!.staffId } });

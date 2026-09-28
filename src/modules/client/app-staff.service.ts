@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { ApiError } from '../../common/errors/api-error.js';
+import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { staffView } from '../businesses/views.js';
 import { BookingsService } from '../journal/bookings.service.js';
@@ -178,5 +179,15 @@ export class AppStaffService {
       update: { paid: { increment: BigInt(Math.round(amount)) } },
     });
     return Number(row.paid);
+  }
+
+  /** F-14-074: «Отправить сообщение» из окна записи — свободный текст в ленту клиента (InboxItem, kind=broadcast) */
+  async sendOneOffPush(businessId: string, input: { appUserId: string; bookingId?: string; text: string }) {
+    const text = input.text.trim();
+    if (!text) throw new ApiError('validation', 'Text is required');
+    const row = await this.prisma.inboxItem.create({
+      data: { id: newId('inboxItem'), appUserId: input.appUserId, businessId, bookingId: input.bookingId, kind: 'broadcast', params: { text } as Prisma.InputJsonValue },
+    });
+    return { id: row.id, appUserId: row.appUserId, businessId: row.businessId, bookingId: row.bookingId ?? undefined, kind: row.kind, params: row.params as Record<string, unknown>, createdAt: row.createdAt.toISOString() };
   }
 }

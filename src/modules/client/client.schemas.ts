@@ -111,6 +111,9 @@ export const employeeAppAccessBody = z.object({
 
 export const payoutBody = z.object({ amount: z.number().min(1) });
 
+/** F-14-074: «Отправить сообщение» из окна записи */
+export const oneOffPushBody = z.object({ appUserId: id32, bookingId: id32.optional(), text: z.string().min(1).max(2000) });
+
 // ─────────────────────────── автоперевод (F-00-174) — этап 21, лейн client+online, попытка 2 ───────────────────────────
 
 export const translationOwner = z.enum(['staff', 'business', 'service']);
