@@ -6063,3 +6063,117 @@ null` не подходит туда, где ждут `string`; не файл э
 Итог захода: **`online.ts` — 35 из 35 (100%, совместно с параллельным инстансом того же лейна)**; `client.ts` —
 **8 из 8 закрыл сам** (В-29) + ~16 закрыто параллельно другими лейнами/инстансами за время этого же захода
 (видно в новых таблицах миграции); осталось в `client.ts` **55** — см. разбор выше и находку про `loyalty/port`.
+
+## Этап 21, лейн «client+online», попытка 3 — `src/api/client.ts` (28.09.2026)
+
+Начал с полного `node scripts/facade-audit.mjs`: `online.ts` уже 0 (попытка 2 параллельного инстанса закрыла
+всё) — не трогал. `client.ts` на старте моего захода — **72 из 80** (8 В-29 уже закрыты параллельным инстансом,
+пока я читал файлы). Закрыл ещё **15**, без пересечения по функциям с параллельным инстансом (проверял `Read`
+перед каждой правкой, как предписано).
+
+**Закрыто (15, backend + frontend, всё проверено настоящим HTTP на `biz_01M3GDK0ESMVK3GQHDN6CPHMSD`/`biz_kaytsak`,
+вход по коду `0000`, режим business):**
+
+1. **Мелкие настройки профиля приложения** — `getDefaultNetworkLocation`/`setDefaultNetworkLocation` (F-14-163),
+   `getNewsPushOptOut`/`setNewsPushOptOut` (F-14-136), `getClientProfile` (F-14-059, В-07 — свои неявки считает
+   сервер), `setTimeFormat`. Backend: 2 новых поля `AppProfile.newsPushOptOut`/`networkDefaultLocations` (Json,
+   аддитивно), 5 новых маршрутов `GET/PUT me/news-push-opt-out`, `GET/PUT me/network-default-location/:networkId`,
+   `GET me/client-profile` (`account.service.ts`/`account.controller.ts` — тот же модуль, что уже несёт
+   `patchAccount`). `setTimeFormat` — НЕ новый маршрут: тонкая обёртка над уже существующим `PATCH me/account`
+   (`timeFormat` был в `patchAccountBody` до меня, просто фасад его не звал).
+2. **Автоперевод (F-00-174)** — `getTranslationOverride`/`listTranslatable`/`setTranslationOverride`. Новая
+   модель `TranslationOverride` (owner+ownerId+field, уникальный индекс) — простая правка машинного перевода
+   мастера/бизнеса/услуги на en, как переводит бэкенд-докстринг мока. 3 маршрута
+   `GET/PUT .../translations[/override]` (`translations.service.ts`/`.controller.ts`, новые файлы модуля client).
+3. **«Приложение» кабинета — сотрудники/Z-отчёт/зарплата (F-14-116…129)** — `listAppStaff`/
+   `setEmployeeAppAccess`, `getDayZReport`, `getAppPayrollCalculation`/`getAppPayrollPayouts`/
+   `recordPayrollPayout`. Новые модели: `EmployeeAppAccess` (staffId→data JSON, дефолт как `DEFAULT_ACCESS`
+   мока) и `AppPayrollPayout` (демо-копилка выплат — **сознательно НЕ** через `PayrollSettlementEntry`
+   настоящего раздела «Зарплата»: та требует `locationId`+`accountId` кассы и создаёт реальный `FinOp`, а сам
+   мок называет эту форму «демо-копилкой, реальных денег нет» — заводить вторую параллельную денежную
+   операцию для демо-счётчика было бы неверным решением, не техническим упрощением). `getDayZReport` считает
+   реальные визиты «пришёл» дня + группирует уже существующие `BookingPayment` по `PaymentMethod.kind`
+   (cash/card), нефинансовые (`kind≠'money'`, то есть скидка/счёт/абонемент) — в бакет `loyalty`; без записанной
+   строки оплаты (сидовые визиты до раздела finance) — считается наличными, как и в моке. `getAppPayrollCalculation`
+   берёт «товары визита» из `BookingPayment.goods=true` (поле лейна finance+stock) — не тянет отдельную
+   инфраструктуру склада. Новый файл `app-staff.service.ts`/`.controller.ts`, 8 маршрутов под
+   `/v1/biz/{b}/app-staff/...`.
+4. **`sendOneOffPush`** (F-14-074, «Отправить сообщение» из окна записи) — тонкая обёртка: создаёт `InboxItem`
+   (kind='broadcast') тем же приёмом, что уже пишут `bookings.service.ts`/`notify/outbox.ts`. Маршрут
+   `POST .../app-staff/messages` (та же группа контроллера — не было отдельного подходящего места, записано
+   явно, а не молча).
+5. **Побочный найденный и исправленный баг** (не аудит-дыра, реальная production-логика): предыдущий заход
+   («попытка 1») оставил в частично написанном виде `online.service.ts::isSubdomainAvailable` (Prisma.JsonNull
+   внутри `path`-фильтра не работает на MySQL) — фикс УЖЕ лежал в исходниках, но не был собран/задеплоен
+   (`dist/` не пересобирался с момента фикса). Моя пересборка+рестарт сервера (нужны были в любом случае для
+   моих собственных маршрутов) подхватила и этот чужой фикс — проверил отдельно `GET
+   .../online/subdomain-available` настоящим HTTP, работает.
+
+**Backend:** `prisma/schema.prisma` — блок `// === stage 21 (лейн client+online), попытка 2 ===` (2 новых поля
+`AppProfile` + 3 новые модели `TranslationOverride`/`EmployeeAppAccess`/`AppPayrollPayout`); миграция
+`20260928003620_stage21_loyalty_card_number` (имя чужое — CLI подхватил мой накопленный дрейф вместе с чужим
+переносом уникального индекса `LoyaltyCard.number`, применил под держащимся локом одной командой,
+`prisma migrate status` подтвердил «up to date» без второй миграции). Новые файлы: `src/modules/client/
+app-staff.service.ts`, `app-staff.controller.ts`, `translations.service.ts`, `translations.controller.ts`;
+правки: `account.service.ts`/`account.controller.ts`/`account.schemas.ts`, `client.schemas.ts`,
+`client.module.ts`.
+
+**Frontend:** `src/api/client.server.ts` — 13 новых `*Server()` функций; `src/api/client.ts` — `isApiMode()`-
+ветки в 15 перечисленных функциях (мок-ветки не трогал).
+
+**Проверено настоящим HTTP (полный список, дев `:4010`, лок держал только на `migrate dev`+пересборку+рестарт,
+~5 минут, отпустил сразу):**
+- Вход `+37400150099` (`biz_01M3GDK0ESMVK3GQHDN6CPHMSD`, режим business через `PUT /v1/auth/mode`) —
+  `listAppStaff`/`setEmployeeAppAccess` (patch применился, вернулся, виден в повторном списке).
+- `record-payout` → строка в `app_payroll_payouts` (проверил SQL) → `payroll-payouts` вернул `paid` с клэмпом до
+  `earned` (earned=0 у этого бизнеса за период — клэмп сработал верно, не баг).
+- Вход `+37400120001` (`biz_kaytsak`, у которого есть реальные визиты «пришёл» 2026-09-27) — `z-report` вернул 2
+  настоящие записи, `total: 13000`, `byMethod: {cash: 13000}` (верно — оплат в `BookingPayment` для этих
+  визитов нет, посчитано наличными по правилу «без записи — касса»); `payroll-calculation` для `st_kaytsak_david`
+  — `daysWorked: 20`, `servicesValue: 458000` по 68 визитам с 2026-09-01, сошлось с ручным пересчётом по выборке.
+- `client-profile`/`news-push-opt-out`(GET/PUT/GET)/`network-default-location`(GET/PUT/GET) — все round-trip
+  верные, включая персист в `AppProfile`.
+- `translations` (GET list — пусто у `biz_kaytsak`, потому что там УЖЕ есть `en` у всех текстов — верно
+  фильтрует) / `override` (GET/PUT/GET/PUT-пусто-снимает/GET) — весь CRUD.
+- `sendOneOffPush` → `POST app-staff/messages` → вошёл в БД (`InboxItem`) → вошёл в клиентскую ленту, ПРОВЕРЕНО
+  чтением `GET /v1/me/inbox` под сессией самого клиента (`+37400100101`, тот же `appUserId`) — реальный сквозной
+  цикл «бизнес написал → клиент увидел», не только запись в таблицу.
+- Тестовые данные (payout 5000, `onlyOwnBookings:true`, opt-out, override, `InboxItem`) убраны за собой SQL
+  после проверки — база в исходном состоянии.
+- Backend `tsc --noEmit -p tsconfig.json` (весь проект) — 0 ошибок в МОИХ файлах; видны только чужие
+  (`network/network-users.controller.ts`/`network-catalog.controller.ts`, лейн network+reports — не трогал,
+  не блокировали сборку/рестарт). Frontend `tsc --noEmit --incremental` — 0 ошибок во всём проекте.
+  `eslint src/api/client.ts src/api/client.server.ts` — 0 (тот же старый warning `Location`, не мой).
+  `node scripts/fids.mjs` — 2892/2896 (без потерь, без изменений). `node scripts/renders.mjs --check-compiler`
+  — 0.
+
+**Осталось (`client.ts`, `facade-audit.mjs` после захода — 57 из 57 живых; расхождение с 55 попытки 2 — там
+считали ДО того, как я закрыл ветку В-29 из другого инстанса, аудит на сыром diff колеблется, актуальное число
+здесь):**
+- **Мемберства/сертификаты/кэшбэк (~26)** — см. подробный список у попытки 2 выше. Смотрел архитектуру: у
+  loyalty ЕСТЬ готовый расчётный слой (`src/modules/loyalty/port/*`, `LoyaltyPortController`/`LoyaltyPortRunner`
+  — исполняет ПОРТИРОВАННУЮ копию логики фасада поверх реальных таблиц; сейчас в `ME_OPS` только
+  `listMyLoyalty`/`getOnlineSalePayment`). Технически это, вероятно, самый быстрый путь для этого кластера —
+  добавить нужные функции `client.ts` в `port/logic.ts` и зарегистрировать в `ME_OPS`/`BIZ_OPS` — но сам
+  порт (`logic.ts` 3452 строки, `store.ts` 625 строк — свой шим `readArea`/`mutateArea`/`readCore` поверх
+  Prisma) требует отдельного вдумчивого изучения, прежде чем безопасно расширять денежно-чувствительную
+  область (покупка абонементов/сертификатов) — не стал делать это наспех в оставшееся время захода. Это
+  архитектурное решение (расширять существующий порт vs строить свой Prisma-слой, как я сделал для
+  app-staff/translations) — на усмотрение следующего захода, не блокер, но правильный первый шаг.
+- **Сторис/новости/буст/coin (~15)** — не смотрел, самостоятельный домен (покупка бизнесом рекламных мест/монет).
+- **Визит-микрокасса (~10)** — прежний вывод в силе: архитектурный выбор «своя касса приложения vs
+  переиспользовать `finance`» не мой, чтобы решать в одиночку за один заход (хотя после захода finance+stock
+  `BookingPayment` теперь несёт все нужные поля — `goods`/`refundedAmount`/`kind` — совместимость технически
+  ближе, чем на попытке 1).
+
+### Вопросы владельцу (этап 21, лейн client+online, попытка 3)
+Ничего денежного/юридического не решал сам. Один архитектурный развилок стоит явно (не блокирует, но экономит
+время следующему заходу): кластер «мемберства/сертификаты» можно закрыть двумя разными путями — (а) расширить
+`loyalty/port` (переиспользует готовый расчётный слой, но требует изучить нетривиальный шим) или (б) написать
+отдельный Prisma-слой поверх `MembershipSale`/`Certificate`/`LoyaltyCard`, как я сделал для `app-staff`/
+`translations` в этом заходе (быстрее для одной функции, но не переиспользует уже отлаженную бизнес-логику
+акций/заморозки/кэшбэка). Рекомендация (не решение) — (а), раз инфраструктура уже оплачена лейном loyalty.
+
+лейн client+online (попытка 3): закрыто 15 из 15 взятых в работу (online.ts не трогал — уже 0 от параллельного
+инстанса); осталось в client.ts 57 — мемберства/сертификаты (~26, путь описан выше), сторис/новости/буст (~15,
+не начинал), визит-микрокасса (~10, архитектурный выбор не мой).

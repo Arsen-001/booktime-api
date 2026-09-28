@@ -24,6 +24,15 @@ export interface ScheduleHoursSource {
   hours(businessId: string, staffId: string, from: string, to: string, locationId?: string): ReturnType<ScheduleService['hours']>;
 }
 
+/** Тот же приём для `BookingsService`/`ReportsExportService` (этап 21 «network+reports», попытка 2) —
+ *  воркер выгрузки зовёт только `activity`/`overview`/…, никогда `importAppointments`, заглушка бросает, если ошиблись. */
+export interface BookingsRawSource {
+  createRaw: BookingsService['createRaw'];
+}
+export interface ManualExportSink {
+  logManual: ReportsExportService['logManual'];
+}
+
 /**
  * Отчёты, читающие журнал записей напрямую (docs/backend/02 §16): «Визиты» (`visits`), «Записи» (`records`),
  * «События» (`events`), «Возвращаемость» (`retention`), «Загруженность» (`load`). Общее с dashboard вынесено
@@ -35,8 +44,8 @@ export class ReportsJournalService {
     private readonly prisma: PrismaService,
     @Inject(ScheduleService) private readonly schedule: ScheduleHoursSource,
     private readonly settings: ReportsSettingsService,
-    private readonly bookings: BookingsService,
-    private readonly exports: ReportsExportService,
+    @Inject(BookingsService) private readonly bookings: BookingsRawSource,
+    @Inject(ReportsExportService) private readonly exports: ManualExportSink,
   ) {}
 
   private async staffNames(businessId: string, ids: string[]): Promise<Map<string, { name: string; specialty?: string; deletedAt: Date | null }>> {

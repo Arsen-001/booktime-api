@@ -237,7 +237,7 @@ export class ReportsController {
   @ApiOperation({ summary: 'Загрузка визитов «как есть» из CSV (F-12-037) — поверх BookingsService.createRaw журнала' })
   @ZodBody(importAppointmentsBody)
   importAppointments(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(importAppointmentsBody)) body: z.infer<typeof importAppointmentsBody>) {
-    return this.journal.importAppointments(ctx, businessId, body.locationId, body.rows);
+    return this.journal.importAppointments(ctx, businessId, body.locationId, body.rows as unknown as Parameters<ReportsJournalService['importAppointments']>[3]);
   }
 
   // ─────────────────────────── docs/backend/02 §16: `GET …/reports/{name}` ───────────────────────────

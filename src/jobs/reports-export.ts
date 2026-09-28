@@ -2,7 +2,7 @@ import type { PrismaService } from '../common/prisma.service.js';
 import { createFileStorage } from '../adapters/storage/storage.js';
 import { ReportsAuditService } from '../modules/reports/reports-audit.service.js';
 import { ReportsDashboardService } from '../modules/reports/reports-dashboard.service.js';
-import { ReportsJournalService, type ScheduleHoursSource } from '../modules/reports/reports-journal.service.js';
+import { ReportsJournalService, type BookingsRawSource, type ManualExportSink, type ScheduleHoursSource } from '../modules/reports/reports-journal.service.js';
 import { ReportsMarketingService } from '../modules/reports/reports-marketing.service.js';
 import { REPORT_REGISTRY, type ReportServices } from '../modules/reports/reports-registry.js';
 import { ReportsSalesService } from '../modules/reports/reports-sales.service.js';
@@ -18,6 +18,18 @@ import { ReportsSettingsService } from '../modules/reports/reports-settings.serv
 const NO_SCHEDULE: ScheduleHoursSource = {
   hours() {
     throw new Error('schedule unavailable in export worker');
+  },
+};
+/** Тот же приём (этап 21 «network+reports», попытка 2): выгрузка никогда не зовёт `importAppointments`
+ *  (`import-appointments` — не запись в `REPORT_REGISTRY`, воркер её не пересчитывает), заглушки не достижимы. */
+const NO_IMPORT: BookingsRawSource = {
+  createRaw() {
+    throw new Error('booking import unavailable in export worker');
+  },
+};
+const NO_EXPORT_LOG: ManualExportSink = {
+  logManual() {
+    throw new Error('manual export log unavailable in export worker');
   },
 };
 
@@ -40,7 +52,7 @@ export async function reportsExportDispatch(prisma: PrismaService): Promise<{ do
 
   const services: ReportServices = {
     dashboard: new ReportsDashboardService(prisma),
-    journal: new ReportsJournalService(prisma, NO_SCHEDULE, new ReportsSettingsService(prisma)),
+    journal: new ReportsJournalService(prisma, NO_SCHEDULE, new ReportsSettingsService(prisma), NO_IMPORT, NO_EXPORT_LOG),
     sales: new ReportsSalesService(prisma),
     marketing: new ReportsMarketingService(prisma),
     audit: new ReportsAuditService(prisma),
