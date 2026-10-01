@@ -20,7 +20,8 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "commit": "node scripts/commit.mjs",
-    "check:permissions": "node scripts/check-permissions.mjs"
+    "check:permissions": "node scripts/check-permissions.mjs",
+    "build:prod": "prisma generate && tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "@nestjs/common": "^12.1.0",
