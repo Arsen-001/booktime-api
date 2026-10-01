@@ -9,8 +9,8 @@ const J = (v: unknown) => (v === undefined || v === null ? Prisma.DbNull : (v as
 
 export interface OutboxInput {
   businessId?: string | null;
-  /** client | business — чьи токены (PushToken.app) слать */
-  app: 'client' | 'business';
+  /** client | business — чьи токены (PushToken.app) слать; telegram — чат бота напоминаний (recipientUserId = chat id) */
+  app: 'client' | 'business' | 'telegram';
   kind: string;
   recipientUserId: string;
   title: string;

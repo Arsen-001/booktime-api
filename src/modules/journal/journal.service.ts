@@ -16,16 +16,6 @@ import { extrasOf, linesDuration, occupiesTime, type BookingStatus, type Service
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const addMin = (d: Date, m: number) => new Date(d.getTime() + m * 60_000);
 
-export interface WaitlistInput {
-  locationId?: string;
-  clientName: string;
-  clientPhone: string;
-  serviceIds: string[];
-  staffIds: string[];
-  slots: { date?: string; anyTime: boolean; intervals: { from: string; to: string }[] }[];
-  comment?: string;
-}
-
 /**
  * Журнал вокруг записей (02 §4, §9): настройки раздела, история, проверки занятости, склейка визитов, пакеты,
  * лист ожидания, медкарта, импорт/выгрузка, «Закрыть окно» (F-00-107). Жизнь самой записи — BookingsService.
@@ -104,7 +94,7 @@ export class JournalService {
    * Занято ли время человека (во ВСЕХ его бизнесах, F-00-045) и экземпляров ресурсов; внутри ли рабочих часов.
    * Та же таблица busy_blocks, что проверяет «замок на мастера» при записи, — экран и запись не разойдутся.
    */
-  async check(businessId: string, input: { staffId?: string; start: string; durationMin: number; excludeBookingId?: string; resourceId?: string; instanceId?: string; locationId?: string }) {
+  async check(businessId: string, input: { staffId?: string; start: string; durationMin: number; excludeBookingId?: string; resourceId?: string; instanceId?: string; locationId?: string; clientId?: string }) {
     const tz = await this.bookings.tzOfBusiness(this.prisma, businessId);
     const startAt = localToUtc(input.start, tz);
     const endAt = addMin(startAt, input.durationMin);
@@ -168,7 +158,28 @@ export class JournalService {
       });
       occupiedInstanceIds = [...new Set(rows.map((r) => r.instanceId ?? r.resourceId))];
     }
-    return { overlap, withinHours, resourceFree, occupiedInstanceIds };
+    // Другая запись этого же клиента в это время (как мок findClientOverlap): отменённые и «Не пришёл» не мешают
+    let clientOverlap: { start: string; staffId: string; serviceId?: string } | undefined;
+    if (input.clientId) {
+      const hit = await this.prisma.booking.findFirst({
+        where: {
+          businessId,
+          clientId: input.clientId,
+          deletedAt: null,
+          status: { notIn: ['cancelled_by_client', 'cancelled_by_master', 'no_show'] },
+          startAt: { lt: endAt },
+          endAt: { gt: startAt },
+          ...(input.excludeBookingId ? { NOT: { id: input.excludeBookingId } } : {}),
+        },
+        orderBy: { startAt: 'asc' },
+        select: { startAt: true, staffId: true, services: true },
+      });
+      if (hit) {
+        const first = (hit.services as { serviceId?: string }[] | null)?.[0]?.serviceId;
+        clientOverlap = { start: utcToLocal(hit.startAt, tz), staffId: hit.staffId, ...(first ? { serviceId: first } : {}) };
+      }
+    }
+    return { overlap, withinHours, resourceFree, occupiedInstanceIds, ...(clientOverlap ? { clientOverlap } : {}) };
   }
 
   // ─────────── визит (F-01-041) ───────────
@@ -482,108 +493,6 @@ export class JournalService {
     for (const r of rows) await this.bookings.remove(staffActor(ctx), businessIds, r.id, { byName });
     await this.prisma.bookingSeries.updateMany({ where: { id: seriesId }, data: { active: false } });
     return { deleted: rows.length };
-  }
-
-  // ─────────── лист ожидания (F-01-156…162; одна таблица с приложением, 01 §7.1) ───────────
-
-  private waitlistView(e: { id: string; businessId: string; locationId: string | null; clientName: string; clientPhone: string; serviceIds: unknown; staffIds: unknown; slots: unknown; comment: string; bookingId: string | null; createdAt: Date; notifiedAt: Date | null }) {
-    return {
-      id: e.id,
-      businessId: e.businessId,
-      locationId: e.locationId ?? '',
-      clientName: e.clientName,
-      clientPhone: e.clientPhone,
-      serviceIds: arr(e.serviceIds),
-      staffIds: arr(e.staffIds),
-      slots: arr<{ date?: string; anyTime: boolean; intervals: { from: string; to: string }[] }>(e.slots),
-      comment: e.comment,
-      ...(e.bookingId ? { bookingId: e.bookingId } : {}),
-      ...(e.notifiedAt ? { notifiedAt: utcToLocal(e.notifiedAt) } : {}),
-      createdAt: utcToLocal(e.createdAt),
-    };
-  }
-
-  async listWaitlist(businessId: string, f: { status?: string; dateMode?: string; selectedDate?: string; sort?: string; query?: string }) {
-    const today = nowLocal().slice(0, 10);
-    let rows = (await this.prisma.waitlistEntry.findMany({ where: { businessId }, orderBy: { createdAt: 'desc' } })).map((e) => {
-      const v = this.waitlistView(e);
-      const status = v.bookingId ? 'closed' : v.slots.some((s) => !s.date || s.date >= today) ? 'active' : 'expired';
-      return { ...v, status };
-    });
-    const status = f.status ?? 'active';
-    if (status !== 'all') rows = rows.filter((r) => r.status === status);
-    const dateMode = f.dateMode ?? 'selected';
-    if (dateMode !== 'all') {
-      const target = dateMode === 'today' ? today : f.selectedDate;
-      if (target) rows = rows.filter((r) => r.slots.some((s) => !s.date || s.date === target));
-    }
-    const q = (f.query ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-    if (q.length >= 2) {
-      const digits = q.replace(/\D/g, '');
-      rows = rows.filter((r) => r.clientName.toLowerCase().includes(q) || (digits && r.clientPhone.replace(/\D/g, '').includes(digits)));
-    }
-    const earliest = (r: (typeof rows)[number]) => r.slots.map((s) => s.date).filter((d): d is string => Boolean(d)).sort()[0];
-    const sort = f.sort ?? 'soonest';
-    rows.sort((a, b) => {
-      if (sort === 'newest') return b.createdAt.localeCompare(a.createdAt);
-      if (sort === 'oldest') return a.createdAt.localeCompare(b.createdAt);
-      const da = earliest(a);
-      const db = earliest(b);
-      if (da && db) return da.localeCompare(db);
-      if (da) return -1;
-      if (db) return 1;
-      return b.createdAt.localeCompare(a.createdAt);
-    });
-    return rows;
-  }
-
-  async createWaitlist(ctx: RequestContext, businessId: string, input: WaitlistInput) {
-    const phone = normalizePhone(input.clientPhone) ?? input.clientPhone;
-    const client = await this.prisma.client.findFirst({ where: { businessId, phone, deletedAt: null }, select: { id: true } });
-    const e = await this.prisma.waitlistEntry.create({
-      data: {
-        id: newId('waitlistEntry'),
-        businessId,
-        locationId: input.locationId ?? null,
-        clientName: input.clientName.trim(),
-        clientPhone: phone,
-        clientId: client?.id ?? null,
-        serviceIds: input.serviceIds,
-        staffIds: input.staffIds,
-        slots: input.slots as Prisma.InputJsonValue,
-        comment: input.comment ?? '',
-        createdBy: ctx.member!.staffId,
-      },
-    });
-    return this.waitlistView(e);
-  }
-
-  async updateWaitlist(businessId: string, id: string, patch: Partial<WaitlistInput>) {
-    const cur = await this.prisma.waitlistEntry.findFirst({ where: { id, businessId } });
-    if (!cur) throw new ApiError('not_found', 'Waitlist entry not found');
-    const e = await this.prisma.waitlistEntry.update({
-      where: { id },
-      data: {
-        ...(patch.locationId !== undefined ? { locationId: patch.locationId } : {}),
-        ...(patch.clientName !== undefined ? { clientName: patch.clientName.trim() } : {}),
-        ...(patch.clientPhone !== undefined ? { clientPhone: normalizePhone(patch.clientPhone) ?? patch.clientPhone } : {}),
-        ...(patch.serviceIds !== undefined ? { serviceIds: patch.serviceIds } : {}),
-        ...(patch.staffIds !== undefined ? { staffIds: patch.staffIds } : {}),
-        ...(patch.slots !== undefined ? { slots: patch.slots as Prisma.InputJsonValue } : {}),
-        ...(patch.comment !== undefined ? { comment: patch.comment } : {}),
-        version: { increment: 1 },
-      },
-    });
-    return this.waitlistView(e);
-  }
-
-  async closeWaitlist(businessId: string, id: string, bookingId: string) {
-    const res = await this.prisma.waitlistEntry.updateMany({ where: { id, businessId }, data: { bookingId } });
-    if (!res.count) throw new ApiError('not_found', 'Waitlist entry not found');
-  }
-
-  async deleteWaitlist(businessId: string, id: string) {
-    await this.prisma.waitlistEntry.deleteMany({ where: { id, businessId } });
   }
 
   // ─────────── медицинские сферы (F-01-189…191) ───────────

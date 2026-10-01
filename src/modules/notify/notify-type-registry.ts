@@ -66,6 +66,7 @@ export interface TypeDef {
 }
 
 const CLIENT_DEFAULT: Partial<Record<NotifyChannel, NotifyScenario>> = { push: 'always' };
+const CLIENT_REMINDER_DEFAULT: Partial<Record<NotifyChannel, NotifyScenario>> = { push: 'always', telegram: 'always' };
 const ADMIN_DEFAULT: Partial<Record<NotifyChannel, NotifyScenario>> = { adminApp: 'always', email: 'always' };
 
 export const TYPE_REGISTRY: TypeDef[] = [
@@ -167,8 +168,10 @@ export const TYPE_REGISTRY: TypeDef[] = [
     descriptionEn: 'A heads-up before the visit so the client does not forget.',
     descriptionHy: 'Նախապես հիշեցնում ենք գրանցման մասին, որ հաճախորդը չմոռանա։',
     enabledDefault: true,
-    availableChannels: ['push', 'email', 'sms', 'brandedApp'],
-    defaultScenario: CLIENT_DEFAULT,
+    // ⭐ 01.10.2026: Telegram-бот — клиенту без приложения, за 24 ч и за 2 ч (telegram-reminders.ts читает этот тип:
+    // выключен тип или сценарий Telegram «Не отправлять» — в Telegram ничего не уходит). Как TYPE_REGISTRY фронта.
+    availableChannels: ['push', 'telegram', 'email', 'sms', 'brandedApp'],
+    defaultScenario: CLIENT_REMINDER_DEFAULT,
     templateRu: '{companyName}: напоминаем о визите {date} в {time} — {service}, мастер: {staff}. Адрес: {address}. Если не получается прийти: {link}',
     templateEn: '{companyName}: a reminder of your visit {date} at {time} — {service}, specialist: {staff}. Address: {address}. If you can’t make it: {link}',
     templateHy: '{companyName}․ հիշեցնում ենք այցի մասին՝ {date}, ժամը {time}՝ {service}, վարպետ՝ {staff}։ Հասցե՝ {address}։ Եթե չեք կարող գալ՝ {link}',

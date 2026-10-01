@@ -379,6 +379,11 @@ export interface LoyaltyTransaction {
   birthdayYear?: string;
   /** Л1: строка этой оплаты во вкладке «Оплата» (finance bookingPayments) — снимается вместе с транзакцией */
   financeLineId?: Id;
+  /** F-06-097/124: чей был сертификат/абонемент и в каком статусе до оплаты — отмена оплаты возвращает как было */
+  prevOwnerId?: Id;
+  prevStatus?: string;
+  /** F-06-144: операция пополнения счёта — отмена пополнения снимает и эту транзакцию */
+  accountOperationId?: Id;
 }
 
 // ─────────────────────────── Автоприменение и рефералка ───────────────────────────
@@ -714,6 +719,8 @@ export interface LoyaltyPaymentLineInput {
   /** 'referral' — держатель бонуса, который получает начисление за приглашение */
   referrerClientId?: Id;
   referrerCardId?: Id;
+  /** 'referral' без карты у пригласившего: какой тип карты выдать ему при начислении (getReferralEligibility) */
+  referrerCardTypeId?: Id;
   referrerBonusAmount?: number;
 }
 

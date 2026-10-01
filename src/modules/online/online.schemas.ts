@@ -69,6 +69,12 @@ export const createOnlineBookingBody = z.object({
   lastName: z.string().max(120).optional(),
   patronymic: z.string().max(120).optional(),
   customFieldValues: z.record(z.string(), z.string()).optional(),
+  /** ⭐ «Оплатить всё сразу» вместо процента предоплаты мастера */
+  payInFull: z.boolean().optional(),
+  /** ⭐ Допродажа при записи: сопутствующие услуги и товары из карточки услуги (проверяет сервер) */
+  addOns: z.object({ serviceIds: z.array(id32).max(12).optional(), productIds: z.array(id32).max(12).optional() }).optional(),
+  /** «Пригласи подругу»: код из личной ссылки салона (привязку проверяет place()) */
+  referralCode: z.string().max(16).optional(),
 });
 
 export const onlineBookingResultOut = z.object({ booking: z.record(z.string(), z.unknown()), client: z.record(z.string(), z.unknown()), accessHash: z.string() });
@@ -83,9 +89,20 @@ export const onlineBookingViewOut = z.object({
   services: z.array(serviceOut),
   meta: z.record(z.string(), z.unknown()).optional(),
   hourCycle: z.enum(['24', '12']),
+  /** ⭐ Допродажа: товары визита к оплате на месте */
+  goods: z.array(z.object({ name: z.record(z.string(), z.string()), price: z.number(), qty: z.number() })).optional(),
 });
 
-export const cancelWindowOut = z.object({ canCancelFree: z.boolean(), canReschedule: z.boolean(), cancelWindowHours: z.number(), rescheduleWindowHours: z.number() });
+export const cancelWindowOut = z.object({
+  canCancelFree: z.boolean(),
+  canReschedule: z.boolean(),
+  cancelWindowHours: z.number(),
+  rescheduleWindowHours: z.number(),
+  prepaidAmount: z.number(),
+  keepPrepaymentOnLateCancel: z.boolean(),
+  allowCancelPrepaid: z.boolean(),
+  canCancel: z.boolean(),
+});
 
 // ─────────────────────────── ссылки (F-03-003…037) ───────────────────────────
 
@@ -311,6 +328,8 @@ export const updatePromoBlockBody = createPromoBlockBody.partial().extend({ enab
 
 export const reviewOut = z.object({ id: z.string(), businessId: z.string(), createdAt: z.string(), target: z.enum(['business', 'staff']), targetId: z.string(), bookingId: z.string(), clientId: z.string() });
 export const addReviewBody = z.object({ target: z.enum(['business', 'staff']), targetId: id32, clientId: id32 });
+/** ⭐ О28: окно из предложенных (onlineMeta.offeredStarts) — местное время YYYY-MM-DDTHH:mm */
+export const alternativeTimeBody = z.object({ start: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/) });
 
 export const trackWidgetEventBody = z.object({ linkId: id32.optional(), businessId: id32, type: z.string().min(1).max(60) });
 export const widgetEventOut = z.object({ id: z.string(), linkId: z.string(), businessId: z.string(), type: z.string(), at: z.string() });

@@ -41,6 +41,8 @@ export class LoyaltyInstancesService {
     if (type.archived) throw new ApiError('not_active', 'Card type is archived');
     const client = await this.prisma.client.findFirst({ where: { id: clientId, businessId: { in: await networkBusinessIds(this.prisma, ctx) }, deletedAt: null } });
     if (!client) throw new ApiError('not_found', 'Client not found');
+    // Решение 30.09 (qa/full-test-0930 loyalty.md, как issueCard мока): у клиента одна карта каждого типа
+    if (await this.prisma.loyaltyCard.findFirst({ where: { businessId: client.businessId, clientId, cardTypeId }, select: { id: true } })) throw new ApiError('card_type_already_issued', 'Client already has a card of this type');
     const id = newId('loyaltyCard');
     const num = number?.trim() || genCode();
     // номер карты уникален в бизнесе (этап 21, лейн loyalty: @@unique([businessId, number]))

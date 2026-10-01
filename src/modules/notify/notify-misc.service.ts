@@ -13,8 +13,10 @@ const AREA_CHANNEL_FLAGS = 'notify-channel-flags';
 export interface WebPopupSettingsOut {
   bookingOps: boolean;
   incomingCalls: boolean;
+  /** ⭐ «Закрытие дня» владельцу в колокольчик (01.10.2026) — нет поля, значит включено */
+  dayClose?: boolean;
 }
-const DEFAULT_WEB_POPUP: WebPopupSettingsOut = { bookingOps: true, incomingCalls: false };
+const DEFAULT_WEB_POPUP: WebPopupSettingsOut = { bookingOps: true, incomingCalls: false, dayClose: true };
 
 export interface EmailChannelSettingsOut {
   replyEmail: string;

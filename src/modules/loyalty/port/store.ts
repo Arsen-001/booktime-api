@@ -98,6 +98,12 @@ export async function loadState(db: Db, businessIds: Id[]): Promise<{ state: Loy
     db.loyaltyOnlineOrder.findMany({ where, orderBy: { createdAt: 'asc' } }),
     db.businessSetting.findMany({ where: { businessId: { in: businessIds }, area: SETTINGS_AREA } }),
   ]);
+  // Филиал по умолчанию бизнеса — для строк без формы фронта (сид, маршруты этапа 11, приложение): раньше туда
+  // подставлялся id БИЗНЕСА как id филиала, и продажа/пополнение по такому счёту не находили филиал (backend-2, заход 3)
+  const locRows = await db.location.findMany({ where: { businessId: { in: businessIds }, deletedAt: null }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], select: { id: true, businessId: true } });
+  const homeLoc = new Map<Id, Id>();
+  for (const l of locRows) if (!homeLoc.has(l.businessId)) homeLoc.set(l.businessId, l.id);
+  const locOf = (businessId: Id): Id => homeLoc.get(businessId) ?? businessId;
   const accountIds = accounts.map((a) => a.id);
   const ops = accountIds.length ? await db.clientAccountOp.findMany({ where: { accountId: { in: accountIds } }, orderBy: { createdAt: 'asc' } }) : [];
   const accountBiz = new Map(accounts.map((a) => [a.id, a.businessId]));
@@ -152,7 +158,7 @@ export async function loadState(db: Db, businessIds: Id[]): Promise<{ state: Loy
     state.promotions.push({ ...base, name: r.name });
   }
   for (const r of txs) {
-    const d = dataOf<LoyaltyTransaction>(r.data) ?? synthTx(r);
+    const d = dataOf<LoyaltyTransaction>(r.data) ?? synthTx(r, locOf(r.businessId));
     if (d) state.transactions.push(d);
   }
   for (const r of certTypes) {
@@ -189,7 +195,7 @@ export async function loadState(db: Db, businessIds: Id[]): Promise<{ state: Loy
       balance: 0,
       status: status!,
       ...(r.clientId ? { clientId: r.clientId } : {}),
-      locationId: r.businessId,
+      locationId: locOf(r.businessId),
       soldAt: local(r.soldAt),
       ...(r.expiresAt < FAR_FUTURE ? { expiresAt: localDate(r.expiresAt) } : {}),
     };
@@ -235,7 +241,7 @@ export async function loadState(db: Db, businessIds: Id[]): Promise<{ state: Loy
       balanceVisits: r.remainingVisits ?? 0,
       totalVisits: r.totalVisits ?? 0,
       price: memTypePrice.get(r.typeId) ?? 0,
-      locationId: r.businessId,
+      locationId: locOf(r.businessId),
       soldAt: local(r.soldAt),
       expiresAt: localDate(r.expiresAt),
       frozenDays: 0,
@@ -256,7 +262,7 @@ export async function loadState(db: Db, businessIds: Id[]): Promise<{ state: Loy
   }
   for (const r of accounts) {
     const d = dataOf<ClientAccount>(r.data);
-    const base: ClientAccount = d ?? { id: r.id, businessId: r.businessId, accountTypeId: r.typeId, clientId: r.clientId, locationId: r.businessId, balance: 0, createdAt: local(r.createdAt) };
+    const base: ClientAccount = d ?? { id: r.id, businessId: r.businessId, accountTypeId: r.typeId, clientId: r.clientId, locationId: locOf(r.businessId), balance: 0, createdAt: local(r.createdAt) };
     state.accounts.push({ ...base, balance: n(r.balance) });
   }
   for (const r of ops) {
@@ -298,7 +304,7 @@ export async function loadState(db: Db, businessIds: Id[]): Promise<{ state: Loy
 }
 
 /** Строка журнала этапа 11 без формы фронта → транзакция фронта; не переводится — не в срезе */
-function synthTx(r: { id: string; businessId: string; clientId: string | null; source: string; refId: string; kind: string; amount: bigint; bookingId: string | null; staffId: string | null; createdAt: Date }): LoyaltyTransaction | undefined {
+function synthTx(r: { id: string; businessId: string; clientId: string | null; source: string; refId: string; kind: string; amount: bigint; bookingId: string | null; staffId: string | null; createdAt: Date }, locationId: Id): LoyaltyTransaction | undefined {
   if (!r.clientId) return undefined;
   const key = `${r.source}:${r.kind}`;
   const type = (
@@ -325,7 +331,7 @@ function synthTx(r: { id: string; businessId: string; clientId: string | null; s
   return {
     id: r.id,
     businessId: r.businessId,
-    locationId: r.businessId,
+    locationId,
     type,
     clientId: r.clientId,
     ...ref,

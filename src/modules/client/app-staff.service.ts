@@ -3,8 +3,11 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { utcToLocalDate } from '../../common/time/time.js';
 import { staffView } from '../businesses/views.js';
 import { BookingsService } from '../journal/bookings.service.js';
+import { roundMoney } from '../payroll/payroll-engine.js';
+import { ScheduleService } from '../schedule/schedule.service.js';
 import { serviceView } from '../services/services.views.js';
 
 /**
@@ -50,6 +53,7 @@ export class AppStaffService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly bookings: BookingsService,
+    private readonly schedule: ScheduleService,
   ) {}
 
   async listAppStaff(businessId: string, includeFired = true) {
@@ -77,9 +81,10 @@ export class AppStaffService {
     });
   }
 
-  async setEmployeeAppAccess(ctx: { businessId: string; staffId: string }, patch: Partial<EmployeeAppAccess>) {
+  async setEmployeeAppAccess(ctx: { businessId: string; staffId: string }, patch: Partial<EmployeeAppAccess>, opts: { forbidOwner?: boolean } = {}) {
     const staff = await this.prisma.staff.findFirst({ where: { id: ctx.staffId, businessId: ctx.businessId } });
     if (!staff) throw new ApiError('not_found', 'Staff not found');
+    if (opts.forbidOwner && staff.role === 'owner') throw new ApiError('forbidden', 'Owner access is managed in the web cabinet only');
     const existing = await this.prisma.employeeAppAccess.findUnique({ where: { staffId: ctx.staffId } });
     const current = (existing?.data as unknown as EmployeeAppAccess | undefined) ?? DEFAULT_ACCESS;
     const next: EmployeeAppAccess = { ...current, ...patch };
@@ -146,14 +151,33 @@ export class AppStaffService {
     const fromAt = new Date(`${from}T00:00:00.000Z`);
     const toAt = new Date(`${to}T23:59:59.999Z`);
     const bookings = await this.prisma.booking.findMany({ where: { businessId, staffId, status: ARRIVED, startAt: { gte: fromAt, lte: toAt } }, select: { id: true, startAt: true, durationMin: true, total: true } });
-    const days = new Set(bookings.map((b) => b.startAt.toISOString().slice(0, 10)));
-    const hoursWorked = Math.round((bookings.reduce((s, b) => s + b.durationMin, 0) / 60) * 10) / 10;
+    // «Отработано» — то же правило, что «Расчёт» и «Моя зарплата» в вебе: дни и часы графика за период (final-fix 01.10)
+    // Только по сегодняшний день включительно; дни графика после сегодня — отдельной подписью (решение 01.10)
+    const scheduled = await this.schedule.hours(businessId, staffId, from, to);
+    const today = utcToLocalDate(new Date());
+    let daysWorked = 0;
+    let hoursWorked = 0;
+    let scheduledAheadDays = 0;
+    let scheduledAheadHours = 0;
+    for (const d of scheduled.days) {
+      const minutes = (d.hours as { from: string; to: string }[]).reduce((sum, r) => sum + Math.max(0, hhmm(r.to) - hhmm(r.from)), 0);
+      const hours = roundMoney(minutes / 60);
+      if (d.date > today) {
+        if (hours > 0) scheduledAheadDays += 1;
+        scheduledAheadHours = roundMoney(scheduledAheadHours + hours);
+        continue;
+      }
+      if (hours > 0) daysWorked += 1;
+      hoursWorked = roundMoney(hoursWorked + hours);
+    }
     const servicesValue = bookings.reduce((s, b) => s + Number(b.total), 0);
     const goodsLines = bookings.length ? await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: { in: bookings.map((b) => b.id) }, goods: true, cancelled: false } }) : [];
     const productsValue = goodsLines.reduce((s, l) => s + Number(l.amount) - Number(l.refundedAmount), 0);
     return {
-      daysWorked: days.size,
+      daysWorked,
       hoursWorked,
+      scheduledAheadDays,
+      scheduledAheadHours,
       servicesCount: bookings.length,
       servicesValue,
       productsCount: goodsLines.length,
@@ -181,13 +205,19 @@ export class AppStaffService {
     return Number(row.paid);
   }
 
-  /** F-14-074: «Отправить сообщение» из окна записи — свободный текст в ленту клиента (InboxItem, kind=broadcast) */
+  /** F-14-074: «Отправить сообщение» из окна записи — свободный текст в ленту клиента. client-2-fix: kind 'direct' —
+   *  личное сообщение, его не глушит «выключить новости» мастера/салона (в отличие от рассылки 'broadcast') */
   async sendOneOffPush(businessId: string, input: { appUserId: string; bookingId?: string; text: string }) {
     const text = input.text.trim();
     if (!text) throw new ApiError('validation', 'Text is required');
     const row = await this.prisma.inboxItem.create({
-      data: { id: newId('inboxItem'), appUserId: input.appUserId, businessId, bookingId: input.bookingId, kind: 'broadcast', params: { text } as Prisma.InputJsonValue },
+      data: { id: newId('inboxItem'), appUserId: input.appUserId, businessId, bookingId: input.bookingId, kind: 'direct', params: { text } as Prisma.InputJsonValue },
     });
     return { id: row.id, appUserId: row.appUserId, businessId: row.businessId, bookingId: row.bookingId ?? undefined, kind: row.kind, params: row.params as Record<string, unknown>, createdAt: row.createdAt.toISOString() };
   }
+}
+
+function hhmm(value: string): number {
+  const [h, m] = value.split(':').map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
 }

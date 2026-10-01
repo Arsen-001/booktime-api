@@ -30,6 +30,7 @@ export const PERMISSIONS = [
   'loyalty.applyWithoutCode',
   'finance.view',
   'finance.edit',
+  'finance.shift',
   'stock.view',
   'stock.edit',
   'payroll.view',
@@ -76,7 +77,13 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     'online.manage',
     'online.own',
     'stock.view',
+    // Владелец, 01.10.2026: администратор ведёт склад — товары, приход, продажа, списание (настройки склада — settings.manage)
+    'stock.edit',
     'resources.manage',
+    // Владелец, 01.10.2026: администратор продаёт абонементы и сертификаты на стойке
+    'loyalty.manage',
+    // Владелец, 01.10.2026: кассовую смену ведёт администратор
+    'finance.shift',
   ],
   master: [
     'journal.view',
@@ -87,7 +94,7 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     'schedule.edit',
     'services.view',
     'stock.view',
-    'payroll.view',
+    // Владелец, 01.10.2026: мастер по умолчанию видит только свою зарплату («Моя зарплата») — payroll.view нет
     'online.own',
   ],
 };

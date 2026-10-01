@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ApiError } from '../../common/errors/api-error.js';
 import { PrismaService } from '../../common/prisma.service.js';
 
 type Owner = 'staff' | 'business' | 'service';
@@ -15,6 +16,17 @@ export class TranslationsService {
 
   private key(owner: Owner, ownerId: string, field: string) {
     return `${owner}:${ownerId}:${field}`;
+  }
+
+  /** Текст — только своего бизнеса: без этой проверки кабинет одного бизнеса читал и правил переводы другого */
+  async assertOwned(businessId: string, owner: Owner, ownerId: string): Promise<void> {
+    const found =
+      owner === 'business'
+        ? ownerId === businessId
+        : owner === 'staff'
+          ? Boolean(await this.prisma.staff.findFirst({ where: { id: ownerId, businessId }, select: { id: true } }))
+          : Boolean(await this.prisma.service.findFirst({ where: { id: ownerId, businessId }, select: { id: true } }));
+    if (!found) throw new ApiError('not_found', 'Text owner not found');
   }
 
   async getOverride(owner: Owner, ownerId: string, field: string): Promise<string | undefined> {

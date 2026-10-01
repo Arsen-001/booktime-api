@@ -6,6 +6,7 @@ import { Authed, Ctx } from '../../common/http/guards.js';
 import { ZodBody } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { buyRequestBody, createMyBookingBody, diaryEntryBody, favoriteBody, favoriteMuteBody, locationReviewBody, myWaitlistBody, rateStaffBody, staffReviewBody, supportBody } from './client.schemas.js';
+import { ApiError } from '../../common/errors/api-error.js';
 import { MeService } from './me.service.js';
 
 /**
@@ -37,6 +38,13 @@ export class MeController {
   @ApiOperation({ summary: 'Детали моей записи — только своя (F-00-092)' })
   getBooking(@Ctx() ctx: RequestContext, @Param('id') id: string) {
     return this.svc.getOne(ctx.session!.userId, id);
+  }
+
+  @Get('prepayment-need')
+  @ApiOperation({ summary: '⭐ Нужна ли мне предоплата у мастера из-за пропущенных визитов (счётчик у этого мастера, В-07)' })
+  prepaymentNeed(@Ctx() ctx: RequestContext, @Query('staffId') staffId?: string) {
+    if (!staffId) throw new ApiError('validation', 'staffId is required', { staffId: 'required' });
+    return this.svc.prepaymentNeed(ctx.session!.userId, staffId);
   }
 
   // «Я оплатил» (`POST bookings/:id/paid`) — уже построен в `MeBookingsController` (журнал, этап 7); не дублируем.
@@ -80,7 +88,7 @@ export class MeController {
 
   @Get('favorites/check')
   @ApiOperation({ summary: 'Подписан ли на мастера/место — кнопка ❤ на карточке' })
-  isFavorited(@Ctx() ctx: RequestContext, @Query('targetType') targetType: string, @Query('targetId') targetId: string) {
+  isFavorited(@Ctx() ctx: RequestContext, @Query('targetType', new Zod(z.string().min(1).max(20))) targetType: string, @Query('targetId', new Zod(z.string().min(1).max(40))) targetId: string) {
     return this.svc.isFavorited(ctx.session!.userId, targetType, targetId).then((favorited) => ({ favorited }));
   }
 
@@ -205,13 +213,13 @@ export class MeController {
 
   @Get('loyalty')
   @ApiOperation({ summary: 'Мои карты/сертификаты/абонементы/счета в этом бизнесе (В-06/В-09)' })
-  myLoyalty(@Ctx() ctx: RequestContext, @Query('businessId') businessId: string) {
+  myLoyalty(@Ctx() ctx: RequestContext, @Query('businessId', new Zod(z.string().min(1).max(40))) businessId: string) {
     return this.svc.myLoyalty(ctx.session!.userId, businessId);
   }
 
   @Get('loyalty/buyable')
   @ApiOperation({ summary: 'Что можно купить в приложении (типы сертификатов/абонементов, В-17)' })
-  myLoyaltyBuyable(@Query('businessId') businessId: string) {
+  myLoyaltyBuyable(@Query('businessId', new Zod(z.string().min(1).max(40))) businessId: string) {
     return this.svc.myLoyaltyBuyable(businessId);
   }
 

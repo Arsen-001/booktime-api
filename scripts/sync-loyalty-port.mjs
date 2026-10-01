@@ -52,3 +52,71 @@ if (unknown) throw new Error('api/loyalty.ts: неизвестные импор�
 if (/isApiMode/.test(logic)) throw new Error('api/loyalty.ts: осталась ветка isApiMode не в одну строку `if (isApiMode()) return …`');
 fs.writeFileSync(path.join(OUT, 'logic.ts'), HEAD('src/api/loyalty.ts') + logic);
 console.log('loyalty port: core-types.ts, domain.ts, logic.ts обновлены из', FRONT);
+
+// ─── Проверка аргументов /loyalty/x/{op} (backend-2, заход 3): обязательные параметры функций фасада ───
+// Из TS-сигнатур (logic.ts, client-ops.ts, extra-ops.ts) — сколько аргументов обязательны и какого они грубого вида
+// (string | number | boolean | object | any). runner.service.ts отвечает 400 `validation`, не вызывая функцию, если
+// обязательного аргумента нет или он не того вида — иначе фасад падал TypeError'ом (500) или писал undefined в срез.
+function splitTop(text) {
+  const out = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of text) {
+    if ('([{<'.includes(ch)) depth++;
+    else if (')]}>'.includes(ch)) depth--;
+    if (ch === ',' && depth === 0) {
+      out.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur);
+  return out.map((s) => s.trim()).filter(Boolean);
+}
+function kindOf(type) {
+  const t = type.trim();
+  if (/^(Id|string|ISODate|ISODateTime|Locale|SupportedLocale)$/.test(t) || /^'[^']*'(\s*\|\s*'[^']*')*$/.test(t)) return 'string';
+  if (t === 'number' || t === 'Money') return 'number';
+  if (t === 'boolean') return 'boolean';
+  if (/\[\]$/.test(t) || /^(Array|ReadonlyArray)</.test(t)) return 'array';
+  if (/^[A-Z]\w*(<.*>)?$/.test(t) || t.startsWith('{') || /^(Partial|Omit|Pick|Record)</.test(t)) return 'object';
+  return 'any';
+}
+function signatures(src) {
+  const table = {};
+  const re = /^(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*(?:<[^(]*>)?\(/gm;
+  let m;
+  while ((m = re.exec(src))) {
+    let i = re.lastIndex;
+    let depth = 1;
+    const start = i;
+    while (i < src.length && depth > 0) {
+      if (src[i] === '(') depth++;
+      else if (src[i] === ')') depth--;
+      i++;
+    }
+    const params = splitTop(src.slice(start, i - 1));
+    const required = [];
+    for (const p of params) {
+      if (p.startsWith('...')) break;
+      const eq = splitTop(p.replace(/=/g, ',=')).findIndex((x) => x.startsWith('='));
+      const [head, ...rest] = p.split(':');
+      const optional = head.trim().endsWith('?') || eq >= 0 || /=/.test(p.replace(/=>/g, ''));
+      if (optional) break;
+      required.push(kindOf(rest.join(':').split('=')[0] ?? ''));
+    }
+    table[m[1]] ??= required;
+  }
+  return table;
+}
+const arity = {
+  ...signatures(logic),
+  ...signatures(fs.readFileSync(path.join(OUT, 'extra-ops.ts'), 'utf8')),
+  ...signatures(fs.readFileSync(path.join(OUT, 'client-ops.ts'), 'utf8')),
+};
+fs.writeFileSync(
+  path.join(OUT, 'arity.ts'),
+  `// СГЕНЕРИРОВАНО scripts/sync-loyalty-port.mjs из сигнатур logic.ts / extra-ops.ts / client-ops.ts; руками не править.\n` +
+    `/** Обязательные аргументы функций фасада лояльности: грубый вид каждого (string | number | boolean | array | object | any) */\n` +
+    `export const REQUIRED_ARGS: Record<string, readonly ('string' | 'number' | 'boolean' | 'array' | 'object' | 'any')[]> = ${JSON.stringify(arity, null, 2)};\n`,
+);
+console.log('loyalty port: arity.ts —', Object.keys(arity).length, 'функций');

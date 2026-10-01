@@ -1,6 +1,8 @@
 import { ArgumentsHost, Catch, HttpException, HttpStatus, type ExceptionFilter } from '@nestjs/common';
 import type { Response } from 'express';
 import { logger } from '../logging/logger.js';
+import { ZodError } from 'zod';
+import { InvalidLocalTime } from '../time/time.js';
 import { ApiError, type ErrorBody, type ErrorCode } from './api-error.js';
 
 const STATUS_TO_CODE: Partial<Record<number, ErrorCode>> = {
@@ -29,6 +31,16 @@ export class ErrorFilter implements ExceptionFilter {
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       body = { code: STATUS_TO_CODE[status] ?? 'internal', message: exception.message };
+    } else if (exception instanceof ZodError) {
+      // schema.parse(вход) внутри обработчика — это ошибка ввода, как у пайпа Zod (common/http/validation.ts)
+      status = HttpStatus.BAD_REQUEST;
+      const fields: Record<string, string> = {};
+      for (const issue of exception.issues) fields[issue.path.join('.') || '_'] ??= issue.message;
+      body = { code: 'validation', message: 'Invalid input', fields };
+    } else if (exception instanceof InvalidLocalTime) {
+      // Несуществующая дата в правильном формате ('2026-02-30T10:00') — ошибка ввода, а не сервера
+      status = HttpStatus.BAD_REQUEST;
+      body = { code: 'validation', message: exception.message };
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       body = { code: 'internal', message: 'Internal error' };

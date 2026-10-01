@@ -7,13 +7,18 @@ import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { localToUtc, utcToLocal, utcToLocalDate, type LocalDateTime } from '../../common/time/time.js';
+import { localToUtc, nowLocal, utcToLocal, utcToLocalDate, type LocalDateTime } from '../../common/time/time.js';
 import { addDays, eachDay, weekdayIndex } from '../availability/engine.js';
 import { clientRowView } from '../clients/clients.views.js';
 import { BookingsService, staffActor, type BookingActor } from '../journal/bookings.service.js';
 import { GroupEventsService, type GroupEventInput } from '../journal/group-events.service.js';
 import { bookingView, groupEventView } from '../journal/journal.views.js';
+import { BookingPaymentsService } from '../finance/booking-payments.service.js';
+import { cancelParticipantPaymentTx, PARTICIPANT_PAYMENT_LABEL } from '../finance/prepayment-ops.js';
 import { ResourcesService } from './resources.service.js';
+import { isLocale, t, type Locale } from '../../common/i18n/i18n.js';
+import { notifyKindOf } from '../notify/kinds.js';
+import { enqueueClientNotification } from '../notify/outbox.js';
 
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const addMin = (d: Date, m: number) => new Date(d.getTime() + m * 60_000);
@@ -114,6 +119,7 @@ export class ResourcesEventsService {
     private readonly groupEvents: GroupEventsService,
     private readonly resources: ResourcesService,
     private readonly audit: AuditService,
+    private readonly payments: BookingPaymentsService,
   ) {}
 
   private actor(ctx: RequestContext): BookingActor {
@@ -675,44 +681,52 @@ export class ResourcesEventsService {
     await this.prisma.visitScheduleEntry.delete({ where: { id } });
   }
 
-  // ─────────── лист ожидания СВОЕГО экрана (F-16-149…168, отдельная таблица — см. schema.prisma) ───────────
+  // ─────────── лист ожидания бизнеса — ОДИН (владелец, 30.09.2026): экран /biz/waitlist и панель журнала ───────────
+  // Таблица waitlist_entries (та же, что у приложения клиента и раздачи окна В-18, BookingsService.freeSlot).
+  // Бывшие /v1/biz/{b}/waitlist журнала сняты — фронт (api/resources.server.ts) ходит только сюда.
 
   private waitlistView(e: {
     id: string;
     businessId: string;
-    locationId: string;
+    locationId: string | null;
     clientName: string;
     clientPhone: string;
+    source: string;
+    appUserId: string | null;
     serviceIds: unknown;
     staffIds: unknown;
     wishes: unknown;
     comment: string;
     tags: unknown;
-    closedBookingId: string | null;
+    bookingId: string | null;
     createdAt: Date;
   }) {
     return {
       id: e.id,
       businessId: e.businessId,
-      locationId: e.locationId,
+      locationId: e.locationId ?? '',
       clientName: e.clientName,
       clientPhone: e.clientPhone,
+      // Откуда: сотрудник, приложение клиента, виджет онлайн-записи (все входы пишут в этот лист, 01.10.2026)
+      source: e.source,
+      ...(e.appUserId ? { appUserId: e.appUserId } : {}),
       serviceIds: arr<string>(e.serviceIds),
       staffIds: arr<string>(e.staffIds),
       wishes: arr(e.wishes),
       comment: e.comment || undefined,
       tags: arr<string>(e.tags),
-      createdAt: e.createdAt.toISOString(),
-      ...(e.closedBookingId ? { closedBookingId: e.closedBookingId } : {}),
+      // Время данных фронта — местное 'YYYY-MM-DDTHH:mm' (раньше здесь уходил UTC ISO — «Создана» съезжала на 4 часа)
+      createdAt: utcToLocal(e.createdAt),
+      ...(e.bookingId ? { closedBookingId: e.bookingId } : {}),
     };
   }
 
   async listWaitlist(businessId: string) {
-    const rows = await this.prisma.resourcesWaitlistEntry.findMany({ where: { businessId }, orderBy: { createdAt: 'desc' } });
+    const rows = await this.prisma.waitlistEntry.findMany({ where: { businessId }, orderBy: { createdAt: 'desc' } });
     return rows.map((e) => this.waitlistView(e));
   }
 
-  /** F-16-149…154 «+ Создать»: базовая заявка листа ожидания своего экрана */
+  /** F-16-149…154 / F-01-157 «+ Создать» — с экрана листа и из панели журнала */
   async createWaitlistEntry(
     ctx: RequestContext,
     businessId: string,
@@ -723,18 +737,22 @@ export class ResourcesEventsService {
     if (!phone) throw new ApiError('invalid_phone', 'Invalid phone');
     if (!input.serviceIds.length) throw new ApiError('service_required', 'Service required');
     const row = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.resourcesWaitlistEntry.create({
+      // Карточка клиента по номеру — чтобы склейка дублей клиентов (clients.service) переносила и заявку
+      const client = await tx.client.findFirst({ where: { businessId, phone, deletedAt: null }, select: { id: true } });
+      const created = await tx.waitlistEntry.create({
         data: {
-          id: newId('resourcesWaitlistEntry'),
+          id: newId('waitlistEntry'),
           businessId,
-          locationId: input.locationId,
+          locationId: input.locationId || null,
           clientName: input.clientName.trim(),
           clientPhone: phone,
+          clientId: client?.id ?? null,
           serviceIds: input.serviceIds,
           staffIds: input.staffIds ?? [],
           wishes: input.wishes as Prisma.InputJsonValue,
           comment: input.comment?.trim() ?? '',
           tags: [],
+          source: 'staff',
           createdBy: ctx.member?.staffId,
         },
       });
@@ -744,13 +762,13 @@ export class ResourcesEventsService {
     return this.waitlistView(row);
   }
 
-  /** F-16-163: заявка закрыта — по ней создана запись */
+  /** F-16-163 / F-01-159: заявка закрыта — по ней создана запись */
   async closeWaitlistEntry(ctx: RequestContext, businessId: string, id: string, bookingId: string) {
     const row = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.resourcesWaitlistEntry.findFirst({ where: { id, businessId } });
+      const existing = await tx.waitlistEntry.findFirst({ where: { id, businessId } });
       if (!existing) throw new ApiError('not_found', 'Waitlist entry not found');
-      const updated = await tx.resourcesWaitlistEntry.update({ where: { id }, data: { closedBookingId: bookingId } });
-      await this.audit.record(tx, ctx, { action: 'update', entityType: 'waitlist', entityId: id, businessId, before: { closedBookingId: null }, after: { closedBookingId: bookingId } });
+      const updated = await tx.waitlistEntry.update({ where: { id }, data: { bookingId, version: { increment: 1 } } });
+      await this.audit.record(tx, ctx, { action: 'update', entityType: 'waitlist', entityId: id, businessId, before: { closedBookingId: existing.bookingId }, after: { closedBookingId: bookingId } });
       return updated;
     });
     return this.waitlistView(row);
@@ -758,7 +776,7 @@ export class ResourcesEventsService {
 
   /** F-16-163/165: закрытую заявку можно только удалить; безвозвратно, в аудит не пишется (как в моке, 344140) */
   async removeWaitlistEntry(businessId: string, id: string): Promise<void> {
-    await this.prisma.resourcesWaitlistEntry.deleteMany({ where: { id, businessId } });
+    await this.prisma.waitlistEntry.deleteMany({ where: { id, businessId } });
   }
 
   async updateWaitlistEntry(
@@ -767,21 +785,25 @@ export class ResourcesEventsService {
     id: string,
     patch: Partial<{ clientName: string; clientPhone: string; serviceIds: string[]; staffIds: string[]; wishes: unknown[]; comment: string }>,
   ) {
-    const existing = await this.prisma.resourcesWaitlistEntry.findFirst({ where: { id, businessId } });
+    const existing = await this.prisma.waitlistEntry.findFirst({ where: { id, businessId } });
     if (!existing) throw new ApiError('not_found', 'Waitlist entry not found');
-    if (existing.closedBookingId) throw new ApiError('waitlist_entry_closed', 'Entry already closed');
+    if (existing.bookingId) throw new ApiError('waitlist_entry_closed', 'Entry already closed');
     if (patch.clientName !== undefined && !patch.clientName.trim()) throw new ApiError('name_required', 'Name required');
+    const phone = patch.clientPhone !== undefined ? normalizePhone(patch.clientPhone) : undefined;
+    if (patch.clientPhone !== undefined && !phone) throw new ApiError('invalid_phone', 'Invalid phone');
     if (patch.serviceIds !== undefined && patch.serviceIds.length === 0) throw new ApiError('service_required', 'Service required');
     const row = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.resourcesWaitlistEntry.update({
+      const client = phone ? await tx.client.findFirst({ where: { businessId, phone, deletedAt: null }, select: { id: true } }) : undefined;
+      const updated = await tx.waitlistEntry.update({
         where: { id },
         data: {
           ...(patch.clientName !== undefined ? { clientName: patch.clientName.trim() } : {}),
-          ...(patch.clientPhone !== undefined ? { clientPhone: patch.clientPhone } : {}),
+          ...(phone ? { clientPhone: phone, clientId: client?.id ?? null } : {}),
           ...(patch.serviceIds !== undefined ? { serviceIds: patch.serviceIds } : {}),
           ...(patch.staffIds !== undefined ? { staffIds: patch.staffIds } : {}),
           ...(patch.wishes !== undefined ? { wishes: patch.wishes as Prisma.InputJsonValue } : {}),
           ...(patch.comment !== undefined ? { comment: patch.comment.trim() } : {}),
+          version: { increment: 1 },
         },
       });
       await this.audit.record(tx, ctx, { action: 'update', entityType: 'waitlist', entityId: id, businessId, before: { clientName: existing.clientName }, after: { clientName: updated.clientName } });
@@ -790,28 +812,59 @@ export class ResourcesEventsService {
     return this.waitlistView(row);
   }
 
-  /** F-16-166…168: отмечает активные заявки на услугу как «предложено» (свой ручной путь, отдельный от В-18) */
+  /**
+   * F-16-166…168 «Проверить лист ожидания»: отмечает «Уведомлён» активные заявки на услугу, которые ждут этот день
+   * (без желаний, желание без даты или ровно на `date`) — то же правило, что waitlistWantsDay фронта.
+   */
   async notifyWaitlistForFreedSlot(businessId: string, serviceId: string, date: string, staffId?: string): Promise<{ notifiedIds: string[] }> {
-    const today = dayjs().format('YYYY-MM-DD');
-    const rows = await this.prisma.resourcesWaitlistEntry.findMany({ where: { businessId, closedBookingId: null } });
+    const today = nowLocal().slice(0, 10);
+    if (date < today) return { notifiedIds: [] };
+    const rows = await this.prisma.waitlistEntry.findMany({ where: { businessId, bookingId: null } });
     const matching = rows.filter((e) => {
       const serviceIds = arr<string>(e.serviceIds);
       const staffIds = arr<string>(e.staffIds);
       if (!serviceIds.includes(serviceId)) return false;
       if (staffIds.length && staffId && !staffIds.includes(staffId)) return false;
       const wishes = arr<{ date?: string }>(e.wishes);
-      return wishes.length === 0 || wishes.some((w) => !w.date || w.date === date || w.date >= today);
+      if (wishes.length > 0 && wishes.every((w) => w.date && w.date < today)) return false; // срок истёк
+      return wishes.length === 0 || wishes.some((w) => !w.date || w.date === date);
     });
-    const now = new Date().toISOString();
-    for (const e of matching) {
-      await this.prisma.resourcesWaitlistEntry.update({ where: { id: e.id }, data: { notifiedTimes: [...arr<string>(e.notifiedTimes), now] as unknown as Prisma.InputJsonValue } });
-    }
+    const at = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      for (const e of matching) {
+        await tx.waitlistEntry.update({
+          where: { id: e.id },
+          data: { notifiedAt: at, notifiedTimes: [...arr<string>(e.notifiedTimes), at.toISOString()] as Prisma.InputJsonValue },
+        });
+      }
+      // Вставшим из приложения — настоящий пуш «Освободилось окно» в ленту (тот же, что у раздачи окна В-18), не только отметка
+      const withApp = matching.filter((e) => e.appUserId);
+      if (!withApp.length) return;
+      const def = notifyKindOf('waitlist_available')!;
+      const staffName = staffId ? ((await tx.staff.findUnique({ where: { id: staffId }, select: { name: true } }))?.name ?? 'BookTime') : 'BookTime';
+      const users = await tx.user.findMany({ where: { id: { in: withApp.map((e) => e.appUserId!) } }, select: { id: true, locale: true } });
+      const localeByUser = new Map(users.map((u) => [u.id, isLocale(u.locale) ? u.locale : ('ru' as Locale)]));
+      for (const e of withApp) {
+        await enqueueClientNotification(tx, {
+          businessId,
+          kind: def.kind,
+          appUserId: e.appUserId!,
+          title: staffName,
+          body: t(localeByUser.get(e.appUserId!) ?? 'ru', def.messageKey, { staff: staffName }),
+          dedupeKey: `client:waitlist-manual:${e.id}:${at.getTime()}`,
+          inbox: { kind: 'waitlist_slot', businessId, staffId: staffId ?? arr<string>(e.staffIds)[0] ?? null, params: { date, serviceId } },
+        });
+      }
+    });
     return { notifiedIds: matching.map((e) => e.id) };
   }
 
+  /** Отметки «Уведомлён» заявки — местным временем данных фронта */
   async getWaitlistNotifications(businessId: string, entryId: string): Promise<string[]> {
-    const e = await this.prisma.resourcesWaitlistEntry.findFirst({ where: { id: entryId, businessId }, select: { notifiedTimes: true } });
-    return arr<string>(e?.notifiedTimes);
+    const e = await this.prisma.waitlistEntry.findFirst({ where: { id: entryId, businessId }, select: { notifiedTimes: true, notifiedAt: true } });
+    const times = arr<string>(e?.notifiedTimes);
+    const all = times.length ? times : e?.notifiedAt ? [e.notifiedAt.toISOString()] : [];
+    return all.map((iso) => utcToLocal(new Date(iso)));
   }
 
   // ─────────── перенос брони в другое событие (F-16-055) ───────────
@@ -889,35 +942,85 @@ export class ResourcesEventsService {
     await this.prisma.booking.update({ where: { id: bookingId }, data: { extras: { ...extras, participantExtras: next } as Prisma.InputJsonValue, version: { increment: 1 } } });
   }
 
-  // ─────────── оплата участника (F-16-060/061) — только фиксируем способ, деньги не принимаем ───────────
+  // ─────────── оплата участника (F-16-060/061): нал/карта — оплата визита в финансах (queue-1001b money) ───────────
 
   async getParticipantPayment(businessId: string, bookingId: string) {
     const b = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId }, select: { extras: true } });
     return bookingExtrasOf(b?.extras).participantPayment;
   }
 
-  async payParticipant(businessId: string, bookingId: string, method: 'membership' | 'card' | 'cash' | 'other') {
-    const tz = await this.resources.tzOfBusiness(businessId);
-    const b = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
-    if (!b) throw new ApiError('not_found', 'Booking not found');
-    if (method === 'membership' && !b.clientId) throw new ApiError('no_membership', 'No membership available');
-    const extras = bookingExtrasOf(b.extras);
-    const extrasTotal = (extras.participantExtras ?? []).reduce((n, i) => n + i.price, 0);
-    const next = { ...extras, participantPayment: { method, at: new Date().toISOString() } };
-    const updated = await this.prisma.booking.update({
-      where: { id: bookingId },
-      data: { extras: next as Prisma.InputJsonValue, prepayment: { amount: Number(b.total) + extrasTotal, paid: true } as Prisma.InputJsonValue, version: { increment: 1 } },
+  private async setParticipantPaymentMark(bookingId: string, mark: { method: string; at: string } | undefined, prepayment?: Prisma.InputJsonValue | typeof Prisma.DbNull, audit?: { ctx: RequestContext; businessId: string; amount: number }) {
+    return this.prisma.$transaction(async (tx) => {
+      if (audit) await this.audit.record(tx, audit.ctx, { action: 'pay', entityType: 'booking', entityId: bookingId, businessId: audit.businessId, before: null, after: { method: mark?.method, amount: audit.amount } });
+      const fresh = await tx.booking.findUniqueOrThrow({ where: { id: bookingId } });
+      const { participantPayment: _drop, ...rest } = bookingExtrasOf(fresh.extras);
+      const extras = mark ? { ...rest, participantPayment: mark } : rest;
+      const data: Prisma.BookingUncheckedUpdateInput = { extras: extras as Prisma.InputJsonValue, version: { increment: 1 } };
+      if (prepayment !== undefined) data.prepayment = prepayment;
+      return tx.booking.update({ where: { id: bookingId }, data });
     });
-    return bookingView(updated, tz);
   }
 
-  async cancelParticipantPayment(businessId: string, bookingId: string) {
+  /**
+   * Как payParticipant мока (src/api/resources.ts): наличные и карта — настоящая оплата визита в финансах, тот же
+   * путь, что «Оплатить» в журнале (BookingPaymentsService.pay, mode quick = payBookingQuick мока): операция «Оплата
+   * услуги» в кассе способа, строка платежа записи, «Касса за день», отчёты и зарплата видят деньги, отмена и возврат —
+   * из окна визита. Раньше ставилась отметка `prepayment.paid` (как перевод мастеру мимо кассы). Абонемент списывает
+   * посещение («Лояльность», без денег), «Другое» — только отметка «Оплачено» (F-00-126), как в моке.
+   */
+  async payParticipant(ctx: RequestContext, businessId: string, bookingId: string, method: 'membership' | 'card' | 'cash' | 'other') {
+    const tz = await this.resources.tzOfBusiness(businessId);
+    const b = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
+    if (!b || b.deletedAt) throw new ApiError('not_found', 'Booking not found');
+    if (method === 'membership' && !b.clientId) throw new ApiError('no_membership', 'No membership available');
+    const mark = { method, at: nowLocal() };
+    if (method === 'cash' || method === 'card') {
+      await this.payments.pay(ctx, businessId, bookingId, { mode: 'quick', methodKey: method });
+      const row = await this.setParticipantPaymentMark(bookingId, mark);
+      return bookingView(row, tz);
+    }
+    const extrasTotal = (bookingExtrasOf(b.extras).participantExtras ?? []).reduce((n, i) => n + i.price, 0);
+    const amount = Number(b.total) + extrasTotal;
+    const row = await this.setParticipantPaymentMark(bookingId, mark, { amount, paid: true } as Prisma.InputJsonValue, { ctx, businessId, amount });
+    return bookingView(row, tz);
+  }
+
+  /** Отмена оплаты одного участника не трогает других (F-16-060). Нал/карта — отмена платежа визита в финансах
+   * (операция уходит из кассы), как cancelParticipantPayment мока; «Другое»/абонемент — снимается отметка. */
+  async cancelParticipantPayment(ctx: RequestContext, businessId: string, bookingId: string) {
     const tz = await this.resources.tzOfBusiness(businessId);
     const b = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
     if (!b) throw new ApiError('not_found', 'Booking not found');
-    const extras = bookingExtrasOf(b.extras);
-    const { participantPayment: _drop, ...rest } = extras;
-    const updated = await this.prisma.booking.update({ where: { id: bookingId }, data: { extras: rest as Prisma.InputJsonValue, prepayment: Prisma.DbNull, version: { increment: 1 } } });
-    return bookingView(updated, tz);
+    const paid = bookingExtrasOf(b.extras).participantPayment;
+    if (paid && (paid.method === 'cash' || paid.method === 'card')) {
+      const lines = await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId, cancelled: false, kind: 'money', methodKey: paid.method }, orderBy: { createdAt: 'asc' } });
+      const groups = new Set<string>();
+      for (const line of lines) {
+        const key = line.groupId ?? line.id;
+        if (groups.has(key)) continue;
+        groups.add(key);
+        await this.payments.cancelLine(ctx, businessId, line.id);
+      }
+      await this.cancelLegacyParticipantPayment(ctx, bookingId);
+      return bookingView(await this.setParticipantPaymentMark(bookingId, undefined), tz);
+    }
+    await this.cancelLegacyParticipantPayment(ctx, bookingId);
+    return bookingView(await this.setParticipantPaymentMark(bookingId, undefined, Prisma.DbNull), tz);
+  }
+
+  /** Оплаты участника, проведённые до 01.10 вечер (backend-2, заход 3) своей операцией «Оплата участника» и строкой
+   * extras.payments `participant`, — отменяются так же, как раньше (операция в «Отменённые», paidAmount назад). */
+  private async cancelLegacyParticipantPayment(ctx: RequestContext, bookingId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const fresh = await tx.booking.findUniqueOrThrow({ where: { id: bookingId } });
+      const extras = bookingExtrasOf(fresh.extras) as BookingExtrasLite & { payments?: { amount: number; label: string }[] };
+      const mine = (extras.payments ?? []).filter((l) => l.label === PARTICIPANT_PAYMENT_LABEL);
+      await cancelParticipantPaymentTx(tx, fresh, ctx.member!.staffId);
+      if (!mine.length) return;
+      const back = mine.reduce((n, l) => n + l.amount, 0);
+      const nextPaid = Math.max(0, Number(fresh.paidAmount) - back);
+      const next = { ...extras, payments: (extras.payments ?? []).filter((l) => l.label !== PARTICIPANT_PAYMENT_LABEL), paidAmount: nextPaid };
+      await tx.booking.update({ where: { id: bookingId }, data: { extras: next as Prisma.InputJsonValue, paidAmount: BigInt(nextPaid), version: { increment: 1 } } });
+    });
   }
 }

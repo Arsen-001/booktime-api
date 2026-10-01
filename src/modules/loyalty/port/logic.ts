@@ -8,8 +8,8 @@ import { portNowDate } from './shim.js';
  */
 import { ApiError, request } from './shim.js';
 import { mutateArea, readArea, readCore } from './shim.js';
-import { cancelBookingPayment, cancelPaymentLine, payBookingLines } from './stubs.js';
-import { addBookingPromoDiscount, getBookingPaymentSummary, removeBookingPaymentLine } from './stubs.js';
+import { cancelBookingPayment, cancelPaymentLine, getBookingExtras, payBookingLines } from './stubs.js';
+import { addBookingPromoDiscount, cancelLoyaltySaleSync, getBookingPaymentSummary, recordLoyaltySaleSync, refundLoyaltySaleSync, removeBookingPaymentLine, type LoyaltySaleInput } from './stubs.js';
 import type { CoreData, Id } from './core-types.js';
 import type { BookingExtras, JournalPaymentMethod } from './stubs.js';
 import type { AccountOperation, AccountType, AutoApplySettings, CardType, Certificate, CertificateStatus, CertificateType, ClientAccount, DiscountNotifySettings, LoyaltyCard, LoyaltyPaymentLineInput, LoyaltyPaymentLineKind, LoyaltyTransaction, LoyaltyTxType, Membership, MembershipStatus, MembershipType, OnlineOrder, OnlineOrderItemKind, OnlineOrderStatus, OnlineSalePaymentSettings, OnlineSaleWidgetSettings, Promotion, PromotionKind, ReferralSettings, ServiceScope } from './domain.js';
@@ -283,6 +283,8 @@ export function issueCard(businessId: Id, clientId: Id, cardTypeId: Id, number?:
       if (!type) throw new ApiError('not_found');
       // questions-q4 В-40: архивный тип карты больше не выдаётся
       if (type.archived) throw new ApiError('validation');
+      // Решение 30.09: у клиента одна карта каждого типа — вторая того же типа дублировала бы акции и бонусы
+      if (s.cards.some((c) => c.businessId === businessId && c.clientId === clientId && c.cardTypeId === cardTypeId)) throw new ApiError('card_type_already_issued');
       const resolvedNumber = resolveCardNumber(businessId, s.cards, number);
       const caps = cardCaps(s.promotions, cardTypeId);
       const card: LoyaltyCard = {
@@ -1157,6 +1159,8 @@ export function voidCertificateSale(businessId: Id, certId: Id, byStaffId?: Id):
       cert.status = 'expired';
       cert.clientId = undefined;
     });
+    // Отмена продажи — и приход за неё в кассе отменяется (finance)
+    cancelLoyaltySaleSync(businessId, certId);
   });
 }
 
@@ -1169,6 +1173,7 @@ export function refundCertificateAmount(businessId: Id, certId: Id, amount: numb
   return request(() => {
     if (amount <= 0) throw new ApiError('validation');
     let result: Certificate | undefined;
+    let refunded = 0;
     mutateArea(AREA, (s) => {
       const cert = s.certificates.find((c) => c.id === certId && c.businessId === businessId);
       if (!cert) throw new ApiError('not_found');
@@ -1188,8 +1193,11 @@ export function refundCertificateAmount(businessId: Id, certId: Id, amount: numb
           by: byStaffId,
         });
       }
+      refunded = charged;
       result = cert;
     });
+    // Деньги клиенту — расход «Возврат» из кассы, куда пришла продажа
+    if (refunded > 0) refundLoyaltySaleSync(businessId, { refId: certId, amount: refunded });
     return result!;
   });
 }
@@ -1202,6 +1210,26 @@ function certificateExpiryFor(type: CertificateType, soldAt: ReturnType<typeof d
   return undefined;
 }
 
+/** Оплата продажи лояльности: способ из плиток finance (listBookingPaymentTiles) — он же задаёт кассу */
+export interface LoyaltySalePayment {
+  methodKey: string;
+}
+
+/**
+ * 01.10.2026: деньги за продажу абонемента/сертификата и пополнение счёта — приход в кассу finance
+ * (recordLoyaltySaleSync) в той же мутации. Не записалось в кассу (нет способа/кассы) — продажа откатывается.
+ */
+function recordSaleOrRollback(businessId: Id, payment: LoyaltySalePayment | undefined, input: Omit<LoyaltySaleInput, 'methodKey'>, rollback: () => void): void {
+  if (!payment || !(input.amount > 0)) return;
+  try {
+    const clientName = input.clientId ? readCore().clients.find((c) => c.id === input.clientId)?.name : undefined;
+    recordLoyaltySaleSync(businessId, { ...input, clientName: input.clientName ?? clientName, methodKey: payment.methodKey });
+  } catch (error) {
+    rollback();
+    throw error;
+  }
+}
+
 export interface SellCertificateInput {
   certTypeId: Id;
   clientId?: Id;
@@ -1210,6 +1238,8 @@ export interface SellCertificateInput {
   sellerId?: Id;
   price?: number;
   discountPercent?: number;
+  /** Способ оплаты — приход в кассу; без него (импорт, перенос) — только выдача */
+  payment?: LoyaltySalePayment;
 }
 
 /**
@@ -1248,7 +1278,13 @@ export function sellCertificate(businessId: Id, input: SellCertificateInput): Pr
       s.certificates.push(cert);
       created = cert;
     });
-    return created!;
+    const cert = created!;
+    recordSaleOrRollback(businessId, input.payment, { kind: 'certificate', locationId: input.locationId, amount: cert.soldPrice ?? 0, clientId: cert.clientId, refId: cert.id, label: cert.code ? `Сертификат ${cert.code}` : undefined }, () =>
+      mutateArea(AREA, (s) => {
+        s.certificates = s.certificates.filter((c) => c.id !== cert.id);
+      }),
+    );
+    return cert;
   });
 }
 
@@ -1609,6 +1645,8 @@ export function deleteMembershipSale(businessId: Id, membershipId: Id): Promise<
       if (hasUsage) throw new ApiError('has_usage');
       s.memberships = s.memberships.filter((x) => x.id !== membershipId);
     });
+    // Отмена продажи — и приход за неё в кассе отменяется (finance)
+    cancelLoyaltySaleSync(businessId, membershipId);
   });
 }
 
@@ -1637,6 +1675,8 @@ export function refundMembershipPartial(businessId: Id, membershipId: Id, amount
       });
       result = m;
     });
+    // Деньги клиенту — расход «Возврат» из кассы, куда пришла продажа
+    refundLoyaltySaleSync(businessId, { refId: membershipId, amount });
     return result!;
   });
 }
@@ -1653,6 +1693,8 @@ export interface SellMembershipInput {
   sellerId?: Id;
   price?: number;
   discountPercent?: number;
+  /** Способ оплаты — приход в кассу; без него (импорт, перенос) — только выдача */
+  payment?: LoyaltySalePayment;
 }
 
 /**
@@ -1700,7 +1742,14 @@ export function sellMembership(businessId: Id, input: SellMembershipInput): Prom
       s.memberships.push(m);
       created = m;
     });
-    return created!;
+    const sold = created!;
+    const typeName = readArea(AREA).membershipTypes.find((x) => x.id === sold.membershipTypeId)?.name;
+    recordSaleOrRollback(businessId, input.payment, { kind: 'membership', locationId: input.locationId, amount: sold.soldPrice ?? sold.price, clientId: sold.clientId, refId: sold.id, label: typeName ? `Абонемент «${typeName}»` : undefined }, () =>
+      mutateArea(AREA, (s) => {
+        s.memberships = s.memberships.filter((x) => x.id !== sold.id);
+      }),
+    );
+    return sold;
   });
 }
 
@@ -1878,7 +1927,7 @@ export interface TopupResult {
   operationId: Id;
 }
 
-export function topupAccount(businessId: Id, accountId: Id, amount: number, authorStaffId?: Id): Promise<TopupResult> {
+export function topupAccount(businessId: Id, accountId: Id, amount: number, authorStaffId?: Id, payment?: LoyaltySalePayment): Promise<TopupResult> {
   return request(() => {
     if (amount <= 0) throw new ApiError('validation');
     let updated: ClientAccount | undefined;
@@ -1906,11 +1955,21 @@ export function topupAccount(businessId: Id, accountId: Id, amount: number, auth
         accountId,
         amount,
         createdAt: nowDateTime(),
+        accountOperationId: opId,
       });
       updated = account;
     });
     if (!updated) throw new ApiError('not_found');
-    return { account: updated, operationId: opId };
+    const acc = updated;
+    recordSaleOrRollback(businessId, payment, { kind: 'accountTopUp', locationId: acc.locationId, amount, clientId: acc.clientId, refId: opId }, () =>
+      mutateArea(AREA, (s) => {
+        const a = s.accounts.find((x) => x.id === accountId);
+        if (a) a.balance -= amount;
+        s.accountOperations = s.accountOperations.filter((o) => o.id !== opId);
+        s.transactions = s.transactions.filter((tx) => tx.accountOperationId !== opId);
+      }),
+    );
+    return { account: acc, operationId: opId };
   });
 }
 
@@ -1973,8 +2032,12 @@ export function cancelAccountTopup(businessId: Id, accountId: Id, operationId: I
       if (!op || op.type !== 'topup') throw new ApiError('not_found');
       account.balance -= op.amount;
       s.accountOperations = s.accountOperations.filter((o) => o.id !== operationId);
+      // отменённое пополнение не должно оставаться в «Транзакциях» и отчётах лояльности
+      s.transactions = s.transactions.filter((tx) => tx.accountOperationId !== operationId);
       updated = account;
     });
+    // Пополнение отменено — и приход за него в кассе отменяется (finance)
+    cancelLoyaltySaleSync(businessId, operationId);
     return updated!;
   });
 }
@@ -1991,6 +2054,8 @@ export function refundAccountAmount(businessId: Id, accountId: Id, amount: numbe
     mutateArea(AREA, (s) => {
       const account = s.accounts.find((a) => a.id === accountId && a.businessId === businessId);
       if (!account) throw new ApiError('not_found');
+      // вернуть клиенту можно только то, что лежит на счёте: долг (минус) и «больше остатка» — не возврат
+      if (amount > Math.max(0, account.balance)) throw new ApiError('validation');
       account.balance -= amount;
       s.accountOperations.push({
         id: newId('lop'),
@@ -2014,6 +2079,9 @@ export function refundAccountAmount(businessId: Id, accountId: Id, amount: numbe
       });
       updated = account;
     });
+    // Деньги клиенту — расход «Возврат» из кассы, куда приходили пополнения этого счёта
+    const topupIds = readArea(AREA).accountOperations.filter((o) => o.accountId === accountId && o.type === 'topup').map((o) => o.id);
+    if (topupIds.length > 0) refundLoyaltySaleSync(businessId, { refId: topupIds, amount });
     return updated!;
   });
 }
@@ -2745,7 +2813,13 @@ export type ReferralEligibility =
   | {
       ok: true;
       referrerClientId: Id;
-      referrerCardId: Id;
+      /** Карта пригласившего; нет — карта типа referrerCardTypeId выдастся при начислении */
+      referrerCardId?: Id;
+      referrerCardTypeId?: Id;
+      /** Имя пригласившего для строки оплаты «Скидка по приглашению · Анна К.» */
+      referrerName: string;
+      /** Пригласивший взят из привязки по ссылке (Client.referredByClientId), а не введён по телефону */
+      attributed: boolean;
       inviteeDiscount: number;
       referrerBonus: number;
     }
@@ -2759,7 +2833,8 @@ export type ReferralEligibility =
  * прошлым «пришёл»-визитом варианта рефералки нет), пригласивший найден по телефону и уже держит карту
  * типа, на который настроена реферальная бонусная акция (❓ ТЗ, assumed: без карты нужного типа — не начисляем).
  */
-export function getReferralEligibility(businessId: Id, referrerPhone: string, inviteeClientId: Id, remaining: number, visit?: LoyaltyVisit): Promise<ReferralEligibility> {
+// referrerPhone: '' — пригласивший из привязки по ссылке (тип с null — сервер не требует непустую строку)
+export function getReferralEligibility(businessId: Id, referrerPhone: string | null, inviteeClientId: Id, remaining: number, visit?: LoyaltyVisit): Promise<ReferralEligibility> {
   return request(() => {
     const core = readCore();
     const state = readArea(AREA);
@@ -2767,21 +2842,35 @@ export function getReferralEligibility(businessId: Id, referrerPhone: string, in
     if (!settings?.active || !settings.inviteePromotionId || !settings.referrerPromotionId) return { ok: false, reason: 'inactive' };
     const hadVisit = core.bookings.some((b) => b.clientId === inviteeClientId && b.status === 'arrived' && b.id !== visit?.bookingId);
     if (hadVisit) return { ok: false, reason: 'notFirstVisit' };
-    const q = referrerPhone.replace(/\D/g, '');
-    const referrer = q ? core.clients.find((c) => c.businessId === businessId && c.phone.replace(/\D/g, '') === q) : undefined;
+    const q = (referrerPhone ?? '').replace(/\D/g, '');
+    // ⭐ «Пригласи подругу»: без телефона — пригласивший из привязки по личной ссылке (rules/referral)
+    const invitee = clientOf(core, inviteeClientId);
+    const attachedId = !q ? invitee?.referredByClientId : undefined;
+    const referrer = q
+      ? core.clients.find((c) => c.businessId === businessId && !c.deletedAt && c.phone.replace(/\D/g, '') === q)
+      : attachedId
+        ? core.clients.find((c) => c.id === attachedId && c.businessId === businessId && !c.deletedAt)
+        : undefined;
     if (!referrer) return { ok: false, reason: 'notFound' };
     if (referrer.id === inviteeClientId) return { ok: false, reason: 'self' };
     const referrerPromo = state.promotions.find((p) => p.id === settings.referrerPromotionId);
     const inviteePromo = state.promotions.find((p) => p.id === settings.inviteePromotionId);
-    const referrerCard = referrerPromo ? state.cards.find((c) => c.clientId === referrer.id && c.businessId === businessId) : undefined;
-    if (!referrerCard || !referrerPromo) return { ok: false, reason: 'referrerNoCard' };
+    if (!referrerPromo) return { ok: false, reason: 'referrerNoCard' };
+    const referrerCard = state.cards.find((c) => c.clientId === referrer.id && c.businessId === businessId);
+    // Нет карты — выдадим при начислении: тип, на который смотрит бонусная акция, иначе с автовыдачей, иначе первый
+    const types = state.cardTypes.filter((t) => t.businessId === businessId && !t.archived);
+    const issueType = referrerCard ? undefined : (types.find((t) => referrerPromo.cardTypeIds.includes(t.id)) ?? types.find((t) => t.autoIssueMode !== 'none') ?? types[0]);
+    if (!referrerCard && !issueType) return { ok: false, reason: 'referrerNoCard' };
     const inviteeDiscount = inviteePromo ? (visit && visit.lines.length ? promotionDiscountFor(core, inviteePromo, visit, []) : applyValue(inviteePromo.valueType, inviteePromo.value, remaining)) : 0;
     const base = visit && visit.lines.length ? visitSums(visit).total : remaining;
     const referrerBonus = referrerPromo.valueType === 'percent' ? Math.round((base * referrerPromo.value) / 100) : referrerPromo.value;
     return {
       ok: true,
       referrerClientId: referrer.id,
-      referrerCardId: referrerCard.id,
+      referrerCardId: referrerCard?.id,
+      referrerCardTypeId: issueType?.id,
+      referrerName: referrer.name,
+      attributed: Boolean(attachedId),
       inviteeDiscount,
       referrerBonus: Math.max(0, referrerBonus),
     };
@@ -2867,12 +2956,13 @@ export function commitLoyaltyPayment(businessId: Id, locationId: Id, bookingId: 
           const type = s.certificateTypes.find((t) => t.id === cert.certTypeId);
           const { remainingBalance } = chargeCertificate(cert.balance, type?.chargeType ?? 'multiple', amount);
           const burnt = cert.balance - amount - remainingBalance;
+          const prev = { prevOwnerId: cert.clientId, prevStatus: cert.status };
           cert.balance = remainingBalance;
           if (cert.balance <= 0) cert.status = 'used';
           cert.usedLocationId = locationId;
           cert.usedAt = nowDateTime();
           cert.clientId = clientId; // F-06-097: переходит к тому, кто заплатил
-          s.transactions.push({ ...base, id, type: 'certificateCharge', certificateId: cert.id, amount: -amount });
+          s.transactions.push({ ...base, id, type: 'certificateCharge', certificateId: cert.id, amount: -amount, ...prev });
           // Л8: однократный сертификат — остаток сгорает после первой оплаты; отдельной строкой, чтобы отмена вернула и его
           if (burnt > 0) s.transactions.push({ ...base, id: newId('ltx'), type: 'expiredBurn', certificateId: cert.id, amount: -burnt, parentTxId: id });
         } else if (line.kind === 'membership') {
@@ -2880,10 +2970,11 @@ export function commitLoyaltyPayment(businessId: Id, locationId: Id, bookingId: 
           if (!m || !['active', 'issued'].includes(membershipStatus(m, todayIso))) throw new ApiError('not_found');
           amount = Math.min(amount, membershipCover(core, s, m, visit));
           if (amount <= 0) throw new ApiError('membership_not_applicable');
+          const prev = { prevOwnerId: m.clientId, prevStatus: m.status };
           m.balanceVisits = Math.max(0, m.balanceVisits - 1);
           if (m.status === 'issued') m.status = 'active';
           m.clientId = clientId; // F-06-124: переходит к тому, кто заплатил
-          s.transactions.push({ ...base, id, type: 'membershipUse', membershipId: m.id, amount: -amount });
+          s.transactions.push({ ...base, id, type: 'membershipUse', membershipId: m.id, amount: -amount, ...prev });
         } else if (line.kind === 'account') {
           // F-06-139/140: оплата со счёта — в пределах баланса и разрешённого минуса типа счёта
           const account = s.accounts.find((a) => a.id === line.accountId && a.businessId === businessId);
@@ -2897,10 +2988,23 @@ export function commitLoyaltyPayment(businessId: Id, locationId: Id, bookingId: 
         } else if (line.kind === 'referral') {
           if (amount <= 0) throw new ApiError('validation');
           s.transactions.push({ ...base, id, type: 'promoDiscount', promotionId: line.promotionId, amount: -amount });
-          if (line.referrerCardId && line.referrerBonusAmount) {
-            const referrerCard = s.cards.find((c) => c.id === line.referrerCardId);
+          // ⭐ «Пригласи подругу» (01.10.2026): у пригласившего по ссылке ещё нет карты — карта выдаётся здесь же,
+          // в той же операции, тип — из getReferralEligibility (referrerCardTypeId), иначе бонус потерялся бы
+          let referrerCardId = line.referrerCardId;
+          if (!referrerCardId && line.referrerCardTypeId && line.referrerClientId && line.referrerBonusAmount) {
+            const type = s.cardTypes.find((t) => t.id === line.referrerCardTypeId && t.businessId === businessId && !t.archived);
+            const existing = s.cards.find((c) => c.businessId === businessId && c.clientId === line.referrerClientId && c.cardTypeId === line.referrerCardTypeId);
+            if (existing) referrerCardId = existing.id;
+            else if (type) {
+              const card: LoyaltyCard = { id: newId('lc'), businessId, cardTypeId: type.id, clientId: line.referrerClientId, number: resolveCardNumber(businessId, s.cards, undefined), balance: 0, ...cardCaps(s.promotions, type.id), createdAt: nowDateTime() };
+              s.cards.push(card);
+              referrerCardId = card.id;
+            }
+          }
+          if (referrerCardId && line.referrerBonusAmount) {
+            const referrerCard = s.cards.find((c) => c.id === referrerCardId);
             if (referrerCard) referrerCard.balance += line.referrerBonusAmount;
-            s.transactions.push({ ...base, id: newId('ltx'), type: 'referralAccrual', clientId: line.referrerClientId!, cardId: line.referrerCardId, amount: line.referrerBonusAmount, parentTxId: id });
+            s.transactions.push({ ...base, id: newId('ltx'), type: 'referralAccrual', clientId: line.referrerClientId!, cardId: referrerCardId, amount: line.referrerBonusAmount, parentTxId: id });
           }
         }
         out.push({ txId: id, kind: line.kind, amount });
@@ -2921,10 +3025,17 @@ function undoLoyaltyTx(s: LoyaltyArea, tx: LoyaltyTransaction): void {
     if (cert) {
       cert.balance = Math.min(cert.nominal, cert.balance + Math.abs(tx.amount));
       if (cert.balance > 0) cert.status = 'active';
+      // F-06-097: подаренный сертификат возвращается прежнему владельцу (или снова «без клиента»)
+      if (tx.type === 'certificateCharge' && tx.prevStatus !== undefined) cert.clientId = tx.prevOwnerId;
     }
   } else if (tx.type === 'membershipUse' && tx.membershipId) {
     const m = s.memberships.find((x) => x.id === tx.membershipId);
-    if (m) m.balanceVisits = Math.min(m.totalVisits, m.balanceVisits + 1);
+    if (m) {
+      m.balanceVisits = Math.min(m.totalVisits, m.balanceVisits + 1);
+      // F-06-124: отмена оплаты возвращает абонемент владельцу и статус «Выдан», если оплата его активировала
+      if (tx.prevOwnerId) m.clientId = tx.prevOwnerId;
+      if (tx.prevStatus === 'issued' && m.status === 'active' && m.balanceVisits === m.totalVisits) m.status = 'issued';
+    }
   } else if (tx.type === 'accountCharge' && tx.accountId) {
     const account = s.accounts.find((a) => a.id === tx.accountId);
     if (account) account.balance += Math.abs(tx.amount);
@@ -3004,7 +3115,7 @@ export interface PayVisitWithLoyaltyArgs {
  * Если платёж визита не записался, списанное лояльностью возвращается (компенсация), кэшбэк пересчитывается.
  */
 export async function payVisitWithLoyalty({ businessId, locationId, bookingId, clientId, lines, visit, labelOf, financeLabelOf = labelOf }: PayVisitWithLoyaltyArgs): Promise<BookingExtras> {
-  const committed = await commitLoyaltyPayment(businessId, locationId, bookingId, clientId, lines, visit);
+  const committed = await commitLoyaltyPayment(businessId, locationId, bookingId, clientId, await capLinesToDue(businessId, bookingId, lines), visit);
   let extras: BookingExtras;
   try {
     extras = await payBookingLines(
@@ -3018,6 +3129,31 @@ export async function payVisitWithLoyalty({ businessId, locationId, bookingId, c
   await mirrorToFinance(businessId, bookingId, committed.map((c, i) => ({ txId: c.txId, amount: c.amount, label: financeLabelOf(c, i) })));
   await syncBookingCashback(businessId, locationId, clientId, bookingId, await visitPaymentsForCashback(businessId, bookingId, extras.payments ?? []), visit);
   return extras;
+}
+
+/**
+ * Лояльность закрывает не больше, чем визиту осталось оплатить (qa 30.09: скидка ×3 записывалась в платежи сверх
+ * суммы визита, уже оплаченный визит второй раз списывал посещение абонемента — например, из второй вкладки).
+ * «К оплате» — как у вкладки «Лояльность»: меньшее из «визит − платежи визита» и долга во вкладке «Оплата».
+ * Строки подрезаются по порядку; если оплачивать нечего — отказ `nothing_due`.
+ */
+async function capLinesToDue(businessId: Id, bookingId: Id, lines: LoyaltyPaymentLineInput[]): Promise<LoyaltyPaymentLineInput[]> {
+  const booking = readCore().bookings.find((b) => b.id === bookingId);
+  if (!booking) return lines;
+  const extras = await getBookingExtras(bookingId).catch(() => undefined);
+  const financeDue = await getBookingPaymentSummary(businessId, bookingId)
+    .then((s) => (s.booking.total === booking.total ? s.due : undefined))
+    .catch(() => undefined);
+  let left = Math.max(0, Math.round(Math.min(booking.total - (extras?.paidAmount ?? 0), financeDue ?? Number.POSITIVE_INFINITY)));
+  const out: LoyaltyPaymentLineInput[] = [];
+  for (const line of lines) {
+    const amount = Math.min(Math.max(0, Math.round(line.amount)), left);
+    if (amount <= 0) continue;
+    out.push({ ...line, amount });
+    left -= amount;
+  }
+  if (lines.length > 0 && out.length === 0) throw new ApiError('nothing_due');
+  return out;
 }
 
 /**
@@ -3061,11 +3197,13 @@ function financeLinesOf(businessId: Id, bookingId: Id, txId?: Id): Promise<Id[]>
  * Л6: деньги за визит принимают и окно «Оплата визита» (journal), и вкладка «Оплата» (finance) — база кэшбэка
  * складывается из обоих; строки лояльности (скидки в finance) деньгами не считаются.
  */
-export async function visitPaymentsForCashback(businessId: Id, bookingId: Id, journalPayments: { method: string; amount: number }[]): Promise<{ method: string; amount: number }[]> {
+export async function visitPaymentsForCashback(businessId: Id, bookingId: Id, journalPayments: { id?: Id; method: string; amount: number }[]): Promise<{ method: string; amount: number }[]> {
   try {
     const summary = await getBookingPaymentSummary(businessId, bookingId);
+    // Сервер кладёт платёж кассы и в extras.payments (id строки = группа платежа) — такой платёж считаем один раз
+    const inJournal = new Set(journalPayments.map((p) => p.id).filter(Boolean));
     const finance = summary.payments
-      .filter((p) => !p.cancelled && p.kind !== 'discount')
+      .filter((p) => !p.cancelled && p.kind !== 'discount' && !inJournal.has(p.groupId ?? p.id) && !inJournal.has(p.id))
       .map((p) => ({ method: p.kind === 'account' ? 'personal_account' : 'cash', amount: p.amount - (p.refundedAmount ?? 0) }));
     return [...journalPayments, ...finance];
   } catch {

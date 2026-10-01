@@ -92,7 +92,7 @@ export const DEFAULT_BOOKING_RULES: EffectiveBookingRules = {
   allowReschedule: true,
   cancelWindowMin: 180,
   rescheduleWindowMin: 180,
-  allowCancelPrepaid: false,
+  allowCancelPrepaid: true,
   allowReschedulePrepaid: false,
   keepPrepaymentOnLateCancel: true,
 };
@@ -149,16 +149,63 @@ export function canReschedule(b: PolicyBooking, rules: EffectiveBookingRules, no
 // ─────────────────────────── Статус новой записи (В-03, F-00-079, F-00-097, F-00-065) ───────────────────────────
 
 export interface PrepaymentRule {
+  /** Фиксированная сумма; не действует, если задан `percent` */
   amount: number;
+  /** ⭐ Процент от суммы записи (1–100) — ставит мастер; клиент выбирает «только предоплату» или «всю сумму сразу» */
+  percent?: number;
   timeoutMin?: number;
   requisites?: string;
+  /**
+   * ⭐ Предоплата только от тех, кто уже не приходил (владелец, 01.10.2026; фронт — PrepaymentRule.onlyAfterNoShows):
+   * нет поля — со всех; есть — только с клиента, который не пришёл к ЭТОМУ мастеру `count` раз за `months` месяцев (В-07)
+   */
+  onlyAfterNoShows?: { count: number; months: number } | null;
+}
+
+/** Порог по умолчанию «не пришёл 2 раза за 12 месяцев» и пределы (как domain/rules/booking-policy.ts фронта) */
+export const DEFAULT_NO_SHOW_PREPAYMENT = { count: 2, months: 12 } as const;
+export const NO_SHOW_PREPAYMENT_LIMITS = { count: { min: 1, max: 10 }, months: { min: 1, max: 24 } } as const;
+
+export function normalizeNoShowRule(rule: { count?: number; months?: number } | null | undefined): { count: number; months: number } {
+  const clamp = (v: number | undefined, d: number, lim: { min: number; max: number }) =>
+    Math.min(lim.max, Math.max(lim.min, Math.round(typeof v === 'number' && Number.isFinite(v) ? v : d)));
+  return {
+    count: clamp(rule?.count, DEFAULT_NO_SHOW_PREPAYMENT.count, NO_SHOW_PREPAYMENT_LIMITS.count),
+    months: clamp(rule?.months, DEFAULT_NO_SHOW_PREPAYMENT.months, NO_SHOW_PREPAYMENT_LIMITS.months),
+  };
+}
+
+export type PrepaymentNeed = { reason: 'all' } | { reason: 'no_shows'; noShows: number; count: number; months: number };
+
+/** Нужна ли предоплата этому клиенту: всем / только тому, кто не пришёл ≥ порога раз (счётчик — у этого мастера) */
+export function prepaymentNeed(rule: PrepaymentRule | null | undefined, clientNoShows = 0): PrepaymentNeed | undefined {
+  if (!rule || !hasPrepayment(rule)) return undefined;
+  if (!rule.onlyAfterNoShows) return { reason: 'all' };
+  const { count, months } = normalizeNoShowRule(rule.onlyAfterNoShows);
+  return clientNoShows >= count ? { reason: 'no_shows', noShows: clientNoShows, count, months } : undefined;
+}
+
+/** Начало периода «последние M месяцев» (UTC-момент; день месяца прижимается к концу месяца) */
+export function noShowPeriodStart(now: Date, months: number): Date {
+  const d = new Date(now.getTime());
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() - months);
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, last));
+  return d;
+}
+
+/** Мастер берёт предоплату: задан процент или сумма больше нуля */
+export function hasPrepayment(rule: PrepaymentRule | null | undefined): boolean {
+  return Boolean(rule && ((rule.percent ?? 0) > 0 || rule.amount > 0));
 }
 
 /** В-05: окно «ждёт предоплату» держится 30 минут (если мастер не задал своё) */
 export const PREPAYMENT_HOLD_MIN = 30;
 
-export function requiresPrepayment(source: string, prepayment: PrepaymentRule | null | undefined, prepaymentPaid = false): boolean {
-  return isOnlineSource(source) && Boolean(prepayment && prepayment.amount > 0) && !prepaymentPaid;
+export function requiresPrepayment(source: string, prepayment: PrepaymentRule | null | undefined, prepaymentPaid = false, clientNoShows = 0): boolean {
+  return isOnlineSource(source) && !prepaymentPaid && prepaymentNeed(prepayment, clientNoShows) !== undefined;
 }
 
 export function newBookingStatus(input: {
@@ -167,18 +214,31 @@ export function newBookingStatus(input: {
   workplace: string;
   isOwnClient?: boolean;
   prepaymentPaid?: boolean;
+  /** ⭐ Сколько раз клиент не пришёл к этому мастеру за период правила; нет — 0 */
+  clientNoShows?: number;
 }): BookingStatus {
   if (!isOnlineSource(input.source)) return 'scheduled';
   if (input.workplace === 'visit') return 'awaiting_confirmation';
-  if (requiresPrepayment(input.source, input.staff.prepayment, input.prepaymentPaid)) return 'awaiting_prepayment';
+  if (requiresPrepayment(input.source, input.staff.prepayment, input.prepaymentPaid, input.clientNoShows)) return 'awaiting_prepayment';
   if (input.staff.calendarVisibility === 'mine' && input.isOwnClient === false) return 'awaiting_confirmation';
   if (input.staff.confirmMode === 'manual') return 'awaiting_confirmation';
   return 'scheduled';
 }
 
-export function prepaymentAmount(rule: PrepaymentRule | null | undefined, total: number): number {
-  if (!rule || rule.amount <= 0) return 0;
+/**
+ * Сумма предоплаты — не больше суммы записи; процент — от суммы записи, вверх до 100 ֏; `full` — клиент выбрал
+ * «Оплатить всё сразу» (как у фронта, domain/rules/pricing.ts).
+ */
+export function prepaymentAmount(rule: PrepaymentRule | null | undefined, total: number, full = false): number {
+  if (!rule || !hasPrepayment(rule)) return 0;
+  if (full && total > 0) return total;
+  if (rule.percent) return total > 0 ? Math.min(total, Math.ceil((total * Math.min(rule.percent, 100)) / 100 / 100) * 100) : 0;
   return total > 0 ? Math.min(rule.amount, total) : rule.amount;
+}
+
+/** «Всю сумму сразу» имеет смысл: цена точная (без «от–до») и предоплата меньше суммы записи */
+export function canPayInFull(rule: PrepaymentRule | null | undefined, total: number, exactPrice: boolean): boolean {
+  return exactPrice && total > 0 && hasPrepayment(rule) && prepaymentAmount(rule, total) < total;
 }
 
 /** В-03: мастер отвечает на заявку 2 ч, но не позже чем за час до начала (моменты — UTC) */
@@ -202,6 +262,8 @@ export interface ServiceLine {
   unitPrice?: number;
   discountPct?: number;
   resourceId?: string;
+  /** ⭐ Допродажа при записи (01.10.2026): строка добавлена как «сопутствующая» к этой услуге — для счётчика «Допродано» */
+  upsellOf?: string;
 }
 
 export function bookedDuration(s: { durationMin: number; durationMax: number | null }): number {
@@ -243,7 +305,7 @@ export interface BookingExtras {
   categoryIds: string[];
   colorIndex?: number;
   customFieldValues: Record<string, string | number | null>;
-  goodsLines: { id: string; itemId: string; qty: number; price: number; discountPct: number; sellerId: string; code?: string }[];
+  goodsLines: { id: string; itemId: string; qty: number; price: number; discountPct: number; sellerId: string; code?: string; upsellOf?: string }[];
   serviceLineExtras: { discountPct: number; assistants?: { staffId: string; sharePct: number }[] }[];
   paidAmount: number;
   autoWriteoff?: { status: string; amountDue: number; subscriptionId?: string };

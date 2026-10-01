@@ -176,6 +176,7 @@ export class FinOpsService {
     const row = await this.prisma.finOp.findFirst({ where: { id, businessId } });
     if (!row) throw new ApiError('not_found', 'Operation not found');
     if (row.cancelled) throw new ApiError('already_cancelled', 'Operation is cancelled');
+    assertNotLinked(row);
     const history = Array.isArray(row.history) ? [...(row.history as Record<string, unknown>[])] : [];
     const by = ctx.member!.staffId;
     const data: Record<string, unknown> = { updatedBy: by, version: { increment: 1 } };
@@ -218,6 +219,7 @@ export class FinOpsService {
     const row = await this.prisma.finOp.findFirst({ where: { id, businessId } });
     if (!row) throw new ApiError('not_found', 'Operation not found');
     if (row.cancelled) return;
+    assertNotLinked(row);
     const toCancel = [row.id];
     if (row.feeOperationId) toCancel.push(row.feeOperationId);
     if (row.transferGroupId) {
@@ -342,6 +344,15 @@ export class FinOpsService {
   async pnl(businessId: string, from: string, to: string, locationIds?: string[]) {
     return this.overview(businessId, from, to, locationIds);
   }
+}
+
+/**
+ * F-07-014 (qa/full-test-0930, как мок): оплату визита (source 'booking') и пополнение счёта (source 'account')
+ * правят и отменяют там, где провели, — в окне визита и в карточке клиента/«Лояльности». Иначе визит остаётся
+ * «Оплачено», а денег в кассе уже нет. Страница операции отвечает 409 `operation_linked`.
+ */
+function assertNotLinked(row: { source: string }): void {
+  if (row.source === 'booking' || row.source === 'account') throw new ApiError('operation_linked', 'Operation is linked to a visit payment or account top-up');
 }
 
 function nameOf(client: { name: string; lastName: string | null }): string {

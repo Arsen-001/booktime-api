@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
-import { Biz, Ctx } from '../../common/http/guards.js';
+import { Biz, BizAny, Ctx } from '../../common/http/guards.js';
 import { ZodBody } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { PrismaService } from '../../common/prisma.service.js';
@@ -202,13 +202,13 @@ export class FinanceExtController {
   // ── Кассовая смена и Z-отчёт (fin-review Ф1) ──
 
   @Get('cash-registers/:accountId/shifts')
-  @Biz('finance.view')
+  @BizAny('finance.view', 'finance.shift')
   listShifts(@Param('businessId') businessId: string, @Param('accountId') accountId: string) {
     return this.shifts.list(businessId, accountId);
   }
 
   @Post('cash-registers/:accountId/shifts')
-  @Biz('finance.edit')
+  @BizAny('finance.edit', 'finance.shift')
   @HttpCode(200)
   @ZodBody(shiftBody)
   openShift(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('accountId') accountId: string, @Body(new Zod(shiftBody)) body: z.infer<typeof shiftBody>) {
@@ -216,7 +216,7 @@ export class FinanceExtController {
   }
 
   @Post('cash-shifts/:shiftId/close')
-  @Biz('finance.edit')
+  @BizAny('finance.edit', 'finance.shift')
   @HttpCode(200)
   @ZodBody(shiftBody)
   closeShift(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('shiftId') shiftId: string, @Body(new Zod(shiftBody)) body: z.infer<typeof shiftBody>) {

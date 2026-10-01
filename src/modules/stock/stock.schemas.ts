@@ -164,6 +164,8 @@ export const saleLineBody = z.object({
   qtySale: positiveQty,
   unitPrice: money,
   discountPct: z.number().int().min(0).max(100).optional(),
+  /** З9: продавец строки (сотрудник бизнеса); нет — продавец документа (staffId) */
+  sellerId: id32.optional(),
 });
 export const saleBody = z.object({
   locationId: id32,

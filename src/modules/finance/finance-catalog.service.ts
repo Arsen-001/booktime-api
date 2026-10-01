@@ -13,6 +13,7 @@ import type {
   PaymentItemBody,
   PaymentMethodBody,
 } from './finance.schemas.js';
+import { isPrepaymentRegister } from './prepayment-ops.js';
 
 /** 15 системных статей (SYSTEM_ITEM_KEYS фронта, src/domain/finance.ts) — заведены сидом/при первом обращении,
  * не удаляются (только переименовываются). Ключ → {name, kind}. */
@@ -46,6 +47,8 @@ function cashRegisterView(r: { id: string; businessId: string; locationId: strin
     note: r.note ?? undefined,
     order: r.order,
     systemGenerated: r.systemGenerated,
+    // Касса «Предоплата на реквизиты» (prepayment-ops.ts) — как Account.systemKey мока
+    ...(isPrepaymentRegister(r.id) ? { systemKey: 'prepayment' as const } : {}),
     version: r.version,
     ...(balance !== undefined ? { balance: moneyToJson(balance) } : {}),
   };
@@ -59,8 +62,8 @@ function methodView(r: { id: string; businessId: string; key: string; label: str
   return { id: r.id, businessId: r.businessId, key: r.key, label: r.label, kind: r.kind as 'cash' | 'card' | 'custom', feePercent: r.feePercent, accountId: r.accountId ?? undefined, active: r.active, order: r.order, version: r.version };
 }
 
-function counterpartyView(r: { id: string; businessId: string; type: string; name: string; inn: string | null; phone: string | null; email: string | null; contact: string | null; note: string | null; version: number; createdAt: Date }) {
-  return { id: r.id, businessId: r.businessId, type: r.type as 'supplier' | 'company' | 'person' | 'other', name: r.name, inn: r.inn ?? undefined, phone: r.phone ?? undefined, email: r.email ?? undefined, contact: r.contact ?? undefined, note: r.note ?? undefined, version: r.version, createdAt: r.createdAt.toISOString() };
+function counterpartyView(r: { id: string; businessId: string; type: string; name: string; inn: string | null; phone: string | null; email: string | null; contact: string | null; note: string | null; messageLang: string | null; version: number; createdAt: Date }) {
+  return { id: r.id, businessId: r.businessId, type: r.type as 'supplier' | 'company' | 'person' | 'other', name: r.name, inn: r.inn ?? undefined, phone: r.phone ?? undefined, email: r.email ?? undefined, contact: r.contact ?? undefined, note: r.note ?? undefined, ...(r.messageLang ? { messageLang: r.messageLang as 'hy' | 'ru' | 'en' } : {}), version: r.version, createdAt: r.createdAt.toISOString() };
 }
 
 function documentView(r: { id: string; businessId: string; number: string; date: Date; type: string; contentKind: string | null; amount: bigint; refOperationId: string | null; refBookingId: string | null; note: string | null; version: number; createdAt: Date }) {
@@ -89,7 +92,9 @@ export class FinanceCatalogService {
       });
     }
     const locations = await this.prisma.location.findMany({ where: { businessId, deletedAt: null }, select: { id: true } });
-    const withRegister = new Set((await this.prisma.cashRegister.findMany({ where: { businessId }, select: { locationId: true } })).map((r) => r.locationId));
+    // Касса «Предоплата на реквизиты» (заводится при первой предоплате) — не «своя касса филиала»: без основной кассы
+    // и расчётного счёта филиал всё равно получает их
+    const withRegister = new Set((await this.prisma.cashRegister.findMany({ where: { businessId }, select: { id: true, locationId: true } })).filter((r) => !isPrepaymentRegister(r.id)).map((r) => r.locationId));
     let order = await this.prisma.cashRegister.count({ where: { businessId } });
     for (const loc of locations) {
       if (withRegister.has(loc.id)) continue;
@@ -171,6 +176,10 @@ export class FinanceCatalogService {
     const businessId = ctx.member!.businessId;
     const row = await this.prisma.cashRegister.findFirst({ where: { id, businessId } });
     if (!row) throw new ApiError('not_found', 'Cash register not found');
+    // F-07-004 (qa/full-test-0930, как мок): касса, куда способ оплаты кладёт деньги, молча не удаляется — иначе
+    // следующие оплаты уходят в несуществующую кассу. Сначала выбрать другую кассу у способа.
+    const methodUsing = await this.prisma.paymentMethod.count({ where: { businessId, accountId: id, active: true } });
+    if (methodUsing > 0) throw new ApiError('account_in_use', 'Cash register is used by a payment method');
     const used = await this.prisma.finOp.count({ where: { accountId: id } });
     if (used > 0) throw new ApiError('in_use', 'Cash register has operations; cannot delete');
     await this.prisma.$transaction(async (tx) => {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isLocalDate } from '../../common/time/time.js';
 
 /**
  * Входы отчётов (docs/backend/02 §16): `GET …/reports/{name}?from,to,locationIds,staffIds…` — один маршрут на
@@ -6,6 +7,8 @@ import { z } from 'zod';
  * (см. `splitCsv` finance.controller.ts).
  */
 export const id32 = z.string().min(1).max(32);
+/** Строгая дата 'YYYY-MM-DD' — там, где из неё строится Date (иначе «Invalid time value» → 500) */
+const ymd = z.string().refine(isLocalDate, 'YYYY-MM-DD');
 
 export const rangeQuery = z.object({
   from: z.string(),
@@ -100,7 +103,7 @@ export const exportRequestBody = z.object({ format: z.literal('csv').default('cs
 // ─────────────────────────── Этап 21 «network+reports» ───────────────────────────
 
 /** F-12-056: выгрузка «По клиентам» — визиты одного клиента за диапазон */
-export const clientVisitsQuery = z.object({ from: z.string(), to: z.string() });
+export const clientVisitsQuery = z.object({ from: ymd, to: ymd });
 
 /** F-12-074…080: ручной след в журнале выгрузок/загрузок (кнопка «Выгрузить»/«Загрузить» на других экранах) */
 export const manualExportBody = z.object({
@@ -139,15 +142,15 @@ export const stockRangeCategoryQuery = z.object({ locationId: id32, from: z.stri
 
 export const stockWriteOffQuery = z.object({
   locationId: id32,
-  from: z.string(),
-  to: z.string(),
+  from: ymd,
+  to: ymd,
   warehouseId: id32.optional(),
   categoryId: id32.optional(),
   unitMode: z.enum(['sale', 'writeoff']).optional(),
   countMoves: zBool.optional(),
 });
 
-export const stockTurnoverQuery = z.object({ locationId: id32, from: z.string(), to: z.string(), categoryId: id32.optional(), warehouseId: id32.optional() });
+export const stockTurnoverQuery = z.object({ locationId: id32, from: ymd, to: ymd, categoryId: id32.optional(), warehouseId: id32.optional() });
 
 // ─────────────────────────── Этап 21 «network+reports», попытка 2 ───────────────────────────
 
@@ -172,4 +175,12 @@ const importAppointmentRow = z.object({
 export const importAppointmentsBody = z.object({
   locationId: id32,
   rows: z.array(importAppointmentRow).min(1).max(2000),
+});
+
+/** ⭐ Главная владельца (01.10.2026): период цифр + месяц плана */
+export const homeQuery = z.object({
+  from: ymd,
+  to: ymd,
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM'),
+  locationIds: z.string().max(2000).optional(),
 });

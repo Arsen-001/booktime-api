@@ -42,7 +42,7 @@ type StockOpRow = {
   updatedAt: Date;
 };
 
-function docView(r: StockOpRow, lines: { goodId: string; qtySale: number; unitPrice: bigint; discountPct: number | null; costTotal: bigint }[]) {
+function docView(r: StockOpRow, lines: { goodId: string; qtySale: number; unitPrice: bigint; discountPct: number | null; costTotal: bigint; sellerId?: string | null }[]) {
   return {
     id: r.id,
     businessId: r.businessId,
@@ -71,7 +71,7 @@ function docView(r: StockOpRow, lines: { goodId: string; qtySale: number; unitPr
     version: r.version,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt?.toISOString(),
-    lines: lines.map((l) => ({ goodId: l.goodId, qtySale: l.qtySale, unitPrice: moneyToJson(l.unitPrice), discountPct: l.discountPct ?? undefined, costTotal: moneyToJson(l.costTotal) })),
+    lines: lines.map((l) => ({ goodId: l.goodId, qtySale: l.qtySale, unitPrice: moneyToJson(l.unitPrice), discountPct: l.discountPct ?? undefined, costTotal: moneyToJson(l.costTotal), ...(l.sellerId ? { sellerId: l.sellerId } : {}) })),
   };
 }
 
@@ -268,7 +268,8 @@ export class StockOpsService {
       await tx.stockOp.create({
         data: { id, businessId, locationId, number, type: 'sale', date: new Date(), warehouseId: input.warehouseId, clientId: input.clientId, staffId: input.staffId, bookingId: input.bookingId, paid: input.paymentMethod !== 'unpaid', paymentMethod: input.paymentMethod, comment: input.comment, createdBy: ctx.member!.staffId, updatedBy: ctx.member!.staffId },
       });
-      await tx.stockOpLine.createMany({ data: input.lines.map((l) => ({ id: newId('stockOpLine'), opId: id, businessId, goodId: l.goodId, qtySale: -Math.abs(l.qtySale), unitPrice: BigInt(l.unitPrice), discountPct: l.discountPct, costTotal: -lineTotal(l) })) });
+      // З9: продавец строки (товар визита — его продавец); нет — продавец документа
+      await tx.stockOpLine.createMany({ data: input.lines.map((l) => ({ id: newId('stockOpLine'), opId: id, businessId, goodId: l.goodId, qtySale: -Math.abs(l.qtySale), unitPrice: BigInt(l.unitPrice), discountPct: l.discountPct, costTotal: -lineTotal(l), sellerId: l.sellerId ?? null })) });
       await this.audit.record(tx, ctx, { action: 'create', entityType: 'stockOperation', entityId: id, businessId, after: { type: 'sale', number } });
     });
     if (input.paymentMethod === 'cash' || input.paymentMethod === 'card') {

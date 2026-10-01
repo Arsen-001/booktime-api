@@ -6,6 +6,7 @@ import { Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { branchDailyStatsQuery, servicesCsvImportBody } from './network.schemas.js';
+import { NetworkAccessService } from './network-access.service.js';
 import { NetworkCatalogService } from './network-catalog.controller.js';
 
 const marketingOptOutBody = z.object({ phone: z.string().trim().min(1).max(32), optOut: z.boolean() });
@@ -25,7 +26,18 @@ const branchDailyStatsOut = z.array(z.object({ businessId: z.string(), revenue: 
 @ApiTags('network')
 @Controller('v1/biz/:businessId/network')
 export class NetworkBusinessController {
-  constructor(private readonly catalog: NetworkCatalogService) {}
+  constructor(
+    private readonly catalog: NetworkCatalogService,
+    private readonly access: NetworkAccessService,
+  ) {}
+
+  /** `src/api/network.ts::getMyNetworkAccess` — мои права в сети этого филиала (меню и экраны кабинета сети) */
+  @Get('my-access')
+  @Biz()
+  @ApiOperation({ summary: 'Права текущего пользователя в сети этого филиала (F-11-029…035, Сеть7)' })
+  myAccess(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string) {
+    return this.access.myAccess(ctx.session!.userId, businessId);
+  }
 
   @Get('mine')
   @Biz()

@@ -64,6 +64,8 @@ export const serviceExtraBody = z
     pickOptions: z
       .object({ mode: z.enum(['palette', 'manual']), manualOptions: z.array(localized).max(50).optional() })
       .optional(),
+    /** ⭐ Допродажа при записи (01.10.2026): сопутствующие услуги и товары склада, до 12 каждого */
+    upsell: z.object({ serviceIds: z.array(id32).max(12), productIds: z.array(id32).max(12) }).optional(),
   })
   .catchall(z.unknown());
 export type ServiceExtraBody = z.infer<typeof serviceExtraBody>;

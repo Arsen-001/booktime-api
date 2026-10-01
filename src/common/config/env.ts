@@ -41,6 +41,17 @@ const schema = z.object({
   FCM_CLIENT_EMAIL: z.string().optional(),
   /** Как в JSON-файле сервисного аккаунта — с настоящими переводами строк (\n экранированный тоже принимается) */
   FCM_PRIVATE_KEY: z.string().optional(),
+  // Telegram-бот напоминаний (30.09.2026, решение владельца: бесплатный канал для клиентов без приложения).
+  /** Токен от @BotFather: есть — бот настоящий (Bot API); нет — заглушка пишет сообщения в лог */
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  /** Имя бота без @ — для ссылки https://t.me/<имя>?start=<код> */
+  TELEGRAM_BOT_USERNAME: z.string().optional().transform((s) => (s || 'booktime_bot').replace(/^@/, '')),
+  /** Секрет вебхука (setWebhook secret_token): задан — POST /v1/telegram/webhook без верного заголовка отклоняется */
+  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+  /** '1' — воркер сам забирает обновления getUpdates (разработка без публичного адреса); прод — вебхук */
+  TELEGRAM_BOT_POLLING: z.string().optional().transform((v) => v === '1'),
+  /** Адрес сайта для ссылок в сообщениях (кнопка «Перенести» → <адрес>/b/<slug>) */
+  PUBLIC_SITE_URL: z.string().optional().transform((s) => (s || 'https://booktime.am').replace(/\/+$/, '')),
 });
 
 export type Env = z.infer<typeof schema>;

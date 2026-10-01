@@ -18,6 +18,8 @@ export const serviceLine = z.object({
   unitPrice: z.number().int().min(0).optional(),
   discountPct: z.number().min(0).max(100).optional(),
   resourceId: id.optional(),
+  /** ⭐ Допродажа при записи: строка — сопутствующая к этой услуге (счётчик «Допродано») */
+  upsellOf: id.optional(),
 });
 
 const prepayment = z.object({ amount: money, paid: z.boolean(), holdUntil: localDateTime.optional() });
@@ -27,7 +29,7 @@ export const placeBody = z.object({
   businessId: id.optional(),
   staffId: id,
   start: localDateTime,
-  services: z.array(z.object({ serviceId: id, staffId: id.optional(), qty: z.number().int().min(1).max(100).optional(), discountPct: z.number().min(0).max(100).optional(), unitPrice: z.number().int().min(0).optional() })).max(30),
+  services: z.array(z.object({ serviceId: id, staffId: id.optional(), qty: z.number().int().min(1).max(100).optional(), discountPct: z.number().min(0).max(100).optional(), unitPrice: z.number().int().min(0).optional(), upsellOf: id.optional() })).max(30),
   locationId: id.optional(),
   workplace: z.string().max(8).optional(),
   client: z.object({ clientId: id.optional(), appUserId: id.optional(), phone: z.string().max(30).optional(), name: z.string().max(160).optional() }).optional(),
@@ -65,6 +67,8 @@ export const rawBody = z.object({
   seriesId: id.optional(),
   visitId: id.optional(),
   staffAssignment: z.enum(['specific', 'any']).optional(),
+  /** client-2-fix: номер доп. места участника события (eventExtraSeat фронта) */
+  extraSeat: z.number().int().min(1).max(100).optional(),
 });
 
 export const patchBody = z.object({
@@ -96,7 +100,7 @@ export const delayBody = z.object({ delayMin: z.number().int().min(1).max(600) }
 export const finishEarlyBody = z.object({ actualDurationMin: z.number().int().min(1).max(24 * 60).optional() });
 export const idsBody = z.object({ ids: z.array(id).max(2000) });
 
-const goodsLine = z.object({ itemId: id, qty: z.number().int().min(1).max(1000), price: money, discountPct: z.number().min(0).max(100), sellerId: z.string().max(40), code: z.string().max(80).optional() });
+const goodsLine = z.object({ itemId: id, qty: z.number().int().min(1).max(1000), price: money, discountPct: z.number().min(0).max(100), sellerId: z.string().max(40), code: z.string().max(80).optional(), upsellOf: id.optional() });
 
 export const extrasPatchBody = z.object({
   categoryIds: z.array(z.string().max(40)).max(30).optional(),
@@ -134,6 +138,8 @@ export const checkBody = z.object({
   resourceId: id.optional(),
   instanceId: z.string().max(40).optional(),
   locationId: id.optional(),
+  /** Есть ли у этого клиента другая запись в это время (у любого мастера бизнеса) — журнал предупреждает */
+  clientId: id.optional(),
 });
 
 export const visitIdBody = z.object({ clientId: id.optional(), start: localDateTime, durationMin: z.number().int().min(0), excludeBookingId: id.optional() });
@@ -175,18 +181,6 @@ export const attachLinkedBody = z.object({ mainBookingId: id, locationId: id, cl
 
 export const recurrenceBody = z.object({ rule: z.object({ time: hm, withClient: z.boolean() }).passthrough(), dates: z.array(localDate).max(366) });
 
-const waitSlot = z.object({ date: localDate.optional(), anyTime: z.boolean(), intervals: z.array(z.object({ from: hm, to: hm })).max(10) });
-export const waitlistBody = z.object({
-  locationId: id.optional(),
-  clientName: z.string().max(160),
-  clientPhone: z.string().max(30),
-  serviceIds: z.array(id).max(20),
-  staffIds: z.array(id).max(50),
-  slots: z.array(waitSlot).max(20),
-  comment: z.string().max(2000).optional(),
-});
-export const waitlistPatchBody = waitlistBody.partial();
-export const waitlistCloseBody = z.object({ bookingId: id });
 
 export const medicalVisitBody = z.object({ patch: z.record(z.string(), z.string().max(10000)), authorName: z.string().max(160) });
 /// F-04-100 (этап 21, лейн rest): своё напоминание клиенту и срок приглашения на повторный визит для ОДНОЙ записи

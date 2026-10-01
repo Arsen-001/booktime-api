@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, StreamableFile } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
@@ -7,9 +8,12 @@ import type { RequestContext } from '../../common/http/context.js';
 import { Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
+import { utcToLocalDate } from '../../common/time/time.js';
+import { requireRange } from './reports-common.js';
 import { ReportsAuditService } from './reports-audit.service.js';
 import { ReportsDashboardService } from './reports-dashboard.service.js';
 import { ReportsExportService } from './reports-export.service.js';
+import { ReportsHomeService } from './reports-home.service.js';
 import { ReportsJournalService } from './reports-journal.service.js';
 import { ReportsMarketingService } from './reports-marketing.service.js';
 import type { ReportServices } from './reports-registry.js';
@@ -21,6 +25,7 @@ import { ReportsStockService } from './reports-stock.service.js';
 import {
   clientVisitsQuery,
   exportsListQuery,
+  homeQuery,
   importAppointmentsBody,
   manualExportBody,
   promotionNotReturnedQuery,
@@ -57,6 +62,7 @@ export class ReportsController {
     private readonly exports: ReportsExportService,
     private readonly reviews: ReportsReviewsService,
     private readonly stock: ReportsStockService,
+    private readonly home: ReportsHomeService,
   ) {
     this.services = { dashboard, journal, sales, marketing, audit };
   }
@@ -238,6 +244,22 @@ export class ReportsController {
   @ZodBody(importAppointmentsBody)
   importAppointments(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(importAppointmentsBody)) body: z.infer<typeof importAppointmentsBody>) {
     return this.journal.importAppointments(ctx, businessId, body.locationId, body.rows as unknown as Parameters<ReportsJournalService['importAppointments']>[3]);
+  }
+
+  // ─────────────────────────── ⭐ Главная владельца (01.10.2026) ───────────────────────────
+  // Стоит ВЫШЕ `:name`: иначе «home» ушёл бы в диспетчер отчётов как неизвестный отчёт.
+
+  @Get('home')
+  @Biz('reports.view')
+  @ApiOperation({ summary: 'Главная владельца: выручка к плану, загрузка, перезапись, «не пришли», «пора позвать», отдача от рассылок — теми же расчётами, что отчёты' })
+  ownerHome(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Query(new Zod(homeQuery)) q: z.infer<typeof homeQuery>) {
+    const range = requireRange(q);
+    // Месяц плана: с 1-го по сегодня (деньги «завтра» не получены) или по последний день прошедшего месяца
+    const monthStart = `${q.month}-01`;
+    const monthEnd = dayjs(monthStart).endOf('month').format('YYYY-MM-DD');
+    const todayLocal = utcToLocalDate(new Date());
+    const monthRange = { from: monthStart, to: todayLocal < monthEnd ? (todayLocal < monthStart ? monthStart : todayLocal) : monthEnd };
+    return this.home.home(ctx, businessId, q.locationIds ? q.locationIds.split(',').filter(Boolean) : undefined, range, q.month, monthRange);
   }
 
   // ─────────────────────────── docs/backend/02 §16: `GET …/reports/{name}` ───────────────────────────

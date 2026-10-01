@@ -2,11 +2,12 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } fr
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
-import { Biz, Ctx } from '../../common/http/guards.js';
+import { Biz, BizAny, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { FinanceCatalogService } from './finance-catalog.service.js';
 import { FinOpsService, type FinOpFilter } from './fin-ops.service.js';
+import { LoyaltySalesService } from './loyalty-sales.service.js';
 import {
   cashRegisterBody,
   cashRegisterPatchBody,
@@ -18,6 +19,7 @@ import {
   finOpPatchBody,
   importCounterpartiesBody,
   importFinOpsBody,
+  loyaltySaleBody,
   paymentItemBody,
   paymentItemPatchBody,
   paymentMethodBody,
@@ -41,12 +43,30 @@ export class FinanceController {
   constructor(
     private readonly catalog: FinanceCatalogService,
     private readonly ops: FinOpsService,
+    private readonly loyaltySales: LoyaltySalesService,
   ) {}
+
+  // ─────────────────────────── Продажа лояльности в кассу (01.10.2026) ───────────────────────────
+
+  /**
+   * recordLoyaltySale мока: приход за абонемент / сертификат / пополнение счёта клиента способом `methodKey`
+   * (касса — у способа). Права — у продажи в «Лояльности»: администратор продаёт абонемент без права править финансы
+   * (loyalty.manage), как и кассир (finance.edit). Продажи из раздела «Лояльность» (/loyalty/x/sell…) проводят
+   * приход сами, в той же транзакции, — этот маршрут для продаж, собранных фронтом отдельно.
+   */
+  @Post('loyalty-sales')
+  @BizAny('loyalty.manage', 'finance.edit')
+  @HttpCode(200)
+  @ZodBody(loyaltySaleBody)
+  recordLoyaltySale(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(loyaltySaleBody)) body: z.infer<typeof loyaltySaleBody>) {
+    return this.loyaltySales.record(businessId, body, ctx.member!.staffId).then((op) => this.ops.get(businessId, op.id));
+  }
 
   // ─────────────────────────── Кассы ───────────────────────────
 
   @Get('cash-registers')
-  @Biz('finance.view')
+  // Кассовая смена (01.10.2026): администратору с finance.shift нужен список касс для смены
+  @BizAny('finance.view', 'finance.shift')
   listCashRegisters(@Param('businessId') businessId: string, @Query('locationIds') locationIds?: string, @Query('withBalance') withBalance?: string) {
     return this.catalog.listCashRegisters(businessId, splitCsv(locationIds), withBalance === '1' || withBalance === 'true');
   }

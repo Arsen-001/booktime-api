@@ -179,11 +179,14 @@ export class ReportsStockService {
 
   async salesAnalysis(businessId: string, locationId: string, range: ReportRange, categoryId?: string, staffId?: string) {
     const { goods, categories } = await this.goodsAndCategories(businessId, locationId);
-    const docs = await this.prisma.stockOp.findMany({ where: { businessId, locationId, type: 'sale', cancelledAt: null, ...(staffId ? { staffId } : {}) } });
+    const docs = await this.prisma.stockOp.findMany({ where: { businessId, locationId, type: 'sale', cancelledAt: null } });
     const inRangeDocs = docs.filter((d) => { const local = utcToLocal(d.date).slice(0, 10); return local >= range.from && local <= range.to; });
     const lines = inRangeDocs.length ? await this.prisma.stockOpLine.findMany({ where: { opId: { in: inRangeDocs.map((d) => d.id) } } }) : [];
+    const docStaff = new Map(inRangeDocs.map((d) => [d.id, d.staffId] as const));
     const byGood = new Map<string, { qty: number; costTotal: number; totalValue: number }>();
     for (const line of lines) {
+      // З9 (заход 4): фильтр «Сотрудник» — продавец строки, нет — продавец документа
+      if (staffId && (line.sellerId ?? docStaff.get(line.opId)) !== staffId) continue;
       const good = goods.find((g) => g.id === line.goodId);
       if (!good) continue;
       if (categoryId && !this.inSubtree(categories, categoryId, good.categoryId)) continue;

@@ -417,7 +417,7 @@ function eventDriven(ctx: DeriveContext, events: DEvent[]): LogRow[] {
         if (event.at > booking.start) continue;
         const channel = pickChannel(t75, hasApp);
         if (!channel) continue;
-        emit(t75, channel, { ru: `Вы не пришли на запись ${vars.ru.date} в ${vars.ru.time}.`, en: `You missed your booking on ${vars.en.date} at ${vars.en.time}.` }, { ru: 'Неявка', en: 'No-show' });
+        emit(t75, channel, { ru: `Вы не пришли на запись ${vars.ru.date} в ${vars.ru.time}.`, en: `You missed your booking on ${vars.en.date} at ${vars.en.time}.` }, { ru: 'Не пришёл', en: 'No-show' });
       }
       continue;
     }

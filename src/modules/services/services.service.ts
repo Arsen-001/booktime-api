@@ -501,8 +501,22 @@ export class ServicesService {
     const row = await this.prisma.service.findFirst({ where: { id, businessId } });
     if (!row) throw new ApiError('not_found', 'Service not found');
     const merged = { ...serviceExtraView(row), ...patch };
+    if (patch.upsell) merged.upsell = await this.validUpsell(businessId, id, patch.upsell);
     await this.prisma.service.update({ where: { id }, data: { extra: merged as Prisma.InputJsonValue } });
     return merged;
+  }
+
+  /** ⭐ Допродажа: в списке только свои услуги (не сама эта) и свои товары склада — чужие id молча отбрасываются */
+  private async validUpsell(businessId: string, serviceId: string, cfg: { serviceIds: string[]; productIds: string[] }) {
+    const serviceIds = [...new Set(cfg.serviceIds)].filter((x) => x !== serviceId);
+    const productIds = [...new Set(cfg.productIds)];
+    const [svcs, prods] = await Promise.all([
+      serviceIds.length ? this.prisma.service.findMany({ where: { id: { in: serviceIds }, businessId }, select: { id: true } }) : Promise.resolve([]),
+      productIds.length ? this.prisma.product.findMany({ where: { id: { in: productIds }, businessId }, select: { id: true } }) : Promise.resolve([]),
+    ]);
+    const okS = new Set(svcs.map((x) => x.id));
+    const okP = new Set(prods.map((x) => x.id));
+    return { serviceIds: serviceIds.filter((x) => okS.has(x)), productIds: productIds.filter((x) => okP.has(x)) };
   }
 
   async getReceiptName(businessId: string, id: string) {

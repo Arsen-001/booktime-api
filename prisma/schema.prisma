@@ -1379,30 +1379,39 @@ model PackageGroup {
   @@map("package_groups")
 }
 
-/// Лист ожидания — одна таблица и для журнала (F-01-156…162), и для приложения клиента (F-00-102, этап 9)
+/// Лист ожидания бизнеса — ОДИН (владелец, 30.09.2026): полный экран /biz/waitlist и панель журнала (F-16-149…168,
+/// F-01-156…162), «сообщить об окне» из приложения (F-00-102, appUserId) и первая волна раздачи окна (В-18, FreedSlot).
+/// Бывшая вторая таблица resources_waitlist_entries влита сюда миграцией 20260930120000_one_waitlist.
 model WaitlistEntry {
-  id          String    @id @db.VarChar(32)
-  businessId  String    @map("business_id") @db.VarChar(32)
-  locationId  String?   @map("location_id") @db.VarChar(32)
-  clientName  String    @map("client_name") @db.VarChar(160)
-  clientPhone String    @map("client_phone") @db.VarChar(20)
-  clientId    String?   @map("client_id") @db.VarChar(32)
+  id            String    @id @db.VarChar(32)
+  businessId    String    @map("business_id") @db.VarChar(32)
+  locationId    String?   @map("location_id") @db.VarChar(32)
+  clientName    String    @map("client_name") @db.VarChar(160)
+  clientPhone   String    @map("client_phone") @db.VarChar(20)
+  clientId      String?   @map("client_id") @db.VarChar(32)
   /// Встал сам из приложения (F-00-102)
-  appUserId   String?   @map("app_user_id") @db.VarChar(32)
-  serviceIds  Json      @map("service_ids")
+  appUserId     String?   @map("app_user_id") @db.VarChar(32)
+  /// Откуда заявка: staff (экран листа, панель журнала) | app (приложение клиента) | widget (виджет онлайн-записи).
+  /// С 01.10.2026 в этот лист пишут все входы — бывшие online_records kind='waitlist' перенесены миграцией 20261001233000.
+  source        String    @default("staff") @db.VarChar(16)
+  serviceIds    Json      @map("service_ids")
   /// Пусто — любой специалист
-  staffIds    Json      @map("staff_ids")
-  /// WaitlistPreferredSlot[]
-  slots       Json
-  comment     String    @default("") @db.VarChar(2000)
-  /// Закрыта: из заявки создана запись (F-01-159)
-  bookingId   String?   @map("booking_id") @db.VarChar(32)
-  /// Когда предложено освободившееся окно (В-18, первая волна)
-  notifiedAt  DateTime? @map("notified_at") @db.DateTime(3)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy   String?   @map("created_by") @db.VarChar(32)
-  version     Int       @default(1)
+  staffIds      Json      @map("staff_ids")
+  /// WaitlistWish[]: { date?, time?, intervals? }; пусто — «любое время»; без date — любой день
+  wishes        Json
+  comment       String    @default("") @db.VarChar(2000)
+  /// Метки заявки (string[])
+  tags          Json
+  /// Закрыта: из заявки создана запись (F-01-159, F-16-163)
+  bookingId     String?   @map("booking_id") @db.VarChar(32)
+  /// Когда последний раз предложено окно (В-18, ручное «Проверить лист», «Предложить окно»)
+  notifiedAt    DateTime? @map("notified_at") @db.DateTime(3)
+  /// Все отметки «Уведомлён» — ISODateTime[] (F-16-166…168)
+  notifiedTimes Json?     @map("notified_times")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy     String?   @map("created_by") @db.VarChar(32)
+  version       Int       @default(1)
 
   @@index([businessId, createdAt])
   @@index([appUserId])
@@ -1698,6 +1707,28 @@ model NotifyOutbox {
   @@map("notify_outbox")
 }
 
+/// Telegram-бот напоминаний (решение владельца 30.09.2026: бесплатный канал для клиентов без нашего приложения).
+/// Один чат — один номер; у номера может быть несколько чатов (телефон и компьютер в разных аккаунтах).
+model TelegramLink {
+  id           String    @id @db.VarChar(32)
+  /// chat.id из Telegram (личный чат с ботом) — строкой, число бывает больше 2^31
+  chatId       String    @unique @map("chat_id") @db.VarChar(32)
+  /// '+374XXXXXXXX' — по нему бот находит записи клиента (Client.phone / User.phone)
+  phone        String    @db.VarChar(16)
+  /// Человек нашего приложения с этим номером, если есть (для справки; напоминания решаются по номеру)
+  appUserId    String?   @map("app_user_id") @db.VarChar(32)
+  /// language_code из Telegram, приведённый к ru | hy | en
+  languageCode String?   @map("language_code") @db.VarChar(8)
+  /// /stop или бот заблокирован в Telegram (403) — больше не пишем, пока снова не нажмёт /start
+  blockedAt    DateTime? @map("blocked_at") @db.DateTime(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([phone])
+  @@index([appUserId])
+  @@map("telegram_links")
+}
+
 /// Новость подписчикам (F-00-114) — своя строка на отправку; лимит считает NewsQuota той же неделей
 model NewsPost {
   id              String   @id @db.VarChar(32)
@@ -1936,6 +1967,35 @@ model ReferralProgram {
   version        Int      @default(1)
 
   @@map("referral_programs")
+}
+
+/// «Пригласи подругу» (наше решение 01.10.2026, F-06-081…084): личный код клиента бизнеса для ссылки
+/// /b/<slug>?ref=<код>. Один код на карточку клиента, заводится при первом показе ссылки; код уникален во всей базе.
+model ReferralCode {
+  code       String   @id @db.VarChar(12)
+  businessId String   @map("business_id") @db.VarChar(32)
+  clientId   String   @unique @map("client_id") @db.VarChar(32)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId])
+  @@map("referral_codes")
+}
+
+/// Кто кого привёл: новый клиент записался по личной ссылке. Один пригласивший на клиента (ключ — приглашённый),
+/// только новый клиент, не сам себя — правила rules/referral фронта, проверяет единый поток записи (place()).
+/// Награда — по настройкам рефералки бизнеса при оплате первого визита (port: getReferralEligibility).
+model ClientReferral {
+  inviteeClientId  String   @id @map("invitee_client_id") @db.VarChar(32)
+  businessId       String   @map("business_id") @db.VarChar(32)
+  referrerClientId String   @map("referrer_client_id") @db.VarChar(32)
+  code             String   @db.VarChar(12)
+  /// Запись, с которой пришла привязка
+  bookingId        String?  @map("booking_id") @db.VarChar(32)
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([businessId, referrerClientId])
+  @@index([referrerClientId])
+  @@map("client_referrals")
 }
 
 /// Типы сертификатов (F-06-086…104)
@@ -2215,6 +2275,8 @@ model FinCounterparty {
   email      String?  @db.VarChar(160)
   contact    String?  @db.VarChar(160)
   note       String?  @db.VarChar(400)
+  /// Владелец 01.10.2026: язык сообщений поставщику (заказ со склада в WhatsApp): hy | ru | en; null — язык кабинета
+  messageLang String? @map("message_lang") @db.VarChar(2)
   createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
   createdBy  String?  @map("created_by") @db.VarChar(32)
@@ -2337,6 +2399,9 @@ model BookingPayment {
 
   @@index([businessId, bookingId])
   @@index([finOpId])
+  /// Лента изменений журнала за день (journal/day-feed): оплаты и отмены оплат за день
+  @@index([businessId, createdAt])
+  @@index([businessId, cancelledAt])
   @@map("booking_payments")
 }
 
@@ -2501,6 +2566,8 @@ model StockOpLine {
   unitPrice   BigInt @map("unit_price")
   discountPct Int?   @map("discount_pct")
   costTotal   BigInt @map("cost_total")
+  /// З9: продавец строки продажи (товар визита — его продавец); null — продавец документа (StockOp.staffId)
+  sellerId    String? @map("seller_id") @db.VarChar(32)
 
   @@index([opId])
   @@index([businessId, goodId])
@@ -2828,6 +2895,8 @@ model NetworkUser {
   email               String?   @db.VarChar(160)
   /// NetworkPermissionKey[] (network.schemas.ts) — плоский список, как ALL_NETWORK_PERMISSIONS мока
   permissions         Json
+  /// Сеть7: филиалы, к которым доступ (string[]); null — все филиалы сети, включая будущие
+  businessIds         Json?     @map("business_ids")
   /// off | daily | weekly | monthly (F-11-030)
   planReportFrequency String?   @map("plan_report_frequency") @db.VarChar(8)
   lastVisitAt         DateTime? @map("last_visit_at") @db.DateTime(3)
@@ -3303,7 +3372,8 @@ model PriceRuleChange {
 /// Подписка бизнеса (06 §3.2) — одна на бизнес; у филиала сети своя (филиал = бизнес).
 model Subscription {
   businessId        String    @id @map("business_id") @db.VarChar(32)
-  /// unpaid (сам зарегистрировался, ещё не платил) | trial_free | active | grace | frozen | cancelled | left
+  /// unpaid (черновик до этапа пробного периода) | trial (сам зарегистрировался: 7 дней, 01.10.2026) | trial_free |
+  /// active | grace | frozen | cancelled | left
   status            String    @db.VarChar(12)
   /// Конец оплаченного/бесплатного срока (UTC, начало следующего дня по Еревану)
   paidUntil         DateTime  @map("paid_until") @db.DateTime(3)
@@ -3993,35 +4063,6 @@ model VisitScheduleEntry {
   @@map("visit_schedule_entries")
 }
 
-/// Лист ожидания СВОЕГО экрана resources.ts (F-16-149…168, /biz/waitlist) — своя, более новая надстройка над
-/// желаниями (wishes) и тегами (tags); journal.WaitlistEntry выше — вторая, более старая реализация со
-/// слотами (slots) для другого экрана (журнал) — их сведение в одну сознательно не входит в этот этап (см.
-/// докстринг src/domain/resources.ts фронта, qa/requests/resources.md).
-model ResourcesWaitlistEntry {
-  id              String   @id @db.VarChar(32)
-  businessId      String   @map("business_id") @db.VarChar(32)
-  locationId      String   @map("location_id") @db.VarChar(32)
-  clientName      String   @map("client_name") @db.VarChar(160)
-  clientPhone     String   @map("client_phone") @db.VarChar(20)
-  /// Id услуг, которых клиент ждёт (хотя бы одна)
-  serviceIds      Json     @map("service_ids")
-  /// Пусто — любой специалист
-  staffIds        Json     @map("staff_ids")
-  /// WaitlistWish[]: { date, time?, intervals? }
-  wishes          Json
-  comment         String   @default("") @db.VarChar(2000)
-  tags            Json
-  /// Заявка закрыта записью — id созданной брони (F-16-163)
-  closedBookingId String?  @map("closed_booking_id") @db.VarChar(32)
-  /// История отметок «Проверить лист ожидания» (F-16-166…168) — ISODateTime[]
-  notifiedTimes   Json?    @map("notified_times")
-  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  createdBy       String?  @map("created_by") @db.VarChar(32)
-
-  @@index([businessId, createdAt])
-  @@map("resources_waitlist_entries")
-}
-
 // Аудит фасадов, лейн «client» (PLAN §6 строка 21, docs/PROGRESS.md «этап 21, лейн client»): отзывы (В-24,
 // F-14-013/F-14-014) — единственная часть исходного счёта «63», для которой на сервере не было вообще
 // никакого модуля (StaffReview заменяет StarRating, когда online.reviewMode='text'; LocationReview — отзыв о
@@ -4132,7 +4173,7 @@ model OnlineClientFieldsConfig {
 model OnlineRecord {
   id         String   @id @db.VarChar(32)
   businessId String   @map("business_id") @db.VarChar(32)
-  /// promoBlock | package | review | widgetEvent | slotInvite | waitlist | serviceConfig
+  /// promoBlock | package | review | widgetEvent | slotInvite | serviceConfig (waitlist — до 01.10.2026, теперь waitlist_entries)
   kind       String   @db.VarChar(20)
   /// widgetEvent: BookingLink.id — фильтр «журнал этой ссылки»
   linkId     String?  @map("link_id") @db.VarChar(32)

@@ -8,8 +8,8 @@
  * — ассистенты услуги (F-09-046/047): нет таблицы «кто ассистировал» ни в одном из построенных разделов
  *   (bookingAssistants мока живёт только в браузере, resources.ts backend его не пишет);
  * — деление комиссии эквайринга (F-09-007/107): по умолчанию `businessOnly` = 0 влияния на сотрудника, всегда;
- * — оплата за продажу товара (F-09-031…034): у Booking/StockOp нет данных «какой сотрудник продал», как и в
- *   моке (`productsAmount` там тоже всегда 0, см. api/payroll.ts computePeriod).
+ * Оплата за продажу товаров (F-09-031…034, З9) — перенесена: продавец строки/документа склада, см.
+ * PayrollComputeService.productSalesPay (как productSalesPay мока).
  */
 
 // ─────────────────────────── Ставка (% или сумма) ───────────────────────────
@@ -111,6 +111,8 @@ export interface WorkdayBlock {
 
 export interface RecordsBlock {
   enabled: boolean;
+  /** F-09-039: сумма за саму созданную запись — один раз, сколько бы услуг в ней ни было (мок, QA 30.09) */
+  perRecordAmount?: number;
   perServicePayout: PayoutValue;
   perServiceOverrides: PayoutOverride[];
   onlineWidgetEnabled: boolean;
@@ -197,6 +199,7 @@ export function emptySchemeBlocks(): SchemeBlocks {
     workday: { enabled: false, baseAmount: 0, basePeriod: 'day', guaranteedMinimum: defaultGuaranteedMinimum() },
     records: {
       enabled: false,
+      perRecordAmount: 0,
       perServicePayout: { ...DEFAULT_PAYOUT },
       perServiceOverrides: [],
       onlineWidgetEnabled: false,
@@ -378,6 +381,16 @@ export interface ComputeDayInput {
   loyaltyPaidForBooking?: (bookingId: string) => LoyaltyPaidBreakdown | undefined;
   techCardCost?: (serviceId: string, staffId: string, atDate: string) => number | undefined;
   unpaidForBooking?: (bookingId: string) => number;
+  /**
+   * F-09-005 (QA 01.10, как мок): «Дата поступления средств на счёт» — день, которым визит попадает в зарплату
+   * (последняя оплата визита / полученная предоплата). Не передано или undefined — дата визита (по умолчанию).
+   */
+  accrualDateForBooking?: (bookingId: string) => string | undefined;
+}
+
+/** День начисления визита: групповые события — всегда по дате события, остальное — accrualDateForBooking или визит */
+export function accrualDateOf(b: Pick<EngineBooking, 'id' | 'groupEventId' | 'startAt'>, accrualDateForBooking?: (bookingId: string) => string | undefined): string {
+  return (b.groupEventId ? undefined : accrualDateForBooking?.(b.id)) ?? localDate(b.startAt);
 }
 
 /**
@@ -389,7 +402,7 @@ export function computeServicesForDay(input: ComputeDayInput): Map<string, DayOp
   const result = new Map<string, DayOperation[]>();
   for (const staffId of input.staffIds) result.set(staffId, []);
 
-  const dayBookings = input.bookings.filter((b) => b.locationId === input.locationId && b.status === 'arrived' && !b.deletedAt && localDate(b.startAt) === input.date);
+  const dayBookings = input.bookings.filter((b) => b.locationId === input.locationId && b.status === 'arrived' && !b.deletedAt && accrualDateOf(b, input.accrualDateForBooking) === input.date);
   const individualBookings = dayBookings.filter((b) => !b.groupEventId);
 
   for (const booking of individualBookings) {
@@ -422,17 +435,15 @@ export function computeServicesForDay(input: ComputeDayInput): Map<string, DayOp
         const techCost = input.techCardCost?.(line.serviceId, line.staffId, input.date);
         const realCost = techCost !== undefined ? roundMoney(techCost * line.qty) : undefined;
         const consumables = consumablesDeduction(fullLineTotal, line.discountPct ?? 0, scheme.personalServices, payout, realCost);
-        if (scheme.personalServices.consumables.mode === 'full') {
-          const adjustedBase = Math.max(0, roundMoney(base - consumables));
-          amount = roundMoney(applyPayout(adjustedBase, payout));
-          if (adjustedBase <= 0 && consumables > 0) clippedByConsumables = true;
-        } else {
-          const raw = applyPayout(base, payout);
-          amount = roundMoney(raw - consumables);
-          if (amount < 0) {
-            amount = 0;
-            clippedByConsumables = true;
-          }
+        // F-09-024/026 (qa/full-test-0930, как мок): расходники вычитаются из ВЫПЛАТЫ за услугу — «100%» вычитает всю
+        // стоимость (60% от 1000 − 10 = 590), «пропорционально» — стоимость × ставку (consumablesDeduction); минус
+        // обрезается до 0 только по этой услуге. Прежняя ветка «100%» считала (цена − стоимость) × ставку — это
+        // «пропорционально», а не 100%.
+        const raw = applyPayout(base, payout);
+        amount = roundMoney(raw - consumables);
+        if (amount < 0) {
+          amount = 0;
+          clippedByConsumables = true;
         }
       }
       const bucket = byStaff.get(line.staffId) ?? { lines: [], sum: 0, revenueSum: 0 };
@@ -484,13 +495,25 @@ export function locationServicesTurnover(bookings: readonly EngineBooking[], loc
   );
 }
 
-/** F-09-039/040: вознаграждение за КАЖДУЮ услугу в записи, которую сотрудник создал в этот день */
-export function recordsRewardForDay(bookings: readonly (EngineBooking & { createdByRef: string; createdAt: Date })[], staffId: string, date: string, block: RecordsBlock, services: readonly EngineService[]): number {
+/** F-09-039/040: вознаграждение за запись, которую создал сотрудник, и за каждую её услугу — днём визита «Пришёл» */
+export function recordsRewardForDay(
+  bookings: readonly (EngineBooking & { createdByRef: string; createdAt: Date })[],
+  staffId: string,
+  date: string,
+  block: RecordsBlock,
+  services: readonly EngineService[],
+  /** QA 30.09: только записи этого филиала — у сотрудника двух филиалов запись не считается дважды */
+  locationId?: string,
+): number {
   if (!block.enabled) return 0;
   const byService = new Map(services.map((s) => [s.id, s]));
   let total = 0;
   for (const b of bookings) {
-    if (b.deletedAt || b.createdByRef !== staffId || localDate(b.createdAt) !== date) continue;
+    // Решение владельца 01.10.2026 (как мок): платим только за состоявшиеся записи («Клиент пришёл») — не за отмены,
+    // неявки и ещё не прошедшие — и начисляем днём визита, а не днём создания (иначе «догоняло» закрытый период)
+    if (b.deletedAt || b.status !== 'arrived' || b.createdByRef !== staffId || localDate(b.startAt) !== date || (locationId !== undefined && b.locationId !== locationId)) continue;
+    // F-09-039: сумма за саму запись — один раз, сколько бы услуг в ней ни было
+    total = roundMoney(total + Math.max(0, block.perRecordAmount ?? 0));
     for (const line of b.services) {
       const service = byService.get(line.serviceId);
       const payout = payoutForTarget({ defaultPayout: block.perServicePayout, overrides: block.perServiceOverrides }, line.serviceId, service?.categoryId);
@@ -515,11 +538,12 @@ export function onlineWidgetRewardForDay(
   date: string,
   block: RecordsBlock,
   services: readonly EngineService[],
+  locationId?: string,
 ): number {
   if (!block.enabled || !block.onlineWidgetEnabled) return 0;
   let total = 0;
   for (const b of bookings) {
-    if (b.deletedAt || b.status !== 'arrived' || b.source === 'journal') continue;
+    if (b.deletedAt || b.status !== 'arrived' || b.source === 'journal' || (locationId !== undefined && b.locationId !== locationId)) continue;
     if (localDate(b.startAt) !== date) continue;
     const firstArrived = events.find((e) => e.bookingId === b.id && e.kind === 'status' && e.toStatus === 'arrived');
     if (!firstArrived || firstArrived.byRef !== staffId) continue;
@@ -583,14 +607,29 @@ export function applyDailyGuaranteedMinimum(dayTotal: number, min: GuaranteedMin
   return Math.max(dayTotal, min.amount);
 }
 
-/** 🔒 F-09-042/043 демо (как в моке): «прибыль» = оборот × (1 − DEMO_EXPENSE_RATIO), пока finance/stock не
- * отдают настоящие расходы построчно. */
+/** Условная доля расходов (пример ТЗ: оборот 10 000, расходы 7 000) — только когда в финансах филиала расходов нет */
 export const DEMO_EXPENSE_RATIO = 0.7;
 
-export function extraRevenueAmount(turnover: number, block: ExtraRevenueBlock): number {
+/**
+ * «Доп. вознаграждение от оборота/прибыли» (F-09-042/043). Решение владельца 01.10.2026: прибыль — от настоящих
+ * расходов (`expenses` — доля расходов, приходящаяся на этот день, см. PayrollComputeService.expensesForDay);
+ * `undefined` — расходов в финансах не заведено вовсе: условные 70 %, и экран подписывает «условно»
+ * (PayBreakdown.extraProfitAssumed). Порт extraRevenueAmount мока.
+ */
+export function extraRevenueAmount(turnover: number, block: ExtraRevenueBlock, expenses?: number): number {
   if (!block.enabled || block.percent <= 0) return 0;
-  const base = block.base === 'profit' ? roundMoney(turnover * (1 - DEMO_EXPENSE_RATIO)) : turnover;
+  const base = block.base === 'profit' ? (expenses !== undefined ? Math.max(0, roundMoney(turnover - expenses)) : roundMoney(turnover * (1 - DEMO_EXPENSE_RATIO))) : turnover;
   return roundMoney((base * block.percent) / 100);
+}
+
+/** База «% с продаж» товара (F-09-031/032) — порт productSaleBase мока: цена со скидкой, по флагу — минус себестоимость */
+export function productSaleBase(price: number, discountPct: number, costPercentOfPrice: number, costBasis: { enabled: boolean; order: ProductCostOrder }): number {
+  const priceAfterDiscount = roundMoney(price * (1 - discountPct / 100));
+  if (!costBasis.enabled) return priceAfterDiscount;
+  const cost = roundMoney((price * costPercentOfPrice) / 100);
+  if (costBasis.order === 'discountFirst') return roundMoney(Math.max(0, priceAfterDiscount - cost));
+  const afterCost = roundMoney(Math.max(0, price - cost));
+  return roundMoney(afterCost * (1 - discountPct / 100));
 }
 
 export function sumDayResult(r: Pick<StaffDayResult, 'servicesAmount' | 'productsAmount' | 'workdayAmount' | 'recordsAmount' | 'extraAmount'>): number {

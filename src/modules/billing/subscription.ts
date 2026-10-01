@@ -14,7 +14,8 @@ type Db = PrismaService | Tx;
 export type SubRow = Prisma.SubscriptionGetPayload<object>;
 
 /** Статусы сервера (06 §3.2) */
-export type SubStatus = 'unpaid' | 'trial_free' | 'active' | 'grace' | 'frozen' | 'cancelled' | 'left';
+/** trial — пробный период самостоятельной регистрации (7 дней, F-00-019, решение владельца 01.10.2026) */
+export type SubStatus = 'unpaid' | 'trial' | 'trial_free' | 'active' | 'grace' | 'frozen' | 'cancelled' | 'left';
 export type PayMethod = 'card' | 'idram' | 'telcell' | 'invoice';
 
 // ─────────── время: срок хранится моментом UTC = начало местного дня «до» (Asia/Yerevan) ───────────
@@ -66,6 +67,7 @@ export async function quoteFor(db: Db, businessId: string, months: number, price
   const regularTotal = seats.monthlyTotal * months;
   const pct = promoPercent(sub, months);
   const discountAmount = pct ? moneyToJson(percentOf(money(regularTotal), pct)) : 0;
+  const trial = sub.status === 'trial';
   return {
     businessId,
     kind: seats.kind,
@@ -90,13 +92,17 @@ export async function subscriptionView(db: Db, businessId: string) {
   const card = sub.savedCardId ? await db.savedCard.findUnique({ where: { id: sub.savedCardId } }) : null;
   const daysLeft = daysUntil(sub.paidUntil);
   const frozen = sub.status === 'frozen' || sub.status === 'left';
-  const status = frozen ? 'frozen' : sub.status === 'trial_free' ? 'freeMonth' : daysLeft <= 7 ? 'endingSoon' : 'active';
+  const trial = sub.status === 'trial';
+  // Статус как в моке (getSubscription): заморожен → бесплатный месяц → пробный период → «скоро конец» → активна
+  const status = frozen ? 'frozen' : sub.status === 'trial_free' ? 'freeMonth' : trial && daysLeft >= 0 ? 'trial' : daysLeft <= 7 ? 'endingSoon' : 'active';
   return {
     businessId,
     paidUntil: utcToLocalDate(sub.paidUntil),
     autoRenew: sub.autoRenew,
     frozen,
     freeMonthUntil: sub.status === 'trial_free' && sub.freeUntil ? utcToLocalDate(sub.freeUntil) : undefined,
+    /** Пробный период самостоятельной регистрации (Subscription.trialUntil мока, F-00-019): paidUntil = trialUntil */
+    trialUntil: trial ? utcToLocalDate(sub.paidUntil) : undefined,
     promoApplied: sub.promoCode ?? undefined,
     promoDiscountPercent: sub.promoTiers && !sub.promoUsedAt ? bestTier(sub) || undefined : undefined,
     promoUsed: sub.promoCode ? Boolean(sub.promoUsedAt) : undefined,
@@ -181,6 +187,26 @@ export async function grantFreeDays(tx: Tx, input: { businessId: string; days: n
   });
   await publish(tx, input.businessId, true);
   return until;
+}
+
+// ─────────── пробный период самостоятельной регистрации (F-00-019) ───────────
+
+/** Решение владельца 01.10.2026 (qa/full-test-0930 settings.md): сам зарегистрировался — 7 дней на знакомство */
+export const INTRO_TRIAL_DAYS = 7;
+
+/**
+ * Пробный период нового бизнеса (introTrial/startIntroTrial мока): статус `trial`, paidUntil = trialUntil = сегодня +
+ * 7 дней — бизнес опубликован и работает, потом обычное «продлите»: billingTick ведёт `trial` как `active`
+ * (предупреждения 7/3/1, отсрочка, заморозка), оплата делает `active`. Только у свежей подписки `unpaid`: бесплатный
+ * месяц с визита (промокод freeMonth → grantFreeDays, `trial_free`) — вместо него. Скидочный промокод — на первую
+ * оплату, как раньше. Статус — VARCHAR(12), не enum базы: миграция не нужна.
+ */
+export async function startIntroTrial(tx: Tx, businessId: string): Promise<void> {
+  const sub = await ensureSubscription(tx, businessId);
+  if (sub.status !== 'unpaid') return;
+  const until = addLocal(startOfLocalDay(todayLocal()), INTRO_TRIAL_DAYS, 'day');
+  await tx.subscription.update({ where: { businessId }, data: { status: 'trial', paidUntil: until, freeUntil: null, graceUntil: null, retryAt: null, warnedDays: null, version: { increment: 1 } } });
+  await publish(tx, businessId, true);
 }
 
 // ─────────── оплата ───────────
@@ -380,11 +406,12 @@ export async function billingTick(prisma: PrismaService, payments: PaymentProvid
   const now = new Date();
   const horizon = addLocal(now, 8, 'day');
   const subs = await prisma.subscription.findMany({
-    where: { OR: [{ status: { in: ['active', 'trial_free'] }, paidUntil: { lt: horizon } }, { status: 'grace' }] },
+    where: { OR: [{ status: { in: ['active', 'trial', 'trial_free'] }, paidUntil: { lt: horizon } }, { status: 'grace' }] },
   });
   for (const sub of subs) {
     const paidDate = utcToLocalDate(sub.paidUntil);
-    if (sub.status === 'active' || sub.status === 'trial_free') {
+    // пробный период регистрации (trial) — как оплаченный срок: предупреждения, потом отсрочка и заморозка
+    if (sub.status === 'active' || sub.status === 'trial' || sub.status === 'trial_free') {
       const days = daysUntil(sub.paidUntil);
       if (sub.paidUntil > now) {
         if ([7, 3, 1].includes(days) && sub.warnedDays !== days) {

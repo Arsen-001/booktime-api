@@ -127,8 +127,16 @@ export class CatalogService {
   /** «Кто когда свободен»: каталог мастеров с ближайшими окнами (F-00-001, F-00-108…F-00-112) */
   async catalog(q: CatalogQuery): Promise<Record<string, unknown>[]> {
     const todayIso = nowLocal().slice(0, 10);
-    const tomorrowIso = nowLocal().slice(0, 10);
+    // Завтра — следующий календарный день (было `nowLocal()` — «свободно завтра» искало сегодня)
+    const tomorrowIso = new Date(Date.parse(`${todayIso}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
     const search = q.search ? norm(q.search) : '';
+    // Название услуги ищем по основе слова (без последней буквы у длинных слов: «стрижка» находит «Стрижки») на всех
+    // языках — и когда слово совпало со сферой: «стрижка» ведёт в барбер, но окна и ссылка должны быть про стрижку,
+    // а не про самую короткую услугу мастера («Укладка», сценарии 30.09). Как listCatalog мока.
+    const stem = search.length >= 5 ? search.slice(0, -1) : search;
+    const names = (sv: { name: unknown }) => Object.values((sv.name as Record<string, string> | null) ?? {}).filter((n): n is string => typeof n === 'string').map(norm);
+    const nameHit = (sv: { name: unknown }) => names(sv).some((n) => n.includes(stem));
+    const exactHit = (sv: { name: unknown }) => names(sv).some((n) => n === search);
     const searchSpheres = search
       ? Object.keys(SPHERE_SYNONYMS).filter((sphere) => SPHERE_SYNONYMS[sphere]!.some((word) => norm(word).includes(search) || search.includes(norm(word))))
       : [];
@@ -155,26 +163,48 @@ export class CatalogService {
       rows = rows.filter((s) => {
         const business = businesses.get(s.businessId)!;
         const bizLocs = locations.filter((l) => l.businessId === s.businessId);
-        const nameHit = norm(s.name).includes(search);
+        const staffHit = norm(s.name).includes(search);
         const placeHit = norm(business.name).includes(search) || bizLocs.some((l) => norm((l.name as Record<string, string>).ru ?? '').includes(search));
-        const serviceHit = servicesOf(s).some((sv) => norm((sv.name as Record<string, string>).ru ?? '').includes(search));
-        return nameHit || placeHit || serviceHit;
+        const serviceHit = servicesOf(s).some(nameHit);
+        return staffHit || placeHit || serviceHit;
       });
     }
 
     if (rows.length > CATALOG_CANDIDATE_CAP) rows = rows.slice(0, CATALOG_CANDIDATE_CAP);
 
     const out: Record<string, unknown>[] = [];
+    const relevance = new Map<Record<string, unknown>, number>();
+    // Сколько раз мастер делал услугу за 90 дней — какую из найденных услуг показать (только когда есть поиск)
+    const popularity = new Map<string, number>();
+    if (search && rows.length) {
+      const recent = await this.prisma.booking.findMany({
+        where: { staffId: { in: rows.map((r) => r.id) }, deletedAt: null, startAt: { gte: new Date(Date.now() - 90 * 86_400_000) } },
+        select: { staffId: true, services: true },
+      });
+      for (const b of recent) {
+        for (const l of arr<{ serviceId: string; staffId?: string }>(b.services)) {
+          const key = `${l.staffId ?? b.staffId}|${l.serviceId}`;
+          popularity.set(key, (popularity.get(key) ?? 0) + 1);
+        }
+      }
+    }
     for (const s of rows) {
       const business = businesses.get(s.businessId)!;
       const svcList = servicesOf(s);
       if (!svcList.length) continue; // F-00-072: без опубликованной онлайн-услуги мастер в каталог не попадает
-      let matched = svcList;
-      if (search && !searchSpheres.length) {
-        const filtered = svcList.filter((sv) => norm((sv.name as Record<string, string>).ru ?? '').includes(search));
-        if (filtered.length) matched = filtered;
-      }
-      const service = this.shortestService(matched.length ? matched : svcList);
+      const matched = search ? svcList.filter(nameHit) : [];
+      const exact = matched.filter(exactHit);
+      // Из найденных — та, что мастер делает чаще всего («Мужская стрижка», а не «Детская стрижка до 12 лет»), при равенстве —
+      // название ближе к запросу (короче), потом короче по времени. Как listCatalog мока.
+      const closest = (list: typeof svcList) =>
+        list.reduce<(typeof svcList)[number] | undefined>((best, sv) => {
+          if (!best) return sv;
+          const len = (x: { name: unknown }) => ((x.name as Record<string, string> | null)?.ru ?? '').length;
+          const p = (popularity.get(`${s.id}|${sv.id}`) ?? 0) - (popularity.get(`${s.id}|${best.id}`) ?? 0);
+          const d = len(sv) - len(best);
+          return p > 0 || (p === 0 && (d < 0 || (d === 0 && sv.durationMin < best.durationMin))) ? sv : best;
+        }, undefined);
+      const service = exact.length ? this.shortestService(exact) : matched.length ? closest(matched) : this.shortestService(svcList);
       const nearest = await this.availability.nearestSlots(business.id, { staffId: s.id, durationMin: service?.durationMin ?? CATALOG_DEFAULT_DURATION, serviceId: service?.id, days: CATALOG_DAYS, limit: CATALOG_SLOT_LIMIT });
       const deduped = dedupeSlots(nearest);
       if (!deduped.length) continue;
@@ -194,10 +224,13 @@ export class CatalogService {
         boosted: false,
         distanceKm,
       });
+      // Насколько подходит под поиск: 0 — услуга называется ровно так, 1 — слово в названии услуги, 2 — сфера/имя/салон
+      relevance.set(out[out.length - 1]!, exact.length ? 0 : matched.length ? 1 : 2);
     }
 
-    if (q.lat !== undefined && q.lng !== undefined) out.sort((a, b) => ((a.distanceKm as number) ?? Infinity) - ((b.distanceKm as number) ?? Infinity));
-    else out.sort((a, b) => (a.nearestSlots as FreeSlot[])[0]!.start.localeCompare((b.nearestSlots as FreeSlot[])[0]!.start));
+    const rank = (e: Record<string, unknown>) => relevance.get(e) ?? 2;
+    if (q.lat !== undefined && q.lng !== undefined) out.sort((a, b) => rank(a) - rank(b) || ((a.distanceKm as number) ?? Infinity) - ((b.distanceKm as number) ?? Infinity));
+    else out.sort((a, b) => rank(a) - rank(b) || (a.nearestSlots as FreeSlot[])[0]!.start.localeCompare((b.nearestSlots as FreeSlot[])[0]!.start));
 
     return q.limit ? out.slice(0, q.limit) : out;
   }
@@ -209,7 +242,7 @@ export class CatalogService {
 
   // ─────────────────────────── карточка мастера (F-00-123) ───────────────────────────
 
-  async masterCard(staffId: string, viewerAppUserId?: string): Promise<Record<string, unknown>> {
+  async masterCard(staffId: string, viewerAppUserId?: string, serviceId?: string): Promise<Record<string, unknown>> {
     const staff = await this.prisma.staff.findFirst({ where: { id: staffId, status: 'active', deletedAt: null }, include: STAFF_INCLUDE });
     if (!staff || !staff.onlineBookingEnabled || staff.calendarVisibility === 'link') throw new ApiError('not_found', 'Staff not found');
     const business = await this.prisma.business.findFirst({ where: { id: staff.businessId, status: 'active' } });
@@ -217,7 +250,8 @@ export class CatalogService {
     const locations = await this.prisma.location.findMany({ where: { id: { in: staff.locations.map((l) => l.locationId) }, deletedAt: null } });
     const serviceIds = arr<string>(staff.serviceIds);
     const services = await this.prisma.service.findMany({ where: { id: { in: serviceIds }, active: true, onlineBookable: true } });
-    const service = this.shortestService(services);
+    // Пришли из поиска («стрижка») — окна под найденную услугу; иначе под самую короткую (окон под неё больше всего)
+    const service = services.find((sv) => sv.id === serviceId) ?? this.shortestService(services);
     // Студия «дома» у частного мастера — до подтверждённой записи только район (F-00-077)
     const workplaces = arr<string>(staff.workplaces);
     const homeOnly = business.kind === 'individual' && workplaces.length === 1 && workplaces[0] === 'home';
@@ -251,6 +285,14 @@ export class CatalogService {
   }
 
   // ─────────────────────────── карточка места (F-14-028) ───────────────────────────
+
+  /** Значок «первого» — только где (район/сфера); дни и монеты награды — внутреннее дело панели и бизнеса */
+  async firstBadge(businessId: string): Promise<{ scope: string; sphereId: string; district?: string } | null> {
+    // Район важнее сферы: «первый в районе» — более узкое и заметное отличие
+    const rows = await this.prisma.firstAward.findMany({ where: { businessId }, orderBy: { at: 'asc' }, select: { scope: true, sphereId: true, district: true } });
+    const a = rows.find((r) => r.scope === 'district') ?? rows[0];
+    return a ? { scope: a.scope, sphereId: a.sphereId, ...(a.district ? { district: a.district } : {}) } : null;
+  }
 
   async placeCard(businessId: string): Promise<Record<string, unknown>> {
     const business = await this.prisma.business.findFirst({ where: { id: businessId, status: 'active' } });

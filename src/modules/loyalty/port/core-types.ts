@@ -138,6 +138,8 @@ export interface BookingRules {
   allowCancelPrepaid?: boolean;
   /** Разрешить переносить онлайн записи с внесённой предоплатой */
   allowReschedulePrepaid?: boolean;
+  /** ⭐ В-04: отмена клиентом позже срока — предоплата остаётся мастеру. Нет поля — остаётся */
+  keepPrepaymentOnLateCancel?: boolean;
 }
 
 export interface Network {
@@ -282,11 +284,31 @@ export interface StaffContactChannels {
 
 /** Правило ручной предоплаты по реквизитам (F-00-097) — по всем услугам мастера */
 export interface PrepaymentRule {
+  /** Фиксированная сумма; не действует, если задан `percent` */
   amount: Money;
+  /**
+   * ⭐ Процент от суммы записи (1–100), который ставит мастер; важнее `amount`. Клиент при записи выбирает сам:
+   * только предоплату или всю сумму сразу (Booking.prepayment.full).
+   */
+  percent?: number;
   /** Сколько минут держится окно, пока клиент не нажал «Я оплатил» */
   timeoutMin: Minutes;
   /** Реквизиты, например «Idram · +374 …» */
   requisites: string;
+  /**
+   * ⭐ Предоплата только от тех, кто уже не приходил (владелец, 01.10.2026): нет поля — предоплату вносят все
+   * клиенты; есть — только клиент, который не пришёл к ЭТОМУ мастеру `count` раз за последние `months` месяцев
+   * (счётчик у каждого мастера свой, В-07). «Не пришёл» = статус «Не пришёл» или отмена позже срока (F-00-098).
+   */
+  onlyAfterNoShows?: NoShowPrepaymentRule;
+}
+
+/** Порог правила «предоплата, если клиент не пришёл N раз за M месяцев» */
+export interface NoShowPrepaymentRule {
+  /** Сколько раз не пришёл (1–10), по умолчанию 2 */
+  count: number;
+  /** За сколько последних месяцев (1–24), по умолчанию 12 */
+  months: number;
 }
 
 // ─────────────────────────── Услуги ───────────────────────────
@@ -391,6 +413,11 @@ export interface Client {
   createdAt: ISODateTime;
   /** Мягкое удаление карточки (F-04-074): записи остаются с этим clientId; в списках не показывать */
   deletedAt?: ISODateTime;
+  /** «Пригласи подругу»: личный код ссылки `/b/<slug>?ref=<код>` — заводится при первом показе (rules/referral) */
+  referralCode?: string;
+  /** Пришёл по приглашению этого клиента бизнеса — ставит только запись по ссылке (placeBooking), один раз */
+  referredByClientId?: Id;
+  referredAt?: ISODateTime;
 }
 
 /** Пользователь приложения клиента. Чужие CRM-данные ему не видны (F-00-130). */
@@ -451,6 +478,8 @@ export interface BookingServiceLine {
    * в окне записи. Нет поля — строка занимает ресурсы всей записи (Booking.resourceIds).
    */
   resourceId?: Id;
+  /** ⭐ Допродажа при записи (01.10.2026): строка добавлена как сопутствующая к этой услуге — счётчик «Допродано» */
+  upsellOf?: Id;
 }
 
 export interface Booking {
@@ -479,15 +508,46 @@ export interface Booking {
   visitorName?: string;
   comment?: string;
   /** Предоплата по реквизитам (F-00-097); holdUntil — до какого момента окно держится без «Я оплатил» */
-  prepayment?: { amount: Money; paid: boolean; holdUntil?: ISODateTime };
+  prepayment?: {
+    amount: Money;
+    paid: boolean;
+    holdUntil?: ISODateTime;
+    /** Клиент выбрал «Оплатить всё сразу» — amount равен сумме записи, на визите доплачивать нечего */
+    full?: boolean;
+    /**
+     * Сколько вернуть клиенту: отменил он раньше срока бесплатной отмены (или позже, но мастер не оставляет
+     * предоплату) либо отменил мастер. Нет поля — возвращать нечего (поздняя отмена — деньги у мастера).
+     */
+    refundDue?: Money;
+    /** Когда вернули (мастер отметил «Вернул») */
+    refundedAt?: ISODateTime;
+    /** Клиент нажал «Я оплатил» (так пишет сервер; в моке — online.bookingMeta.prepaymentReportedAt) */
+    clientMarkedPaidAt?: ISODateTime;
+    /**
+     * ⭐ Почему нужна: 'no_shows' — мастер берёт предоплату только с тех, кто не приходил, и у этого клиента
+     * `noShows` раз «Не пришёл» к мастеру за `months` месяцев (на момент записи). Нет поля — предоплата мастера для всех.
+     */
+    reason?: 'no_shows';
+    noShows?: number;
+    months?: number;
+  };
   /** Клиент отменил позже срока бесплатной отмены — засчитано как неявка (F-00-098); ставит ядро */
   cancelledLate?: boolean;
   /**
    * Почему отменена, если это сделал не человек: 'prepayment_expired' — предоплата не пришла в срок, ядро сняло запись
    * (releaseExpiredPrepayments). Клиенту — «Снята: предоплата не поступила вовремя» (common.bookingCancelReason.*), а не
-   * «Отменена вами». Нет поля — отменил тот, кто указан в статусе.
+   * «Отменена вами». 'rescheduled' — клиент взял окно, которое предложил мастер («Другое время», О28): заявка закрыта
+   * без неявки, новое время — rescheduledTo. Нет поля — отменил тот, кто указан в статусе.
    */
-  cancelReason?: 'prepayment_expired' | 'confirmation_expired';
+  cancelReason?: 'prepayment_expired' | 'confirmation_expired' | 'rescheduled';
+  /** cancelReason 'rescheduled': на какое время перенесена (начало новой записи) — «Перенесена на …» клиенту и мастеру */
+  rescheduledTo?: ISODateTime;
+  /**
+   * ⭐ Окна, которые предлагаем клиенту вместо этой записи (В-03, О28): мастер не ответил на заявку вовремя —
+   * ядро кладёт 3 ближайших свободных; мастер нажал «Другое время» — выбранные им. Клиент видит их кнопками
+   * в виджете и приложении и записывается в одно нажатие.
+   */
+  alternativeStarts?: ISODateTime[];
   /**
    * В-03: до какого момента мастер отвечает на заявку «ждёт подтверждения» — 2 ч с создания, но не позже чем за час до
    * начала; молчание → заявка снимается (ставит сервер). Нет поля — считается по тому же правилу (confirmDeadlineOf).
@@ -610,7 +670,7 @@ export interface BookingEvent {
   /** Отмена позже срока (засчитана неявка) */
   late?: boolean;
   /** Снята системой: предоплата не пришла в срок (как Booking.cancelReason) */
-  reason?: 'prepayment_expired' | 'confirmation_expired';
+  reason?: 'prepayment_expired' | 'confirmation_expired' | 'rescheduled';
   /** На сколько минут задерживается мастер (kind 'delayed') */
   delayMin?: Minutes;
   /**

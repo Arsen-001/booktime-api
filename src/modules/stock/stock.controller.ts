@@ -260,7 +260,7 @@ export class StockController {
 
   @Get('to-order/whatsapp-text')
   @Biz('stock.view')
-  async toOrderWhatsApp(@Param('businessId') businessId: string, @Query('locationId') locationId: string, @Query('phone') phone: string) {
+  async toOrderWhatsApp(@Param('businessId') businessId: string, @Query('locationId') locationId: string, @Query('phone', new Zod(z.string().min(1).max(30))) phone: string) {
     const items = await this.catalog.listOrderCandidates(businessId, locationId);
     return { url: this.catalog.buildOrderWhatsAppUrl(phone, items) };
   }
@@ -530,7 +530,8 @@ export class StockController {
   }
 
   @Patch('settings')
-  @Biz('stock.edit')
+  // Владелец 01.10.2026: администратор ведёт склад (stock.edit), настройки склада — только settings.manage
+  @Biz('settings.manage')
   @ZodBody(stockSettingsPatchBody)
   updateSettings(@Ctx() ctx: RequestContext, @Body(new Zod(stockSettingsPatchBody)) body: z.infer<typeof stockSettingsPatchBody>) {
     return this.catalog.updateSettings(ctx, body);

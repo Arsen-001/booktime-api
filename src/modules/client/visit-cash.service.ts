@@ -42,6 +42,19 @@ export class VisitCashService {
     private readonly bookings: BookingsService,
   ) {}
 
+  /** Мастер визита — для прав journal.view/edit по мастеру (client-2-fix, assertVisitEdit мока); запись или строка визита */
+  async visitStaffOf(businessId: string, ref: { bookingId?: string; recordId?: string }): Promise<string> {
+    let bookingId = ref.bookingId;
+    if (!bookingId && ref.recordId) {
+      const rec = await this.prisma.visitCashRecord.findFirst({ where: { id: ref.recordId, businessId }, select: { bookingId: true } });
+      if (!rec) throw new ApiError('not_found', 'Record not found');
+      bookingId = rec.bookingId;
+    }
+    const b = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId }, select: { staffId: true } });
+    if (!b) throw new ApiError('not_found', 'Booking not found');
+    return b.staffId;
+  }
+
   /** Визиты бизнеса сегодня, доступные для открытия в приложении (F-14-093/094) */
   async listVisitCandidates(businessId: string, viewerStaffId?: string) {
     const tz = await this.bookings.tzOfBusiness(this.prisma, businessId);

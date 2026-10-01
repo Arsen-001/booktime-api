@@ -100,15 +100,17 @@ export const createVisitScheduleBody = z.object({
 });
 export const updateVisitScheduleBody = z.object({ weekdays: z.array(weekday).max(7) });
 
-// ─────────── лист ожидания СВОЕГО экрана — CRUD (F-16-149…165) ───────────
+// ─────────── лист ожидания бизнеса (один на экран и панель журнала) — CRUD (F-16-149…165, F-01-156…162) ───────────
 
+// Желание без даты — «любой день» (заводит панель журнала: «любой день, с 18 до 20»)
 const waitlistWishBody = z.object({
-  date: localDate,
+  date: localDate.optional(),
   time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   intervals: z.array(z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) })).max(10).optional(),
 });
 export const createWaitlistEntryBody = z.object({
-  locationId: id,
+  // Панель журнала на «Все филиалы» может не знать филиала — пусто = без филиала
+  locationId: z.string().max(32),
   clientName: z.string().max(160),
   clientPhone: z.string().max(30),
   serviceIds: z.array(id).min(1).max(50),

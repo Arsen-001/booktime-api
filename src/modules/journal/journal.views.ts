@@ -24,7 +24,7 @@ export interface BookingView {
   forWhom: string;
   visitorName?: string;
   comment?: string;
-  prepayment?: { amount: number; paid: boolean; holdUntil?: string; refundDue?: number; refundedAt?: string };
+  prepayment?: { amount: number; paid: boolean; holdUntil?: string; full?: boolean; refundDue?: number; refundedAt?: string };
   cancelledLate?: boolean;
   cancelReason?: string;
   /** В-03: до какого момента мастер отвечает на заявку (местное) */
@@ -37,10 +37,17 @@ export interface BookingView {
   updatedAt: string;
   deletedAt?: string;
   version: number;
+  /** Окна, которые предлагаем клиенту вместо этой записи (onlineMeta.offeredStarts) */
+  alternativeStarts?: string[];
+  /** cancelReason 'rescheduled': клиент взял предложенное мастером окно — начало новой записи (Booking.rescheduledTo фронта) */
+  rescheduledTo?: string;
+  /** Номер доп. места участника группового события (client-2-fix, eventExtraSeat фронта) */
+  extraSeat?: number;
 }
 
 export function bookingView(b: BookingRow, tz: string = DEFAULT_TZ): BookingView {
   const prepayment = b.prepayment as BookingView['prepayment'] | null;
+  const alternatives = arr<string>((b.onlineMeta as { offeredStarts?: unknown } | null)?.offeredStarts);
   return {
     id: b.id,
     businessId: b.businessId,
@@ -63,8 +70,12 @@ export function bookingView(b: BookingRow, tz: string = DEFAULT_TZ): BookingView
     ...(prepayment ? { prepayment } : {}),
     ...(b.cancelledLate ? { cancelledLate: true } : {}),
     ...(b.cancelReason ? { cancelReason: b.cancelReason } : {}),
+    ...(b.cancelReason === 'rescheduled' && typeof (b.onlineMeta as { rescheduledTo?: unknown } | null)?.rescheduledTo === 'string' ? { rescheduledTo: (b.onlineMeta as { rescheduledTo: string }).rescheduledTo } : {}),
+    // ⭐ В-03/О28: окна вместо этой записи — мастер не ответил вовремя (releaseExpired) или предложил «Другое время»
+    ...(alternatives.length && (b.status === 'awaiting_confirmation' || b.status === 'cancelled_by_master') ? { alternativeStarts: alternatives } : {}),
     ...(b.confirmDeadline && b.status === 'awaiting_confirmation' ? { confirmDeadline: utcToLocal(b.confirmDeadline, tz) } : {}),
     ...(b.groupEventId ? { groupEventId: b.groupEventId } : {}),
+    ...(b.groupEventId && typeof (b.extras as { extraSeat?: unknown } | null)?.extraSeat === 'number' ? { extraSeat: (b.extras as { extraSeat: number }).extraSeat } : {}),
     ...(b.seriesId ? { seriesId: b.seriesId } : {}),
     ...(b.visitId ? { visitId: b.visitId } : {}),
     ...(b.staffAssignment ? { staffAssignment: b.staffAssignment } : {}),

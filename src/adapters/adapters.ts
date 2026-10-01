@@ -5,6 +5,7 @@ import { FakeMailSender, type MailSender } from './mail/mail.js';
 import { FakePaymentProvider, type PaymentProvider } from './payments/payments.js';
 import { createPushSenders, type PushSenders } from './push/push.js';
 import { createFileStorage, type FileStorage } from './storage/storage.js';
+import { createTelegramBot, type TelegramBot } from './telegram-bot/telegram-bot.js';
 
 /** «Розетки» внешних сервисов (PLAN.md Р14): внедряются по токенам, этапы заменяют заглушки настоящими */
 export const CODE_SENDERS = Symbol('CODE_SENDERS');
@@ -13,6 +14,7 @@ export const MAIL_SENDER = Symbol('MAIL_SENDER');
 export const PAYMENTS = Symbol('PAYMENTS');
 export const BUSINESS_MESSENGER = Symbol('BUSINESS_MESSENGER');
 export const FILE_STORAGE = Symbol('FILE_STORAGE');
+export const TELEGRAM_BOT = Symbol('TELEGRAM_BOT');
 
 export type CodeSenders = Record<CodeChannel, CodeSender>;
 
@@ -30,4 +32,5 @@ export const adapterProviders = [
   { provide: PAYMENTS, useFactory: (): PaymentProvider => new FakePaymentProvider() },
   { provide: BUSINESS_MESSENGER, useFactory: (): BusinessMessenger => new FakeBusinessMessenger() },
   { provide: FILE_STORAGE, useFactory: (): FileStorage => createFileStorage() },
+  { provide: TELEGRAM_BOT, useFactory: (): TelegramBot => createTelegramBot() },
 ];

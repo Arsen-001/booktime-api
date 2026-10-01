@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { ApiError } from '../../common/errors/api-error.js';
@@ -65,6 +66,7 @@ export class BookingPaymentsService {
     private readonly audit: AuditService,
     private readonly live: LiveService,
     private readonly catalog: FinanceCatalogService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   async requireBooking(businessId: string, bookingId: string): Promise<BookingRow> {
@@ -166,9 +168,11 @@ export class BookingPaymentsService {
     const { label, accountId, feePercent } = tile ?? (await this.resolveMethod(businessId, methodKey, accountIdOverride));
     const { lineTotals, serviceCount } = await this.payableOf(b);
     const existing = await this.activeLines(businessId, b.id);
+    // Строка считается оплаченной за вычетом возвратов: после частичного возврата из окна «Оплата визита» (журнал
+    // снова ждёт эти деньги) повторная оплата ложится на услугу и проводит приход, а не теряется (final-api.md)
     const allocations = allocateAmountToLines(
       lineTotals,
-      existing.map((e) => ({ serviceIndex: e.serviceIndex ?? undefined, amount: e.amount })),
+      existing.map((e) => ({ serviceIndex: e.serviceIndex ?? undefined, amount: e.amount - e.refundedAmount })),
       amount,
     );
     if (allocations.length === 0) allocations.push({ serviceIndex: 0, amount });
@@ -273,7 +277,7 @@ export class BookingPaymentsService {
   private async applyNonMoney(ctx: RequestContext, b: BookingRow, amount: Money, kind: 'discount' | 'account', methodKey: string, label: string, extra: { debt?: boolean; loyaltyAccountId?: string }) {
     const { lineTotals } = await this.payableOf(b);
     const existing = await this.activeLines(b.businessId, b.id);
-    const allocations = allocateAmountToLines(lineTotals, existing.map((e) => ({ serviceIndex: e.serviceIndex ?? undefined, amount: e.amount })), amount);
+    const allocations = allocateAmountToLines(lineTotals, existing.map((e) => ({ serviceIndex: e.serviceIndex ?? undefined, amount: e.amount - e.refundedAmount })), amount);
     if (allocations.length === 0) allocations.push({ serviceIndex: 0, amount });
     const groupId = newId('payment');
     const by = ctx.member!.staffId;
@@ -311,7 +315,8 @@ export class BookingPaymentsService {
   async clientAccountBalance(businessId: string, clientId: string): Promise<Money> {
     const [topUpItem, refundItem] = await Promise.all([this.catalog.systemItemId(businessId, 'accountTopUp'), this.catalog.systemItemId(businessId, 'refund')]);
     const ops = await this.prisma.finOp.findMany({ where: { businessId, partyType: 'client', partyId: clientId, source: 'account', cancelled: false, itemId: { in: [topUpItem, refundItem] } }, select: { itemId: true, amount: true, refId: true } });
-    const topUps = ops.filter((o) => o.itemId === topUpItem).reduce((s, o) => s + o.amount, 0n);
+    // Пополнение счёта «Лояльности» (loyalty-sales.service.ts, refId = операция счёта лояльности) — другой счёт
+    const topUps = ops.filter((o) => o.itemId === topUpItem && !o.refId).reduce((s, o) => s + o.amount, 0n);
     const refunds = ops.filter((o) => o.itemId === refundItem && !o.refId).reduce((s, o) => s + o.amount, 0n);
     const bookingIds = (await this.prisma.booking.findMany({ where: { businessId, clientId }, select: { id: true } })).map((x) => x.id);
     const spent = bookingIds.length
@@ -339,6 +344,8 @@ export class BookingPaymentsService {
   async pay(ctx: RequestContext, businessId: string, bookingId: string, body: PayBookingBody) {
     const first = await this.requireBooking(businessId, bookingId);
     if (first.deletedAt) throw new ApiError('not_found', 'Booking not found');
+    // Как мок payBookingQuick/Split: «Не пришёл» не оплачивают
+    if (first.status === 'no_show') throw new ApiError('invalid_transition', 'booking_no_show');
     if (body.mode === 'quick') {
       const due = await this.dueOf(first);
       if (due <= 0n) throw new ApiError('invalid_amount', 'Already paid');
@@ -360,20 +367,38 @@ export class BookingPaymentsService {
         await this.applyMoney(ctx, fresh, amount, part.methodKey, part.accountId);
       }
     }
+    await this.markArrivedIfNeeded(ctx, businessId, bookingId);
     return this.getSummary(businessId, bookingId);
   }
 
+  /**
+   * Как мок markArrivedIfNeededSync: оплата активной записи = клиент пришёл. Обычная смена статуса журнала (события,
+   * кэшбэк, визит). BookingsService берём лениво: journal → loyalty → finance, статический импорт дал бы цикл модулей.
+   */
+  private async markArrivedIfNeeded(ctx: RequestContext, businessId: string, bookingId: string): Promise<void> {
+    const b = await this.requireBooking(businessId, bookingId);
+    if (!['awaiting_confirmation', 'awaiting_prepayment', 'scheduled', 'client_confirmed'].includes(b.status)) return;
+    const { BookingsService, staffActor } = await import('../journal/bookings.service.js');
+    await this.moduleRef.get(BookingsService, { strict: false }).changeStatus(staffActor(ctx), [businessId], bookingId, 'arrived', 'business');
+  }
+
   /** DELETE …/payments/:id — отменяет ВЕСЬ платёж (все строки его groupId, Ф11): снимает FinOp(и) с комиссией,
-   * откатывает paidAmount и убирает строку extras.payments этого платежа */
+   * откатывает paidAmount и убирает строку extras.payments этого платежа. Решение владельца 01.10.2026: если по платежу
+   * были возвраты, отменяются и расходы «Возврат» (refundOfId) — итог по кассе 0; paidAmount уже уменьшен возвратами,
+   * поэтому снимается только невозвращённая часть. */
   async cancelLine(ctx: RequestContext, businessId: string, paymentId: string) {
     const line = await this.prisma.bookingPayment.findFirst({ where: { id: paymentId, businessId } });
     if (!line) throw new ApiError('not_found', 'Payment not found');
     if (line.cancelled) return this.getSummary(businessId, line.bookingId);
     const b = await this.requireBooking(businessId, line.bookingId);
     const group = line.groupId ? await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: line.bookingId, groupId: line.groupId, cancelled: false } }) : [line];
-    const total = group.reduce((s, l) => s + l.amount, 0n);
+    const total = group.reduce((s, l) => s + (l.amount - l.refundedAmount > 0n ? l.amount - l.refundedAmount : 0n), 0n);
     await this.prisma.$transaction(async (tx) => {
       const now = new Date();
+      const sourceOpIds = group.map((l) => l.finOpId).filter((x): x is string => Boolean(x));
+      if (sourceOpIds.length) {
+        await tx.finOp.updateMany({ where: { businessId, refundOfId: { in: sourceOpIds }, source: 'booking', cancelled: false }, data: { cancelled: true, cancelledAt: now, cancelledBy: ctx.member!.staffId } });
+      }
       for (const l of group) {
         await tx.bookingPayment.update({ where: { id: l.id }, data: { cancelled: true, cancelledAt: now } });
         if (!l.finOpId) continue;
@@ -440,8 +465,10 @@ export class BookingPaymentsService {
 
   /**
    * Частичный (или полный) возврат по одному платежу визита (fin-review Ф8, refundPaymentGroupSync мока) —
-   * ОТДЕЛЬНОЙ расходной операцией «Возврат» с той же кассы тем же способом; исходная оплата остаётся (визит не
-   * становится снова «К оплате», касса дня оплаты не меняется задним числом), у строк растёт refundedAmount.
+   * ОТДЕЛЬНОЙ расходной операцией «Возврат» с той же кассы тем же способом; исходная оплата остаётся (касса дня оплаты
+   * не меняется задним числом), у строк растёт refundedAmount. Решение владельца 01.10.2026 (одно правило с моком):
+   * оплачено = платежи − возвраты — paidAmount визита уменьшается на возврат (частичный — визит частично оплачен,
+   * к оплате возвращённая часть; полный — не оплачен), строка extras.payments этого платежа — тоже.
    * Товары визита: денег в кассе finance у них нет (их кладёт продажа склада) — только отметка в строках.
    * Счёт клиента: деньги возвращаются на «личный счёт» — расходом «Возврат» с source='account' без кассы нет,
    * поэтому уменьшаем списание: строка account с refundedAmount не считается в clientAccountBalance (см. ниже).
@@ -515,8 +542,18 @@ export class BookingPaymentsService {
         await tx.bookingPayment.update({ where: { id: l.id }, data: { refundedAmount: { increment: part } } });
         left -= part;
       }
+      // Оплачено = платежи − возвраты: paidAmount и строка оплаты окна журнала (id = группа платежа)
+      const fresh = await tx.booking.findUniqueOrThrow({ where: { id: b.id }, select: { extras: true, paidAmount: true } });
+      const extras = extrasOf(fresh.extras) as BookingExtras;
+      const key = line.groupId ?? line.id;
+      const payments = (extras.payments ?? [])
+        .map((p) => (p.id === key ? { ...p, amount: Math.max(0, p.amount - Number(take)) } : p))
+        .filter((p) => p.id !== key || p.amount > 0);
+      const nextPaid = fresh.paidAmount - take > 0n ? fresh.paidAmount - take : 0n;
+      await tx.booking.update({ where: { id: b.id }, data: { extras: { ...extras, payments, paidAmount: Number(nextPaid) } as unknown as Prisma.InputJsonValue, paidAmount: nextPaid, version: { increment: 1 } } });
       await this.audit.record(tx, ctx, { action: 'refund', entityType: 'bookingPayment', entityId: line.id, businessId, before: { net: moneyToJson(net) }, after: { refunded: moneyToJson(take), reason } });
     });
+    await this.live.publish(`biz:${businessId}:day:${utcToLocalDate(at)}`, { type: 'booking.changed', data: { bookingIds: [b.id] } });
     return this.getSummary(businessId, b.id);
   }
 

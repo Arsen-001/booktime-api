@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Injectable, Param, Patch, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { Prisma } from '../../generated/prisma/client.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
@@ -18,7 +19,7 @@ import { addNewUserBody, addWithPasswordBody, inviteExistingBody, invitePhoneBod
 export const NETWORK_USER_FREE_COUNT = 1;
 export const NETWORK_USER_PRICE = 2000;
 
-function out(u: { id: string; networkId: string; name: string; phone: string | null; email: string | null; permissions: unknown; lastVisitAt: Date | null; planReportFrequency: string | null; pending?: boolean; version: number }) {
+function out(u: { id: string; networkId: string; name: string; phone: string | null; email: string | null; permissions: unknown; businessIds?: unknown; lastVisitAt: Date | null; planReportFrequency: string | null; pending?: boolean; version: number }) {
   return {
     id: u.id,
     networkId: u.networkId,
@@ -30,6 +31,7 @@ function out(u: { id: string; networkId: string; name: string; phone: string | n
     isOwner: false,
     pending: u.pending ?? false,
     planReportFrequency: (u.planReportFrequency ?? undefined) as 'off' | 'daily' | 'weekly' | 'monthly' | undefined,
+    ...(Array.isArray(u.businessIds) ? { businessIds: u.businessIds as string[] } : {}),
     version: u.version,
   };
 }
@@ -90,13 +92,21 @@ export class NetworkUsersService {
     return out((await this.prisma.networkUser.findUniqueOrThrow({ where: { id } })));
   }
 
-  async setPermissions(ctx: RequestContext, networkId: string, id: string, permissions: string[]) {
-    await this.access.require(ctx, networkId, 'users');
+  async setPermissions(ctx: RequestContext, networkId: string, id: string, permissions: string[], businessIds?: string[] | null) {
+    const { network } = await this.access.require(ctx, networkId, 'users');
     const before = await this.prisma.networkUser.findFirst({ where: { id, networkId } });
     if (!before) throw new ApiError('not_found', 'Network user not found');
+    // Сеть7 (как мок): только филиалы этой сети; все филиалы = без ограничения (новый филиал тоже будет виден)
+    let branches: string[] | null | undefined = businessIds;
+    if (Array.isArray(businessIds)) {
+      const own = [...new Set(businessIds.filter((b) => network.businessIds.includes(b)))];
+      if (!own.length) throw new ApiError('validation', 'no locations');
+      branches = own.length === network.businessIds.length ? null : own;
+    }
+    const branchData = branches === undefined ? {} : { businessIds: branches === null ? Prisma.DbNull : branches };
     await this.prisma.$transaction(async (tx) => {
-      await tx.networkUser.update({ where: { id }, data: { permissions, updatedBy: ctx.session!.userId, version: { increment: 1 } } });
-      await this.audit.record(tx, ctx, { action: 'update', entityType: 'networkUser', entityId: id, networkId, before: { permissions: before.permissions }, after: { permissions } });
+      await tx.networkUser.update({ where: { id }, data: { permissions, ...branchData, updatedBy: ctx.session!.userId, version: { increment: 1 } } });
+      await this.audit.record(tx, ctx, { action: 'update', entityType: 'networkUser', entityId: id, networkId, before: { permissions: before.permissions, businessIds: before.businessIds }, after: { permissions, ...(branches === undefined ? {} : { businessIds: branches }) } });
     });
     return out((await this.prisma.networkUser.findUniqueOrThrow({ where: { id } })));
   }
@@ -229,7 +239,7 @@ export class NetworkUsersController {
   @ZodBody(setPermissionsBody)
   @ZodOk(networkUserOut)
   setPermissions(@Ctx() ctx: RequestContext, @Param('networkId') n: string, @Param('id') id: string, @Body(new Zod(setPermissionsBody)) body: z.infer<typeof setPermissionsBody>) {
-    return this.svc.setPermissions(ctx, n, id, body.permissions);
+    return this.svc.setPermissions(ctx, n, id, body.permissions, body.businessIds);
   }
 
   @Patch(':id/plan-report-frequency')

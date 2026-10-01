@@ -17,6 +17,12 @@ export const DEFAULT_TZ = 'Asia/Yerevan';
 export type LocalDate = string; // 'YYYY-MM-DD'
 export type LocalDateTime = string; // 'YYYY-MM-DDTHH:mm'
 
+/**
+ * Строка прошла формат, но такой даты нет (30 февраля, 25:00) или пришла не строка. Наследует RangeError; фильтр
+ * ошибок отдаёт её как 400 `validation`, а не 500 — схемы маршрутов проверяют только формат регуляркой.
+ */
+export class InvalidLocalTime extends RangeError {}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
@@ -30,7 +36,7 @@ export function isLocalDateTime(v: unknown): v is LocalDateTime {
 
 /** Местное время филиала → момент UTC для базы */
 export function localToUtc(local: LocalDateTime, tz: string = DEFAULT_TZ): Date {
-  if (!isLocalDateTime(local)) throw new RangeError(`not a local date-time 'YYYY-MM-DDTHH:mm': ${String(local)}`);
+  if (!isLocalDateTime(local)) throw new InvalidLocalTime(`not a local date-time 'YYYY-MM-DDTHH:mm': ${String(local)}`);
   return dayjs.tz(local, 'YYYY-MM-DDTHH:mm', tz).toDate();
 }
 
@@ -46,7 +52,7 @@ export function utcToLocalDate(at: Date, tz: string = DEFAULT_TZ): LocalDate {
 
 /** Границы местного дня в UTC: [начало, начало следующего дня) — для выборок «записи за день» */
 export function localDayRangeUtc(date: LocalDate, tz: string = DEFAULT_TZ): { from: Date; to: Date } {
-  if (!isLocalDate(date)) throw new RangeError(`not a local date 'YYYY-MM-DD': ${String(date)}`);
+  if (!isLocalDate(date)) throw new InvalidLocalTime(`not a local date 'YYYY-MM-DD': ${String(date)}`);
   const start = dayjs.tz(date, 'YYYY-MM-DD', tz).startOf('day');
   return { from: start.toDate(), to: start.add(1, 'day').toDate() };
 }

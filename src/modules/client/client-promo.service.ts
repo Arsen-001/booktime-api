@@ -41,6 +41,15 @@ interface StoryData {
   windows: { staffId?: string; staffName?: string; label: string }[];
   bookingTarget?: { staffId?: string; serviceId?: string };
   caption?: string;
+  /** Решение владельца 01.10.2026: сторис мастера без billing.manage — автор (видит/снимает только свои) */
+  authorStaffId?: string;
+}
+
+/** Кто и чьи сторис видит/публикует/снимает (storyAuthorScope мока): с billing.manage — все, иначе — только свои */
+export type StoryScope = { all: true } | { all: false; staffId: string };
+export function storyScopeOf(ctx: RequestContext): StoryScope {
+  if (ctx.member!.permissions.has('billing.manage')) return { all: true };
+  return { all: false, staffId: ctx.member!.staffId };
 }
 
 type ModerationState = { status: string; decidedAt: Date | null };
@@ -88,6 +97,7 @@ export class ClientPromoService {
       windows: d.windows,
       ...(d.bookingTarget ? { bookingTarget: d.bookingTarget } : {}),
       ...(d.caption ? { caption: d.caption } : {}),
+      ...(d.authorStaffId ? { authorStaffId: d.authorStaffId } : {}),
       status,
       price: row.price,
       createdAt: utcToLocal(row.createdAt),
@@ -116,11 +126,22 @@ export class ClientPromoService {
     return { used: rows.filter((r) => r.status === 'active').length, max };
   }
 
-  async listBusinessStories(businessId: string): Promise<Json[]> {
+  async listBusinessStories(businessId: string, scope: StoryScope = { all: true }): Promise<Json[]> {
     const now = new Date();
-    const rows = await this.prisma.storyBooking.findMany({ where: { businessId, data: { not: Prisma.DbNull } }, orderBy: { createdAt: 'desc' }, take: 100 });
+    const all = await this.prisma.storyBooking.findMany({ where: { businessId, data: { not: Prisma.DbNull } }, orderBy: { createdAt: 'desc' }, take: 100 });
+    // Мастер без billing.manage — только свои сторис (authorStaffId), как мок
+    const rows = scope.all ? all : all.filter((r) => (r.data as StoryData | null)?.authorStaffId === scope.staffId);
     const mod = await this.moderationOf(rows);
     return rows.map((row) => this.storyView(row, this.statusOf(row, mod, now)));
+  }
+
+  /** «Снять сторис» (deleteStory мока): своё — автору, любую — с billing.manage. Монеты не возвращаются, как в моке */
+  async deleteStory(ctx: RequestContext, businessId: string, storyId: string): Promise<void> {
+    const row = await this.prisma.storyBooking.findFirst({ where: { id: storyId, businessId } });
+    if (!row) throw new ApiError('not_found', 'Story not found');
+    const scope = storyScopeOf(ctx);
+    if (!scope.all && (row.data as StoryData | null)?.authorStaffId !== scope.staffId) throw new ApiError('forbidden', 'Only your own stories');
+    await this.prisma.storyBooking.delete({ where: { id: row.id } });
   }
 
   async listBusinessPromoStories(businessId: string): Promise<Json[]> {
@@ -184,13 +205,18 @@ export class ClientPromoService {
     const now = new Date();
     const max = await this.maxSlots();
     const id = newId('storyBooking');
+    // Решение владельца 01.10.2026: мастер без billing.manage публикует свои сторис — только свои окна и запись к себе
+    const scope = storyScopeOf(ctx);
+    const windows = scope.all ? body.windows : body.windows.filter((w) => w.staffId === scope.staffId);
+    const bookingTarget = scope.all ? body.bookingTarget : { ...(body.bookingTarget ?? {}), staffId: scope.staffId };
     const data: StoryData = {
       kind: body.kind,
       lang: body.lang,
       showStaffNames: body.showStaffNames,
-      windows: body.windows.map((w) => ({ ...(w.staffId ? { staffId: w.staffId } : {}), ...(w.staffName ? { staffName: w.staffName } : {}), label: w.times.join(', ') })),
-      ...(body.bookingTarget ? { bookingTarget: body.bookingTarget } : {}),
+      windows: windows.map((w) => ({ ...(w.staffId ? { staffId: w.staffId } : {}), ...(w.staffName ? { staffName: w.staffName } : {}), label: w.times.join(', ') })),
+      ...(bookingTarget ? { bookingTarget } : {}),
       ...(body.caption ? { caption: body.caption.slice(0, 70) } : {}),
+      ...(scope.all ? {} : { authorStaffId: scope.staffId }),
     };
     const row = await this.prisma.$transaction(async (tx) => {
       // «Замок» мест (PLAN §4.2): два кабинета не займут последнее место одновременно

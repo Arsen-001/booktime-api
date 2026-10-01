@@ -9,7 +9,7 @@ import { PrismaService } from '../../common/prisma.service.js';
 import { StaffService } from '../staff/staff.service.js';
 import { NotifyChannelsService } from './notify-channels.service.js';
 import { NotifyClientPrefsService } from './notify-client-prefs.service.js';
-import { NotifyInboxService } from './notify-inbox.service.js';
+import { NotifyInboxService, type InboxViewer } from './notify-inbox.service.js';
 import { NotifyMiscService } from './notify-misc.service.js';
 import { NotifyMoreService } from './notify-more.service.js';
 import { NotifyNewsService } from './notify-news.service.js';
@@ -51,6 +51,11 @@ import {
   updateTypeBody,
   webPopupBody,
 } from './notify.schemas.js';
+
+/** Кто смотрит колокольчик — «День закрыт» приходит лично владельцам (notify/day-close-notice.ts) */
+function inboxViewer(ctx: RequestContext): InboxViewer | null {
+  return ctx.member ? { staffId: ctx.member.staffId, userId: ctx.member.userId } : null;
+}
 
 /** Уведомления (docs/backend/02-api.md §10, docs/backend/05) — /v1/biz/{b}/notify, /inbox, /news, вложенные /staff /clients */
 @ApiTags('notify')
@@ -201,14 +206,14 @@ export class NotifyController {
 
   @Get('inbox')
   @Biz()
-  listInbox(@Param('businessId') businessId: string, @Query('preview') preview?: string) {
-    return preview ? this.inbox.preview(businessId, Number(preview) || 5) : this.inbox.list(businessId);
+  listInbox(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Query('preview') preview?: string) {
+    return preview ? this.inbox.preview(businessId, inboxViewer(ctx), Number(preview) || 5) : this.inbox.list(businessId, inboxViewer(ctx));
   }
 
   @Get('inbox/unread-count')
   @Biz()
-  unreadCount(@Param('businessId') businessId: string) {
-    return this.inbox.countUnread(businessId).then((value) => ({ value }));
+  unreadCount(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string) {
+    return this.inbox.countUnread(businessId, inboxViewer(ctx)).then((value) => ({ value }));
   }
 
   @Post('inbox/:id/read')
@@ -227,8 +232,8 @@ export class NotifyController {
 
   @Post('inbox/read-all')
   @Biz()
-  async markAllRead(@Param('businessId') businessId: string) {
-    await this.inbox.markAllRead(businessId);
+  async markAllRead(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string) {
+    await this.inbox.markAllRead(businessId, inboxViewer(ctx));
     return { ok: true };
   }
 
@@ -248,8 +253,9 @@ export class NotifyController {
 
   // ─────────── попапы в веб-версии (F-05-058), этап 21 «notify+integrations» ───────────
 
+  // Чтение — любому сотруднику: колокольчик шапки у всех ролей смотрит «Операции с записями» (как мок); правка — notify.manage
   @Get('notify/web-popup')
-  @Biz('notify.manage')
+  @Biz()
   getWebPopup(@Param('businessId') businessId: string) {
     return this.misc.getWebPopup(businessId);
   }

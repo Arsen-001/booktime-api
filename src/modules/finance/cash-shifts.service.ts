@@ -7,11 +7,12 @@ import { newId } from '../../common/ids/ids.js';
 import { moneyToJson } from '../../common/money/money.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { utcToLocal } from '../../common/time/time.js';
+import { recordDayCloseNotice } from '../notify/day-close-notice.js';
 import { FinanceCatalogService } from './finance-catalog.service.js';
 
 type Money = bigint;
 type ShiftRow = Prisma.CashShiftGetPayload<object>;
-type OpRow = { id: string; kind: string; amount: bigint; method: string; itemId: string; cancelled: boolean; date: Date };
+type OpRow = { id: string; kind: string; amount: bigint; method: string; itemId: string; cancelled: boolean; date: Date; createdAt: Date };
 
 /**
  * Кассовая смена наличной кассы и Z-отчёт (fin-review Ф1) — этап 21, лейн «finance+stock». Портировано с мока
@@ -34,7 +35,7 @@ export class CashShiftsService {
   }
 
   private async accountOps(accountId: string): Promise<OpRow[]> {
-    return this.prisma.finOp.findMany({ where: { accountId }, select: { id: true, kind: true, amount: true, method: true, itemId: true, cancelled: true, date: true }, orderBy: { date: 'asc' } });
+    return this.prisma.finOp.findMany({ where: { accountId }, select: { id: true, kind: true, amount: true, method: true, itemId: true, cancelled: true, date: true, createdAt: true }, orderBy: { date: 'asc' } });
   }
 
   private balanceOf(opening: Money, ops: OpRow[]): Money {
@@ -82,7 +83,9 @@ export class CashShiftsService {
     const refundItem = await this.prisma.paymentItem.findFirst({ where: { businessId: shift.businessId, systemKey: 'refund' }, select: { id: true } });
     const adjustments = new Set((shift.adjustmentOperationIds as string[] | null) ?? []);
     const until = shift.closedAt ?? new Date(8.64e15);
-    const inShift = ops.filter((o) => o.date >= shift.openedAt && o.date <= until && !adjustments.has(o.id));
+    // Смена — то, что ПРОВЕЛИ за смену (createdAt), а не дата операции: приход «задним числом» во время смены тоже в
+    // ящике, и Z «Должно быть» совпадает с «По учёту» при закрытии (F-07-001, qa/full-test-0930, как мок)
+    const inShift = ops.filter((o) => o.createdAt >= shift.openedAt && o.createdAt <= until && !adjustments.has(o.id));
     const report = this.zReport(shift.openingCash, inShift, refundItem?.id);
     const expectedNow = account ? moneyToJson(this.balanceOf(account.openingBalance, ops)) : report.expected;
     return {
@@ -188,6 +191,8 @@ export class CashShiftsService {
       if (done.count !== 1) throw new ApiError('shift_not_open', 'Shift is not open');
       await this.audit.record(tx, ctx, { action: 'close', entityType: 'cashShift', entityId: shift.id, businessId, before: { status: 'open' }, after: { countedCash: moneyToJson(counted), expected: moneyToJson(expected) } });
     });
+    // ⭐ «День закрыт» владельцу в колокольчик (01.10.2026): снимок итога дня; тот же день без изменений — не дублирует
+    await recordDayCloseNotice(this.prisma, businessId, ctx.member!.staffId, at);
     return this.view(await this.prisma.cashShift.findUniqueOrThrow({ where: { id: shift.id } }));
   }
 }

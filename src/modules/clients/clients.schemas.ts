@@ -109,7 +109,7 @@ export const clientsSort = z.object({
 });
 export type ClientsSort = z.infer<typeof clientsSort>;
 
-export const quickPick = z.enum(['new', 'repeat', 'lost', 'subscriptionEnding', 'chatLeads', 'noShow']);
+export const quickPick = z.enum(['due', 'new', 'repeat', 'lost', 'subscriptionEnding', 'chatLeads', 'noShow']);
 export type QuickPick = z.infer<typeof quickPick>;
 
 export const searchBody = z.object({
@@ -244,6 +244,8 @@ export const clientRowOut = z
     balance: z.number(),
     visits: z.number(),
     broadcastDates: z.array(z.string()),
+    /** ⭐ «Пора записать»: срок повтора (последний визит «Пришёл» + интервал услуги), YYYY-MM-DD */
+    dueAt: z.string().optional(),
     version: z.number(),
   })
   .catchall(z.unknown());

@@ -20,7 +20,9 @@ import { isStaffEventEnabled } from '../notify/notify-staff-prefs.service.js';
 import { enqueueClientNotification, enqueueOutbox } from '../notify/outbox.js';
 import { LoyaltyProgramService } from '../loyalty/loyalty-program.service.js';
 import { TechCardsService } from '../stock/tech-cards.service.js';
+import { recordPrepaymentReceivedTx, recordPrepaymentRefundTx } from '../finance/prepayment-ops.js';
 import { JournalSettingsService } from './journal-settings.js';
+import { UpsellService } from './upsell.service.js';
 import { bookingView, eventView, extrasView, type BookingView } from './journal.views.js';
 import {
   PREPAYMENT_HOLD_MIN,
@@ -37,17 +39,23 @@ import {
   linesTotal,
   makeServiceLine,
   newBookingStatus,
+  normalizeNoShowRule,
+  noShowPeriodStart,
+  prepaymentNeed,
   noShowDelta,
   occupiesTime,
   prepaymentAmount,
+  canPayInFull,
   requiresPrepayment,
   type BookingExtras,
   type BookingRules,
   type BookingStatus,
+  type EffectiveBookingRules,
   type PrepaymentRule,
   type ServiceLine,
   type StatusActor,
 } from './rules.js';
+import { attachReferralInTx } from '../loyalty/referral.service.js';
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaService | Tx;
@@ -110,6 +118,8 @@ export interface PlaceLineInput {
   qty?: number;
   discountPct?: number;
   unitPrice?: number;
+  /** ⭐ Допродажа: строка — сопутствующая к этой услуге (ставит сам сервер из addOns; у онлайн-записи с клиента не берётся) */
+  upsellOf?: string;
 }
 
 /** PlaceBookingInput фронта (src/domain/rules/booking-flow.ts) — единый поток записи */
@@ -132,6 +142,21 @@ export interface PlaceInput {
   status?: BookingStatus;
   seriesId?: string;
   visitId?: string;
+  /** ⭐ Клиент выбрал «Оплатить всё сразу» вместо процента предоплаты мастера (онлайн) */
+  payInFull?: boolean;
+  /**
+   * О28 «Другое время» (online.bookAlternativeTime): клиент берёт окно, которое предложил сам мастер, — второй раз
+   * заявку мастеру не шлём (сразу «Записан»; предоплата — всё равно «ждёт предоплату»). Только для серверных вызовов.
+   */
+  acceptsOffer?: boolean;
+  /**
+   * ⭐ Допродажа при записи (01.10.2026): клиент добавил сопутствующие из карточки услуги. Услуги становятся строками
+   * записи (upsellOf, продлевают время у того же мастера), товары — товарными строками визита к оплате на месте.
+   * Сервер проверяет список, мастера, время, остаток и цену (UpsellService).
+   */
+  addOns?: { serviceIds?: string[]; productIds?: string[] };
+  /** «Пригласи подругу»: код из личной ссылки — привязка нового клиента к пригласившему (attachReferralInTx) */
+  referralCode?: string;
 }
 
 /** BookingInput фронта (createBooking «как есть»: строки уже посчитаны) */
@@ -152,11 +177,13 @@ export interface RawInput {
   forWhom?: string;
   visitorName?: string;
   comment?: string;
-  prepayment?: { amount: number; paid: boolean; holdUntil?: string };
+  prepayment?: { amount: number; paid: boolean; holdUntil?: string; full?: boolean };
   groupEventId?: string;
   seriesId?: string;
   visitId?: string;
   staffAssignment?: string;
+  /** Номер доп. места участника группового события (1, 2…; eventExtraSeat фронта, client-2-fix) — в extras.extraSeat */
+  extraSeat?: number;
 }
 
 export interface BookingPatch {
@@ -176,7 +203,7 @@ export interface BookingPatch {
   groupEventId?: string | null;
   staffAssignment?: string | null;
   status?: BookingStatus;
-  prepayment?: { amount: number; paid: boolean; holdUntil?: string } | null;
+  prepayment?: { amount: number; paid: boolean; holdUntil?: string; full?: boolean } | null;
 }
 
 export interface BookingQuery {
@@ -255,6 +282,7 @@ export class BookingsService {
     readonly settings: JournalSettingsService,
     private readonly loyaltyProgram: LoyaltyProgramService,
     private readonly techCards: TechCardsService,
+    private readonly upsell: UpsellService,
   ) {}
 
   // ─────────── пояса ───────────
@@ -607,19 +635,34 @@ export class BookingsService {
     const date = utcToLocalDate(prev.startAt, tz);
     const startMin = toMinutes(utcToLocal(prev.startAt, tz).slice(11, 16));
     const serviceIds = arr<ServiceLine>(prev.services).map((l) => l.serviceId);
-    const entries = await tx.waitlistEntry.findMany({ where: { businessId: prev.businessId, bookingId: null }, select: { id: true, staffIds: true, serviceIds: true, slots: true, appUserId: true } });
+    const entries = await tx.waitlistEntry.findMany({ where: { businessId: prev.businessId, bookingId: null }, select: { id: true, staffIds: true, serviceIds: true, wishes: true, appUserId: true, notifiedTimes: true } });
+    // Длительности услуг, которые ждут: окно короче услуги не предлагаем — записаться в него нельзя (сценарии 30.09:
+    // окно 30 мин ушло ждавшей услугу на 45 мин). Как collectRecipients мока (journal-offers, freeMin).
+    const wantedIds = [...new Set(entries.flatMap((e) => arr(e.serviceIds)))];
+    const durations = new Map(
+      (wantedIds.length ? await tx.service.findMany({ where: { id: { in: wantedIds } }, select: { id: true, durationMin: true } }) : []).map((s) => [s.id, s.durationMin]),
+    );
+    /** Какую услугу заявке предложить в этом окне: из тех, что ждёт, — освободившуюся, иначе любую, что помещается */
+    const offeredService = (e: { serviceIds: unknown }): string | undefined | null => {
+      const svc = arr(e.serviceIds);
+      if (!svc.length) return serviceIds[0];
+      const fits = svc.filter((id) => (durations.get(id) ?? 0) <= prev.durationMin);
+      const same = fits.find((id) => serviceIds.includes(id));
+      if (serviceIds.length && !same) return null; // ждёт другие услуги, чем освободилась, — как раньше, не предлагаем
+      return same ?? fits[0] ?? null;
+    };
     const matches = entries.filter((e) => {
       const staffIds = arr(e.staffIds);
       if (staffIds.length && !staffIds.includes(prev.staffId)) return false;
-      const svc = arr(e.serviceIds);
-      if (svc.length && serviceIds.length && !svc.some((id) => serviceIds.includes(id))) return false;
-      const slots = arr<{ date?: string; anyTime?: boolean; intervals?: { from: string; to: string }[] }>(e.slots);
-      if (!slots.length) return true;
-      return slots.some(
-        (s) =>
-          (!s.date || s.date === date) &&
-          (s.anyTime || !s.intervals?.length || s.intervals.some((i) => toMinutes(i.from) <= startMin && startMin < toMinutes(i.to))),
-      );
+      if (offeredService(e) === null) return false;
+      // Желания единого листа ожидания (как waitlistWantsSlot фронта): день (или любой), точное время или интервал
+      const wishes = arr<{ date?: string; time?: string; intervals?: { from: string; to: string }[] }>(e.wishes);
+      if (!wishes.length) return true;
+      return wishes.some((w) => {
+        if (w.date && w.date !== date) return false;
+        if (w.intervals?.length) return w.intervals.some((i) => toMinutes(i.from) <= startMin && startMin < toMinutes(i.to));
+        return !w.time || toMinutes(w.time) === startMin;
+      });
     });
     const discount = (await this.settings.get(prev.businessId, tx)).hotDiscountPct[prev.staffId] ?? 0;
     await tx.freedSlot.create({
@@ -638,13 +681,29 @@ export class BookingsService {
       },
     });
     if (matches.length) {
-      await tx.waitlistEntry.updateMany({ where: { id: { in: matches.map((m) => m.id) } }, data: { notifiedAt: new Date() } });
-      await this.notifyWaitlistMatches(tx, prev, matches);
+      // Отметка «Уведомлён» — та же история, что у «Проверить лист» и «Предложить окно» (экран листа и панель журнала)
+      const at = new Date();
+      for (const m of matches) {
+        await tx.waitlistEntry.update({ where: { id: m.id }, data: { notifiedAt: at, notifiedTimes: [...arr<string>(m.notifiedTimes), at.toISOString()] as Prisma.InputJsonValue } });
+      }
+      await this.notifyWaitlistMatches(tx, prev, matches.map((m) => ({ ...m, serviceId: offeredService(m) ?? undefined })), tz);
     }
   }
 
+  /** Время окна для текста («04.10 13:30») и ленты клиента (дата, время, услуга — для кнопки «Записаться» на это окно) */
+  private async slotOfferParts(db: Db, slot: { startAt: Date; serviceId?: string }, tz: string) {
+    const local = utcToLocal(slot.startAt, tz);
+    const service = slot.serviceId ? await db.service.findUnique({ where: { id: slot.serviceId }, select: { name: true } }) : null;
+    const names = (service?.name as Record<string, string> | null) ?? {};
+    return {
+      when: `${local.slice(8, 10)}.${local.slice(5, 7)} ${local.slice(11, 16)}`,
+      serviceName: (locale: Locale) => names[locale] || names.ru || '',
+      params: { date: local.slice(0, 10), time: local.slice(11, 16), ...(slot.serviceId ? { serviceId: slot.serviceId } : {}) },
+    };
+  }
+
   /** Первая волна раздачи (В-18): у кого приложение — реальный пуш «освободилось окно», не только пометка */
-  private async notifyWaitlistMatches(tx: Tx, prev: BookingRow, matches: { id: string; appUserId?: string | null }[]): Promise<void> {
+  private async notifyWaitlistMatches(tx: Tx, prev: BookingRow, matches: { id: string; appUserId?: string | null; serviceId?: string }[], tz: string): Promise<void> {
     const withApp = matches.filter((m) => m.appUserId);
     if (!withApp.length) return;
     const def = notifyKindOf('waitlist_available')!;
@@ -656,14 +715,16 @@ export class BookingsService {
     const staffName = staff?.name ?? 'BookTime';
     for (const m of withApp) {
       const locale = localeByUser.get(m.appUserId!) ?? 'ru';
+      // Время и услуга — в тексте пуша и в ленте (без них клиент видел «Освободилось время» без времени и без кнопки)
+      const slot = await this.slotOfferParts(tx, { startAt: prev.startAt, serviceId: m.serviceId }, tz);
       await enqueueClientNotification(tx, {
         businessId: prev.businessId,
         kind: def.kind,
         appUserId: m.appUserId!,
         title: staffName,
-        body: t(locale, def.messageKey, { staff: staffName }),
+        body: t(locale, 'waitlist.slotAvailableAt', { staff: staffName, when: slot.when, service: slot.serviceName(locale) }),
         dedupeKey: `client:waitlist:${m.id}:${prev.id}`,
-        inbox: { kind: 'waitlist_slot', businessId: prev.businessId, staffId: prev.staffId },
+        inbox: { kind: 'waitlist_slot', businessId: prev.businessId, staffId: prev.staffId, params: slot.params },
       });
     }
   }
@@ -777,6 +838,25 @@ export class BookingsService {
     return undefined;
   }
 
+  /**
+   * ⭐ Сколько раз клиент не пришёл к ЭТОМУ мастеру за последние `months` месяцев (В-07: свой счётчик у каждого
+   * мастера): статус «Не пришёл» или отмена позже срока (F-00-098). Клиент — карточка бизнеса или пользователь приложения.
+   */
+  async recentNoShows(db: Db, q: { staffId: string; clientId?: string | null; appUserId?: string | null; months: number }): Promise<number> {
+    const who = [...(q.clientId ? [{ clientId: q.clientId }] : []), ...(q.appUserId ? [{ appUserId: q.appUserId }] : [])];
+    if (!who.length) return 0;
+    const now = new Date();
+    return db.booking.count({
+      where: {
+        staffId: q.staffId,
+        deletedAt: null,
+        OR: who,
+        startAt: { gte: noShowPeriodStart(now, q.months), lte: now },
+        AND: [{ OR: [{ status: 'no_show' }, { status: 'cancelled_by_client', cancelledLate: true }] }],
+      },
+    });
+  }
+
   // ─────────── создание ───────────
 
   /**
@@ -791,17 +871,31 @@ export class BookingsService {
     const tz = await this.tzOfLocation(this.prisma, input.locationId ?? null);
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(input.start)) throw new ApiError('validation', 'Invalid start', { start: 'YYYY-MM-DDTHH:mm' });
 
+    // ⭐ Допродажа: у онлайн-записи пометку «сопутствующая» ставит только сервер (из addOns, по списку услуги)
+    if (online) input = { ...input, services: input.services.map(({ upsellOf: _u, ...l }) => l) };
+    const mainServiceIds = input.services.filter((l) => !l.upsellOf).map((l) => l.serviceId);
+    if (input.addOns?.serviceIds?.length && !input.groupEventId) {
+      const extra = await this.upsell.serviceLines(this.prisma, input.businessId, input.staffId, mainServiceIds, input.addOns.serviceIds);
+      input = { ...input, services: [...input.services, ...extra] };
+    }
+
     // Онлайн: начало должно предлагаться клиенту — окна считает сервер (docs/backend/04). Проверка до транзакции
-    // (чтение), а двойную запись всё равно ловит замок ниже.
+    // (чтение), а двойную запись всё равно ловит замок ниже. Несколько услуг (в т. ч. сопутствующие) — окно под их
+    // общую длительность («от» — сумма нижних, «до» — сумма верхних) и наибольший запас, как считает виджет.
     if (online && !input.groupEventId) {
       const svc = input.services[0] ? await this.prisma.service.findFirst({ where: { id: input.services[0].serviceId, businessId: input.businessId } }) : null;
       if (svc) {
+        const ids = input.services.map((l) => l.serviceId);
+        const all = ids.length > 1 ? await this.prisma.service.findMany({ where: { id: { in: ids }, businessId: input.businessId } }) : [svc];
+        const list = ids.map((id) => all.find((x) => x.id === id)).filter((x): x is typeof svc => Boolean(x));
+        const sumMin = list.reduce((a, x) => a + x.durationMin, 0);
+        const sumMax = list.reduce((a, x) => a + (x.durationMax != null && x.durationMax > x.durationMin ? x.durationMax : x.durationMin), 0);
         const offered = await this.availability.freeSlots(input.businessId, {
           staffId: input.staffId,
           date: input.start.slice(0, 10),
-          durationMin: svc.durationMin,
-          durationMax: svc.durationMax ?? undefined,
-          bufferAfterMin: svc.bufferAfterMin ?? 0,
+          durationMin: list.length > 1 ? sumMin : svc.durationMin,
+          durationMax: list.length > 1 ? (sumMax > sumMin ? sumMax : undefined) : (svc.durationMax ?? undefined),
+          bufferAfterMin: list.length > 1 ? Math.max(0, ...list.map((x) => x.bufferAfterMin ?? 0)) : (svc.bufferAfterMin ?? 0),
           locationId: input.locationId,
           serviceId: svc.id,
         });
@@ -848,10 +942,13 @@ export class BookingsService {
         }
 
         const lines = pairs.map(({ svc, line }) =>
-          makeServiceLine({ id: svc.id, durationMin: svc.durationMin, durationMax: svc.durationMax, priceMin: Number(svc.priceMin) }, line.staffId ?? staff.id, {
-            qty: line.qty,
-            discountPct: line.discountPct,
-            unitPrice: line.unitPrice,
+          ({
+            ...makeServiceLine({ id: svc.id, durationMin: svc.durationMin, durationMax: svc.durationMax, priceMin: Number(svc.priceMin) }, line.staffId ?? staff.id, {
+              qty: line.qty,
+              discountPct: line.discountPct,
+              unitPrice: line.unitPrice,
+            }),
+            ...(line.upsellOf ? { upsellOf: line.upsellOf } : {}),
           }),
         );
         const buffer = Math.max(0, ...pairs.map(({ svc }) => svc.bufferAfterMin ?? 0));
@@ -867,11 +964,18 @@ export class BookingsService {
           durationMin = event.durationMin;
           locationId = event.locationId;
         }
+        if (locationId && !event && !(await tx.location.findFirst({ where: { id: locationId, businessId: input.businessId, deletedAt: null }, select: { id: true } })))
+          throw new ApiError('not_found', 'Location not found');
         locationId = locationId ?? staff.locations[0]?.locationId ?? (await tx.location.findFirst({ where: { businessId: input.businessId, deletedAt: null }, select: { id: true } }))?.id;
         if (!locationId) throw new ApiError('not_found', 'Location not found');
         const locTz = await this.tzOfLocation(tx, locationId);
         const startAt = localToUtc(start, locTz);
         const workplace = input.workplace ?? 'salon';
+        // ⭐ Допродажа: товары — строки «товары визита» склада этого филиала, к оплате на визите (обычная продажа)
+        const addOnGoods =
+          input.addOns?.productIds?.length && !event
+            ? await this.upsell.goodsLines(tx, { businessId: input.businessId, locationId, staffId: staff.id, mainServiceIds, productIds: input.addOns.productIds })
+            : [];
 
         let resourceIds: string[];
         if (event) resourceIds = input.resourceIds ?? arr(event.resourceIds);
@@ -879,16 +983,30 @@ export class BookingsService {
         else resourceIds = await this.pickResources(tx, input.businessId, locationId, lines.map((l) => l.serviceId), startAt, addMin(startAt, durationMin + buffer));
 
         const own = staff.calendarVisibility === 'mine' ? await this.isOwnClient(tx, staff.id, { clientId: who.clientId, appUserId: who.appUserId }) : true;
-        const status: BookingStatus =
-          online || !input.status
-            ? newBookingStatus({ source: input.source, staff: { confirmMode: staff.confirmMode, prepayment: staff.prepayment as PrepaymentRule | null, calendarVisibility: staff.calendarVisibility }, workplace, isOwnClient: own })
-            : input.status;
+        const statusStaff = { confirmMode: staff.confirmMode, prepayment: staff.prepayment as PrepaymentRule | null, calendarVisibility: staff.calendarVisibility };
+        // ⭐ Предоплата только от тех, кто не приходил (владелец, 01.10.2026): счётчик у ЭТОГО мастера за период (В-07)
+        const noShowRule = online && statusStaff.prepayment?.onlyAfterNoShows ? normalizeNoShowRule(statusStaff.prepayment.onlyAfterNoShows) : undefined;
+        const clientNoShows = noShowRule
+          ? await this.recentNoShows(tx, { staffId: staff.id, clientId: who.clientId, appUserId: who.appUserId, months: noShowRule.months })
+          : 0;
+        let status: BookingStatus = online || !input.status ? newBookingStatus({ source: input.source, staff: statusStaff, workplace, isOwnClient: own, clientNoShows }) : input.status;
+        // О28: окно, которое предложил сам мастер, — он уже согласен: без второго подтверждения (предоплату ждём как обычно)
+        if (online && input.acceptsOffer && status === 'awaiting_confirmation') status = 'scheduled';
+        // О6 (как мок, meta.confirmAfterPayment): без предоплаты запись ждала бы мастера — после «Деньги пришли» она
+        // пойдёт к нему в «Заявки», а не сразу в «Записан»
+        const confirmAfterPayment =
+          online && !input.acceptsOffer && status === 'awaiting_prepayment' && newBookingStatus({ source: input.source, staff: statusStaff, workplace, isOwnClient: own, prepaymentPaid: true, clientNoShows }) === 'awaiting_confirmation';
         const total = linesTotal(lines);
         const now = new Date();
         const rule = staff.prepayment as PrepaymentRule | null;
         const holdPrepay =
-          status === 'awaiting_prepayment' && requiresPrepayment(input.source, rule) ? addMin(now, Math.max(1, rule?.timeoutMin ?? PREPAYMENT_HOLD_MIN)) : null;
-        const prepayment = holdPrepay ? { amount: prepaymentAmount(rule, total), paid: false, holdUntil: utcToLocal(holdPrepay, locTz) } : undefined;
+          status === 'awaiting_prepayment' && requiresPrepayment(input.source, rule, false, clientNoShows) ? addMin(now, Math.max(1, rule?.timeoutMin ?? PREPAYMENT_HOLD_MIN)) : null;
+        const need = holdPrepay ? prepaymentNeed(rule, clientNoShows) : undefined;
+        const exactPrice = pairs.every(({ svc }) => svc.priceMax == null || Number(svc.priceMax) === Number(svc.priceMin));
+        const payInFull = Boolean(input.payInFull) && canPayInFull(rule, total, exactPrice);
+        const prepayment = holdPrepay
+          ? { amount: prepaymentAmount(rule, total, payInFull), paid: false, holdUntil: utcToLocal(holdPrepay, locTz), ...(payInFull ? { full: true } : {}), ...(confirmAfterPayment ? { confirmAfterPayment: true } : {}), ...(need?.reason === 'no_shows' ? { reason: 'no_shows', noShows: need.noShows, months: need.months } : {}) }
+          : undefined;
         const confirmDeadline = status === 'awaiting_confirmation' && online ? confirmDeadlineOf(now, startAt) : null;
         const holdUntil = holdPrepay ?? confirmDeadline;
         const visitorName =
@@ -924,7 +1042,7 @@ export class BookingsService {
             seriesId: input.seriesId ?? null,
             visitId: visitId ?? null,
             staffAssignment: input.staffAssignment ?? null,
-            extras: {},
+            extras: addOnGoods.length ? ({ goodsLines: addOnGoods } as Prisma.InputJsonValue) : {},
             createdBy: actor.ctx?.member?.staffId ?? actor.ctx?.session?.userId ?? null,
             updatedBy: actor.ctx?.member?.staffId ?? null,
           },
@@ -935,6 +1053,8 @@ export class BookingsService {
         }
         await this.logEvents(tx, null, row, actor.ref);
         await this.audit.record(tx, actor.ctx, { action: 'create', entityType: 'booking', entityId: id, businessId: input.businessId, after: { start, staffId: staff.id, status, total } });
+        // «Пригласи подругу»: новый клиент по личной ссылке — к пригласившему (правила внутри; отказ запись не ломает)
+        if (online && input.referralCode && who.clientId) await attachReferralInTx(tx, { businessId: input.businessId, inviteeClientId: who.clientId, code: input.referralCode, bookingId: id });
         this.touch(t, row, locTz, keys);
         return { row, createdClient: who.createdClient };
       },
@@ -998,7 +1118,7 @@ export class BookingsService {
             seriesId: input.seriesId ?? null,
             visitId: visitId ?? null,
             staffAssignment: input.staffAssignment ?? null,
-            extras: {},
+            extras: (input.extraSeat ? { extraSeat: input.extraSeat } : {}) as Prisma.InputJsonValue,
             createdBy: actor.ctx?.member?.staffId ?? null,
             updatedBy: actor.ctx?.member?.staffId ?? null,
           },
@@ -1040,6 +1160,11 @@ export class BookingsService {
         if (opts.version !== undefined && prev.version !== opts.version) throw new ApiError('conflict', 'Changed by someone else');
         const data: Prisma.BookingUncheckedUpdateInput = { version: { increment: 1 }, updatedBy: actor.ctx?.member?.staffId ?? null };
         const next = { ...prev };
+        // Мастер и филиал — только этого бизнеса: чужой id занимал бы время чужого мастера / чужой филиал
+        if (patch.staffId !== undefined && patch.staffId !== prev.staffId && !(await tx.staff.findFirst({ where: { id: patch.staffId, businessId: prev.businessId, deletedAt: null }, select: { id: true } })))
+          throw new ApiError('not_found', 'Staff not found');
+        if (patch.locationId !== undefined && patch.locationId !== prev.locationId && !(await tx.location.findFirst({ where: { id: patch.locationId, businessId: prev.businessId, deletedAt: null }, select: { id: true } })))
+          throw new ApiError('not_found', 'Location not found');
         if (patch.locationId !== undefined) next.locationId = patch.locationId;
         const nextTz = await this.tzOfLocation(tx, next.locationId);
         if (patch.start !== undefined) next.startAt = localToUtc(patch.start, nextTz);
@@ -1377,20 +1502,36 @@ export class BookingsService {
     const row = await this.prisma.$transaction(async (tx) => {
       const prev = await this.find(tx, businessIds, id);
       if (actor.ctx?.member) assertJournal(actor.ctx, 'journal.edit', prev.staffId);
-      const p = (prev.prepayment ?? null) as { amount: number; paid: boolean } | null;
+      const p = (prev.prepayment ?? null) as { amount: number; paid: boolean; confirmAfterPayment?: boolean } | null;
       if (!p) throw new ApiError('invalid_transition', 'No prepayment');
       const data: Prisma.BookingUncheckedUpdateInput = { prepayment: { ...p, paid: true, holdUntil: undefined } as Prisma.InputJsonValue, version: { increment: 1 } };
       let keys: string[] = [];
+      // О6 + full-test-0930 online №6: запись, которая без предоплаты ждала бы мастера, после «Деньги пришли» идёт ему
+      // на подтверждение, и срок ответа считается С ЭТОГО момента: min(сейчас + 2 ч, начало − 1 ч) — иначе срок от
+      // создания уже прошёл, и воркер тут же снимал бы заявку как «мастер не ответил»
+      let hold: Date | null = null;
       if (prev.status === 'awaiting_prepayment') {
-        const res = await this.applyStatus(tx, prev, prev, 'scheduled', data);
+        const next = p.confirmAfterPayment ? 'awaiting_confirmation' : 'scheduled';
+        const res = await this.applyStatus(tx, prev, prev, next, data);
         keys = res.keys;
+        if (next === 'awaiting_confirmation') {
+          hold = confirmDeadlineOf(new Date(), prev.startAt);
+          data.confirmDeadline = hold;
+          data.holdUntil = hold;
+        }
       }
-      await this.occupy.setHold(tx, 'booking', id, null);
+      await this.occupy.setHold(tx, 'booking', id, hold);
       const e = extrasOf(prev.extras);
-      const payments = [...(e.payments ?? []), { id: newId('payment'), method: 'cash', amount: p.amount, label: 'prepayment', at: nowLocal() }];
+      // Повторное нажатие «Предоплата получена» не добавляет вторую строку оплаты (деньги не удваиваются)
+      // Оплата участника группового события (строка 'participant', деньги уже в кассе) — тоже уже оплата
+      const byParticipant = (e.payments ?? []).some((l) => l.label === 'participant');
+      const logged = byParticipant || (e.payments ?? []).some((l) => l.label === 'prepayment');
+      const payments = logged ? (e.payments ?? []) : [...(e.payments ?? []), { id: newId('payment'), method: 'cash', amount: p.amount, label: 'prepayment', at: nowLocal() }];
       data.extras = { ...e, payments, paidAmount: payments.reduce((s, l) => s + l.amount, 0) } as Prisma.InputJsonValue;
       data.paidAmount = BigInt(payments.reduce((s, l) => s + l.amount, 0));
       const saved = await tx.booking.update({ where: { id }, data });
+      // ⭐ Решение владельца 01.10: предоплата на реквизиты мастера — своя операция в финансах (идемпотентно)
+      if (!byParticipant) await recordPrepaymentReceivedTx(tx, saved, actor.ctx?.member?.staffId ?? actor.ref);
       await this.logEvents(tx, prev, saved, actor.ref);
       this.touch(t, saved, await this.tzOfLocation(tx, saved.locationId), keys);
       return saved;
@@ -1399,14 +1540,29 @@ export class BookingsService {
     return this.view(this.prisma, row);
   }
 
-  /** Предоплата возвращена клиенту (F-00-100) */
+  /**
+   * Предоплата возвращена клиенту (F-00-100): обратная операция в финансах (идемпотентно), и возвращённая предоплата
+   * больше не оплата визита — строка 'prepayment' уходит из платежей и paidAmount (prepaidOf мока: refundedAt → 0).
+   */
   async refundDone(actor: BookingActor, businessIds: string[], id: string): Promise<BookingView> {
     const row = await this.prisma.$transaction(async (tx) => {
       const prev = await this.find(tx, businessIds, id);
       if (actor.ctx?.member) assertJournal(actor.ctx, 'journal.edit', prev.staffId);
       const p = (prev.prepayment ?? null) as Record<string, unknown> | null;
       if (!p) throw new ApiError('invalid_transition', 'No prepayment');
-      return tx.booking.update({ where: { id }, data: { prepayment: { ...p, refundDue: 0, refundedAt: nowLocal() } as Prisma.InputJsonValue, version: { increment: 1 } } });
+      const data: Prisma.BookingUncheckedUpdateInput = { prepayment: { ...p, refundDue: 0, refundedAt: p.refundedAt ?? nowLocal() } as Prisma.InputJsonValue, version: { increment: 1 } };
+      const e = extrasOf(prev.extras);
+      const prepaid = (e.payments ?? []).filter((l) => l.label === 'prepayment');
+      if (prepaid.length) {
+        const payments = (e.payments ?? []).filter((l) => l.label !== 'prepayment');
+        const back = prepaid.reduce((s, l) => s + l.amount, 0);
+        const nextPaid = Math.max(0, Number(prev.paidAmount) - back);
+        data.extras = { ...e, payments, paidAmount: nextPaid } as Prisma.InputJsonValue;
+        data.paidAmount = BigInt(nextPaid);
+      }
+      const saved = await tx.booking.update({ where: { id }, data });
+      await recordPrepaymentRefundTx(tx, saved, actor.ctx?.member?.staffId ?? actor.ref);
+      return saved;
     });
     return this.view(this.prisma, row);
   }
@@ -1473,6 +1629,18 @@ export class BookingsService {
   }
 
   /**
+   * Что будет, если клиент отменит сейчас — те же действующие правила и тот же `clientCancelOutcome`, что у
+   * `cancelByClient` ниже (Telegram-бот спрашивает «предоплата вернётся / не вернётся?» до самой отмены, 30.09).
+   */
+  async clientCancelPreview(b: BookingRow): Promise<{ outcome: ReturnType<typeof clientCancelOutcome>; keepPrepaymentOnLateCancel: boolean; prepaidAmount: number; rules: EffectiveBookingRules }> {
+    const tz = await this.tzOfLocation(this.prisma, b.locationId);
+    const { rules } = await this.rulesOf(this.prisma, b);
+    const p = b.prepayment as { paid?: boolean; amount?: number } | null;
+    const outcome = clientCancelOutcome({ start: utcToLocal(b.startAt, tz), status: b.status, deletedAt: b.deletedAt, prepayment: p }, rules, nowLocal(tz));
+    return { outcome, keepPrepaymentOnLateCancel: rules.keepPrepaymentOnLateCancel, prepaidAmount: p?.paid ? Number(p.amount ?? 0) : 0, rules };
+  }
+
+  /**
    * Отмена клиентом (В-04, F-00-098): раньше срока — бесплатно; позже — «Отменил клиент» + пометка «поздно» +1 к неявкам
    * у ЭТОГО бизнеса (В-07); предоплата при поздней отмене остаётся мастеру (галочка мастера, по умолчанию да).
    */
@@ -1532,6 +1700,8 @@ export class BookingsService {
       staff: { confirmMode: staff?.confirmMode ?? 'manual', prepayment: (staff?.prepayment ?? null) as PrepaymentRule | null, calendarVisibility: staff?.calendarVisibility ?? 'all' },
       workplace: b.workplace,
       prepaymentPaid: paid,
+      // ⭐ Предоплата «за то, что не приходил» переносом не снимается: порог считали при записи
+      clientNoShows: (b.prepayment as { reason?: string } | null)?.reason === 'no_shows' ? Number.MAX_SAFE_INTEGER : 0,
     });
     await this.update(actor, [b.businessId], id, { start: newStart });
     if (status !== b.status) {
@@ -1563,13 +1733,25 @@ export class BookingsService {
   /** «Я оплатил» (F-00-097): таймер стоп — окно держится до решения мастера */
   async markPaidByClient(appUserId: string, id: string): Promise<BookingView> {
     const b = await this.clientBooking(appUserId, id);
+    const p = (b.prepayment ?? {}) as Record<string, unknown>;
+    if (b.status === 'awaiting_prepayment' && p.clientMarkedPaidAt) return this.view(this.prisma, b);
+    const updated = await this.stopPrepaymentHold(b);
+    // Событие «оплата на проверке», как «Я оплатил» по ссылке (OnlineService.markPrepaymentPaid) — история и лента журнала
+    await this.prisma.bookingEvent.create({ data: { id: newId('bookingEvent'), bookingId: id, businessId: b.businessId, staffId: b.staffId, clientId: b.clientId, appUserId: b.appUserId, kind: 'status', toStatus: 'prepayment_reported', byRef: 'client', startLocal: utcToLocal(b.startAt) } });
+    return this.view(this.prisma, updated);
+  }
+
+  /**
+   * «Я оплатил» — общий шаг для приложения и ссылки без входа: срок снимается и с записи (`holdUntil` — по нему
+   * воркер `releaseExpired` снимает заявку), и с занятости (иначе окно освободится для других), до решения мастера.
+   */
+  async stopPrepaymentHold(b: BookingRow): Promise<BookingRow> {
     if (b.status !== 'awaiting_prepayment') throw new ApiError('invalid_transition', 'Not awaiting prepayment');
-    const row = await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       const p = (b.prepayment ?? {}) as Record<string, unknown>;
-      await this.occupy.setHold(tx, 'booking', id, null);
-      return tx.booking.update({ where: { id }, data: { holdUntil: null, prepayment: { ...p, clientMarkedPaidAt: nowLocal(), holdUntil: undefined } as Prisma.InputJsonValue, version: { increment: 1 } } });
+      await this.occupy.setHold(tx, 'booking', b.id, null);
+      return tx.booking.update({ where: { id: b.id }, data: { holdUntil: null, prepayment: { ...p, clientMarkedPaidAt: nowLocal(), holdUntil: undefined } as Prisma.InputJsonValue, version: { increment: 1 } } });
     });
-    return this.view(this.prisma, row);
   }
 
   // ─────────── фоновые задачи (воркер, каждую минуту) ───────────
@@ -1597,11 +1779,37 @@ export class BookingsService {
       try {
         await this.changeStatus(SYSTEM_ACTOR, [b.businessId], b.id, 'cancelled_by_master', 'system', { reason: 'confirmation_expired' });
         done.confirmation.push(b.id);
+        // В-03: клиенту сразу 3 ближайших окна того же мастера — видит их на странице записи и в приложении
+        await this.offerAlternatives(b.businessId, b.id).catch(() => undefined);
       } catch {
         /* уже поменяли — пропускаем */
       }
     }
     return done;
+  }
+
+  /** 3 ближайших свободных начала того же мастера (не больше 2 в день) → onlineMeta.offeredStarts, как «Другое время» */
+  private async offerAlternatives(businessId: string, bookingId: string): Promise<void> {
+    const b = await this.prisma.booking.findUniqueOrThrow({ where: { id: bookingId } });
+    const services = arr<ServiceLine>(b.services);
+    const startLocal = utcToLocal(b.startAt);
+    const nowLocalIso = utcToLocal(new Date());
+    let cursor = nowLocalIso.slice(0, 10) > startLocal.slice(0, 10) ? nowLocalIso.slice(0, 10) : startLocal.slice(0, 10);
+    const out: string[] = [];
+    for (let i = 0; i < 14 && out.length < 3; i++) {
+      const slots = await this.availability.freeSlots(businessId, { staffId: b.staffId, date: cursor, durationMin: b.durationMin, locationId: b.locationId, serviceId: services[0]?.serviceId });
+      let perDay = 0;
+      for (const sl of slots) {
+        if (perDay >= 2 || out.length >= 3) break;
+        if (sl.start === startLocal || sl.start < nowLocalIso) continue;
+        out.push(sl.start);
+        perDay++;
+      }
+      cursor = dayjs(cursor).add(1, 'day').format('YYYY-MM-DD');
+    }
+    if (!out.length) return;
+    const meta = { ...((b.onlineMeta as Record<string, unknown> | null) ?? {}), offeredStarts: out };
+    await this.prisma.booking.update({ where: { id: bookingId }, data: { onlineMeta: meta as Prisma.InputJsonValue } });
   }
 
   /**
@@ -1643,7 +1851,7 @@ export class BookingsService {
   }
 
   /** Вторая волна раздачи, через 30 мин (В-18): подписчики ❤ мастера, не приглушившие новости — тот же переключатель */
-  private async notifyFavoriteSubscribers(f: { id: string; businessId: string; staffId: string }): Promise<void> {
+  private async notifyFavoriteSubscribers(f: { id: string; businessId: string; staffId: string; startAt: Date; locationId: string | null; sourceBookingId: string; durationMin: number }): Promise<void> {
     const favorites = await this.prisma.favorite.findMany({ where: { targetType: 'staff', targetId: f.staffId, newsMuted: false }, select: { appUserId: true } });
     if (!favorites.length) return;
     const [staff, users] = await Promise.all([
@@ -1652,6 +1860,10 @@ export class BookingsService {
     ]);
     const def = notifyKindOf('waitlist_available')!;
     const staffName = staff?.name ?? 'BookTime';
+    // Подписчикам — освободившаяся услуга (она в окно помещается по определению) и время окна
+    const source = await this.prisma.booking.findUnique({ where: { id: f.sourceBookingId }, select: { services: true } });
+    const serviceId = arr<ServiceLine>(source?.services)[0]?.serviceId;
+    const slot = await this.slotOfferParts(this.prisma, { startAt: f.startAt, serviceId }, await this.tzOfLocation(this.prisma, f.locationId));
     for (const u of users) {
       const locale = isLocale(u.locale) ? u.locale : 'ru';
       await enqueueClientNotification(this.prisma, {
@@ -1659,9 +1871,9 @@ export class BookingsService {
         kind: def.kind,
         appUserId: u.id,
         title: staffName,
-        body: t(locale, def.messageKey, { staff: staffName }),
+        body: t(locale, 'waitlist.slotAvailableAt', { staff: staffName, when: slot.when, service: slot.serviceName(locale) }),
         dedupeKey: `client:waitlist-sub:${f.id}:${u.id}`,
-        inbox: { kind: 'waitlist_slot', businessId: f.businessId, staffId: f.staffId },
+        inbox: { kind: 'waitlist_slot', businessId: f.businessId, staffId: f.staffId, params: slot.params },
       });
     }
   }

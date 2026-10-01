@@ -14,6 +14,10 @@ import { notifyEmptyWeek } from './modules/notify/notify-empty-week.js';
 import { billingDispatch } from './jobs/billing-tick.js';
 import { webhooksDispatch } from './jobs/webhooks-dispatch.js';
 import { businessRetentionTick } from './jobs/business-retention.js';
+import { createTelegramBot } from './adapters/telegram-bot/telegram-bot.js';
+import { env } from './common/config/env.js';
+import { TelegramBotService } from './modules/telegram/telegram-bot.service.js';
+import { startTelegramPolling } from './modules/telegram/telegram-polling.js';
 
 /**
  * Воркер: очереди BullMQ и расписания (PLAN.md Р10) — напоминания, снятие заявок по сроку, списания, выгрузки.
@@ -49,6 +53,14 @@ const prisma = new PrismaService();
 const journal = journalServices(prisma, createRedis('worker-journal'));
 const notify = notifyServices(prisma);
 const notifyMailings = notifyMailingsJob(prisma);
+// Telegram-бот (30.09.2026): без публичного адреса вебхука воркер сам забирает обновления (TELEGRAM_BOT_POLLING=1)
+const stopTelegramPolling = env.TELEGRAM_BOT_POLLING
+  ? (() => {
+      const redis = createRedis('worker-telegram');
+      const bot = createTelegramBot();
+      return startTelegramPolling(bot, new TelegramBotService(prisma, redis, bot, journal.bookings), redis);
+    })()
+  : () => undefined;
 
 const worker = new Worker(
   SYSTEM,
@@ -119,6 +131,7 @@ worker.on('failed', (job, err) => logger.error({ job: job?.name, err }, 'job fai
 logger.info('worker: очереди запущены');
 
 const stop = async () => {
+  stopTelegramPolling();
   await worker.close();
   await queue.close();
   await prisma.$disconnect();

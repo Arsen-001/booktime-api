@@ -64,7 +64,7 @@ export const clientNotifyPatchBody = z.object({
   disabledTypeCodes: z.array(z.number().int()).max(200).optional(),
 });
 
-export const webPopupBody = z.object({ bookingOps: z.boolean(), incomingCalls: z.boolean() });
+export const webPopupBody = z.object({ bookingOps: z.boolean(), incomingCalls: z.boolean(), dayClose: z.boolean().optional() });
 
 export const emailChannelBody = z.object({ replyEmail: z.string().max(160) });
 
@@ -156,6 +156,8 @@ export const bookingNotifyOverrideBody = z.object({
   smsTimingHours: z.number().int().min(0).max(168),
   emailEnabled: z.boolean(),
   emailTimingHours: z.number().int().min(0).max(168),
+  /** ⭐ 01.10.2026: выключатель Telegram-напоминаний (24 ч + 2 ч) у этой записи; нет поля — включено */
+  telegramEnabled: z.boolean().optional(),
 });
 
 // ─────────── уведомления сотрудника — богатая матрица (F-05-055…060), этап 21 попытка 3 ───────────

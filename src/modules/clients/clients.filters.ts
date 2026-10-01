@@ -67,6 +67,9 @@ const CHAT_LEAD_TAG = 'Лид из чата';
 function matchesSegment(row: ClientRowView, segment: Exclude<QuickPick, 'noShow'>, ctx: FilterContext): boolean {
   const daysAgo = (n: number) => addDays(ctx.today, -n);
   switch (segment) {
+    // ⭐ Пора записать: срок повтора услуги наступил, будущей записи нет (dueAt считает clients.visits.ts)
+    case 'due':
+      return Boolean(row.dueAt) && row.dueAt! <= ctx.today;
     case 'new':
       return Boolean(row.firstVisit) && row.firstVisit! >= daysAgo(30);
     case 'repeat':
@@ -135,6 +138,18 @@ export function sortClientRows(rows: ClientRowView[], sort: { columnId: string; 
     if (emptyA !== emptyB) return emptyA ? 1 : -1;
     if (va < vb) return -dir;
     if (va > vb) return dir;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/**
+ * ⭐ «Пора записать» без выбранной сортировки: самые просроченные первыми (срок повтора раньше — выше), как
+ * «Кого позвать»; без срока — в конце (sortByDue мока, src/domain/clients/filters.ts).
+ */
+export function sortByDue(rows: ClientRowView[]): ClientRowView[] {
+  return rows.slice().sort((a, b) => {
+    if (!a.dueAt !== !b.dueAt) return a.dueAt ? -1 : 1;
+    if (a.dueAt && b.dueAt && a.dueAt !== b.dueAt) return a.dueAt < b.dueAt ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
 }

@@ -4,6 +4,7 @@ import { ScheduleModule } from '../schedule/schedule.module.js';
 import { ReportsAuditService } from './reports-audit.service.js';
 import { ReportsDashboardService } from './reports-dashboard.service.js';
 import { ReportsExportService } from './reports-export.service.js';
+import { ReportsHomeService } from './reports-home.service.js';
 import { ReportsJournalService } from './reports-journal.service.js';
 import { ReportsMarketingService } from './reports-marketing.service.js';
 import { ReportsReviewsService } from './reports-reviews.service.js';
@@ -22,7 +23,7 @@ import { ReportsController } from './reports.controller.js';
 @Module({
   imports: [ScheduleModule, JournalModule],
   controllers: [ReportsController],
-  providers: [ReportsDashboardService, ReportsJournalService, ReportsSalesService, ReportsMarketingService, ReportsAuditService, ReportsSettingsService, ReportsExportService, ReportsReviewsService, ReportsStockService],
+  providers: [ReportsDashboardService, ReportsHomeService, ReportsJournalService, ReportsSalesService, ReportsMarketingService, ReportsAuditService, ReportsSettingsService, ReportsExportService, ReportsReviewsService, ReportsStockService],
   exports: [ReportsSettingsService, ReportsExportService],
 })
 export class ReportsModule {}

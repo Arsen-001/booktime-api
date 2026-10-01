@@ -56,6 +56,8 @@ export const workdayBlockBody = z.object({
 
 export const recordsBlockBody = z.object({
   enabled: z.boolean(),
+  /** F-09-039: «Вознаграждение за созданную запись» — сумма за запись (мок QA 30.09) */
+  perRecordAmount: z.number().min(0).max(1_000_000_000).optional(),
   perServicePayout: payoutValueBody,
   perServiceOverrides: z.array(payoutOverrideBody),
   onlineWidgetEnabled: z.boolean(),

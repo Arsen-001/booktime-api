@@ -162,7 +162,8 @@ export class ClientLoyaltyService {
       case 'getCashbackVisibleForBusiness':
         return run('appGetCashbackVisibleForBusiness', [businessId]);
       case 'setCashbackVisibleForBusiness':
-        requireAny(ctx, MANAGE);
+        // client-2-fix (как мок): «кэшбэк в приложении» — loyalty.rules; loyalty.manage тоже достаточно
+        requireAny(ctx, ['loyalty.rules', ...MANAGE]);
         await run('appSetCashbackVisibleForBusiness', [businessId, args[0] === true]);
         return null;
       default:

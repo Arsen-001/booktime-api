@@ -9,12 +9,12 @@ import { ApiError } from '../../common/errors/api-error.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { PHONE_PREFIX, normalizePhone } from '../../common/phone.js';
 import type { ClientFormBody, FilterState, QuickPick } from './clients.schemas.js';
-import { emptyContext, matchesFilters, matchesPick, matchesSearch, sortClientRows } from './clients.filters.js';
+import { emptyContext, matchesFilters, matchesPick, matchesSearch, sortByDue, sortClientRows } from './clients.filters.js';
 import { clientRowView, maskClientPhones, type ClientRowView } from './clients.views.js';
 import { getClientsBizSettings } from './clients-settings.helper.js';
-import { bookingIndex, clientBookings, withVisits } from './clients.visits.js';
+import { bookingIndex, clientBookings, repeatIntervals, withVisits } from './clients.visits.js';
 
-const QUICK_PICKS: QuickPick[] = ['new', 'repeat', 'lost', 'subscriptionEnding', 'noShow', 'chatLeads'];
+const QUICK_PICKS: QuickPick[] = ['due', 'new', 'repeat', 'lost', 'subscriptionEnding', 'noShow', 'chatLeads'];
 
 /**
  * Поля обезличивания клиента (F-04-211, P11) — общие для запроса самого клиента и для автоматики этапа 20
@@ -91,8 +91,8 @@ export class ClientsService {
   /** Строки клиентов с визитами и деньгами из записей (этап 7) + индекс записей для фильтров */
   private async rowsWithIndex(businessIds: string[]) {
     const clients = await this.prisma.client.findMany({ where: { businessId: { in: businessIds }, deletedAt: null }, orderBy: { createdAt: 'desc' } });
-    const bookings = await clientBookings(this.prisma, businessIds);
-    const rows = withVisits(clients.map(clientRowView), bookings, new Map());
+    const [bookings, intervals] = await Promise.all([clientBookings(this.prisma, businessIds), repeatIntervals(this.prisma, businessIds)]);
+    const rows = withVisits(clients.map(clientRowView), bookings, new Map(), intervals);
     return { rows, index: bookingIndex(bookings) };
   }
 
@@ -137,7 +137,8 @@ export class ClientsService {
     if (input.search?.trim()) found = found.filter((r) => matchesSearch(r, input.search!));
     if (input.pick) found = found.filter((r) => matchesPick(r, input.pick!, ctxFilter));
     if (input.filters) found = found.filter((r) => matchesFilters(r, input.filters!, ctxFilter));
-    found = sortClientRows(found, input.sort ?? { columnId: 'lastVisit', dir: 'desc' });
+    // ⭐ «Пора записать» без выбранной колонки — самые просроченные первыми; выбрал колонку — как выбрал
+    found = !input.sort && input.pick === 'due' ? sortByDue(found) : sortClientRows(found, input.sort ?? { columnId: 'lastVisit', dir: 'desc' });
     const pageSize = Math.max(1, input.pageSize);
     const lastPage = Math.max(1, Math.ceil(found.length / pageSize));
     const revealIndex = input.revealId ? found.findIndex((r) => r.id === input.revealId) : -1;
@@ -218,7 +219,7 @@ export class ClientsService {
     // F-04-199: без права «все клиенты» карточку открывают только клиенту с визитом к этому мастеру
     const bookings = await clientBookings(this.prisma, allowed, [client.id]);
     if (onlyStaffId && !bookings.some((b) => b.staffId === onlyStaffId)) throw new ApiError('not_found', 'Client not found');
-    const row = withVisits([clientRowView(client)], bookings, new Map())[0]!;
+    const row = withVisits([clientRowView(client)], bookings, new Map(), await repeatIntervals(this.prisma, allowed))[0]!;
     return ctx.member!.permissions.has('clients.phones') ? row : maskClientPhones(row);
   }
 

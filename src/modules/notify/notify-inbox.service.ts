@@ -1,22 +1,33 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service.js';
 import { isOnlineSource } from '../journal/rules.js';
+import { dayCloseInboxEvents } from './day-close-notice.js';
 
 /** Тот же словарь, что InboxEventKind фронта (src/api/notify.ts) — колокольчик кабинета читает те же переходы */
-export type InboxEventKind = 'created' | 'onlineCreated' | 'cancelled' | 'moved' | 'deleted' | 'delayed';
+export type InboxEventKind = 'created' | 'onlineCreated' | 'cancelled' | 'moved' | 'deleted' | 'delayed' | 'dayClosed';
 
 export interface InboxEvent {
   id: string;
-  bookingId: string;
+  /** Нет у 'dayClosed' — строка ведёт в «Итоги дня» */
+  bookingId?: string;
   createdAt: string;
   date: string;
   kind: InboxEventKind;
+  /** ⭐ 'dayClosed' (01.10.2026): итог кассы дня владельцу — day-close-notice.ts */
+  dayClose?: { closedByName: string; revenue: number; cash: number; discrepancy: number };
+}
+
+/** Кто смотрит ленту: «День закрыт» — личные строки владельцев */
+export interface InboxViewer {
+  staffId: string;
+  userId: string;
 }
 export interface InboxPreviewItem extends InboxEvent {
   unread: boolean;
 }
 
 const CANCELLED = new Set(['cancelled_by_client', 'cancelled_by_master']);
+const AREA_WEB_POPUP = 'notify-web-popup';
 
 /**
  * Колокольчик кабинета (F-05-061): та же лента, что фронт раньше строил сам из booking_events —
@@ -28,7 +39,19 @@ const CANCELLED = new Set(['cancelled_by_client', 'cancelled_by_master']);
 export class NotifyInboxService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async events(businessId: string): Promise<InboxEvent[]> {
+  /**
+   * F-05-058: галочки «Уведомления в Web-версии» гасят свои строки — «Операции с записями» (bookingOps) события записей,
+   * ⭐ «Закрытие дня» (dayClose, нет поля — включено) строки «День закрыт». Как inboxEvents мока.
+   */
+  private async events(businessId: string, viewer: InboxViewer | null): Promise<InboxEvent[]> {
+    const popupRow = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: AREA_WEB_POPUP } } });
+    const popup = (popupRow?.data as { bookingOps?: boolean; dayClose?: boolean } | null) ?? {};
+    const dayClosed: InboxEvent[] = viewer && popup.dayClose !== false ? await dayCloseInboxEvents(this.prisma, businessId, viewer) : [];
+    const bookingEvents = popup.bookingOps === false ? [] : await this.bookingEvents(businessId);
+    return [...dayClosed, ...bookingEvents].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 30);
+  }
+
+  private async bookingEvents(businessId: string): Promise<InboxEvent[]> {
     const rows = await this.prisma.bookingEvent.findMany({ where: { businessId }, orderBy: { at: 'desc' }, take: 200 });
     const bookingIds = [...new Set(rows.filter((r) => r.kind === 'created').map((r) => r.bookingId))];
     const bookings = bookingIds.length ? await this.prisma.booking.findMany({ where: { id: { in: bookingIds } }, select: { id: true, source: true } }) : [];
@@ -47,18 +70,18 @@ export class NotifyInboxService {
     return out.slice(0, 30);
   }
 
-  async countUnread(businessId: string): Promise<number> {
-    const [events, read] = await Promise.all([this.events(businessId), this.readIds(businessId)]);
+  async countUnread(businessId: string, viewer: InboxViewer | null): Promise<number> {
+    const [events, read] = await Promise.all([this.events(businessId, viewer), this.readIds(businessId)]);
     return events.filter((e) => !read.has(e.id)).length;
   }
 
-  async preview(businessId: string, limit = 5): Promise<InboxPreviewItem[]> {
-    const [events, read] = await Promise.all([this.events(businessId), this.readIds(businessId)]);
+  async preview(businessId: string, viewer: InboxViewer | null, limit = 5): Promise<InboxPreviewItem[]> {
+    const [events, read] = await Promise.all([this.events(businessId, viewer), this.readIds(businessId)]);
     return events.slice(0, limit).map((e) => ({ ...e, unread: !read.has(e.id) }));
   }
 
-  async list(businessId: string): Promise<InboxPreviewItem[]> {
-    const [events, read] = await Promise.all([this.events(businessId), this.readIds(businessId)]);
+  async list(businessId: string, viewer: InboxViewer | null): Promise<InboxPreviewItem[]> {
+    const [events, read] = await Promise.all([this.events(businessId, viewer), this.readIds(businessId)]);
     return events.map((e) => ({ ...e, unread: !read.has(e.id) }));
   }
 
@@ -67,8 +90,8 @@ export class NotifyInboxService {
     await this.prisma.bizInboxRead.createMany({ data: ids.map((eventId) => ({ businessId, eventId })), skipDuplicates: true });
   }
 
-  async markAllRead(businessId: string): Promise<void> {
-    const events = await this.events(businessId);
+  async markAllRead(businessId: string, viewer: InboxViewer | null): Promise<void> {
+    const events = await this.events(businessId, viewer);
     await this.markRead(businessId, events.map((e) => e.id));
   }
 

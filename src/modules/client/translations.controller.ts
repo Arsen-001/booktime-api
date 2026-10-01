@@ -27,8 +27,9 @@ export class TranslationsController {
   @Get('override')
   @Biz()
   @ApiOperation({ summary: 'Правка перевода одного текста, если есть' })
-  getOverride(@Query('owner') owner: string, @Query('ownerId') ownerId: string, @Query('field') field: string) {
-    return this.svc.getOverride(translationOwner.parse(owner), ownerId, field).then((text) => ({ text: text ?? null }));
+  async getOverride(@Param('businessId') businessId: string, @Query('owner', new Zod(translationOwner)) owner: z.infer<typeof translationOwner>, @Query('ownerId', new Zod(z.string().min(1).max(40))) ownerId: string, @Query('field', new Zod(z.string().min(1).max(40))) field: string) {
+    await this.svc.assertOwned(businessId, owner, ownerId);
+    return this.svc.getOverride(owner, ownerId, field).then((text) => ({ text: text ?? null }));
   }
 
   @Put('override')
@@ -37,6 +38,7 @@ export class TranslationsController {
   @ApiOperation({ summary: 'Поправить перевод (пустой текст — снять правку)' })
   @ZodBody(translationOverrideBody)
   async setOverride(@Ctx() ctx: RequestContext, @Body(new Zod(translationOverrideBody)) body: z.infer<typeof translationOverrideBody>) {
+    await this.svc.assertOwned(ctx.member!.businessId, body.owner, body.ownerId);
     await this.svc.setOverride(body.owner, body.ownerId, body.field, body.text, ctx.member!.staffId);
   }
 }

@@ -105,7 +105,8 @@ function applyOverride(base: NotificationTypeOut, o: StoredOverride | undefined)
   return {
     ...base,
     enabled: o.enabled ?? base.enabled,
-    channels: o.channels ?? base.channels,
+    // Канал, добавленный в реестр после сохранения правки (Telegram у типа 1, 01.10.2026), — со сценарием реестра
+    channels: o.channels ? base.channels.map((c) => o.channels!.find((x) => x.channel === c.channel) ?? c) : base.channels,
     templates: o.templates ? upgradeSms(o.templates, base) : base.templates,
     emailExtra: o.emailExtra ?? base.emailExtra,
     conditions: o.conditions ?? base.conditions,

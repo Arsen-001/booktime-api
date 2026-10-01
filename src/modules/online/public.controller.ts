@@ -8,6 +8,7 @@ import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import { Zod } from '../../common/http/validation.js';
 import {
   addReviewBody,
+  alternativeTimeBody,
   cabinetDataOut,
   cancelWindowOut,
   codeSentOut,
@@ -144,17 +145,26 @@ export class PublicOnlineController {
   }
 
   @Post('bookings/:id/cancel')
-  @RateLimit({ bucket: 'public-booking-hash', limit: 20, windowSec: 3600, by: 'ip' })
+  @RateLimit({ bucket: 'public-booking-hash-write', limit: 20, windowSec: 3600, by: 'ip' })
   @ApiOperation({ summary: 'Отмена своей записи по ссылке без входа (F-03-100). Перенос по ссылке не строим — B8' })
   cancel(@Param('id') id: string, @Query('h') hash: string) {
     return this.svc.cancelByHash(id, hash);
+  }
+
+  @Post('bookings/:id/alternative')
+  @HttpCode(200)
+  @RateLimit({ bucket: 'public-booking-hash-write', limit: 20, windowSec: 3600, by: 'ip' })
+  @ApiOperation({ summary: '⭐ О28: запись в окно, которое предложили вместо этой записи, одним нажатием (по хэшу ссылки)' })
+  @ZodBody(alternativeTimeBody)
+  bookAlternative(@Param('id') id: string, @Query('h') hash: string, @Body(new Zod(alternativeTimeBody)) body: z.infer<typeof alternativeTimeBody>) {
+    return this.svc.bookAlternativeTime(id, hash, body.start);
   }
 
   // ═══════════════ стадия 21 (лейн client+online), попытка 2 ═══════════════
 
   @Post('bookings/:id/prepayment-paid')
   @HttpCode(200)
-  @RateLimit({ bucket: 'public-booking-hash', limit: 20, windowSec: 3600, by: 'ip' })
+  @RateLimit({ bucket: 'public-booking-hash-write', limit: 20, windowSec: 3600, by: 'ip' })
   @ApiOperation({ summary: '«Я оплатил» по ссылке без входа (B8, В-05)' })
   markPrepaymentPaid(@Param('id') id: string, @Query('h') hash: string) {
     return this.svc.markPrepaymentPaid(id, hash);
@@ -162,20 +172,20 @@ export class PublicOnlineController {
 
   @Post('bookings/:id/reviews')
   @HttpCode(200)
-  @RateLimit({ bucket: 'public-booking-hash', limit: 20, windowSec: 3600, by: 'ip' })
-  @ApiOperation({ summary: 'Звёздочка после визита (F-00-116) — без входа, как у мока' })
+  @RateLimit({ bucket: 'public-booking-hash-write', limit: 20, windowSec: 3600, by: 'ip' })
+  @ApiOperation({ summary: 'Звёздочка после визита (F-00-116) — без входа, по хэшу ссылки ?h= (как отмена и «Я оплатил»)' })
   @ZodBody(addReviewBody)
   @ZodOk(reviewOut)
-  addReview(@Param('id') id: string, @Body(new Zod(addReviewBody)) body: z.infer<typeof addReviewBody>) {
-    return this.svc.addReviewByBooking(id, body);
+  addReview(@Param('id') id: string, @Query('h') hash: string, @Body(new Zod(addReviewBody)) body: z.infer<typeof addReviewBody>) {
+    return this.svc.addReviewByBooking(id, hash, body);
   }
 
   @Get('bookings/:id/reviews/:target')
   @RateLimit({ bucket: 'public-booking-hash', limit: 60, windowSec: 60, by: 'ip' })
   @ApiOperation({ summary: 'Уже ли поставлена звёздочка за эту запись' })
   @ZodOk(z.object({ reviewed: z.boolean() }))
-  async hasReviewed(@Param('id') id: string, @Param('target') target: string) {
-    return { reviewed: await this.svc.hasReviewed(id, target) };
+  async hasReviewed(@Param('id') id: string, @Param('target') target: string, @Query('h') hash: string) {
+    return { reviewed: await this.svc.hasReviewedByHash(id, hash, target) };
   }
 
   @Post('track')

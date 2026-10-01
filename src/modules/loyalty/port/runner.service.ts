@@ -5,13 +5,17 @@ import { PrismaService } from '../../../common/prisma.service.js';
 import { bookingView } from '../../journal/journal.views.js';
 import { clientRowView } from '../../clients/clients.views.js';
 import { BusinessService } from '../../businesses/business.service.js';
+import { LoyaltySalesService } from '../../finance/loyalty-sales.service.js';
 import { resolveScopeBusinessIds } from '../loyalty.owner.js';
 import type { CoreData, Id } from './core-types.js';
 import * as appOps from './client-ops.js';
 import * as extra from './extra-ops.js';
 import * as logic from './logic.js';
-import { NeedBookings, runInPort } from './shim.js';
+import { REQUIRED_ARGS } from './arity.js';
+import { NeedBookings, runInPort, type PortContext } from './shim.js';
 import { loadState, saveState, SETTINGS_AREA } from './store.js';
+import { referralsInScope } from '../referral.service.js';
+import { utcToLocal } from '../../../common/time/time.js';
 
 type Db = Prisma.TransactionClient;
 type LogicFn = (...args: unknown[]) => unknown;
@@ -42,6 +46,7 @@ export class LoyaltyPortRunner {
   constructor(
     private readonly prisma: PrismaService,
     private readonly biz: BusinessService,
+    private readonly sales: LoyaltySalesService,
   ) {}
 
   scopeOf(businessId: Id): Promise<Id[]> {
@@ -51,14 +56,25 @@ export class LoyaltyPortRunner {
   async run(op: string, args: unknown[], opts: RunOptions): Promise<unknown> {
     const fn = (appOps as unknown as Record<string, LogicFn>)[op] ?? (extra as unknown as Record<string, LogicFn>)[op] ?? (logic as unknown as Record<string, LogicFn>)[op];
     if (typeof fn !== 'function') throw new ApiError('not_found', `loyalty op ${op}`);
-    if (opts.scope.length === 0) return this.runEmpty(fn, args);
-    const withBookings = needsBookings.has(op);
+    checkArgs(op, args);
     try {
-      return await this.runOnce(op, fn, args, opts, withBookings);
+      if (opts.scope.length === 0) return await this.runEmpty(fn, args);
+      const withBookings = needsBookings.has(op);
+      try {
+        return await this.runOnce(op, fn, args, opts, withBookings);
+      } catch (e) {
+        if (!(e instanceof NeedBookings) || withBookings) throw e;
+        needsBookings.add(op);
+        return await this.runOnce(op, fn, args, opts, true);
+      }
     } catch (e) {
-      if (!(e instanceof NeedBookings) || withBookings) throw e;
-      needsBookings.add(op);
-      return this.runOnce(op, fn, args, opts, true);
+      // Фасад фронта писался под типы TS, а не под сеть: аргумент не той формы глубже первого уровня (поле объекта)
+      // даёт TypeError/RangeError или отказ Prisma на записи — это ошибка запроса (400), не сервера (500)
+      if (e instanceof TypeError || e instanceof RangeError || (e as { name?: string }).name === 'PrismaClientValidationError') {
+        this.log.warn(`${op}: invalid arguments → 400 (${(e as Error).message})`);
+        throw new ApiError('validation', `loyalty op ${op}: invalid arguments`);
+      }
+      throw e;
     }
   }
 
@@ -91,8 +107,10 @@ export class LoyaltyPortRunner {
       async (db) => {
         await lockScope(db, scope);
         const { state, snapshot } = await loadState(db, scope);
-        const ctx = { state, core };
+        const ctx: PortContext = { state, core };
         const result = await runInPort(ctx, async () => fn(...args));
+        // Деньги продаж лояльности (приход / отмена прихода / возврат) — в кассу той же транзакцией, что и срез
+        if (ctx.financeEffects?.length) await this.sales.apply(db, ctx.financeEffects, opts.actor);
         const serviceBiz = new Map(core.services.map((s) => [s.id, s.businessId]));
         const saved = await saveState(db, snapshot, ctx.state, home, (id) => serviceBiz.get(id), opts.actor);
         if (saved.written || saved.removed) this.log.debug(`${op}: written ${saved.written}, removed ${saved.removed}`);
@@ -105,7 +123,12 @@ export class LoyaltyPortRunner {
   private async loadCore(home: Id, scope: Id[], withBookings: boolean, appUserId?: Id): Promise<CoreData> {
     const snap = await this.biz.core(home, scope);
     const clientWhere = appUserId ? { appUserId, deletedAt: null } : { businessId: { in: scope }, deletedAt: null };
-    const clientRows = await this.prisma.client.findMany({ where: clientWhere });
+    const [clientRows, referred] = await Promise.all([this.prisma.client.findMany({ where: clientWhere }), referralsInScope(this.prisma, scope)]);
+    // «Пригласи подругу»: пригласивший из привязки по ссылке — getReferralEligibility без телефона
+    const referral = (id: string) => {
+      const r = referred.get(id);
+      return r ? { referredByClientId: r.referrerClientId, referredAt: utcToLocal(r.at) } : {};
+    };
     const core = {
       ...emptyCore(),
       networks: snap.networks,
@@ -115,7 +138,7 @@ export class LoyaltyPortRunner {
       serviceCategories: snap.serviceCategories,
       services: snap.services,
       resources: snap.resources,
-      clients: clientRows.map((c) => ({ ...clientRowView(c), birthday: c.birthday ?? undefined })),
+      clients: clientRows.map((c) => ({ ...clientRowView(c), birthday: c.birthday ?? undefined, ...referral(c.id) })),
     } as unknown as CoreData;
     if (withBookings) {
       const rows = await this.prisma.booking.findMany({ where: { businessId: { in: scope } } });
@@ -147,4 +170,27 @@ async function lockScope(db: Db, scope: Id[]): Promise<void> {
     SETTINGS_AREA,
     ...scope,
   );
+}
+
+/**
+ * Обязательные аргументы операции есть и грубо той формы, что в сигнатуре фасада (port/arity.ts, генерирует
+ * scripts/sync-loyalty-port.mjs) — иначе 400 `validation` до вызова: без проверки createCardType без аргументов
+ * падал 500, а set*-операции записали бы в срез undefined.
+ */
+function checkArgs(op: string, args: unknown[]): void {
+  const required = REQUIRED_ARGS[op];
+  if (!required) return;
+  const fields: Record<string, string> = {};
+  required.forEach((kind, i) => {
+    const v = args[i];
+    if (kind === 'any') return;
+    const ok =
+      kind === 'string' ? typeof v === 'string' && v.length > 0 :
+      kind === 'number' ? typeof v === 'number' && Number.isFinite(v) :
+      kind === 'boolean' ? typeof v === 'boolean' :
+      kind === 'array' ? Array.isArray(v) :
+      typeof v === 'object' && v !== null && !Array.isArray(v);
+    if (!ok) fields[`args.${i}`] = kind;
+  });
+  if (Object.keys(fields).length) throw new ApiError('validation', `loyalty op ${op}: invalid arguments`, fields);
 }

@@ -6,7 +6,7 @@ import type { ClientRowView } from './clients.views.js';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
-interface BookingLite {
+export interface BookingLite {
   id: string;
   clientId: string | null;
   visitId: string | null;
@@ -33,7 +33,32 @@ export async function clientBookings(db: Db, businessIds: string[], clientIds?: 
   });
 }
 
-export function withVisits(rows: ClientRowView[], bookings: BookingLite[], clientPaid: Map<string, number>): ClientRowView[] {
+/** Интервал повтора услуг бизнеса (Service.repeatIntervalDays) — для «Пора записать» (dueAt) */
+export async function repeatIntervals(db: Db, businessIds: string[]): Promise<Map<string, number>> {
+  const rows = await db.service.findMany({ where: { businessId: { in: businessIds }, repeatIntervalDays: { gt: 0 } }, select: { id: true, repeatIntervalDays: true } });
+  return new Map(rows.map((r) => [r.id, r.repeatIntervalDays!]));
+}
+
+const UPCOMING = new Set(['scheduled', 'client_confirmed', 'awaiting_confirmation', 'awaiting_prepayment']);
+
+/**
+ * ⭐ «Пора снова» (F-00-084, F-00-119; dueAtOf мока src/api/clients/shared.ts): последний визит «Пришёл» + самый
+ * короткий интервал повтора его услуг. Уже есть будущая активная запись — не пора. Услуги без интервала — срока нет.
+ */
+export function dueAtOf(own: BookingLite[], intervals: Map<string, number>, now: Date): string | undefined {
+  if (own.some((b) => b.startAt > now && UPCOMING.has(b.status))) return undefined;
+  let last: BookingLite | undefined;
+  for (const b of own) if (b.status === 'arrived' && (!last || b.startAt > last.startAt)) last = b;
+  if (!last) return undefined;
+  const days = ((last.services ?? []) as { serviceId: string }[]).map((l) => intervals.get(l.serviceId)).filter((n): n is number => Boolean(n && n > 0));
+  if (!days.length) return undefined;
+  const d = new Date(`${utcToLocal(last.startAt).slice(0, 10)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + Math.min(...days));
+  return d.toISOString().slice(0, 10);
+}
+
+export function withVisits(rows: ClientRowView[], bookings: BookingLite[], clientPaid: Map<string, number>, intervals?: Map<string, number>): ClientRowView[] {
+  const now = new Date();
   const byClient = new Map<string, BookingLite[]>();
   for (const b of bookings) if (b.clientId) byClient.set(b.clientId, [...(byClient.get(b.clientId) ?? []), b]);
   return rows.map((row) => {
@@ -70,6 +95,7 @@ export function withVisits(rows: ClientRowView[], bookings: BookingLite[], clien
       sold,
       paid,
       balance: paid - sold,
+      dueAt: intervals ? dueAtOf(own, intervals, now) : undefined,
     };
   });
 }

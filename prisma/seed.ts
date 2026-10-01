@@ -847,7 +847,9 @@ await prisma.client.createMany({
           clientId: String(client.id),
           serviceIds: [String(firstService.id)],
           staffIds: [],
-          slots: [{ date: plus2, anyTime: true, intervals: [] }],
+          // единый лист ожидания (миграция one_waitlist): желания wishes { date } вместо прежних slots
+          wishes: [{ date: plus2 }],
+          tags: [],
           comment: '',
           createdBy: 'seed',
         },
@@ -997,29 +999,46 @@ await seedClientPromoFromMock(prisma, core);
       });
       methodsCreated += 2;
     }
-    // Одна реальная оплата — первый «пришедший» визит этого бизнеса с суммой и без оплаты ещё
-    const candidate = (core.bookings ?? []).find((bk) => String(bk.businessId) === b.id && String(bk.status) === 'arrived' && Number(bk.total ?? 0) > 0);
-    if (candidate) {
-      const bookingRow = await prisma.booking.findUnique({ where: { id: String(candidate.id) } });
-      if (bookingRow && bookingRow.paidAmount === 0n) {
-        const already = (await prisma.bookingPayment.count({ where: { bookingId: bookingRow.id } })) > 0;
-        if (!already) {
-          const cash = await prisma.cashRegister.findFirst({ where: { businessId: b.id, kind: 'cash' } });
-          const item = await prisma.paymentItem.findFirst({ where: { businessId: b.id, systemKey: 'servicePayment' } });
-          if (cash && item) {
-            const opId = `fop_${bookingRow.id}`.slice(0, 32);
-            const payId = `pay_${bookingRow.id}`.slice(0, 32);
-            const at = now;
-            await prisma.finOp.create({
-              data: { id: opId, businessId: b.id, locationId: bookingRow.locationId, accountId: cash.id, itemId: item.id, kind: 'income', amount: bookingRow.total, date: at, method: 'cash', partyType: bookingRow.clientId ? 'client' : 'none', partyId: bookingRow.clientId, source: 'booking', refId: bookingRow.id, docNumber: String(700_000_000 + Math.floor(Math.random() * 99_999_999)), lineLabel: 'Оплата визита', history: [{ at: at.toISOString(), by: 'seed', action: 'created' }] as Prisma.InputJsonValue, createdBy: 'seed', updatedBy: 'seed' },
-            });
-            await prisma.bookingPayment.create({ data: { id: payId, businessId: b.id, bookingId: bookingRow.id, serviceIndex: 0, kind: 'money', methodKey: 'cash', methodLabel: 'Наличные', accountId: cash.id, amount: bookingRow.total, finOpId: opId, createdBy: 'seed' } });
-            const extras = (bookingRow.extras && typeof bookingRow.extras === 'object' ? bookingRow.extras : {}) as Record<string, unknown>;
-            const payments = [...((extras.payments as unknown[]) ?? []), { id: payId, method: 'cash', amount: Number(bookingRow.total), label: 'Наличные', at: utcToLocalDate(at) }];
-            await prisma.booking.update({ where: { id: bookingRow.id }, data: { extras: { ...extras, payments, paidAmount: Number(bookingRow.total) } as Prisma.InputJsonValue, paidAmount: bookingRow.total } });
-            paymentsCreated++;
-          }
-        }
+    // Оплаты визитов (владелец, 01.10.2026): каждый прошедший визит «Пришёл» оплачен, кроме 4 свежих примеров на бизнес
+    // (экран «Не оплатили» не пустой). Визиты берём из БАЗЫ по её businessId (backend-2, заход 4: по экспорту мока
+    // оплата ложилась в чужую кассу); касса — наличная/расчётная касса филиала самого визита. Те же таблицы, что пишет
+    // касса (fin_ops + booking_payments + extras.payments), поэтому отчёты, касса и зарплата считают эти оплаты.
+    // Идемпотентно: «примеры без оплаты» выбираются из ВСЕХ свежих визитов (не только неоплаченных), платим только paidAmount=0.
+    const pastArrived = await prisma.booking.findMany({
+      where: { businessId: b.id, status: 'arrived', deletedAt: null, total: { gt: 0n }, startAt: { lt: now } },
+      orderBy: { startAt: 'desc' },
+    });
+    const hash = (id: string) => createHash('sha1').update(id).digest().readUInt32BE(0);
+    const unpaidExamples = new Set(
+      pastArrived
+        .filter((x) => x.startAt.getTime() > now.getTime() - 13 * 86_400_000)
+        .sort((x, y) => hash(x.id) - hash(y.id))
+        .slice(0, 4)
+        .map((x) => x.id),
+    );
+    const registers = await prisma.cashRegister.findMany({ where: { businessId: b.id } });
+    const item = await prisma.paymentItem.findFirst({ where: { businessId: b.id, systemKey: 'servicePayment' } });
+    const registerFor = (locationId: string, kind: 'cash' | 'card') =>
+      registers.find((r) => r.locationId === locationId && r.kind === kind) ?? registers.find((r) => r.kind === kind);
+    if (item) {
+      for (const bookingRow of pastArrived) {
+        if (bookingRow.paidAmount !== 0n || unpaidExamples.has(bookingRow.id)) continue;
+        if ((await prisma.bookingPayment.count({ where: { bookingId: bookingRow.id } })) > 0) continue;
+        const method: 'cash' | 'card' = hash(bookingRow.id) % 2 === 0 ? 'cash' : 'card';
+        const reg = registerFor(bookingRow.locationId, method);
+        if (!reg) continue;
+        const opId = `fop_${bookingRow.id}`.slice(0, 32);
+        const payId = `pay_${bookingRow.id}`.slice(0, 32);
+        const at = bookingRow.endAt;
+        const label = method === 'cash' ? 'Наличные' : 'Банковская карта';
+        await prisma.finOp.create({
+          data: { id: opId, businessId: b.id, locationId: bookingRow.locationId, accountId: reg.id, itemId: item.id, kind: 'income', amount: bookingRow.total, date: at, method, partyType: bookingRow.clientId ? 'client' : 'none', partyId: bookingRow.clientId, source: 'booking', refId: bookingRow.id, docNumber: String(700_000_000 + (hash(bookingRow.id) % 99_999_999)), lineLabel: 'Оплата визита', history: [{ at: at.toISOString(), by: 'seed', action: 'created' }] as Prisma.InputJsonValue, createdBy: 'seed', updatedBy: 'seed' },
+        });
+        await prisma.bookingPayment.create({ data: { id: payId, businessId: b.id, bookingId: bookingRow.id, serviceIndex: 0, kind: 'money', methodKey: method, methodLabel: label, accountId: reg.id, amount: bookingRow.total, finOpId: opId, createdBy: 'seed' } });
+        const extras = (bookingRow.extras && typeof bookingRow.extras === 'object' ? bookingRow.extras : {}) as Record<string, unknown>;
+        const payments = [...((extras.payments as unknown[]) ?? []), { id: payId, method, amount: Number(bookingRow.total), label, at: utcToLocalDate(at) }];
+        await prisma.booking.update({ where: { id: bookingRow.id }, data: { extras: { ...extras, payments, paidAmount: Number(bookingRow.total) } as Prisma.InputJsonValue, paidAmount: bookingRow.total } });
+        paymentsCreated++;
       }
     }
   }

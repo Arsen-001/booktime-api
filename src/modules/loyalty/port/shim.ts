@@ -10,6 +10,7 @@ import { ulid } from 'ulid';
 import { ApiError as ServerApiError, ERROR_STATUS, type ErrorCode } from '../../../common/errors/api-error.js';
 import type { CoreData } from './core-types.js';
 import type { LoyaltyState } from './state.js';
+import type { LoyaltyFinanceEffect } from '../../finance/loyalty-sales.service.js';
 
 /**
  * Подмена браузерных примитивов для перенесённого расчётного слоя лояльности (port/logic.ts — копия
@@ -40,6 +41,15 @@ export class NeedBookings extends Error {
 export interface PortContext {
   state: LoyaltyState;
   core: CoreData;
+  /** Деньги продаж лояльности (recordLoyaltySaleSync/cancel/refund фасада, port/stubs.ts) — runner проводит их
+   * в кассу в той же транзакции, что и изменения среза (LoyaltySalesService) */
+  financeEffects?: LoyaltyFinanceEffect[];
+}
+
+/** Копит денежное последствие операции (приход/отмена/возврат) текущего вызова фасада */
+export function queueFinanceEffect(effect: LoyaltyFinanceEffect): void {
+  const ctx = current();
+  (ctx.financeEffects ??= []).push(effect);
 }
 
 const als = new AsyncLocalStorage<PortContext>();

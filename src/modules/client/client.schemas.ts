@@ -37,6 +37,12 @@ export const createMyBookingBody = z.object({
   seats: z.number().int().min(1).max(20).optional(),
   groupEventId: id32.optional(),
   comment: z.string().max(2000).optional(),
+  /** ⭐ «Оплатить всё сразу» вместо процента предоплаты мастера */
+  payInFull: z.boolean().optional(),
+  /** ⭐ Допродажа при записи: сопутствующие услуги и товары из карточки услуги (проверяет сервер) */
+  addOns: z.object({ serviceIds: z.array(id32).max(12).optional(), productIds: z.array(id32).max(12).optional() }).optional(),
+  /** «Пригласи подругу»: код из личной ссылки салона (привязку проверяет place()) */
+  referralCode: z.string().max(16).optional(),
 });
 
 // ─────────────────────────── лист ожидания «от себя» (F-00-101/102) ───────────────────────────

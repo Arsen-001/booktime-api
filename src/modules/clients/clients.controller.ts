@@ -49,6 +49,8 @@ import { ClientsExtrasService } from './clients-extras.service.js';
 import { ClientsImportExportService } from './clients-import-export.service.js';
 import { ClientsBroadcastService } from './clients-broadcast.service.js';
 
+const noteBody = z.object({ note: z.string().max(2000) });
+
 /** Клиенты / CRM — /v1/biz (docs/backend/01 §5, 02 §6, PLAN §6 №5) */
 @ApiTags('clients')
 @Controller('v1/biz/:businessId')
@@ -211,8 +213,8 @@ export class ClientsController {
 
   @Patch('clients/:id/note')
   @Biz('clients.edit')
-  @ZodBody(z.object({ note: z.string().max(2000) }))
-  updateNote(@Param('businessId') businessId: string, @Param('id') id: string, @Body() body: { note: string }) {
+  @ZodBody(noteBody)
+  updateNote(@Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(noteBody)) body: z.infer<typeof noteBody>) {
     return this.svc.updateNote(businessId, id, body.note);
   }
 

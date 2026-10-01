@@ -1948,10 +1948,12 @@ Curl-сценарии: правка поверх записей без force →
   с конкретной комиссией по методу оплаты; при варианте по умолчанию `businessOnly` это ноль влияния на
   сотрудника всегда, поэтому не тянул отдельную выборку `FinOp`/`PaymentMethod.feePercent` ради поля, которое
   большинство бизнесов не включает. `cardCommissionForBooking` в движок не передаётся (всегда `undefined`).
-- **Оплата за продажу товара (F-09-031…034, `productSaleBase`)** — как и в моке (`api/payroll.ts` computePeriod
-  прямым текстом: «QuickSaleRecord не хранит, какой сотрудник продал»), у `StockOp`/`Product` тоже нет
-  привязки продажи к продавцу-сотруднику; `productsAmount` на сервере всегда `0`, честно совпадает с мок-
-  поведением, а не «на сервере хуже, чем в моке».
+- ~~**Оплата за продажу товара (F-09-031…034)** — `productsAmount` всегда `0`~~ — снято: продавец строки/документа
+  склада есть (`StockOpLine.sellerId`, `StockOp.staffId`), «% с продаж» и «доп. от оборота товаров» считаются как
+  productSalesPay мока (`PayrollComputeService.productSalesPay`; проверено 01.10 queue-1001b money: 10 % от 3 800 = 380
+  и в дне, и в периоде). Там же (01.10): «Дата поступления средств на счёт» (F-09-005, accrualDateBasis `received`)
+  — визит начисляется днём последней оплаты/полученной предоплаты (`accrualLookup`); срок зачисления карты на сервере
+  не хранится (0 дней, как по умолчанию в моке).
 - **Себестоимость техкарты — по ТЕКУЩЕЙ цене товара** (`Product.costPrice`), не по цене НА ДАТУ визита
   (`costPriceAt`, F-09-110) — точечная историческая себестоимость не построена нигде на сервере, этап 13 сам
   оставил её как честную дыру (`docs/PROGRESS.md` §13 «не строил»: `costPriceAt`/`getCostPriceAt`). Наследую
@@ -7729,3 +7731,60 @@ integrations 57, notify 7) → после **0**. Остаток скрипта �
   `StoryConfig.pricePerDay` = 2 000)? Сейчас списывается по модели кабинета, места общие. (повтор вопроса попытки 4/5)
 - Маркетплейс: построен на сервере по предложению попытки 5 (каталог — наша таблица с сидом из мока). Если каталог
   должна вести наша панель — нужен экран правки карточек в §19 (сейчас правка только сидом/SQL).
+
+### Предоплата процентом и «всю сумму сразу» (29.09.2026, F-00-097)
+- `Staff.prepayment.percent` (1–100, важнее `amount`): сумма — процент от записи вверх до 100 ֏ (`rules.ts`
+  `prepaymentAmount`, `hasPrepayment`, `canPayInFull`); PATCH сотрудника принимает `percent`.
+- Клиент выбирает «только предоплату» или «всю сумму сразу»: `payInFull` в `POST /v1/public/b/:slug/bookings` и
+  `POST /v1/me/bookings` → `place()`; «всё сразу» — только при точной цене (без `priceMax`), в записи `prepayment.full`.
+- «Оплатить всю сумму» (`payments/instant`) не стирает строку `prepayment` из `prepaymentReceived` — наличными только остаток.
+- Проверено копией API на :4011 (дев-база): 7 000 ֏ с `payInFull` → предоплата 7 000 ֏ `full: true`, без него → 2 100 ֏.
+
+### Отмена оплаченной записи клиентом — по умолчанию можно (29.09.2026, владелец)
+- `allowCancelPrepaid` по умолчанию `true` (`rules.ts` DEFAULT_BOOKING_RULES, `online.service` правила клиента): до срока
+  мастера — с возвратом (`refundDue`), позже — предоплата остаётся мастеру (`keepPrepaymentOnLateCancel`, по умолчанию да).
+- `GET /v1/public/bookings/:id/cancel-window` дополнительно отдаёт `prepaidAmount` и `keepPrepaymentOnLateCancel` — окно
+  отмены в виджете говорит клиенту, вернётся ли предоплата.
+
+### Заявка без ответа мастера — клиенту 3 окна (30.09.2026, В-03)
+- `releaseExpired`: снятая по сроку заявка (`cancelled_by_master` + `confirmation_expired`) сразу получает 3 ближайших
+  свободных начала того же мастера (не больше 2 в день) в `onlineMeta.offeredStarts` — тем же полем, что «Другое время» (О28).
+- `bookingView` отдаёт их как `alternativeStarts` (пока запись ждёт мастера или снята) — фронт показывает клиенту кнопками
+  на странице записи и в приложении; нажатие — запись на это время у того же мастера.
+
+### Telegram-бот напоминаний (30.09.2026, решение владельца: бесплатный канал для клиентов без приложения)
+- Модуль `src/modules/telegram/*`, адаптер `src/adapters/telegram-bot/telegram-bot.ts` (Bot API по fetch: sendMessage с
+  кнопками, answerCallbackQuery, editMessageReplyMarkup, getUpdates; без `TELEGRAM_BOT_TOKEN` — заглушка пишет в лог
+  `[fake telegram-bot]`, как FakeCodeSender). Таблица `telegram_links` (миграция `telegram_links`, только добавление):
+  chatId (уникален) ↔ номер `+374…`, appUserId, язык (ru/hy/en, по умолчанию ru), blockedAt.
+- Привязка: `POST /v1/public/bookings/:id/telegram-link?h=<хэш>` (та же проверка хэша, что у записи по ссылке) и
+  `POST /v1/me/telegram-link` (номер вошедшего) → `{ url, botUsername, linked }`; `url` = `https://t.me/<бот>?start=<код>`,
+  код одноразовый, в Redis 7 дней. `/start <код>` связывает чат с номером и показывает ближайшую запись с кнопками;
+  `/start` без кода — кнопка «Поделиться номером» (принимается только свой контакт); `/stop` — больше не пишем.
+- Обновления: `POST /v1/telegram/webhook` (заголовок `X-Telegram-Bot-Api-Secret-Token` сверяется с
+  `TELEGRAM_WEBHOOK_SECRET`, если задан; ответ 200 сразу, обработка в фоне, повтор по update_id отсекается Redis) и
+  опрос getUpdates в воркере при `TELEGRAM_BOT_POLLING=1` (смещение в Redis). Оба зовут `TelegramBotService.handleUpdate`.
+- Напоминания 24ч/2ч (`jobs/notify-reminders.ts` → `telegram-reminders.ts`): клиенту без живого push-токена приложения,
+  чей номер привязан, — строка `notify_outbox` с `app='telegram'`, `recipientUserId` = chat id, ключ дубля
+  `telegram:<kind>:<booking>:<chat>`; шлёт `NotifyDispatchService` (выключенный бизнесом тип так же пропускается;
+  403 от Telegram — чат помечается blockedAt). Кнопки: «✅ Приду» (пока запись `scheduled`), «✖️ Отменить»,
+  «↔️ Перенести» — ссылка `PUBLIC_SITE_URL/b/<slug>`.
+- Кнопки действуют только над записью, чей номер клиента (Client.phone, иначе User.phone) совпадает с номером чата.
+  «Приду» — `changeStatus(… 'client_confirmed', 'client')`, как `confirmByClient`. «Отменить» — сначала вопрос по
+  `BookingsService.clientCancelPreview` (те же правила и `clientCancelOutcome`): «предоплата N ֏ не вернётся» /
+  «вернётся» / «отмена будет поздней» / «нельзя — позвоните мастеру: <тел.>»; «Да» — `cancelByClient` (refundDue,
+  cancelledLate, +1 неявка и уведомления сотрудникам — ровно как в приложении и по ссылке).
+- Переменные: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (по умолчанию `booktime_bot`), `TELEGRAM_WEBHOOK_SECRET`,
+  `TELEGRAM_BOT_POLLING` (`1` — опрос), `PUBLIC_SITE_URL` (по умолчанию `https://booktime.am`).
+- Как подключить настоящего бота: @BotFather → `/newbot` → токен в `.env` (`TELEGRAM_BOT_TOKEN`, имя — в
+  `TELEGRAM_BOT_USERNAME`). Прод: придумать секрет в `TELEGRAM_WEBHOOK_SECRET` и один раз
+  `curl "https://api.telegram.org/bot<токен>/setWebhook" -d url=https://<api>/v1/telegram/webhook -d secret_token=<секрет>`.
+  Разработка без публичного адреса: `TELEGRAM_BOT_POLLING=1` и перезапуск воркера (вебхук при этом должен быть снят:
+  `.../deleteWebhook`, иначе getUpdates отвечает 409).
+- Проверено копией API на :4011 без токена (заглушка) на копиях записи в дев-базе: ссылка по хэшу (неверный хэш → 404,
+  повторный запрос → `linked: true`), `/start <код>` → строка `telegram_links` + «Ближайшая запись» с кнопками;
+  «Приду» → `client_confirmed`; «Отменить» → «Предоплата 10 000 ֏ вернётся», «Да» → `cancelled_by_client`,
+  `refundDue: 10000`; поздняя отмена → «не вернётся», `cancelledLate`, +1 неявка; чужой чат (другой номер) → «Запись не
+  найдена»; чужой контакт → отказ; `/stop` → blockedAt; повтор update_id игнорируется; напоминание 24ч → очередь →
+  отправка (повтор задачи не дублирует); секрет вебхука (403/200); `POST /v1/me/telegram-link` с дев-сессией. Тестовые
+  строки после проверки удалены.

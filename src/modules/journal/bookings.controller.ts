@@ -26,6 +26,7 @@ import {
   goodsLinePatchBody,
   historyBody,
   idsBody,
+  externalBody,
   instantPayBody,
   patchBody,
   paymentLinesBody,
@@ -91,7 +92,8 @@ export class BookingsController {
   @Biz('journal.edit')
   @Idempotent()
   @ApiOperation({ summary: 'Запись от бота/CRM (F-01-036): «любой свободный», клиент по номеру' })
-  external(@Ctx() ctx: RequestContext, @Param() p: B, @Body() body: { locationId?: string; name: string; phone: string; serviceId: string; staffId?: string; start: string }) {
+  @ZodBody(externalBody)
+  external(@Ctx() ctx: RequestContext, @Param() p: B, @Body(new Zod(externalBody)) body: z.infer<typeof externalBody>) {
     return this.journal.external(staffActor(ctx), p.businessId, body);
   }
 
@@ -284,7 +286,10 @@ export class BookingsController {
   @ZodBody(instantPayBody)
   instant(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new Zod(instantPayBody)) body: z.infer<typeof instantPayBody>) {
     return this.svc.patchExtras(staffActor(ctx), [ctx.member!.businessId], id, (e) => {
-      e.payments = [{ id: newId('payment'), method: 'cash', amount: body.total, label: 'Наличные', at: nowLocal() }];
+      // Полученная предоплата (F-00-097, строка 'prepayment' из prepaymentReceived) остаётся — наличными только остаток
+      const prepaid = (e.payments ?? []).filter((l) => l.label === 'prepayment');
+      const rest = Math.max(0, body.total - prepaid.reduce((s, l) => s + l.amount, 0));
+      e.payments = rest > 0 ? [...prepaid, { id: newId('payment'), method: 'cash', amount: rest, label: 'Наличные', at: nowLocal() }] : prepaid;
       e.paidAmount = body.total;
     });
   }

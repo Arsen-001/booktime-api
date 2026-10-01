@@ -48,12 +48,15 @@ export const networkUserOut = z.object({
   isOwner: z.boolean().optional(),
   pending: z.boolean().optional(),
   planReportFrequency: z.enum(['off', 'daily', 'weekly', 'monthly']).optional(),
+  /** Сеть7: филиалы, к которым доступ; нет поля — все */
+  businessIds: z.array(z.string()).optional(),
   version: z.number(),
 });
 
 export const inviteExistingBody = z.object({ phone: phoneAm, permissions: z.array(networkPermissionKey).max(20).default([]) });
 export const addNewUserBody = z.object({ phone: phoneAm, name: z.string().min(1).max(160), email: z.string().max(160).optional(), permissions: z.array(networkPermissionKey).max(20).default([]) });
-export const setPermissionsBody = z.object({ permissions: z.array(networkPermissionKey).max(20) });
+/** businessIds: нет поля — не менять; null — все филиалы; массив — только эти (хотя бы один, Сеть7) */
+export const setPermissionsBody = z.object({ permissions: z.array(networkPermissionKey).max(20), businessIds: z.array(z.string().max(32)).min(1).max(500).nullable().optional() });
 export const setPlanReportFreqBody = z.object({ frequency: z.enum(['off', 'daily', 'weekly', 'monthly']) });
 
 // ─────────── Этап 21 «network+reports», попытка 2: мок src/api/network.ts, F-11-025/026/028 ───────────

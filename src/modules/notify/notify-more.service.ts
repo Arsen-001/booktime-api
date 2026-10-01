@@ -98,6 +98,8 @@ export interface BookingNotifyOverrideOut {
   smsTimingHours: number;
   emailEnabled: boolean;
   emailTimingHours: number;
+  /** ⭐ 01.10.2026: Telegram-напоминания (24 ч + 2 ч, клиенту без приложения) у этой записи; false — не слать */
+  telegramEnabled?: boolean;
 }
 const DEFAULT_BOOKING_NOTIFY_OVERRIDE: BookingNotifyOverrideOut = {
   sendOnSave: true,
@@ -107,6 +109,7 @@ const DEFAULT_BOOKING_NOTIFY_OVERRIDE: BookingNotifyOverrideOut = {
   smsTimingHours: 1,
   emailEnabled: false,
   emailTimingHours: 12,
+  telegramEnabled: true,
 };
 
 export interface SuggestedOpenSlotOut {

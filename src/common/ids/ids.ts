@@ -82,6 +82,8 @@ export const ID_PREFIX = {
   inboxItem: 'ntf',
   // этап 10 — уведомления: очередь/журнал отправок, новости
   notifyOutbox: 'nto',
+  /// Telegram-бот напоминаний (30.09.2026): чат ↔ номер
+  telegramLink: 'tgl',
   newsPost: 'nws',
   // этап 11 — лояльность: только на сервере (как этапы 5/9) — мок фронта не резервирует префиксы для
   // loyalty в core.ts (id там произвольные строки), поэтому префиксы свои: тип карты lct, карта lc,
@@ -188,10 +190,7 @@ export const ID_PREFIX = {
   // расписание посещений клиента (F-16-078…080, VisitScheduleEntry — как мок newId('vsc'))
   eventSeriesDef: 'evs',
   visitScheduleEntry: 'vsc',
-  // этап 21 — лист ожидания СВОЕГО экрана resources.ts (F-16-149…168) — отдельная таблица от journal
-  // waitlist_entries (та — другая реализация, слоты вместо желаний, tags нет; сводить их — отдельная задача,
-  // qa/requests/resources.md, домен src/domain/resources.ts), поэтому свой префикс, как мок newId('wl')
-  resourcesWaitlistEntry: 'wl',
+  // (resourcesWaitlistEntry снят 30.09.2026: лист ожидания бизнеса один — waitlistEntry, таблица waitlist_entries)
   // этап 21 (лейн services+rest) — дипломы/сертификаты мастера (F-00-088, StaffDocument фронта, мок newId('doc'));
   // хранятся в business_settings (area 'services.documents'), не своей таблицей — id всё равно должен быть уникален
   staffDocument: 'sdoc',

@@ -43,7 +43,7 @@ export class NotifyNewsService {
   async suggestions(businessId: string) {
     const since = new Date(Date.now() - 7 * 86_400_000);
     const [newServices, newStaff] = await Promise.all([
-      this.prisma.service.findMany({ where: { businessId, createdAt: { gte: since }, deletedAt: null }, select: { id: true, name: true }, take: 5 }),
+      this.prisma.service.findMany({ where: { businessId, createdAt: { gte: since }, active: true }, select: { id: true, name: true }, take: 5 }),
       this.prisma.staff.findMany({ where: { businessId, createdAt: { gte: since }, status: 'active' }, select: { id: true, name: true }, take: 5 }),
     ]);
     return [

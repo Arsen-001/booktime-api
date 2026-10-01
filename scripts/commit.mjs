@@ -12,7 +12,8 @@ import git from 'isomorphic-git';
 
 const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const message = process.argv.slice(2).join(' ').trim();
-if (!message) {
+// 01.10.2026: `--help` без проверки делал коммит всего дерева — флаги не принимаем
+if (!message || message.startsWith('-')) {
   console.error('Использование: node scripts/commit.mjs "сообщение коммита"');
   process.exit(2);
 }

@@ -40,6 +40,8 @@ export function clientRowView(c: Client) {
     visits: 0,
     firstVisit: undefined as string | undefined,
     lastVisit: undefined as string | undefined,
+    /** ⭐ «Пора записать»: срок повтора услуги последнего визита (clients.visits.ts dueAtOf) */
+    dueAt: undefined as string | undefined,
     broadcastDates: [] as string[],
     lastName: c.lastName ?? undefined,
     middleName: c.middleName ?? undefined,

@@ -7,7 +7,7 @@ import { isLocalDate, nowLocal, utcToLocal } from '../../common/time/time.js';
 import { Prisma, type Booking as BookingRow } from '../../generated/prisma/client.js';
 import { businessView, locationView } from '../businesses/views.js';
 import { BookingsService, clientActor, type PlaceInput } from '../journal/bookings.service.js';
-import { canReschedule, clientCancelOutcome, effectiveBookingRules, isCancelled, type BookingRules } from '../journal/rules.js';
+import { canReschedule, clientCancelOutcome, effectiveBookingRules, hasPrepayment, isCancelled, normalizeNoShowRule, prepaymentNeed, type BookingRules, type PrepaymentRule } from '../journal/rules.js';
 import { MeLoyaltyService } from '../loyalty/me-loyalty.service.js';
 import { sanitizePublicStaff } from '../online/online.service.js';
 import { serviceView } from '../services/services.views.js';
@@ -28,6 +28,11 @@ export interface CreateMyBookingInput {
   seats?: number;
   groupEventId?: string;
   comment?: string;
+  payInFull?: boolean;
+  /** ⭐ Допродажа при записи: сопутствующие услуги и товары из карточки услуги */
+  addOns?: { serviceIds?: string[]; productIds?: string[] };
+  /** «Пригласи подругу»: код из личной ссылки салона */
+  referralCode?: string;
 }
 
 /**
@@ -82,6 +87,9 @@ export class MeService {
       comment: input.comment,
       groupEventId: input.groupEventId,
       staffAssignment: 'specific',
+      payInFull: input.payInFull,
+      addOns: input.addOns,
+      referralCode: input.referralCode,
     };
     const result = await this.bookings.place(clientActor(ctx), place);
     if (result.booking.workplace === 'visit' && input.visitAddress?.trim()) {
@@ -89,6 +97,23 @@ export class MeService {
     }
     const { comment: _c, ...safe } = result.booking;
     return { booking: safe, client: result.client };
+  }
+
+  /**
+   * ⭐ Нужна ли МНЕ предоплата у этого мастера из-за пропущенных визитов (владелец, 01.10.2026) — шаг «Подтверждение»
+   * приложения говорит об этом ДО записи. Только про себя (сессия); счётчик — у этого мастера (В-07). null — не нужна
+   * по этой причине (предоплату «для всех» клиент видит в карточке мастера сам).
+   */
+  async prepaymentNeed(userId: string, staffId: string): Promise<{ noShows: number; count: number; months: number } | null> {
+    const staff = await this.prisma.staff.findUnique({ where: { id: staffId }, select: { id: true, businessId: true, prepayment: true } });
+    if (!staff) throw new ApiError('not_found', 'Staff not found');
+    const rule = staff.prepayment as PrepaymentRule | null;
+    if (!rule?.onlyAfterNoShows || !hasPrepayment(rule)) return null;
+    const { months } = normalizeNoShowRule(rule.onlyAfterNoShows);
+    const card = await this.prisma.client.findFirst({ where: { businessId: staff.businessId, appUserId: userId, deletedAt: null }, select: { id: true } });
+    const noShows = await this.bookings.recentNoShows(this.prisma, { staffId: staff.id, clientId: card?.id, appUserId: userId, months });
+    const need = prepaymentNeed(rule, noShows);
+    return need?.reason === 'no_shows' ? { noShows: need.noShows, count: need.count, months: need.months } : null;
   }
 
   // ─────────────────────────── список/детали (F-14-011…026) ───────────────────────────
@@ -160,6 +185,10 @@ export class MeService {
       prepaymentRequisites: prepayment && !prepayment.paid ? ((staff?.prepayment as Record<string, unknown> | null)?.requisites as string | undefined) : undefined,
       freeCancelUntil: cancelOutcome.allowed ? cancelOutcome.freeUntil : enriched.start,
       canCancelFree: cancelOutcome.allowed && !cancelOutcome.late,
+      // Клиент может отменить сам (мастер не запретил отмену / отмену оплаченной, визит не начался) — экран прячет
+      // кнопку; сама отмена всё равно отказывает кодом (not_allowed / prepaid_locked), см. BookingsService.cancelByClient
+      canCancel: cancelOutcome.allowed,
+      keepPrepaymentOnLateCancel: rules.keepPrepaymentOnLateCancel,
       canReschedule: rescheduleOutcome.allowed,
       byMembership: false,
       visitAddress: meta.visitAddress as string | undefined,
@@ -175,42 +204,65 @@ export class MeService {
   // ─────────────────────────── лист ожидания «от себя» (F-00-101, F-00-102) ───────────────────────────
 
   async addWaitlist(appUserId: string, input: { staffId: string; serviceId: string; date: string }) {
-    const staff = await this.prisma.staff.findUnique({ where: { id: input.staffId }, select: { businessId: true, name: true, phone: true } });
+    const staff = await this.prisma.staff.findUnique({ where: { id: input.staffId }, select: { businessId: true, name: true, phone: true, locations: { select: { locationId: true }, take: 1 } } });
     if (!staff) throw new ApiError('not_found', 'Staff not found');
     const user = await this.prisma.user.findUnique({ where: { id: appUserId }, select: { name: true, phone: true } });
-    const slots: { date?: string; anyTime: boolean }[] = input.date === 'any' || !isLocalDate(input.date) ? [] : [{ date: input.date, anyTime: true }];
+    // Желание единого листа ожидания бизнеса: конкретный день или «когда угодно» (пустой список)
+    const day = input.date === 'any' || !isLocalDate(input.date) ? undefined : input.date;
+    const wishes: { date: string }[] = day ? [{ date: day }] : [];
+    // Уже ждёт то же (тот же мастер, услуга, день) — второй заявки не заводим (как мок: findSameWaitlistRequest)
+    const mine = await this.prisma.waitlistEntry.findMany({ where: { appUserId, businessId: staff.businessId, bookingId: null } });
+    const same = mine.find((e) => {
+      const w = arr<{ date?: string }>(e.wishes);
+      const sameDay = day ? w.length === 0 || w.some((x) => !x.date || x.date === day) : w.length === 0;
+      return arr<string>(e.serviceIds).includes(input.serviceId) && (arr(e.staffIds).length === 0 || arr<string>(e.staffIds).includes(input.staffId)) && sameDay;
+    });
+    if (same) return this.waitlistView(same);
+    const phone = user?.phone ?? '';
+    const client = phone ? await this.prisma.client.findFirst({ where: { businessId: staff.businessId, phone, deletedAt: null }, select: { id: true } }) : null;
     const row = await this.prisma.waitlistEntry.create({
       data: {
         id: newId('waitlistEntry'),
         businessId: staff.businessId,
+        locationId: staff.locations[0]?.locationId ?? null,
         clientName: user?.name ?? '',
-        clientPhone: user?.phone ?? '',
+        clientPhone: phone,
+        clientId: client?.id ?? null,
         appUserId,
+        source: 'app',
         serviceIds: [input.serviceId],
         staffIds: [input.staffId],
-        slots: slots as Prisma.InputJsonValue,
+        wishes: wishes as Prisma.InputJsonValue,
+        tags: [],
         createdBy: appUserId,
       },
     });
     return this.waitlistView(row);
   }
 
-  private waitlistView(e: { id: string; appUserId: string | null; staffIds: unknown; serviceIds: unknown; createdAt: Date; notifiedAt: Date | null }) {
+  /** Заявка единого листа → вид приложения: «этот день» только у заявки ровно с одним днём, иначе «любой день» */
+  private waitlistView(e: { id: string; appUserId: string | null; staffIds: unknown; serviceIds: unknown; wishes: unknown; createdAt: Date; notifiedAt: Date | null }) {
+    const wishes = arr<{ date?: string }>(e.wishes);
+    const date = (wishes.length === 1 ? wishes[0]?.date : undefined) ?? 'any';
     return {
       id: e.id,
       appUserId: e.appUserId,
       staffId: arr(e.staffIds)[0],
       serviceId: arr(e.serviceIds)[0],
-      date: 'any',
+      date,
       createdAt: e.createdAt.toISOString(),
       notifiedAt: e.notifiedAt?.toISOString(),
     };
   }
 
+  /** Мои активные заявки: закрытые записью и с прошедшими днями приложению не показываем (как мок) */
   async listMyWaitlist(appUserId: string) {
-    const rows = await this.prisma.waitlistEntry.findMany({ where: { appUserId }, orderBy: { createdAt: 'desc' } });
+    const rows = await this.prisma.waitlistEntry.findMany({ where: { appUserId, bookingId: null }, orderBy: { createdAt: 'desc' } });
+    const today = nowLocal().slice(0, 10);
     const out = [];
     for (const e of rows) {
+      const wishes = arr<{ date?: string }>(e.wishes);
+      if (wishes.length > 0 && wishes.every((w) => w.date && w.date < today)) continue;
       const staffId = arr<string>(e.staffIds)[0];
       const serviceId = arr<string>(e.serviceIds)[0];
       const [staff, service] = await Promise.all([staffId ? this.prisma.staff.findUnique({ where: { id: staffId }, include: { locations: { select: { locationId: true } } } }) : null, serviceId ? this.prisma.service.findUnique({ where: { id: serviceId } }) : null]);
@@ -370,7 +422,9 @@ export class MeService {
         n.bookingId ? this.prisma.booking.findUnique({ where: { id: n.bookingId } }) : null,
       ]);
       if (!business) continue;
-      const serviceId = booking ? arr<{ serviceId: string }>(booking.services)[0]?.serviceId : undefined;
+      // Услуга — из записи; у «Освободилось время» записи ещё нет — из params окна (кнопка «Записаться» на эту услугу)
+      const offeredServiceId = (n.params as { serviceId?: unknown } | null)?.serviceId;
+      const serviceId = booking ? arr<{ serviceId: string }>(booking.services)[0]?.serviceId : typeof offeredServiceId === 'string' ? offeredServiceId : undefined;
       const service = serviceId ? await this.prisma.service.findUnique({ where: { id: serviceId } }) : null;
       const bookingSafe = booking ? (({ comment: _c, ...rest }) => rest)(await this.bookings.view(this.prisma, booking)) : undefined;
       out.push({

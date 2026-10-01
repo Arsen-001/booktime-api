@@ -50,7 +50,10 @@ export class RateLimitGuard implements CanActivate {
   }
 }
 
-/** @RateLimit({ bucket: 'auth-code', limit: 5, windowSec: 600, by: 'ip' }) */
+/**
+ * @RateLimit({ bucket: 'auth-code', limit: 5, windowSec: 600, by: 'ip' }). Одно имя корзины — одни limit/windowSec:
+ * счётчик общий, и чужое окно (час вместо минуты) иначе запирало просмотры записи по ссылке после одной отмены.
+ */
 export function RateLimit(rule: RateRule) {
   return applyDecorators(SetMetadata(RULE, rule), UseGuards(RateLimitGuard));
 }

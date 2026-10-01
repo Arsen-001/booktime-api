@@ -47,7 +47,7 @@ export const patchStaffBody = z
     hiddenInJournal: z.boolean(),
     assistantOnly: z.boolean(),
     journalMarkupMin: z.union([z.literal(15), z.literal(30), z.literal(60), z.literal(90), z.literal(120)]).nullable(),
-    prepayment: z.object({ amount: z.number().int().min(0), timeoutMin: z.number().int().min(0), requisites: z.string().max(300) }).nullable(),
+    prepayment: z.object({ amount: z.number().int().min(0), percent: z.number().int().min(1).max(100).optional(), timeoutMin: z.number().int().min(0), requisites: z.string().max(300), onlyAfterNoShows: z.object({ count: z.number().int().min(1).max(10), months: z.number().int().min(1).max(24) }).optional() }).nullable(),
     bookingRules: z.record(z.string(), z.unknown()).nullable(),
     contacts: z.record(z.string(), z.unknown()).nullable(),
     locationIds: z.array(z.string().max(32)).max(50),

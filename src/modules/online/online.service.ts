@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { CodeChannel } from '../../adapters/code-sender/code-sender.js';
 import { ApiError } from '../../common/errors/api-error.js';
@@ -24,6 +24,13 @@ const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []
 const opt = <T>(v: T | null | undefined): T | undefined => (v === null || v === undefined ? undefined : v);
 
 /** Prisma отказывается писать `undefined` внутри JSON-поля — вырезаем такие ключи перед записью */
+/** 'YYYY-MM-DD' + n дней (календарная дата, без пояса) */
+function addDaysLocal(date: string, n: number): string {
+  const d = new Date(`${date}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 function pruneUndefined<T extends Record<string, unknown>>(obj: T): T {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
 }
@@ -37,7 +44,7 @@ const DEFAULT_CLIENT_RULES = {
   allowReschedule: true,
   allowCancel: true,
   allowReschedulePrepaid: false,
-  allowCancelPrepaid: false,
+  allowCancelPrepaid: true,
   keepPrepaymentOnLateCancel: true,
   allowAnyStaffAssignment: true,
   addClaimLinkToMessage: true,
@@ -45,6 +52,15 @@ const DEFAULT_CLIENT_RULES = {
 
 function hashOf(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
+}
+
+/**
+ * Токен ссылки записи, которая заменила заявку (О28), выводится из токена ссылки самой заявки: сырой токен новой записи
+ * не хранится в данных отменённой заявки (final-fix 01.10) — его видел бы кабинет в onlineMeta. Клиент со старой
+ * ссылкой получает новую ссылку при чтении (viewByHash), больше ни у кого исходного токена нет.
+ */
+function replacementToken(originalRaw: string, newBookingId: string): string {
+  return createHmac('sha256', originalRaw).update(`replacedBy:${newBookingId}`).digest('hex').slice(0, 32);
 }
 
 /** 'YYYY-MM-DD' → следующий календарный день, тем же форматом (UTC-арифметика, без часового пояса) */
@@ -290,6 +306,10 @@ export class OnlineService {
       patronymic?: string;
       customFieldValues?: Record<string, string>;
       locationId: string;
+      payInFull?: boolean;
+      addOns?: { serviceIds?: string[]; productIds?: string[] };
+      /** «Пригласи подругу»: код из личной ссылки салона */
+      referralCode?: string;
     },
   ) {
     const business = await this.businessBySlug(slug);
@@ -310,6 +330,9 @@ export class OnlineService {
       forWhom: body.forWhom,
       comment: body.comment,
       staffAssignment: body.anySpecialist ? 'any' : undefined,
+      payInFull: body.payInFull,
+      addOns: body.addOns,
+      referralCode: body.referralCode,
     });
 
     const raw = randomBytes(16).toString('hex');
@@ -343,13 +366,65 @@ export class OnlineService {
     return { booking: result.booking, client, accessHash: raw };
   }
 
+  /**
+   * ⭐ О28 «Другое время» / «мастер не ответил» (bookAlternativeTime мока, qa/full-test-0930 online.md): клиент по ссылке
+   * берёт одно из окон, которые предложили вместо его записи, — одним вызовом, без формы и кода (хэш ссылки уже
+   * подтверждает, что это он): тот же мастер, те же услуги, то же имя и телефон. Окно, которое предложил сам мастер
+   * (исходная заявка ещё «ждёт подтверждения»), не ждёт второго подтверждения — сразу «Записан» (или «ждёт предоплату»),
+   * а исходная заявка снимается как «перенесена» (cancelReason 'rescheduled', без неявки); старая ссылка ведёт на новую
+   * запись (onlineMeta.replacedBy). Снятую по сроку заявку (мастер не ответил) новая запись не трогает.
+   */
+  async bookAlternativeTime(id: string, hash: string, start: string) {
+    const orig = await this.findByHash(id, hash);
+    const meta = ((orig.onlineMeta as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
+    const offered = Array.isArray(meta.offeredStarts) ? (meta.offeredStarts as string[]) : [];
+    if (!['awaiting_confirmation', 'cancelled_by_master'].includes(orig.status) || !offered.includes(start)) throw new ApiError('slot_taken', 'Это время уже недоступно');
+    const client = orig.clientId ? await this.prisma.client.findUnique({ where: { id: orig.clientId } }) : null;
+    if (!client) throw new ApiError('client_required', 'Нет имени и телефона');
+    const acceptsOffer = orig.status === 'awaiting_confirmation';
+    const source = orig.source === 'link' ? 'link' : 'widget';
+    const lines = (Array.isArray(orig.services) ? orig.services : []) as { serviceId: string }[];
+    const result = await this.bookings.place(clientActor(null, source === 'link' ? 'link_holder' : 'client'), {
+      source,
+      businessId: orig.businessId,
+      staffId: orig.staffId,
+      start,
+      services: lines.map((l) => ({ serviceId: l.serviceId })),
+      locationId: orig.locationId,
+      workplace: orig.workplace,
+      client: { phone: client.phone, name: orig.visitorName ?? client.name },
+      forWhom: orig.forWhom,
+      acceptsOffer,
+    });
+    const { offeredStarts: _o, replacedBy: _r, rescheduledTo: _t, ...keep } = meta;
+    const raw = acceptsOffer ? replacementToken(hash, result.booking.id) : randomBytes(16).toString('hex');
+    const row = await this.prisma.booking.findUniqueOrThrow({ where: { id: result.booking.id } });
+    await this.prisma.booking.update({
+      where: { id: row.id },
+      data: { accessHash: hashOf(raw), accessHashExpiresAt: new Date(row.endAt.getTime() + 7 * 86_400_000), onlineMeta: pruneUndefined({ ...keep, submittedAt: utcToLocal(new Date()) }) as Prisma.InputJsonValue },
+    });
+    if (acceptsOffer) {
+      await this.bookings.changeStatus(clientActor(null, 'link_holder'), [orig.businessId], orig.id, 'cancelled_by_client', 'client', { reason: 'rescheduled' });
+      await this.prisma.booking.update({
+        where: { id: orig.id },
+        data: { cancelledBy: 'client', cancelledLate: false, onlineMeta: pruneUndefined({ ...keep, replacedBy: { bookingId: row.id, start: result.booking.start }, rescheduledTo: result.booking.start }) as Prisma.InputJsonValue, version: { increment: 1 } },
+      });
+    }
+    return { booking: await this.bookings.view(this.prisma, await this.prisma.booking.findUniqueOrThrow({ where: { id: row.id } })), client: coreClient(client), accessHash: raw };
+  }
+
   // ─────────────────────────── запись по хэшу без входа (B8, B19) ───────────────────────────
 
   private async findByHash(id: string, hash: string) {
     const row = await this.prisma.booking.findUnique({ where: { id } });
-    if (!row || !row.accessHash || row.accessHash !== hashOf(hash)) throw new ApiError('not_found', 'Booking not found');
+    if (!hash || !row || !row.accessHash || row.accessHash !== hashOf(hash)) throw new ApiError('not_found', 'Booking not found');
     if (row.accessHashExpiresAt && row.accessHashExpiresAt.getTime() < Date.now()) throw new ApiError('not_found', 'Booking not found');
     return row;
+  }
+
+  /** Строка записи по ссылке без входа — та же проверка хэша, что у остальных маршрутов (Telegram-бот, 30.09) */
+  async bookingByHash(id: string, hash: string) {
+    return this.findByHash(id, hash);
   }
 
   async viewByHash(id: string, hash: string) {
@@ -364,34 +439,47 @@ export class OnlineService {
     const serviceIds = arr<{ serviceId: string }>(row.services).map((l) => l.serviceId);
     const services = await this.prisma.service.findMany({ where: { id: { in: serviceIds } } });
     const hourCycle = ((onlineArea?.data as Record<string, unknown> | undefined)?.hourCycle as '24' | '12' | undefined) ?? '24';
+    // ⭐ Допродажа: товары визита (к оплате на месте) — клиенту название для клиента, цена, количество
+    const goodsLines = arr<{ itemId: string; qty: number; price: number }>((row.extras as { goodsLines?: unknown } | null)?.goodsLines);
+    const products = goodsLines.length ? await this.prisma.product.findMany({ where: { id: { in: goodsLines.map((g) => g.itemId) }, businessId: row.businessId } }) : [];
+    const goods = goodsLines.flatMap((g) => {
+      const p = products.find((x) => x.id === g.itemId);
+      if (!p) return [];
+      const clientName = p.clientName && typeof p.clientName === 'object' ? (p.clientName as Record<string, string>) : undefined;
+      return [{ name: clientName?.ru ? clientName : { ru: p.name }, price: g.price, qty: Math.max(1, g.qty || 1) }];
+    });
     return {
       booking: await this.bookings.view(this.prisma, row),
       business: await this.businessOut(business),
       location: location ? locationView(location) : undefined,
       staff: staff ? sanitizePublicStaff(staff) : undefined,
       services: services.map(serviceView),
-      meta: { bookingId: row.id, ...((row.onlineMeta as Record<string, unknown> | null) ?? {}) },
+      meta: { bookingId: row.id, ...publicMeta(row.onlineMeta, hash) },
       hourCycle,
+      ...(goods.length ? { goods } : {}),
     };
   }
 
-  private async clientRulesOf(staffId: string): Promise<{ cancelWindowHours: number; rescheduleWindowHours: number }> {
-    const staff = await this.prisma.staff.findUnique({ where: { id: staffId }, select: { bookingRules: true } });
-    const raw = (staff?.bookingRules as Record<string, unknown> | null) ?? {};
-    return { cancelWindowHours: hoursOf(raw, 'cancelWindowMin', 'cancelWindowHours'), rescheduleWindowHours: hoursOf(raw, 'rescheduleWindowMin', 'rescheduleWindowHours') };
-  }
-
+  /**
+   * Окно отмены по ссылке — те же действующие правила (бизнес + мастер) и тот же `clientCancelOutcome`, что у самой
+   * отмены (`cancelByClient`): раньше окно читало только правила мастера и не видело «отмена запрещена»/бизнес.
+   */
   async cancelWindow(id: string, hash: string) {
     const row = await this.findByHash(id, hash);
-    const rules = await this.clientRulesOf(row.staffId);
-    const left = (row.startAt.getTime() - Date.now()) / 3_600_000;
+    const { outcome, rules, prepaidAmount } = await this.bookings.clientCancelPreview(row);
     return {
-      canCancelFree: left >= rules.cancelWindowHours,
+      canCancelFree: outcome.allowed && !outcome.late,
       // B8 (08-open-questions.md, принятое предложение): по ссылке без входа переноса нет вообще, не только
       // «поздно» — экран (`BookingConfirmedScreen`) уже прячет/гасит кнопку по этому полю, ничего не правили.
       canReschedule: false,
-      cancelWindowHours: rules.cancelWindowHours,
-      rescheduleWindowHours: rules.rescheduleWindowHours,
+      cancelWindowHours: rules.cancelWindowMin / 60,
+      rescheduleWindowHours: rules.rescheduleWindowMin / 60,
+      // Окно отмены честно говорит про деньги: сколько уже заплачено и останется ли это у мастера при поздней отмене
+      prepaidAmount,
+      keepPrepaymentOnLateCancel: rules.keepPrepaymentOnLateCancel,
+      // Мастер разрешает клиенту отменять оплаченную запись? Нет — окно сразу говорит «только через мастера» (как мок)
+      allowCancelPrepaid: rules.allowCancelPrepaid,
+      canCancel: outcome.allowed,
     };
   }
 
@@ -404,9 +492,8 @@ export class OnlineService {
   /**
    * «Я оплатил» по ссылке без входа (B8) — тот же переход, что `BookingsService.markPaidByClient` у клиента со
    * своим аккаунтом (этап 9), но по hash, не по appUserId: таймер снятия заявки останавливается, дальше решает
-   * мастер (В-05). Хук освобождения замка (`OccupyService.setHold`) здесь не дёргаем — воркер снятия просроченных
-   * заявок сам не тронет запись, раз `status` остаётся `awaiting_prepayment`, а строка занятости не мешает —
-   * тот же слот всё равно занят этой же записью.
+   * мастер (В-05). Срок снимается с записи и с занятости (`BookingsService.stopPrepaymentHold`): воркер снимает
+   * заявки «ждёт предоплату» по `holdUntil`, так что без этого оплаченная запись отменялась бы через timeoutMin.
    */
   async markPrepaymentPaid(id: string, hash: string) {
     const row = await this.findByHash(id, hash);
@@ -418,7 +505,8 @@ export class OnlineService {
     }
     let updated = row;
     if (!p.clientMarkedPaidAt) {
-      updated = await this.prisma.booking.update({ where: { id }, data: { prepayment: { ...p, clientMarkedPaidAt: utcToLocal(new Date()) } as Prisma.InputJsonValue, version: { increment: 1 } } });
+      // Таймер стоп, как «Я оплатил» в приложении: без этого воркер снимал запись по holdUntil, хотя клиент заплатил
+      updated = await this.bookings.stopPrepaymentHold(row);
       await this.prisma.bookingEvent.create({ data: { id: newId('bookingEvent'), bookingId: id, businessId: row.businessId, staffId: row.staffId, clientId: row.clientId, appUserId: row.appUserId, kind: 'status', toStatus: 'prepayment_reported', byRef: 'client', startLocal: utcToLocal(row.startAt) } });
     }
     return this.bookings.view(this.prisma, updated);
@@ -685,7 +773,8 @@ export class OnlineService {
     return {
       businessId,
       deletedAt: null,
-      source: { in: ['link', 'widget'] },
+      // В-05: запись из приложения — только «Я оплатил» на сверке (её заявки на подтверждение — в журнале), как мок
+      source: { in: ['link', 'widget', 'app'] },
       ...(staffId ? { staffId } : {}),
       OR: [{ status: 'awaiting_confirmation' }, { status: 'awaiting_prepayment' }],
     } satisfies Prisma.BookingWhereInput;
@@ -694,7 +783,7 @@ export class OnlineService {
   async listOnlineRequests(businessId: string, staffId?: string) {
     const rows = await this.prisma.booking.findMany({ where: this.isOnlineRequestWhere(businessId, staffId), orderBy: { startAt: 'asc' } });
     const filtered = rows.filter((b) => {
-      if (b.status === 'awaiting_confirmation') return true;
+      if (b.status === 'awaiting_confirmation') return b.source !== 'app';
       const p = (b.prepayment as Record<string, unknown> | null) ?? {};
       return Boolean(p.clientMarkedPaidAt) && !p.paid;
     });
@@ -735,6 +824,9 @@ export class OnlineService {
           submittedAt: opt(meta.submittedAt as string | undefined),
           clientVisits: b.clientId ? (arrivedCounts.get(b.clientId) ?? 0) : 0,
           comment: opt(b.comment ?? undefined),
+          // ⭐ Предоплата «за то, что не приходил» (владелец, 01.10.2026) — салон видит причину в заявке
+          prepaymentNoShows:
+            b.status === 'awaiting_prepayment' && p.reason === 'no_shows' ? { noShows: Number(p.noShows ?? 0), months: Number(p.months ?? 12) } : undefined,
           prepaymentReported: p.clientMarkedPaidAt ? { amount: (p as { amount?: number }).amount ?? 0, at: p.clientMarkedPaidAt as string } : undefined,
           offeredStarts: arr<string>(meta.offeredStarts),
         };
@@ -790,6 +882,16 @@ export class OnlineService {
     const b = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
     if (!b) throw new ApiError('not_found', 'Booking not found');
     const offered = starts.slice(0, 3);
+    // Предлагать можно только свободное окно в графике мастера (final-fix 01.10): раньше сервер принимал любое
+    // время, а клиент, нажав его, получал «Это время уже заняли». Та же проверка, что у suggestOtherTimes.
+    const services = arr<{ serviceId: string }>(b.services);
+    const nowIso = utcToLocal(new Date());
+    for (const start of offered) {
+      const at = start.slice(0, 16);
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at) || at < nowIso.slice(0, 16)) throw new ApiError('slot_taken', 'Это время занято или вне графика мастера');
+      const slots = await this.availability.freeSlots(businessId, { staffId: b.staffId, date: at.slice(0, 10), durationMin: b.durationMin, locationId: b.locationId, serviceId: services[0]?.serviceId });
+      if (!slots.some((sl) => sl.start.slice(0, 16) === at)) throw new ApiError('slot_taken', 'Это время занято или вне графика мастера');
+    }
     const meta = { ...((b.onlineMeta as Record<string, unknown> | null) ?? {}), offeredStarts: offered };
     await this.prisma.$transaction([
       this.prisma.booking.update({ where: { id: bookingId }, data: { onlineMeta: meta as Prisma.InputJsonValue } }),
@@ -999,11 +1101,19 @@ export class OnlineService {
     return rows.some((r) => (r.data as Record<string, unknown>).target === target);
   }
 
-  /** Клиент ставит звёздочку по своей записи (F-00-116) — вход тем же путём, что мок: без входа, доверяя
-   * bookingId+clientId, которые пришли со страницы «Вы записаны» (свой hash уже проверен при её открытии). */
-  async addReviewByBooking(bookingId: string, input: { target: string; targetId: string; clientId: string }) {
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
-    if (!booking) throw new ApiError('not_found', 'Booking not found');
+  /** «Уже ли поставлена звёздочка» по ссылке без входа — только с хэшем ссылки (?h=), как остальные маршруты записи */
+  async hasReviewedByHash(bookingId: string, hash: string, target: string): Promise<boolean> {
+    await this.findByHash(bookingId, hash);
+    return this.hasReviewed(bookingId, target);
+  }
+
+  /** Клиент ставит звёздочку по своей записи (F-00-116) — без входа, но только с хэшем ссылки «Вы записаны» (?h=):
+   * раньше хэш не требовался, и по id любой записи можно было поставить звезду (qa/full-test-0930 backend.md, вопрос 3). */
+  async addReviewByBooking(bookingId: string, hash: string, input: { target: string; targetId: string; clientId: string }) {
+    const booking = await this.findByHash(bookingId, hash);
+    // Звезда — только тому, у кого была эта запись: иначе по id любой записи можно было ставить звёзды любому мастеру/месту
+    const expected = input.target === 'business' ? booking.businessId : booking.staffId;
+    if (input.targetId !== expected) throw new ApiError('validation', 'Review target does not match the booking', { targetId: 'mismatch' });
     if (await this.hasReviewed(bookingId, input.target)) throw new ApiError('already_rated', 'Вы уже поставили звёздочку за эту запись');
     const data = { target: input.target, targetId: input.targetId, bookingId, clientId: input.clientId };
     const row = await this.prisma.onlineRecord.create({ data: { id: newId('onlineRecord'), businessId: booking.businessId, kind: 'review', refId: bookingId, data: data as Prisma.InputJsonValue } });
@@ -1053,70 +1163,121 @@ export class OnlineService {
   }
 
   // ── лист ожидания виджета (F-03-086, ⭐ F-00-101/102) ──
-  // Стенд-ин (см. docstring WaitlistRequest в domain/online.ts): собственная запись здесь, не в
-  // ResourcesWaitlistEntry раздела resources — разное устройство (там serviceIds[]/wishes[] на СВОЙ экран
-  // «Лист ожидания», здесь один serviceId/staffId/date из виджета клиента); решение записано в docs/PROGRESS.md.
+  // С 01.10.2026 — в ОДИН лист ожидания бизнеса (waitlist_entries, source 'widget'): его видят /biz/waitlist и панель
+  // журнала, раздача окна (В-18) и «Найти окно». Старые online_records kind='waitlist' перенесены миграцией
+  // 20261001233000_waitlist_all_sources. Ответ — прежний вид для виджета (waitlistRequestOut).
 
   async joinOnlineWaitlist(input: { businessId: string; locationId?: string; staffId: string; serviceId: string; date: string; clientName: string; clientPhone: string; comment?: string }) {
     const phone = normalizePhone(input.clientPhone);
     if (!phone) throw new ApiError('invalid_phone', 'Проверьте номер телефона');
     if (!input.clientName.trim()) throw new ApiError('invalid_input', 'Укажите имя');
-    const data = { locationId: input.locationId, staffId: input.staffId, serviceId: input.serviceId, date: input.date, clientName: input.clientName.trim(), clientPhone: phone, comment: input.comment, status: 'pending' as const };
-    const row = await this.prisma.onlineRecord.create({ data: { id: newId('onlineRecord'), businessId: input.businessId, kind: 'waitlist', refId: input.staffId, data: pruneUndefined(data) as Prisma.InputJsonValue } });
-    return this.orView(row);
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : undefined;
+    const view = (e: { id: string; businessId: string; locationId: string | null; clientName: string; clientPhone: string; comment: string; bookingId: string | null; createdAt: Date }) => ({
+      id: e.id,
+      businessId: e.businessId,
+      ...(e.locationId ? { locationId: e.locationId } : {}),
+      staffId: input.staffId,
+      serviceId: input.serviceId,
+      date: input.date,
+      clientName: e.clientName,
+      clientPhone: e.clientPhone,
+      ...(e.comment ? { comment: e.comment } : {}),
+      status: e.bookingId ? ('booked' as const) : ('pending' as const),
+      createdAt: utcToLocal(e.createdAt),
+    });
+    // Тот же номер уже ждёт эту услугу у этого мастера в этот день — вторую заявку не заводим
+    const open = await this.prisma.waitlistEntry.findMany({ where: { businessId: input.businessId, clientPhone: phone, bookingId: null } });
+    const same = open.find((e) => {
+      const wishes = (Array.isArray(e.wishes) ? e.wishes : []) as { date?: string }[];
+      const services = (Array.isArray(e.serviceIds) ? e.serviceIds : []) as string[];
+      const staff = (Array.isArray(e.staffIds) ? e.staffIds : []) as string[];
+      return services.includes(input.serviceId) && (staff.length === 0 || staff.includes(input.staffId)) && (wishes.length === 0 || wishes.some((w) => !w.date || w.date === day));
+    });
+    if (same) return view(same);
+    const client = await this.prisma.client.findFirst({ where: { businessId: input.businessId, phone, deletedAt: null }, select: { id: true } });
+    const row = await this.prisma.waitlistEntry.create({
+      data: {
+        id: newId('waitlistEntry'),
+        businessId: input.businessId,
+        locationId: input.locationId ?? null,
+        clientName: input.clientName.trim().slice(0, 160),
+        clientPhone: phone,
+        clientId: client?.id ?? null,
+        source: 'widget',
+        serviceIds: [input.serviceId],
+        staffIds: [input.staffId],
+        wishes: (day ? [{ date: day }] : []) as Prisma.InputJsonValue,
+        comment: input.comment?.trim().slice(0, 2000) ?? '',
+        tags: [],
+      },
+    });
+    return view(row);
   }
 
   // ── «Кого позвать» (F-03-052) ──
 
+  /**
+   * «Кого позвать» (F-03-052) — порт slotCandidatesOf мока (qa/full-test-0930 online.md №8):
+   * - «Обычно ходит» — визит «Пришёл» к этому мастеру за 90 дней примерно в тот же час; отмены и неявки не в счёт;
+   * - «Пора снова» — правило dueAtOf (как «Пора записать» в «Клиентах»): последний визит «Пришёл» + самый короткий
+   *   интервал повтора его услуг; у услуги нет интервала — срока нет; есть будущая активная запись в салоне — не звать;
+   *   самые просроченные — первыми;
+   * - один клиент — одно окно; дни — по Еревану.
+   */
   private async slotCandidatesOf(businessId: string, staffId: string, days: number) {
     type Candidate = { slotStart: string; staffId: string; clientId: string; clientName: string; clientPhone: string; reason: 'regular' | 'dueAgain'; serviceId?: string };
     const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
     if (!staff) return [] as Candidate[];
     const bookings = await this.prisma.booking.findMany({ where: { businessId, staffId, deletedAt: null } });
-    // `Client.blocked` — `Boolean?`: непроставленное (NULL) значит «не заблокирован». Ни `blocked: false`, ни
-    // `blocked: { not: true }` NULL не ловят — Prisma/MariaDB транслирует оба в `blocked <> 1`/`blocked = 0`, а
-    // трёхзначная SQL-логика возвращает UNKNOWN на NULL (проверил отдельным скриптом на настоящей базе: 93
-    // клиентов businessId, 3 реально заблокированы, `{ not: true }` вернул 0 из 90 ожидаемых — только явный OR
-    // ловит оба случая правильно, `not: true` был тем же самым багом другими словами, не фиксом).
+    // `Client.blocked` — `Boolean?`: NULL значит «не заблокирован»; только явный OR ловит оба случая (см. историю правки)
     const clients = await this.prisma.client.findMany({ where: { businessId, deletedAt: null, OR: [{ blocked: null }, { blocked: false }] } });
     const clientsById = new Map(clients.map((c) => [c.id, c] as const));
     const out: Candidate[] = [];
-    let cursor = utcToLocal(new Date()).slice(0, 10);
+    const todayLocal = utcToLocal(new Date()).slice(0, 10);
+    const since90 = localToUtc(`${addDaysLocal(todayLocal, -90)}T00:00`);
+    const arrived = bookings.filter((b) => b.status === 'arrived' && b.clientId);
+    let cursor = todayLocal;
     for (let d = 0; d < days && out.length < 8; d++) {
       const slots = await this.availability.freeSlots(businessId, { staffId, date: cursor, durationMin: 30 });
       for (const slot of slots) {
         if (out.length >= 8) break;
         const hour = Number(slot.start.slice(11, 13));
-        const regular = bookings.find((b) => {
-          if (!b.clientId || !clientsById.has(b.clientId)) return false;
-          const bh = Number(utcToLocal(b.startAt).slice(11, 13));
-          return Math.abs(bh - hour) <= 1;
+        const regular = arrived.find((b) => {
+          if (b.startAt < since90 || !clientsById.has(b.clientId!) || out.some((o) => o.clientId === b.clientId)) return false;
+          return Math.abs(Number(utcToLocal(b.startAt).slice(11, 13)) - hour) <= 1;
         });
-        if (regular?.clientId) {
-          const c = clientsById.get(regular.clientId);
-          if (c) {
-            out.push({ slotStart: slot.start, staffId, clientId: c.id, clientName: c.name, clientPhone: c.phone, reason: 'regular', serviceId: arr<{ serviceId: string }>(regular.services)[0]?.serviceId });
-            continue;
-          }
-        }
+        const c = regular ? clientsById.get(regular.clientId!) : undefined;
+        if (regular && c) out.push({ slotStart: slot.start, staffId, clientId: c.id, clientName: c.name, clientPhone: c.phone, reason: 'regular', serviceId: arr<{ serviceId: string }>(regular.services)[0]?.serviceId });
       }
       cursor = nextDay(cursor);
     }
     if (out.length < 8) {
-      const lastVisit = new Map<string, string>();
-      const nowLocalStr = utcToLocal(new Date());
-      for (const b of bookings) {
-        if (!b.clientId) continue;
-        const startLocal = utcToLocal(b.startAt);
-        if (startLocal >= nowLocalStr) continue;
-        const prev = lastVisit.get(b.clientId);
-        if (!prev || startLocal > prev) lastVisit.set(b.clientId, startLocal);
+      const now = new Date();
+      const future = await this.prisma.booking.findMany({
+        where: { businessId, deletedAt: null, clientId: { not: null }, startAt: { gt: now }, status: { in: ['scheduled', 'client_confirmed', 'awaiting_confirmation', 'awaiting_prepayment'] } },
+        select: { clientId: true },
+      });
+      const hasFuture = new Set(future.map((b) => b.clientId!));
+      const lastVisit = new Map<string, (typeof bookings)[number]>();
+      for (const b of arrived) {
+        const prev = lastVisit.get(b.clientId!);
+        if (!prev || b.startAt > prev.startAt) lastVisit.set(b.clientId!, b);
       }
+      const intervals = new Map(
+        (await this.prisma.service.findMany({ where: { businessId, repeatIntervalDays: { gt: 0 } }, select: { id: true, repeatIntervalDays: true } })).map((sv) => [sv.id, sv.repeatIntervalDays!] as const),
+      );
+      const dueAtOf = (b: (typeof bookings)[number]): string | undefined => {
+        const ds = arr<{ serviceId: string }>(b.services).map((l) => intervals.get(l.serviceId)).filter((n): n is number => Boolean(n && n > 0));
+        return ds.length ? addDaysLocal(utcToLocal(b.startAt).slice(0, 10), Math.min(...ds)) : undefined;
+      };
       const dueAgain = [...lastVisit.entries()]
-        .filter(([id, last]) => clientsById.has(id) && (Date.now() - localToUtc(last).getTime()) / 60_000 >= 21 * 24 * 60 && !out.some((o) => o.clientId === id))
-        .map(([id]) => clientsById.get(id)!);
+        .filter(([id]) => clientsById.has(id) && !hasFuture.has(id) && !out.some((o) => o.clientId === id))
+        .map(([id, last]) => ({ id, dueAt: dueAtOf(last) }))
+        .filter((x): x is { id: string; dueAt: string } => Boolean(x.dueAt && x.dueAt <= todayLocal))
+        .sort((a, b) => a.dueAt.localeCompare(b.dueAt))
+        .map((x) => clientsById.get(x.id)!);
       const used = new Set(out.map((o) => o.slotStart));
-      let cursor2 = utcToLocal(new Date()).slice(0, 10);
+      let cursor2 = todayLocal;
       outer: for (let d = 0; d < days; d++) {
         const slots = await this.availability.freeSlots(businessId, { staffId, date: cursor2, durationMin: 30 });
         for (const slot of slots) {
@@ -1323,3 +1484,12 @@ const DEFAULT_CONSENT_TEXT = {
   en: 'By booking, you agree to the processing of your personal data (name, phone) to arrange the appointment.',
   hy: 'Ամրագրելով՝ դուք համաձայն եք անձնական տվյալների (անուն, հեռախոս) մշակմանը՝ ծառայության գրանցումը կազմակերպելու համար։',
 };
+
+/** onlineMeta для клиента по ссылке: ссылка к записи-замене собирается из его же токена (не хранится) */
+function publicMeta(onlineMeta: unknown, hash: string): Record<string, unknown> {
+  const meta = { ...((onlineMeta as Record<string, unknown> | null) ?? {}) };
+  const replaced = meta.replacedBy as { bookingId?: string; start?: string; hash?: string } | undefined;
+  // `hash` в данных — только у заявок, перенесённых до 01.10 (тогда токен хранили); новые его не пишут
+  if (replaced?.bookingId) meta.replacedBy = { bookingId: replaced.bookingId, start: replaced.start, hash: replaced.hash ?? replacementToken(hash, replaced.bookingId) };
+  return meta;
+}

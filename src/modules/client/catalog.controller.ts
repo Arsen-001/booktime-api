@@ -49,8 +49,8 @@ export class PublicCatalogController {
   @Get('masters/:staffId')
   @RateLimit({ bucket: 'public-master-card', limit: 300, windowSec: 60, by: 'ip' })
   @ApiOperation({ summary: 'Карточка мастера (F-00-123)' })
-  masterCard(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string) {
-    return this.svc.masterCard(staffId, ctx.session && !ctx.session.platform ? ctx.session.userId : undefined);
+  masterCard(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Query('service') service?: string) {
+    return this.svc.masterCard(staffId, ctx.session && !ctx.session.platform ? ctx.session.userId : undefined, typeof service === 'string' && service ? service : undefined);
   }
 
   @Get('places/:businessId')
@@ -58,6 +58,13 @@ export class PublicCatalogController {
   @ApiOperation({ summary: 'Карточка места/компании (F-14-028)' })
   placeCard(@Param('businessId') businessId: string) {
     return this.svc.placeCard(businessId);
+  }
+
+  @Get('places/:businessId/first-badge')
+  @RateLimit({ bucket: 'public-master-card', limit: 300, windowSec: 60, by: 'ip' })
+  @ApiOperation({ summary: 'Значок «Первый в районе / в сфере» на карточке мастера (награда панели, F-00-152)' })
+  async firstBadge(@Param('businessId') businessId: string) {
+    return { badge: await this.svc.firstBadge(businessId) };
   }
 
   @Get('places/:businessId/reviews')

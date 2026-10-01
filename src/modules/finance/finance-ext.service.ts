@@ -8,6 +8,7 @@ import { moneyToJson } from '../../common/money/money.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { localDayRangeUtc, utcToLocal } from '../../common/time/time.js';
 import { BookingPaymentsService } from './booking-payments.service.js';
+import { isPrepaymentRegister } from './prepayment-ops.js';
 import { FinanceCatalogService } from './finance-catalog.service.js';
 
 /**
@@ -144,7 +145,8 @@ export class FinanceExtService {
   /** Касса онлайн-денег (F-07-183): системная безналичная касса, иначе любая безналичная, но не наличный ящик */
   private async onlineAccountId(businessId: string, locationId?: string): Promise<string> {
     await this.catalog.ensureDefaults(businessId);
-    const regs = await this.prisma.cashRegister.findMany({ where: { businessId }, orderBy: { order: 'asc' } });
+    // Касса «Предоплата на реквизиты» — деньги у мастера, не онлайн-платежи салона (как `!a.systemKey` мока)
+    const regs = (await this.prisma.cashRegister.findMany({ where: { businessId }, orderBy: { order: 'asc' } })).filter((r) => !isPrepaymentRegister(r.id));
     const pick =
       regs.find((r) => r.kind === 'card' && r.systemGenerated && (!locationId || r.locationId === locationId)) ??
       regs.find((r) => r.kind === 'card') ??
@@ -196,7 +198,7 @@ export class FinanceExtService {
 
   async clientAccount(businessId: string, clientId: string) {
     const topUpItem = await this.catalog.systemItemId(businessId, 'accountTopUp');
-    const ops = await this.prisma.finOp.findMany({ where: { businessId, itemId: topUpItem, partyType: 'client', partyId: clientId, source: 'account' }, orderBy: { date: 'desc' } });
+    const ops = await this.prisma.finOp.findMany({ where: { businessId, itemId: topUpItem, partyType: 'client', partyId: clientId, source: 'account', refId: null }, orderBy: { date: 'desc' } });
     const topUps = ops.map((o) => ({ id: o.id, businessId, clientId, amount: moneyToJson(o.amount), operationId: o.id, cancelled: o.cancelled || undefined, cancelledAt: o.cancelledAt ? utcToLocal(o.cancelledAt) : undefined, createdAt: utcToLocal(o.date), createdBy: o.createdBy ?? 'system' }));
     return { balance: moneyToJson(await this.payments.clientAccountBalance(businessId, clientId)), topUps };
   }

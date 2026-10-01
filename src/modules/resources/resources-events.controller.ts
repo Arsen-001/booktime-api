@@ -34,7 +34,8 @@ import { ResourcesEventsService } from './resources-events.service.js';
  * stage 21 (аудит фасадов, лейн «resources»): участники группового события, лист ожидания СВОЕГО экрана,
  * расписание серии по дням недели, расписание посещений, перенос участника, ассистенты/товары/оплата
  * участника — всё, чего не было на сервере для src/api/resources.ts (см. docstring resources-events.service.ts
- * и комментарий у моделей EventSeriesDef/VisitScheduleEntry/ResourcesWaitlistEntry в schema.prisma).
+ * и комментарий у моделей EventSeriesDef/VisitScheduleEntry/WaitlistEntry в schema.prisma). Лист ожидания бизнеса —
+ * один (30.09.2026): /resources/waitlist — единственный его адрес, и для /biz/waitlist, и для панели журнала.
  * Права: как в моке фронта — большинство действий доступно любому участнику журнала (assertCan там не стоял),
  * `journal.edit` там, где мок уже требовал его для соседней функции этого же файла (saveEventTemplate),
  * `journal.reschedule` у переноса участника и `finance.edit` у денег участника — тем же кодом, что и в моке.
@@ -274,7 +275,7 @@ export class ResourcesEventsController {
     return this.svc.deleteVisitSchedule(ctx, businessId, id).then(() => ({ value: true }));
   }
 
-  // ─────────── лист ожидания СВОЕГО экрана (F-16-149…168) ───────────
+  // ─────────── лист ожидания бизнеса — один на экран /biz/waitlist и панель журнала (F-16-149…168, F-01-156…162) ───────────
 
   @Get('waitlist')
   @Biz()
@@ -408,13 +409,13 @@ export class ResourcesEventsController {
   @Post('bookings/:bookingId/payment')
   @Biz('finance.edit')
   @ZodBody(payParticipantBody)
-  payParticipant(@Param('businessId') businessId: string, @Param('bookingId') bookingId: string, @Body(new Zod(payParticipantBody)) body: z.infer<typeof payParticipantBody>) {
-    return this.svc.payParticipant(businessId, bookingId, body.method);
+  payParticipant(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('bookingId') bookingId: string, @Body(new Zod(payParticipantBody)) body: z.infer<typeof payParticipantBody>) {
+    return this.svc.payParticipant(ctx, businessId, bookingId, body.method);
   }
 
   @Delete('bookings/:bookingId/payment')
   @Biz('finance.edit')
-  cancelParticipantPayment(@Param('businessId') businessId: string, @Param('bookingId') bookingId: string) {
-    return this.svc.cancelParticipantPayment(businessId, bookingId);
+  cancelParticipantPayment(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('bookingId') bookingId: string) {
+    return this.svc.cancelParticipantPayment(ctx, businessId, bookingId);
   }
 }

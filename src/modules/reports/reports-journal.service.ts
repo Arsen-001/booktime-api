@@ -287,7 +287,9 @@ export class ReportsJournalService {
     const priorTo = new Date(`${range.from}T00:00:00.000Z`);
 
     const tzMap = tzMapOf(locations);
-    const staffList = await this.prisma.staff.findMany({ where: { businessId, deletedAt: null, role: 'master' }, select: { id: true, name: true } });
+    // Мастер-индивидуал сам принимает клиентов (его роль owner) — без этого его «Загруженность» была пустой (как мок takesClients)
+    const kind = (await this.prisma.business.findUnique({ where: { id: businessId }, select: { kind: true } }))?.kind;
+    const staffList = await this.prisma.staff.findMany({ where: { businessId, deletedAt: null, ...(kind === 'individual' ? {} : { role: 'master' }) }, select: { id: true, name: true } });
     const staffIdsInScope = staffList.map((s) => s.id);
 
     const currentBookings = await this.prisma.booking.findMany({

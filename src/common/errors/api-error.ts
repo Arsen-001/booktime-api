@@ -87,6 +87,8 @@ export const ERROR_STATUS = {
   outside_hours: HttpStatus.CONFLICT,
   group_full: HttpStatus.CONFLICT,
   resource_unavailable: HttpStatus.CONFLICT,
+  /** ⭐ Допродажа: сопутствующей услуги/товара нет в списке услуги или товар закончился */
+  upsell_unavailable: HttpStatus.CONFLICT,
   business_inactive: HttpStatus.CONFLICT,
   staff_unavailable: HttpStatus.CONFLICT,
   online_disabled: HttpStatus.CONFLICT,
@@ -173,6 +175,12 @@ export const ERROR_STATUS = {
   not_cash_account: HttpStatus.UNPROCESSABLE_ENTITY,
   shift_already_open: HttpStatus.CONFLICT,
   shift_not_open: HttpStatus.CONFLICT,
+  // полный тест 30.09–01.10 (qa/full-test-0930) — коды мока как есть
+  operation_linked: HttpStatus.CONFLICT,
+  account_in_use: HttpStatus.CONFLICT,
+  method_not_found: HttpStatus.NOT_FOUND,
+  card_type_already_issued: HttpStatus.CONFLICT,
+  nothing_due: HttpStatus.CONFLICT,
   // online, остаток (этап 21, лейн client+online, попытка 2) — коды мока src/api/online.ts как есть
   not_awaiting_prepayment: HttpStatus.CONFLICT,
   prepayment_expired: HttpStatus.GONE,

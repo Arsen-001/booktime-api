@@ -31,6 +31,7 @@ export class SessionGuard implements CanActivate {
 }
 
 const REQUIRED = 'bt:required-permissions';
+const REQUIRED_ANY = 'bt:required-any-permission';
 
 /**
  * Кабинет бизнеса: `businessId` из пути сверяется с членством вошедшего (арендатор, PLAN.md §5), затем права.
@@ -54,6 +55,8 @@ export class BizGuard implements CanActivate {
     const required = this.reflector.getAllAndOverride<Permission[]>(REQUIRED, [host.getHandler(), host.getClass()]) ?? [];
     const missing = required.filter((p) => !member.permissions.has(p));
     if (missing.length) throw new ApiError('forbidden', `Missing permission: ${missing.join(', ')}`);
+    const anyOf = this.reflector.getAllAndOverride<Permission[]>(REQUIRED_ANY, [host.getHandler(), host.getClass()]) ?? [];
+    if (anyOf.length && !anyOf.some((p) => member.permissions.has(p))) throw new ApiError('forbidden', `Missing permission: one of ${anyOf.join(', ')}`);
     req.ctx.member = member;
     return true;
   }
@@ -62,6 +65,11 @@ export class BizGuard implements CanActivate {
 /** Маршрут кабинета: @Biz('journal.edit') над обработчиком пути /v1/biz/:businessId/… */
 export function Biz(...permissions: Permission[]) {
   return applyDecorators(SetMetadata(REQUIRED, permissions), UseGuards(BizGuard), ApiCookieAuth());
+}
+
+/** Маршрут кабинета, где хватает ЛЮБОГО из прав: @BizAny('finance.shift', 'finance.edit') (кассовая смена, 01.10.2026) */
+export function BizAny(...permissions: Permission[]) {
+  return applyDecorators(SetMetadata(REQUIRED_ANY, permissions), UseGuards(BizGuard), ApiCookieAuth());
 }
 
 /** Маршрут для любого вошедшего: @Authed() */

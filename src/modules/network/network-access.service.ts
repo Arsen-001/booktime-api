@@ -3,7 +3,7 @@ import type { Network } from '../../generated/prisma/client.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { isNetworkPermission, type NetworkPermissionKey } from './network.schemas.js';
+import { NETWORK_PERMISSION_KEYS, isNetworkPermission, type NetworkPermissionKey } from './network.schemas.js';
 
 export interface NetworkAccess {
   network: Network & { businessIds: string[] };
@@ -36,8 +36,39 @@ export class NetworkAccessService {
     if (permission) {
       const nu = await this.prisma.networkUser.findUnique({ where: { networkId_userId: { networkId, userId: ctx.session.userId } } });
       const perms = Array.isArray(nu?.permissions) ? nu.permissions.filter(isNetworkPermission) : [];
-      if (nu && perms.includes(permission)) return { network, isOwner: false };
+      if (nu && !nu.pending && perms.includes(permission) && (await this.inAllowedBranch(ctx.session.userId, network.businessIds, nu.businessIds))) {
+        return { network, isOwner: false };
+      }
     }
     throw new ApiError('forbidden', 'Network is not accessible');
+  }
+
+  /**
+   * Сеть7 (как мок `canSeeNetworkClientData`): пользователь сети с ограничением по филиалам, который сам работает
+   * в филиале ВНЕ своего списка, сеть не видит. Без ограничения (null) или без своей строки staff в сети
+   * (вход логином+паролем, F-11-026) — проходит.
+   */
+  private async inAllowedBranch(userId: string, networkBusinessIds: string[], allowed: unknown): Promise<boolean> {
+    if (!Array.isArray(allowed)) return true;
+    const own = await this.prisma.staff.findMany({ where: { userId, businessId: { in: networkBusinessIds }, deletedAt: null, firedAt: null }, select: { businessId: true } });
+    return !own.length || own.some((st) => (allowed as string[]).includes(st.businessId));
+  }
+
+  /**
+   * Права текущего пользователя в сети ЭТОГО филиала — для меню и экранов кабинета сети (01.10.2026: права
+   * режут кабинет). Владелец сети — все; пользователь сети — свои галочки; филиал вне его списка — не участник.
+   */
+  async myAccess(userId: string, businessId: string): Promise<{ networkId?: string; member: boolean; permissions: NetworkPermissionKey[]; businessIds?: string[] }> {
+    const biz = await this.prisma.business.findUnique({ where: { id: businessId }, select: { networkId: true } });
+    if (!biz?.networkId) return { member: false, permissions: [] };
+    const network = await this.loadNetwork(biz.networkId);
+    if (!network || network.deletedAt) return { member: false, permissions: [] };
+    if (network.ownerUserId === userId) return { networkId: network.id, member: true, permissions: [...NETWORK_PERMISSION_KEYS] };
+    const nu = await this.prisma.networkUser.findUnique({ where: { networkId_userId: { networkId: network.id, userId } } });
+    if (!nu || nu.pending) return { networkId: network.id, member: false, permissions: [] };
+    const branches = Array.isArray(nu.businessIds) ? (nu.businessIds as string[]) : undefined;
+    if (branches && !branches.includes(businessId)) return { networkId: network.id, member: false, permissions: [] };
+    const permissions = Array.isArray(nu.permissions) ? nu.permissions.filter(isNetworkPermission) : [];
+    return { networkId: network.id, member: true, permissions, ...(branches ? { businessIds: branches } : {}) };
   }
 }

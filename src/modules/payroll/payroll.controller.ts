@@ -11,11 +11,17 @@ import { PayrollComputeService } from './payroll-compute.service.js';
 import { PayrollSettlementsService } from './payroll-settlements.service.js';
 import { assignmentBody, bonusPenaltyTypeBody, bulkApplySchemeBody, chartBody, criterionBody, generalSettingsBody, payoutBody, payrollStaffRightsBatchBody, payrollStaffRightsBody, ruleBody, schemeBlocksBody, settlementEntryBody, settlementSheetBody, type PayrollStaffRightsBatchBody, type PayrollStaffRightsBody } from './payroll.schemas.js';
 
-/** Своё ли это (право `payroll.manage` отсутствует) — В-10 «мастер видит свою выручку и зарплату всегда»,
- * без него calcAccess ограничен своим staffId (F-09-085…089: полная модель прав на сотрудника — честный гэп,
- * см. docs/PROGRESS.md «Этап 14»). Владелец/сеть/ИП управляют всем через payroll.manage как обычно. */
-function ownOnlyStaffId(ctx: RequestContext): string | undefined {
-  return ctx.member!.permissions.has('payroll.manage') ? undefined : ctx.member!.staffId;
+/**
+ * Чьи строки видит сотрудник в расчёте (день/период/ведомость) — как мок (ownOnlyStaffIdForActor, решение владельца
+ * 01.10.2026): payroll.manage или payroll.view — все строки; без обоих — только своя. Право сотрудника «Зарплата»
+ * «только конкретный сотрудник» (F-09-088, ownOnlyStaffId), если задано, сужает до этого сотрудника.
+ */
+async function calcScope(ctx: RequestContext, catalog: PayrollCatalogService): Promise<string | undefined> {
+  const member = ctx.member!;
+  if (member.permissions.has('payroll.manage')) return undefined;
+  if (!member.permissions.has('payroll.view')) return member.staffId;
+  const rights = await catalog.getStaffRights(member.businessId, member.staffId);
+  return rights?.ownOnlyStaffId || undefined;
 }
 
 function requireLocationId(locationId?: string): string {
@@ -51,21 +57,21 @@ export class PayrollController {
   // ─────────────────────────── Расчёт (F-09-058…065) ───────────────────────────
 
   @Get('day')
-  @Biz('payroll.view')
-  day(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Query('date') date: string) {
-    return this.compute.computeDay(ctx.member!.businessId, requireLocationId(locationId), date, ownOnlyStaffId(ctx));
+  @Biz()
+  async day(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Query('date') date: string) {
+    return this.compute.computeDay(ctx.member!.businessId, requireLocationId(locationId), date, await calcScope(ctx, this.catalog));
   }
 
   @Get('period')
-  @Biz('payroll.view')
-  period(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Query('from') from: string, @Query('to') to: string, @Query('positionKey') positionKey?: string) {
-    return this.compute.computePeriod(ctx.member!.businessId, requireLocationId(locationId), from, to, positionKey, ownOnlyStaffId(ctx));
+  @Biz()
+  async period(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Query('from') from: string, @Query('to') to: string, @Query('positionKey') positionKey?: string) {
+    return this.compute.computePeriod(ctx.member!.businessId, requireLocationId(locationId), from, to, positionKey, await calcScope(ctx, this.catalog));
   }
 
   @Get('statement')
-  @Biz('payroll.view')
-  statement(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Query('staffId') staffId: string, @Query('from') from: string, @Query('to') to: string) {
-    const own = ownOnlyStaffId(ctx);
+  @Biz()
+  async statement(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Query('staffId') staffId: string, @Query('from') from: string, @Query('to') to: string) {
+    const own = await calcScope(ctx, this.catalog);
     if (own && own !== staffId) throw new ApiError('forbidden', 'Own statement only');
     return this.compute.computeStatement(ctx.member!.businessId, requireLocationId(locationId), staffId, from, to);
   }
@@ -275,9 +281,14 @@ export class PayrollController {
   // === stage 21 (лейн services+rest) ═══ Права на раздел «Зарплата» (F-09-085…089) ═══
 
   @Get('rights')
-  @Biz('staff.manage')
-  listRights(@Ctx() ctx: RequestContext) {
-    return this.catalog.listStaffRights(ctx.member!.businessId);
+  // Все права видит staff.manage; остальные — только свою строку («Моя зарплата» читает ограничения о себе:
+  // «только текущий день» и т. п.; раньше мастер получал 403 и ограничения не применялись)
+  @Biz()
+  async listRights(@Ctx() ctx: RequestContext) {
+    const all = await this.catalog.listStaffRights(ctx.member!.businessId);
+    if (ctx.member!.permissions.has('staff.manage')) return all;
+    const own = ctx.member!.staffId ? all[ctx.member!.staffId] : undefined;
+    return own && ctx.member!.staffId ? { [ctx.member!.staffId]: own } : {};
   }
 
   /** F-09-001/010: «Схемы расчёта» — статус схемы у всех сотрудников разом (этап 21, лейн rest) */
@@ -400,14 +411,18 @@ export class PayrollStaffController {
   }
 
   @Get('settlements')
-  @Biz('payroll.view')
+  // Свои взаиморасчёты видит любой сотрудник («Моя зарплата» → «Выплаты»; у мастера с 01.10 нет payroll.view),
+  // чужие — только с payroll.manage (assertOwnOrManage)
+  @Biz()
   listSettlements(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Query('periodFrom') periodFrom?: string, @Query('periodTo') periodTo?: string) {
     this.assertOwnOrManage(ctx, staffId);
     return this.settlements.list(ctx.member!.businessId, staffId, periodFrom, periodTo);
   }
 
   @Get('settlements/balance')
-  @Biz('payroll.view')
+  // Свои взаиморасчёты видит любой сотрудник («Моя зарплата» → «Выплаты»; у мастера с 01.10 нет payroll.view),
+  // чужие — только с payroll.manage (assertOwnOrManage)
+  @Biz()
   balance(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string) {
     this.assertOwnOrManage(ctx, staffId);
     return this.settlements.staffBalance(ctx.member!.businessId, staffId);

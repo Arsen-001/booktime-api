@@ -39,9 +39,6 @@ import {
   templateBody,
   visitIdBody,
   visitStatusBody,
-  waitlistBody,
-  waitlistCloseBody,
-  waitlistPatchBody,
   windowTagsBody,
 } from './journal.schemas.js';
 import type { BookingStatus } from './rules.js';
@@ -53,7 +50,7 @@ const date = (v: string | undefined, name: string) => {
   return v;
 };
 
-/** Журнал вокруг записей (02 §4, §9): /v1/biz/{b}/journal…, waitlist, events, series, packages, медкарта */
+/** Журнал вокруг записей (02 §4, §9): /v1/biz/{b}/journal…, events, series, packages, медкарта */
 @ApiTags('journal')
 @Controller('v1/biz/:businessId')
 export class JournalController {
@@ -311,42 +308,8 @@ export class JournalController {
     return this.journal.attachLinked(ctx, p.businessId, body);
   }
 
-  // ─────────── лист ожидания (F-01-156…162) ───────────
-
-  @Get('waitlist')
-  @Biz('journal.view')
-  waitlist(@Param() p: B, @Query() q: Record<string, string | undefined>) {
-    return this.journal.listWaitlist(p.businessId, { status: q['status'], dateMode: q['dateMode'], selectedDate: q['selectedDate'], sort: q['sort'], query: q['query'] });
-  }
-
-  @Post('waitlist')
-  @Biz('journal.edit')
-  @ZodBody(waitlistBody)
-  addWaitlist(@Ctx() ctx: RequestContext, @Param() p: B, @Body(new Zod(waitlistBody)) body: z.infer<typeof waitlistBody>) {
-    return this.journal.createWaitlist(ctx, p.businessId, body);
-  }
-
-  @Patch('waitlist/:id')
-  @Biz('journal.edit')
-  @ZodBody(waitlistPatchBody)
-  patchWaitlist(@Param() p: B, @Param('id') id: string, @Body(new Zod(waitlistPatchBody)) body: z.infer<typeof waitlistPatchBody>) {
-    return this.journal.updateWaitlist(p.businessId, id, body);
-  }
-
-  @Post('waitlist/:id/close')
-  @HttpCode(204)
-  @Biz('journal.edit')
-  @ZodBody(waitlistCloseBody)
-  closeWaitlist(@Param() p: B, @Param('id') id: string, @Body(new Zod(waitlistCloseBody)) body: z.infer<typeof waitlistCloseBody>) {
-    return this.journal.closeWaitlist(p.businessId, id, body.bookingId);
-  }
-
-  @Delete('waitlist/:id')
-  @HttpCode(204)
-  @Biz('journal.edit')
-  deleteWaitlist(@Param() p: B, @Param('id') id: string) {
-    return this.journal.deleteWaitlist(p.businessId, id);
-  }
+  // Лист ожидания (F-01-156…162) — один на бизнес, с 30.09.2026 только /v1/biz/{b}/resources/waitlist
+  // (ResourcesEventsController): там же экран /biz/waitlist, «Проверить лист» и отметки «Уведомлён».
 
   // ─────────── групповые события (F-01-035, F-16-036…) ───────────
 

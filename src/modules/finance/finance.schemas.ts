@@ -76,6 +76,8 @@ export const counterpartyBody = z.object({
   email: z.string().max(160).optional(),
   contact: z.string().max(160).optional(),
   note: z.string().max(400).optional(),
+  /** Язык сообщений поставщику (заказ в WhatsApp); null — сбросить на язык кабинета */
+  messageLang: z.enum(['hy', 'ru', 'en']).nullable().optional(),
 });
 export type CounterpartyBody = z.infer<typeof counterpartyBody>;
 export const counterpartyPatchBody = counterpartyBody.partial();
@@ -150,3 +152,18 @@ export type PayBookingBody = z.infer<typeof payBookingBody>;
 
 export const bookingPaymentNoteBody = z.object({ note: z.string().max(1000) });
 export const refundBookingFullBody = z.object({ reason: z.string().max(400) });
+
+// ─────────────────────────── Продажи лояльности в кассу (qa/full-test-0930, 01.10.2026) ───────────────────────────
+
+/** LoyaltySaleInput мока (recordLoyaltySale, src/api/finance.ts) */
+export const loyaltySaleBody = z.object({
+  kind: z.enum(['membership', 'certificate', 'accountTopUp']),
+  locationId: id32,
+  amount: positiveMoney,
+  methodKey: z.string().min(1).max(32),
+  clientId: id32.optional(),
+  clientName: z.string().max(160).optional(),
+  refId: id32.optional(),
+  label: z.string().max(160).optional(),
+});
+export type LoyaltySaleBody = z.infer<typeof loyaltySaleBody>;
