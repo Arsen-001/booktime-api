@@ -5,7 +5,7 @@
   "description": "BookTime — сервер для booking-platform (docs/backend/PLAN.md во фронте)",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": "24"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
