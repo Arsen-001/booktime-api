@@ -21,7 +21,8 @@
     "migrate:deploy": "prisma migrate deploy",
     "commit": "node scripts/commit.mjs",
     "check:permissions": "node scripts/check-permissions.mjs",
-    "build:prod": "prisma generate && tsc -p tsconfig.build.json"
+    "build:prod": "prisma generate && tsc -p tsconfig.build.json",
+    "start": "node scripts/railway-start.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.1.0",
