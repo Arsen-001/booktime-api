@@ -6,7 +6,6 @@
   },
   "deploy": {
     "startCommand": "node scripts/railway-start.mjs",
-    "preDeployCommand": ["npx prisma migrate deploy"],
     "healthcheckPath": "/v1/health",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
