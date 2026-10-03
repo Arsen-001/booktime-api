@@ -31,6 +31,10 @@ esbuild/tsx: Nest берёт зависимости из метаданных д
   `UPLOADS_DIR`, раздача диска — `GET /v1/files/<key>` (кэш навсегда). Квота бизнеса — `UPLOADS_QUOTA_MB`, лимит — 60
   фото за 10 минут на сессию. Код — `src/modules/uploads`, `src/adapters/storage`; перенос старых data: URL —
   `npx tsx scripts/migrate-data-urls.ts` (без `--apply` только отчёт). Подробно — фронт `docs/DEPLOY.md` «Файлы и фото».
+- Документы клиентов (04.10.2026): `POST /v1/biz/:businessId/clients/:id/files/upload` — PDF/фото/Word/Excel/текст до
+  10 МБ как есть в закрытое хранилище (`private/` в бакете или диск `PRIVATE_FILES_DIR`), скачивание только
+  `GET …/clients/:id/files/:fileId/content` с правом `clients.view`. Уборка неиспользуемых загрузок — воркер ночью,
+  старше 7 дней и без ссылок в базе; удаляет только при `UPLOADS_CLEANUP=1`, иначе отчёт в лог.
 - Коммит: `npm run commit -- "сообщение"` (isomorphic-git, системный git на этой машине может быть недоступен).
 
 ## Вход при разработке (этап 2)
@@ -60,6 +64,9 @@ esbuild/tsx: Nest берёт зависимости из метаданных д
   ответа Apple, в токене его нет): токен проверяется так же без библиотек (`apple-id-token.ts`; общий кэш JWKS и RS256 —
   `jwks.ts`), почты может не быть (`email: null`). Привязан — сессия; нет — `pendingApple` → `/v1/auth/verify { …,
   pendingApple }` (ответ `appleLinked`). Журнал входов: `method=apple`. Тесты — `apple-id-token.test.ts`, `apple-login.test.ts`.
+  Отзыв при удалении аккаунта (04.10.2026, App Store 5.1.1(v)): `authorizationCode` в том же запросе → refresh token,
+  зашифрованный `SECRETS_KEY`; удаление аккаунта → задача `apple.revoke`. Нужны `APPLE_TEAM_ID`, `APPLE_KEY_ID`,
+  `APPLE_PRIVATE_KEY` (.p8) и `SECRETS_KEY`; без них — пропуск с предупреждением (`apple-tokens.ts`).
 - Клиенты — номера из мока (`+374 00 160 001` — Ани, `au_01`); новый номер создаёт нового человека.
 - Администраторы салонов — логины из мока (`lilit.nuri`, `anahit.atam`, …), пароль = логин, первый вход просит сменить.
 - Команда платформы (`/platform/login` фронта): `platform` / `booktime-dev`, затем код.

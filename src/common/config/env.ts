@@ -22,6 +22,8 @@ const schema = z.object({
   STORAGE_DIR: z.string().default('./storage'),
   /** Фото на диске, раздаются GET /v1/files/<key>. По умолчанию: production — /data/uploads (диск Railway), иначе ./.uploads */
   UPLOADS_DIR: z.string().optional(),
+  /** Документы клиентов на диске (закрытые, не раздаются /v1/files). По умолчанию: production — /data/private, иначе ./.private */
+  PRIVATE_FILES_DIR: z.string().optional(),
   S3_ENDPOINT: z.string().optional(),
   S3_REGION: z.string().optional(),
   S3_BUCKET: z.string().optional(),
@@ -93,6 +95,29 @@ const schema = z.object({
     .string()
     .optional()
     .transform((s) => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean)),
+  /**
+   * Отзыв входа через Apple при удалении аккаунта (04.10.2026, App Store 5.1.1(v)): ключ Sign in with Apple из Apple
+   * Developer → Keys (.p8). Заданы все три — сервер при входе меняет authorizationCode на refresh token, а при удалении
+   * аккаунта отзывает его (https://appleid.apple.com/auth/revoke). Не заданы — вход работает, отзыв пропускается (warn).
+   */
+  APPLE_TEAM_ID: z.string().optional(),
+  APPLE_KEY_ID: z.string().optional(),
+  /** Содержимое .p8 (-----BEGIN PRIVATE KEY----- …) — с настоящими переводами строк или \n */
+  APPLE_PRIVATE_KEY: z
+    .string()
+    .optional()
+    .transform((s) => (s ? s.replace(/\\n/g, '\n') : undefined)),
+  /**
+   * Ключ шифрования секретов в базе (04.10.2026; сейчас — refresh token Apple): 32 байта в base64 или hex
+   * (`openssl rand -base64 32`). Нет — токены Apple не сохраняются (отзыв при удалении невозможен). Сменить нельзя без
+   * потери сохранённых токенов.
+   */
+  SECRETS_KEY: z.string().optional(),
+  /**
+   * Уборка неиспользуемых файлов (04.10.2026): воркер каждую ночь ищет загрузки старше 7 дней, на которые ничего не
+   * ссылается. Без '1' — только пишет в лог, что удалил бы (пробный режим); '1' — удаляет файлы и строки uploads.
+   */
+  UPLOADS_CLEANUP: z.string().optional().transform((v) => v === '1'),
   /** Постоянный код входа только для разработки (NODE_ENV=development); в остальных средах игнорируется */
   DEV_LOGIN_CODE: z.string().regex(/^\d{4}$/).optional(),
   /** Домен cookie сессии (прод: .booktime.am — чтобы сайт и API на поддоменах видели одну сессию); пусто — хост API */
@@ -132,6 +157,19 @@ const schema = z.object({
   SENTRY_DSN: z.string().optional(),
   /** Имя окружения в Sentry; по умолчанию RAILWAY_ENVIRONMENT_NAME (staging / production) */
   SENTRY_ENVIRONMENT: z.string().optional(),
+  /**
+   * Общий секрет с сайтом (04.10.2026): страницы сайта, которые сервер Vercel рисует сам (SSR: главная, /b/<slug>,
+   * /masters/<id>, поиск), шлют его заголовком X-BT-SSR. С верным секретом публичные GET-лимиты по IP умножаются на
+   * SSR_RATE_MULTIPLIER (все посетители сайта приходят с нескольких адресов Vercel). Пусто — обычные лимиты для всех.
+   * То же значение — в SSR_SHARED_SECRET проекта Vercel (booking-platform, docs/DEPLOY.md).
+   */
+  SSR_SHARED_SECRET: z.string().optional().transform((s) => s?.trim() || undefined),
+  SSR_RATE_MULTIPLIER: z.coerce.number().int().min(1).max(1000).default(20),
+  /**
+   * Сколько прокси перед API (Express `trust proxy`): Railway — 1, тогда IP для лимитов — настоящий адрес клиента из
+   * X-Forwarded-For, а не адрес прокси Railway. Пусто — заголовку не верим (локально).
+   */
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).optional(),
   /** Сколько последних ежедневных копий хранить */
   DB_BACKUP_KEEP: z.coerce.number().int().min(1).max(365).default(14),
 });

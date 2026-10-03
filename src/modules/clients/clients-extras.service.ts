@@ -5,6 +5,9 @@ import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { normalizePhone } from '../../common/phone.js';
+import { env } from '../../common/config/env.js';
+import type { ClientFile } from '../../generated/prisma/client.js';
+import { UploadsService } from '../uploads/uploads.service.js';
 import {
   type ClientsBizSettings,
   type CustomFieldDef,
@@ -14,7 +17,30 @@ import {
 
 const CLIENT_FILE_EXTENSIONS = ['jpeg', 'jpg', 'png', 'gif', 'doc', 'docx', 'pdf', 'xls', 'xlsx', 'txt'];
 const CLIENT_FILE_MAX_MB = 12;
+/** Загрузка файлом (04.10.2026): как у фото — до 10 МБ; JSON с data: URL (мок, старые сборки) — по-прежнему до 12 МБ */
+export const CLIENT_FILE_UPLOAD_MAX_MB = 10;
 const CHAT_LEAD_TAG = 'Лид из чата';
+/** Имя файла из multipart: busboy читает его как latin1 — UTF-8 (кириллица) восстанавливаем, если байты сходятся */
+function multipartName(raw: string | undefined): string {
+  const v = raw?.trim() ?? '';
+  if (!v || /[^\x00-\xff]/.test(v)) return v;
+  const utf8 = Buffer.from(v, 'latin1').toString('utf8');
+  return utf8.includes('\uFFFD') ? v : utf8;
+}
+
+/** Типы старых data: URL, которые можно отдать как есть (скачивание всё равно attachment + nosniff) */
+const SAFE_LEGACY_MIME = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'text/plain',
+  'application/msword',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
 
 /** F-04-145: «ключ-значение для API» — латиница/цифры/подчёркивание из подписи, с числовым суффиксом при повторе */
 const TRANSLIT: Record<string, string> = {
@@ -43,7 +69,10 @@ function slugifyApiKey(label: string, taken: Set<string>): string {
 
 @Injectable()
 export class ClientsExtrasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uploads: UploadsService,
+  ) {}
 
   // ─────────── комментарии (F-04-070) ───────────
 
@@ -67,22 +96,92 @@ export class ClientsExtrasService {
 
   // ─────────── файлы (F-04-086) ───────────
 
-  async listFiles(clientId: string) {
-    const rows = await this.prisma.clientFile.findMany({ where: { clientId }, orderBy: { uploadedAt: 'desc' } });
-    return rows.map((f) => ({ id: f.id, clientId: f.clientId, name: f.name, ext: f.ext, size: f.size, dataUrl: f.dataUrl, uploadedAt: f.uploadedAt.toISOString(), uploadedBy: f.uploadedBy }));
+  /** Клиент этого бизнеса — иначе 404 (id клиента из чужого бизнеса не открывает его файлы) */
+  private async assertClient(businessId: string, clientId: string): Promise<void> {
+    const c = await this.prisma.client.findFirst({ where: { id: clientId, businessId }, select: { id: true } });
+    if (!c) throw new ApiError('not_found', 'Client not found');
   }
 
-  async addFile(ctx: RequestContext, clientId: string, input: { name: string; ext: string; size: number; dataUrl: string }) {
+  /**
+   * Файл в ответе. contentUrl — скачивание через кабинет (права clients.view, Content-Disposition: attachment) для
+   * любой строки. dataUrl — старые строки: data: URL как был; файлы в хранилище (04.10.2026) — тот же contentUrl,
+   * чтобы прежние сборки сайта (href / src = dataUrl) продолжали работать.
+   */
+  private fileView(businessId: string, f: ClientFile, requestBase: string) {
+    const base = (env.PUBLIC_API_URL || requestBase).replace(/\/+$/, '');
+    const contentUrl = `${base}/v1/biz/${encodeURIComponent(businessId)}/clients/${encodeURIComponent(f.clientId)}/files/${encodeURIComponent(f.id)}/content`;
+    return {
+      id: f.id,
+      clientId: f.clientId,
+      name: f.name,
+      ext: f.ext,
+      size: f.size,
+      dataUrl: f.storageKey ? contentUrl : (f.dataUrl ?? ''),
+      contentUrl,
+      stored: Boolean(f.storageKey),
+      mime: f.mime,
+      uploadedAt: f.uploadedAt.toISOString(),
+      uploadedBy: f.uploadedBy,
+    };
+  }
+
+  async listFiles(businessId: string, clientId: string, requestBase: string) {
+    await this.assertClient(businessId, clientId);
+    const rows = await this.prisma.clientFile.findMany({ where: { clientId }, orderBy: { uploadedAt: 'desc' } });
+    return rows.map((f) => this.fileView(businessId, f, requestBase));
+  }
+
+  /** Старый путь (мок-совместимый JSON с data: URL) — для прежних сборок; новый сайт шлёт файл uploadFile */
+  async addFile(ctx: RequestContext, businessId: string, clientId: string, input: { name: string; ext: string; size: number; dataUrl: string }, requestBase: string) {
+    await this.assertClient(businessId, clientId);
     const ext = input.ext.toLowerCase();
     if (!CLIENT_FILE_EXTENSIONS.includes(ext)) throw new ApiError('bad_ext', 'Unsupported file extension');
     if (input.size > CLIENT_FILE_MAX_MB * 1024 * 1024) throw new ApiError('too_big', `File larger than ${CLIENT_FILE_MAX_MB}MB`);
     const row = await this.prisma.clientFile.create({
       data: { id: newId('clientFile'), clientId, name: input.name, ext, size: input.size, dataUrl: input.dataUrl, uploadedBy: ctx.member!.name },
     });
-    return { id: row.id, clientId: row.clientId, name: row.name, ext: row.ext, size: row.size, dataUrl: row.dataUrl, uploadedAt: row.uploadedAt.toISOString(), uploadedBy: row.uploadedBy };
+    return this.fileView(businessId, row, requestBase);
   }
 
-  async deleteFile(clientId: string, fileId: string): Promise<void> {
+  /**
+   * Документ файлом (04.10.2026): multipart → тип по сигнатуре (PDF, фото, Word/Excel, текст) → закрытое хранилище
+   * как есть (UploadsService.storeDocument) → строка client_files со storage_key. Расширение — из имени файла.
+   */
+  async uploadFile(ctx: RequestContext, businessId: string, clientId: string, file: { buffer: Buffer; originalname?: string } | undefined, nameField: string | undefined, requestBase: string) {
+    await this.assertClient(businessId, clientId);
+    const name = (nameField?.trim() || multipartName(file?.originalname) || 'file').slice(0, 200);
+    const ext = (name.includes('.') ? name.split('.').pop()! : '').toLowerCase();
+    if (!CLIENT_FILE_EXTENSIONS.includes(ext)) throw new ApiError('bad_ext', 'Unsupported file extension');
+    const stored = await this.uploads.storeDocument({ businessId, by: ctx.member!.staffId }, file, ext);
+    const row = await this.prisma.clientFile.create({
+      data: { id: newId('clientFile'), clientId, name, ext, size: stored.bytes, dataUrl: null, storageKey: stored.key, mime: stored.mime, uploadedBy: ctx.member!.name },
+    });
+    return this.fileView(businessId, row, requestBase);
+  }
+
+  /**
+   * Содержимое документа для скачивания: файл из закрытого хранилища или (старые строки) раскодированный data: URL.
+   * Тип — сохранённый по сигнатуре; у старых строк — из data: URL, но только из списка безопасных, иначе octet-stream.
+   */
+  async fileContent(businessId: string, clientId: string, fileId: string): Promise<{ body: Buffer; mime: string; name: string }> {
+    await this.assertClient(businessId, clientId);
+    const f = await this.prisma.clientFile.findFirst({ where: { id: fileId, clientId } });
+    if (!f) throw new ApiError('not_found', 'File not found');
+    if (f.storageKey) {
+      const body = await this.uploads.readDocument(f.storageKey);
+      if (!body) throw new ApiError('not_found', 'File not found');
+      return { body, mime: f.mime ?? 'application/octet-stream', name: f.name };
+    }
+    const m = /^data:([\w.+/-]*)(?:;[\w=.+-]+)*?(;base64)?,/.exec(f.dataUrl ?? '');
+    if (!m) throw new ApiError('not_found', 'File not found');
+    const raw = f.dataUrl!.slice(m[0].length);
+    const body = m[2] ? Buffer.from(raw, 'base64') : Buffer.from(decodeURIComponent(raw), 'utf8');
+    return { body, mime: SAFE_LEGACY_MIME.has(m[1]!.toLowerCase()) ? m[1]!.toLowerCase() : 'application/octet-stream', name: f.name };
+  }
+
+  async deleteFile(businessId: string, clientId: string, fileId: string): Promise<void> {
+    await this.assertClient(businessId, clientId);
+    // Файл в хранилище остаётся до ночной уборки (jobs/uploads-cleanup.ts: 7 дней без ссылок) — отмена и повтор безопасны
     await this.prisma.clientFile.deleteMany({ where: { id: fileId, clientId } });
   }
 

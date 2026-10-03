@@ -13,6 +13,7 @@ import { ClientPromoService } from './client-promo.service.js';
 import { PublicCatalogController } from './catalog.controller.js';
 import { MeController } from './me.controller.js';
 import { MeService } from './me.service.js';
+import { SitemapService } from './sitemap.service.js';
 import { TranslationsController } from './translations.controller.js';
 import { TranslationsService } from './translations.service.js';
 import { VisitCashController } from './visit-cash.controller.js';
@@ -45,6 +46,6 @@ import { VisitCashService } from './visit-cash.service.js';
 @Module({
   imports: [ScheduleModule, JournalModule, LoyaltyModule, PlatformModule],
   controllers: [PublicCatalogController, ClientPromoPublicController, ClientPromoBizController, MeController, AppReportsController, AppStaffController, TranslationsController, VisitCashController],
-  providers: [CatalogService, ClientPromoService, MeService, AppReportsService, AppStaffService, TranslationsService, VisitCashService],
+  providers: [CatalogService, SitemapService, ClientPromoService, MeService, AppReportsService, AppStaffService, TranslationsService, VisitCashService],
 })
 export class ClientModule {}

@@ -7,7 +7,7 @@ process.env.LOG_LEVEL = 'error';
 process.env.DATABASE_URL ??= 'mysql://test:test@localhost:3306/test';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
 
-const { enqueueConfirmRequests, confirmRequestAt, confirmConfigOf } = await import('./notify-confirm-requests.js');
+const { enqueueConfirmRequests, confirmRequestAt, confirmConfigOf, confirmTemplateOf } = await import('./notify-confirm-requests.js');
 type Prisma = Parameters<typeof enqueueConfirmRequests>[0];
 
 type Row = Record<string, unknown>;
@@ -192,4 +192,41 @@ test('тем же проходом, что напоминание за сутк�
   const w = world({ booking: { startAt: new Date(NOW.getTime() + 24 * H + 5 * 60_000) } });
   assert.equal((await enqueueConfirmRequests(w.prisma, NOW)).sent, 1);
   assert.ok(w.tables.notifyOutbox!.some((r) => r.dedupeKey === 'telegram:reminder24h:bk_1:777' && r.status === 'skipped'));
+});
+
+test('шаблон бизнеса типа 73: язык получателя, запасной русский, пусто — наш текст', () => {
+  const templates = { push: { ru: 'Привет {staff}', en: 'Hi {staff}' }, telegram: { ru: '  ' } };
+  assert.equal(confirmTemplateOf(templates, 'push', 'en'), 'Hi {staff}');
+  assert.equal(confirmTemplateOf(templates, 'push', 'hy'), 'Привет {staff}');
+  assert.equal(confirmTemplateOf(templates, 'telegram', 'ru'), undefined);
+  assert.equal(confirmTemplateOf(null, 'push', 'ru'), undefined);
+});
+
+test('пуш: текст из шаблона бизнеса с переменными, пустая переменная не оставляет «мастер: »', async () => {
+  const { prisma, tables } = world({
+    withApp: true,
+    override: { templates: { push: { ru: '{companyName}: ждём вас {date} в {time} ({service}, мастер: {staff}). Подтвердить: {link}' } } },
+  });
+  assert.equal((await enqueueConfirmRequests(prisma, NOW)).sent, 1);
+  const body = String(tables.notifyOutbox![0]!.body);
+  assert.match(body, /^Nuri Nail: ждём вас 04\.10 в 14:00 \(Маникюр, мастер: Анна\)\. Подтвердить: https?:\/\/[^ ]+\/bookings\/bk_1$/);
+  assert.doesNotMatch(body, /\{/);
+
+  const noStaff = world({ withApp: true, override: { templates: { push: { ru: 'Ждём вас {date}. Мастер: {master}.' } } } });
+  await enqueueConfirmRequests(noStaff.prisma, NOW);
+  assert.equal(String(noStaff.tables.notifyOutbox![0]!.body), 'Ждём вас 04.10.');
+});
+
+test('Telegram: фраза из шаблона бизнеса (канал telegram), карточка и кнопка «Приду» остаются; шаблон пуша Telegram не трогает', async () => {
+  const { prisma, tables } = world({ override: { templates: { telegram: { ru: '{companyName} просит подтвердить визит {date} в {time}' } } } });
+  assert.equal((await enqueueConfirmRequests(prisma, NOW)).sent, 1);
+  const tg = tables.notifyOutbox!.find((r) => r.kind === 'confirm_request')!;
+  assert.match(String(tg.body), /^Nuri Nail просит подтвердить визит 04\.10 в 14:00\n\nNuri Nail\n/);
+  assert.doesNotMatch(String(tg.body), /Подтвердите, пожалуйста/);
+  const keyboard = (tg.meta as { replyMarkup: { inline_keyboard: { callback_data?: string }[][] } }).replyMarkup.inline_keyboard;
+  assert.ok(keyboard.flat().some((b) => b.callback_data === 'c:bk_1'));
+
+  const pushOnly = world({ override: { templates: { push: { ru: 'Только пуш' } } } });
+  await enqueueConfirmRequests(pushOnly.prisma, NOW);
+  assert.match(String(pushOnly.tables.notifyOutbox!.find((r) => r.kind === 'confirm_request')!.body), /Подтвердите, пожалуйста/);
 });

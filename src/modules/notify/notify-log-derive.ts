@@ -205,7 +205,8 @@ function dateVars(startLocal: string, at: string, format: '24h' | '12h', lang: L
 
 // ─────────── шаблоны ───────────
 
-function fillTemplate(text: string, vars: Record<string, string>): string {
+/** Подставить переменные шаблона и убрать «пустые» хвосты («мастер: » без имени, пустые скобки) — общий для журнала и отправки (тип 73) */
+export function fillTemplate(text: string, vars: Record<string, string>): string {
   return text
     .replace(/\{(\w+)\}/g, (_, key: string) => vars[key] ?? '')
     .replace(/[^.։:!?\n]*[:՝]\s*(?=[.։]|$)[.։]?/g, '')

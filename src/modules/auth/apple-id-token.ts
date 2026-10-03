@@ -18,6 +18,10 @@ export interface AppleProfile {
   email: string | null;
   /** Имя — не из токена: из первого ответа Apple приложению (givenName + familyName), если прислали */
   name: string | null;
+  /** Наш client_id (aud токена: bundle id приложения / Services ID) — им же меняется authorizationCode и отзывается вход */
+  clientId?: string;
+  /** Зашифрованный refresh token (apple-tokens.ts) — пока Apple ждёт привязки (pendingApple) */
+  refreshTokenEnc?: string | null;
 }
 
 export interface AppleVerifierOptions {
@@ -61,6 +65,7 @@ export class AppleIdTokenVerifier {
     // email_verified у Apple бывает строкой 'true'; неподтверждённую почту не берём (вход по sub всё равно годен)
     const verified = c.email_verified === undefined || c.email_verified === true || c.email_verified === 'true';
     const email = typeof c.email === 'string' && c.email && verified ? c.email.slice(0, 254) : null;
-    return { sub: c.sub, email, name: null };
+    const aud = (Array.isArray(c.aud) ? c.aud : [c.aud]).find((a): a is string => typeof a === 'string' && this.opts.clientIds.includes(a));
+    return { sub: c.sub, email, name: null, clientId: aud };
   }
 }

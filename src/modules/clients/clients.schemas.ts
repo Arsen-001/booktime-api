@@ -266,7 +266,13 @@ export const fileOut = z.object({
   name: z.string(),
   ext: z.string(),
   size: z.number(),
+  /** Старые строки — data: URL; файлы в хранилище — то же, что contentUrl */
   dataUrl: z.string(),
+  /** Скачать через кабинет (cookie сессии, право clients.view): attachment, nosniff */
+  contentUrl: z.string(),
+  /** Файл в закрытом хранилище (а не data: URL в базе) */
+  stored: z.boolean(),
+  mime: z.string().nullable(),
   uploadedAt: z.string(),
   uploadedBy: z.string(),
 });

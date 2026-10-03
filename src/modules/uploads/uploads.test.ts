@@ -200,6 +200,7 @@ function fakeDb(rows: Row[] = []) {
     upload: {
       findUnique: async ({ where }: { where: { key: string } }) => rows.find((r) => r.key === where.key) ?? null,
       create: async ({ data }: { data: Row }) => (rows.push(data), data),
+      update: async ({ where, data }: { where: { id: string }; data: Partial<Row> }) => Object.assign(rows.find((r) => r.id === where.id)!, data),
       aggregate: async ({ where }: { where: Partial<Row> }) => ({
         _sum: { bytes: rows.filter((r) => Object.entries(where).every(([k, v]) => r[k as keyof Row] === v)).reduce((s, r) => s + r.bytes, 0) || null },
       }),

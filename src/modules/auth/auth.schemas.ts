@@ -42,6 +42,11 @@ export const appleBody = z.object({
   consent: z.boolean().optional(),
   /** Имя из первого ответа Apple (givenName + familyName) — Apple присылает его только при первом входе */
   name: z.string().max(120).optional(),
+  /**
+   * Одноразовый authorizationCode из того же ответа Apple (04.10.2026): сервер меняет его на refresh token и хранит
+   * зашифрованным — чтобы отозвать вход через Apple при удалении аккаунта (App Store 5.1.1(v)). Необязателен.
+   */
+  authorizationCode: z.string().min(8).max(2048).optional(),
 });
 
 /** Привязать Google из профиля вошедшего */

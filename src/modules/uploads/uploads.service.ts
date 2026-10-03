@@ -1,10 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { UPLOAD_STORAGE } from '../../adapters/adapters.js';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { PRIVATE_STORAGE, UPLOAD_STORAGE } from '../../adapters/adapters.js';
 import { storageConfig, type FileStorage, type StorageConfig } from '../../adapters/storage/storage.js';
 import { env } from '../../common/config/env.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { checkDocument, clientFileKey, CLIENT_FILE_KEY, DocumentError } from './document.js';
 import { ImageError, processImage, thumbKeyOf, uploadKeys } from './image.js';
 
 /** Кто владеет фото: бизнес (кабинет), человек (/v1/me), наша панель */
@@ -43,7 +44,61 @@ export class UploadsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: UploadsDb,
     @Inject(UPLOAD_STORAGE) private readonly storage: FileStorage,
+    /** Закрытое хранилище документов клиентов — наружу не раздаётся */
+    @Optional() @Inject(PRIVATE_STORAGE) private readonly privateStorage?: FileStorage,
   ) {}
+
+  private get docs(): FileStorage {
+    if (!this.privateStorage) throw new Error('private storage is not configured');
+    return this.privateStorage;
+  }
+
+  /**
+   * Документ клиента (04.10.2026): PDF / картинка / Word / Excel / текст до 10 МБ — тип по сигнатуре, файл как есть
+   * (без перекодирования) в закрытое хранилище под client-files/<бизнес>/<hash>.<ext>, строка uploads для квоты и
+   * уборки. Тот же файл того же бизнеса — тот же ключ и та же строка.
+   */
+  async storeDocument(
+    owner: { businessId: string; by: string },
+    file: { buffer: Buffer } | undefined,
+    ext: string,
+  ): Promise<{ key: string; mime: string; bytes: number }> {
+    if (!file?.buffer?.length) throw new ApiError('file_required', 'Send the file in multipart field "file"');
+    let doc;
+    try {
+      doc = checkDocument(file.buffer, ext);
+    } catch (e) {
+      if (e instanceof DocumentError) {
+        if (e.reason === 'too_large') throw new ApiError('file_too_large', e.message);
+        if (e.reason === 'empty') throw new ApiError('file_required', e.message);
+        throw new ApiError('unsupported_file', e.message);
+      }
+      throw e;
+    }
+    const key = clientFileKey(owner.businessId, doc);
+    const out = { key, mime: doc.mime, bytes: doc.bytes };
+    const existing = await this.prisma.upload.findUnique({ where: { key } });
+    if (!existing) await this.checkQuota({ kind: 'business', businessId: owner.businessId, by: owner.by }, doc.bytes);
+    await this.docs.put(key, file.buffer, doc.mime, { cacheControl: 'private, no-store' });
+    if (existing) {
+      await this.touch(existing.id);
+      return out;
+    }
+    try {
+      await this.prisma.upload.create({
+        data: { id: newId('upload'), businessId: owner.businessId, userId: null, key, mime: doc.mime, bytes: doc.bytes, width: 0, height: 0, createdBy: owner.by },
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code !== 'P2002') throw e;
+    }
+    return out;
+  }
+
+  /** Содержимое документа клиента по ключу (только ключи client-files/…); нет — null */
+  async readDocument(key: string): Promise<Buffer | null> {
+    if (!CLIENT_FILE_KEY.test(key)) return null;
+    return this.docs.get(key);
+  }
 
   /** Внешний адрес файла: публичный бакет (S3_PUBLIC_URL) или раздача через API */
   urlOf(key: string, requestBase: string): string {
@@ -80,6 +135,7 @@ export class UploadsService {
     const existing = await this.prisma.upload.findUnique({ where: { key } });
     if (existing) {
       await this.putFiles(key, thumbKey, img);
+      await this.touch(existing.id);
       return view(existing);
     }
     await this.checkQuota(owner, bytes);
@@ -107,6 +163,15 @@ export class UploadsService {
       }
       throw e;
     }
+  }
+
+  /**
+   * Тот же файл загрузили снова: created_at = сейчас. Уборка (jobs/uploads-cleanup.ts) удаляет только строки старше
+   * 7 дней без ссылок — иначе старое неиспользуемое фото, загруженное повторно прямо перед уборкой, исчезло бы
+   * до того, как форму сохранят.
+   */
+  private async touch(id: string): Promise<void> {
+    await this.prisma.upload.update({ where: { id }, data: { createdAt: new Date() } });
   }
 
   private async putFiles(key: string, thumbKey: string, img: { main: Buffer; thumb: Buffer; mime: string }): Promise<void> {

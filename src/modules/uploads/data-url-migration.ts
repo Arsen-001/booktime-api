@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 import type { FileStorage } from '../../adapters/storage/storage.js';
 import { newId } from '../../common/ids/ids.js';
 import { photoModerationRefId } from '../platform/moderation.service.js';
+import { checkDocument, clientFileKey } from './document.js';
 import { processImage, uploadKeys } from './image.js';
+import { listTextColumns, q, type RawDb } from './references.js';
 import { IMMUTABLE_CACHE } from './uploads.service.js';
 
 /**
@@ -15,7 +17,7 @@ import { IMMUTABLE_CACHE } from './uploads.service.js';
 /** data: URL картинки внутри любой строки (поле целиком, JSON, текст) */
 export const DATA_URL_RE = /data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/]+={0,2}/g;
 
-/** Таблицы, которые не трогаем: служебные, сами загрузки, документы клиентов (там не только картинки, скачиваются как файл) */
+/** Таблицы, которые не трогаем: служебные, сами загрузки, документы клиентов (их переносит migrateClientFiles — в закрытое хранилище, как есть) */
 export const DEFAULT_SKIP = ['_prisma_migrations', 'uploads', 'client_files'];
 
 /** Заменить все data: URL в тексте; replace — асинхронно, по одному на уникальную картинку */
@@ -33,10 +35,7 @@ export async function rewriteDataUrls(text: string, replace: (dataUrl: string) =
   return { text: out, found: matches.length, replaced };
 }
 
-interface Db {
-  $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
-  $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number>;
-}
+type Db = RawDb;
 
 export interface MigrationOptions {
   db: Db;
@@ -56,23 +55,11 @@ export interface MigrationReport {
   moderationRefsUpdated: number;
 }
 
-const q = (id: string) => '`' + id.replace(/`/g, '``') + '`';
-
 export async function migrateDataUrls(o: MigrationOptions): Promise<MigrationReport> {
   const log = o.log ?? (() => {});
   const skip = new Set(o.skip ?? DEFAULT_SKIP);
-  const cols = await o.db.$queryRawUnsafe<{ t: string; c: string; dt: string }[]>(
-    `SELECT TABLE_NAME AS t, COLUMN_NAME AS c, DATA_TYPE AS dt FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND DATA_TYPE IN ('json','longtext','mediumtext','text','varchar') ORDER BY TABLE_NAME, ORDINAL_POSITION`,
-  );
-  const pkRows = await o.db.$queryRawUnsafe<{ t: string; c: string }[]>(
-    `SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM information_schema.KEY_COLUMN_USAGE
-     WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY TABLE_NAME, ORDINAL_POSITION`,
-  );
-  const pks = new Map<string, string[]>();
-  for (const r of pkRows) pks.set(r.t, [...(pks.get(r.t) ?? []), r.c]);
-  const colsOf = new Map<string, Set<string>>();
-  for (const r of cols) colsOf.set(r.t, (colsOf.get(r.t) ?? new Set()).add(r.c));
+  const { columns, pks, colsOf } = await listTextColumns(o.db);
+  const cols = columns.map((c) => ({ t: c.table, c: c.column, dt: c.dataType }));
 
   const report: MigrationReport = { columns: [], uniqueImages: 0, failed: 0, moderationRefsUpdated: 0 };
   /** sha256(data URL) → новый адрес (null — картинку не удалось разобрать) */
@@ -158,5 +145,77 @@ export async function migrateDataUrls(o: MigrationOptions): Promise<MigrationRep
       report.moderationRefsUpdated += await o.db.$executeRawUnsafe('UPDATE `moderation_items` SET `ref_id` = ? WHERE `ref_id` = ?', to, from);
     }
   }
+  return report;
+}
+
+export interface ClientFilesReport {
+  rows: number;
+  moved: number;
+  failed: number;
+  bytes: number;
+}
+
+/**
+ * Документы клиентов (client_files.data_url, 04.10.2026): data: URL любого типа → файл как есть (тип по сигнатуре,
+ * document.ts) в ЗАКРЫТОЕ хранилище под client-files/<бизнес>/<hash>.<ext>, строка uploads (квота и уборка), в
+ * строке — storage_key и mime, data_url очищается. Неузнанный тип — остаётся data: URL (скачивается как раньше).
+ * apply: false — только отчёт.
+ */
+export async function migrateClientFiles(o: { db: Db; storage: FileStorage; apply: boolean; log?: (line: string) => void }): Promise<ClientFilesReport> {
+  const log = o.log ?? (() => {});
+  const report: ClientFilesReport = { rows: 0, moved: 0, failed: 0, bytes: 0 };
+  const ids = await o.db.$queryRawUnsafe<{ id: string }[]>(
+    "SELECT `id` FROM `client_files` WHERE `storage_key` IS NULL AND `data_url` LIKE 'data:%' ORDER BY `id`",
+  );
+  for (const { id } of ids) {
+    const row = (
+      await o.db.$queryRawUnsafe<{ id: string; ext: string; data_url: string | null; business_id: string | null }[]>(
+        'SELECT f.`id`, f.`ext`, f.`data_url`, c.`business_id` FROM `client_files` f LEFT JOIN `clients` c ON c.`id` = f.`client_id` WHERE f.`id` = ?',
+        id,
+      )
+    )[0];
+    if (!row?.data_url || !row.business_id) continue;
+    report.rows++;
+    const comma = row.data_url.indexOf(',');
+    const head = row.data_url.slice(0, comma);
+    if (comma < 0 || !head.endsWith(';base64')) {
+      report.failed++;
+      log(`  ! ${id}: не base64 data: URL — оставлен как есть`);
+      continue;
+    }
+    try {
+      const buf = Buffer.from(row.data_url.slice(comma + 1), 'base64');
+      const doc = checkDocument(buf, row.ext);
+      const key = clientFileKey(row.business_id, doc);
+      report.bytes += doc.bytes;
+      if (o.apply) {
+        await o.storage.put(key, buf, doc.mime, { cacheControl: 'private, no-store' });
+        await o.db.$executeRawUnsafe(
+          'INSERT IGNORE INTO `uploads` (id, business_id, user_id, `key`, mime, bytes, width, height, created_by) VALUES (?,?,?,?,?,?,?,?,?)',
+          newId('upload'),
+          row.business_id,
+          null,
+          key,
+          doc.mime,
+          doc.bytes,
+          0,
+          0,
+          'migration',
+        );
+        await o.db.$executeRawUnsafe(
+          'UPDATE `client_files` SET `storage_key` = ?, `mime` = ?, `size` = ?, `data_url` = NULL WHERE `id` = ? AND `storage_key` IS NULL',
+          key,
+          doc.mime,
+          doc.bytes,
+          id,
+        );
+      }
+      report.moved++;
+    } catch (e) {
+      report.failed++;
+      log(`  ! ${id} (.${row.ext}): ${(e as Error).message} — оставлен data: URL`);
+    }
+  }
+  log(`client_files: строк ${report.rows}, ${o.apply ? 'перенесено' : 'перенесётся'} ${report.moved}, не разобрать ${report.failed}, ${(report.bytes / 1024 / 1024).toFixed(1)} МБ`);
   return report;
 }

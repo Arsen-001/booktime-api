@@ -12,6 +12,8 @@ export async function createApp(): Promise<{ app: NestExpressApplication; openap
   // services/client) — дефолтный лимит Express (100kb) резал их 413 ещё до валидации zod (этап 21, лейн rest).
   app.useBodyParser('json', { limit: '10mb' });
   app.useBodyParser('urlencoded', { extended: true, limit: '10mb' });
+  // IP для лимитов (rate-limit.ts) и журнала сессий: за прокси Railway — из X-Forwarded-For (TRUST_PROXY=1)
+  if (env.TRUST_PROXY) app.set('trust proxy', env.TRUST_PROXY);
   app.enableCors({ origin: env.CORS_ORIGINS, credentials: true });
   app.useGlobalFilters(new ErrorFilter());
   app.enableShutdownHooks();

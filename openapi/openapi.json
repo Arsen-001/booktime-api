@@ -800,6 +800,11 @@
                   "name": {
                     "type": "string",
                     "maxLength": 120
+                  },
+                  "authorizationCode": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 2048
                   }
                 },
                 "required": [
@@ -45833,6 +45838,14 @@
         "operationId": "ClientsController_listFiles",
         "parameters": [
           {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "id",
             "required": true,
             "in": "path",
@@ -45869,6 +45882,18 @@
                       "dataUrl": {
                         "type": "string"
                       },
+                      "contentUrl": {
+                        "type": "string"
+                      },
+                      "stored": {
+                        "type": "boolean"
+                      },
+                      "mime": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
                       "uploadedAt": {
                         "type": "string"
                       },
@@ -45883,6 +45908,9 @@
                       "ext",
                       "size",
                       "dataUrl",
+                      "contentUrl",
+                      "stored",
+                      "mime",
                       "uploadedAt",
                       "uploadedBy"
                     ]
@@ -45904,6 +45932,14 @@
       "post": {
         "operationId": "ClientsController_addFile",
         "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "id",
             "required": true,
@@ -45977,6 +46013,18 @@
                     "dataUrl": {
                       "type": "string"
                     },
+                    "contentUrl": {
+                      "type": "string"
+                    },
+                    "stored": {
+                      "type": "boolean"
+                    },
+                    "mime": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "uploadedAt": {
                       "type": "string"
                     },
@@ -45991,6 +46039,9 @@
                     "ext",
                     "size",
                     "dataUrl",
+                    "contentUrl",
+                    "stored",
+                    "mime",
                     "uploadedAt",
                     "uploadedBy"
                   ]
@@ -46004,6 +46055,170 @@
             "cookie": []
           }
         ],
+        "summary": "Документ data: URL в JSON (прежние сборки сайта); новый сайт — POST …/files/upload файлом",
+        "tags": [
+          "clients"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/clients/{id}/files/upload": {
+      "post": {
+        "operationId": "ClientsController_uploadFile",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Имя файла (по умолчанию — из multipart)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "ext": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "number"
+                    },
+                    "dataUrl": {
+                      "type": "string"
+                    },
+                    "contentUrl": {
+                      "type": "string"
+                    },
+                    "stored": {
+                      "type": "boolean"
+                    },
+                    "mime": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "uploadedAt": {
+                      "type": "string"
+                    },
+                    "uploadedBy": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "clientId",
+                    "name",
+                    "ext",
+                    "size",
+                    "dataUrl",
+                    "contentUrl",
+                    "stored",
+                    "mime",
+                    "uploadedAt",
+                    "uploadedBy"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Документ клиента файлом (04.10.2026): PDF / JPEG / PNG / GIF / WebP / Word / Excel / текст до 10 МБ, тип по сигнатуре, без перекодирования, в закрытое хранилище. Ошибки: file_required 422, file_too_large 413, unsupported_file 415, bad_ext 422, upload_quota 422",
+        "tags": [
+          "clients"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/clients/{id}/files/{fileId}/content": {
+      "get": {
+        "operationId": "ClientsController_fileContent",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Скачать документ клиента (cookie сессии, право clients.view): Content-Disposition: attachment, nosniff, без кэша. Работает и для старых строк с data: URL",
         "tags": [
           "clients"
         ]
@@ -46013,6 +46228,14 @@
       "delete": {
         "operationId": "ClientsController_deleteFile",
         "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "id",
             "required": true,
@@ -47326,6 +47549,147 @@
         ],
         "tags": [
           "clients"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/uploads": {
+      "post": {
+        "operationId": "UploadsController_biz",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Фото бизнеса (логотип, фото салона/мастера/услуги, сторис, заказы): JPEG/PNG/WebP/GIF до 10 МБ → { id, url, thumbUrl, width, height, bytes }",
+        "tags": [
+          "uploads"
+        ]
+      }
+    },
+    "/v1/me/uploads": {
+      "post": {
+        "operationId": "UploadsController_me",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Фото человека (аватар в профиле клиента)",
+        "tags": [
+          "uploads"
+        ]
+      }
+    },
+    "/v1/platform/uploads": {
+      "post": {
+        "operationId": "UploadsController_platform",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Фото нашей панели (реклама, мастер подключения салона)",
+        "tags": [
+          "uploads"
+        ]
+      }
+    },
+    "/v1/files/{path}": {
+      "get": {
+        "operationId": "FilesController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Файл фото по ключу из url загрузки",
+        "tags": [
+          "uploads"
         ]
       }
     },
@@ -58977,6 +59341,21 @@
         ],
         "tags": [
           "platform-connect"
+        ]
+      }
+    },
+    "/v1/public/sitemap": {
+      "get": {
+        "operationId": "PublicCatalogController_sitemap",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Лёгкий список для sitemap.xml: бизнесы (slug, сферы, районы, фото, дата) и мастера салонов — без окон, кэш 10 мин",
+        "tags": [
+          "client"
         ]
       }
     },
@@ -89031,147 +89410,6 @@
         "summary": "Статус заказа по публичному коду (без телефона клиента, комментария и сотрудников)",
         "tags": [
           "orders"
-        ]
-      }
-    },
-    "/v1/biz/{businessId}/uploads": {
-      "post": {
-        "operationId": "UploadsController_biz",
-        "parameters": [
-          {
-            "name": "businessId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "file"
-                ],
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "summary": "Фото бизнеса (логотип, фото салона/мастера/услуги, сторис, заказы): JPEG/PNG/WebP/GIF до 10 МБ → { id, url, thumbUrl, width, height, bytes }",
-        "tags": [
-          "uploads"
-        ]
-      }
-    },
-    "/v1/me/uploads": {
-      "post": {
-        "operationId": "UploadsController_me",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "file"
-                ],
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "summary": "Фото человека (аватар в профиле клиента)",
-        "tags": [
-          "uploads"
-        ]
-      }
-    },
-    "/v1/platform/uploads": {
-      "post": {
-        "operationId": "UploadsController_platform",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "file"
-                ],
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "cookie": []
-          }
-        ],
-        "summary": "Фото нашей панели (реклама, мастер подключения салона)",
-        "tags": [
-          "uploads"
-        ]
-      }
-    },
-    "/v1/files/{path}": {
-      "get": {
-        "operationId": "FilesController_get",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "summary": "Файл фото по ключу из url загрузки",
-        "tags": [
-          "uploads"
         ]
       }
     }

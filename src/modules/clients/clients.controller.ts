@@ -1,5 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
+import { RateLimit } from '../../common/rate-limit/rate-limit.js';
+import { attachmentDisposition, MAX_DOCUMENT_BYTES } from '../uploads/document.js';
+import { requestBase } from '../uploads/uploads.controller.js';
 import { z } from 'zod';
 import type { RequestContext, RequestWithContext } from '../../common/http/context.js';
 import { Biz, Ctx } from '../../common/http/guards.js';
@@ -295,22 +300,79 @@ export class ClientsController {
   @Get('clients/:id/files')
   @Biz('clients.view')
   @ZodOk(z.array(fileOut))
-  listFiles(@Param('id') id: string) {
-    return this.extras.listFiles(id);
+  listFiles(@Param('businessId') businessId: string, @Param('id') id: string, @Req() req: Request) {
+    return this.extras.listFiles(businessId, id, requestBase(req));
   }
 
   @Post('clients/:id/files')
   @Biz('clients.edit')
   @ZodBody(addFileBody)
   @ZodOk(fileOut)
-  addFile(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new Zod(addFileBody)) body: z.infer<typeof addFileBody>) {
-    return this.extras.addFile(ctx, id, body);
+  @ApiOperation({ summary: 'Документ data: URL в JSON (прежние сборки сайта); новый сайт — POST …/files/upload файлом' })
+  addFile(
+    @Ctx() ctx: RequestContext,
+    @Param('businessId') businessId: string,
+    @Param('id') id: string,
+    @Body(new Zod(addFileBody)) body: z.infer<typeof addFileBody>,
+    @Req() req: Request,
+  ) {
+    return this.extras.addFile(ctx, businessId, id, body, requestBase(req));
+  }
+
+  @Post('clients/:id/files/upload')
+  @Biz('clients.edit')
+  @RateLimit({ bucket: 'uploads', limit: 60, windowSec: 600, by: 'session' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1, fields: 4, parts: 6 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary' }, name: { type: 'string', description: 'Имя файла (по умолчанию — из multipart)' } } },
+  })
+  @ZodOk(fileOut)
+  @ApiOperation({
+    summary:
+      'Документ клиента файлом (04.10.2026): PDF / JPEG / PNG / GIF / WebP / Word / Excel / текст до 10 МБ, тип по сигнатуре, ' +
+      'без перекодирования, в закрытое хранилище. Ошибки: file_required 422, file_too_large 413, unsupported_file 415, bad_ext 422, upload_quota 422',
+  })
+  uploadFile(
+    @Ctx() ctx: RequestContext,
+    @Param('businessId') businessId: string,
+    @Param('id') id: string,
+    @UploadedFile() file: { buffer: Buffer; originalname?: string } | undefined,
+    @Body() body: { name?: unknown } | undefined,
+    @Req() req: Request,
+  ) {
+    return this.extras.uploadFile(ctx, businessId, id, file, typeof body?.name === 'string' ? body.name : undefined, requestBase(req));
+  }
+
+  @Get('clients/:id/files/:fileId/content')
+  @Biz('clients.view')
+  @ApiOperation({
+    summary:
+      'Скачать документ клиента (cookie сессии, право clients.view): Content-Disposition: attachment, nosniff, без кэша. ' +
+      'Работает и для старых строк с data: URL',
+  })
+  async fileContent(
+    @Param('businessId') businessId: string,
+    @Param('id') id: string,
+    @Param('fileId') fileId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const f = await this.extras.fileContent(businessId, id, fileId);
+    res.setHeader('Content-Type', f.mime);
+    res.setHeader('Content-Length', String(f.body.length));
+    res.setHeader('Content-Disposition', attachmentDisposition(f.name));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    // Сайт (booktime.am) показывает фото визита <img> с api.booktime.am — тот же сайт (site), чужим нельзя
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+    res.status(200).end(f.body);
   }
 
   @Delete('clients/:id/files/:fileId')
   @Biz('clients.edit')
-  deleteFile(@Param('id') id: string, @Param('fileId') fileId: string) {
-    return this.extras.deleteFile(id, fileId);
+  deleteFile(@Param('businessId') businessId: string, @Param('id') id: string, @Param('fileId') fileId: string) {
+    return this.extras.deleteFile(businessId, id, fileId);
   }
 
   // ─────────── приложение клиента (F-04-072, F-00-130) ───────────

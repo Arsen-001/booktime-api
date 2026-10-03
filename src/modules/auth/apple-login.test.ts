@@ -21,7 +21,7 @@ type RequestContext = import('../../common/http/context.js').RequestContext;
 
 const CODE = '1234';
 const PHONE = '+37491123456';
-const ANNA: AppleProfile = { sub: 'a-anna', email: 'anna@icloud.com', name: null };
+const ANNA: AppleProfile = { sub: 'a-anna', email: 'anna@icloud.com', name: null, clientId: 'am.booktime.app' };
 const HIDDEN: AppleProfile = { sub: 'a-hidden', email: null, name: null };
 
 function memoryPending<P>(prefix: string): PendingLinkStore<P> {
@@ -41,7 +41,7 @@ function memoryPending<P>(prefix: string): PendingLinkStore<P> {
   };
 }
 
-function setup() {
+function setup(tokenClient?: { exchangeCode: (code: string, clientId: string) => Promise<{ refreshTokenEnc: string; clientId: string } | null> }) {
   const db = memoryDb();
   // Проверка самого токена — в apple-id-token.test.ts; здесь identityToken — имя профиля
   const appleTokens: Record<string, AppleProfile> = { anna: ANNA, hidden: HIDDEN };
@@ -80,6 +80,7 @@ function setup() {
     memoryPending<GoogleProfile>('g'),
     apple as never,
     memoryPending<AppleProfile>('a'),
+    tokenClient as never,
   );
   const ctx = { ip: '10.0.0.1', device: 'test', session: null, member: null } as unknown as RequestContext;
   return { db, auth, ctx, res: {} as never };
@@ -205,4 +206,48 @@ test('клиент без принятого соглашения (привяз�
   await auth.verifyCode(ctx, res, { phone: PHONE, code: CODE, app: 'business', pendingApple: r.pendingApple!.token });
   await rejects(auth.appleLogin(ctx, res, { identityToken: 'anna', app: 'client' }), 'consent_required');
   assert.equal((await auth.appleLogin(ctx, res, { identityToken: 'anna', app: 'client', consent: true })).session?.consent, true);
+});
+
+// ─────────── authorizationCode → refresh token (04.10.2026, отзыв при удалении аккаунта) ───────────
+
+function tokenStub(fail = false) {
+  const calls: [string, string][] = [];
+  return {
+    calls,
+    exchangeCode: async (code: string, clientId: string) => {
+      calls.push([code, clientId]);
+      return fail ? null : { refreshTokenEnc: `enc(${code})`, clientId };
+    },
+  };
+}
+
+test('authorizationCode при первом входе: обмен по client_id из токена, токен ждёт в pendingApple и ложится на привязку', async () => {
+  const tokens = tokenStub();
+  const { auth, ctx, res, db } = setup(tokens);
+  const r = await auth.appleLogin(ctx, res, { identityToken: 'anna', app: 'client', consent: true, authorizationCode: 'code-1' });
+  assert.deepEqual(tokens.calls, [['code-1', 'am.booktime.app']]);
+  await auth.verifyCode(ctx, res, { phone: PHONE, code: CODE, app: 'client', consent: true, pendingApple: r.pendingApple!.token });
+  assert.equal(db.identities[0]!.refreshTokenEnc, 'enc(code-1)');
+  assert.equal(db.identities[0]!.tokenClientId, 'am.booktime.app');
+});
+
+test('authorizationCode при повторном входе обновляет сохранённый токен; без кода — токен не трогается', async () => {
+  const tokens = tokenStub();
+  const { auth, ctx, res, db } = setup(tokens);
+  const r = await auth.appleLogin(ctx, res, { identityToken: 'anna', app: 'client', consent: true });
+  await auth.verifyCode(ctx, res, { phone: PHONE, code: CODE, app: 'client', consent: true, pendingApple: r.pendingApple!.token });
+  assert.equal(db.identities[0]!.refreshTokenEnc, undefined);
+  assert.ok((await auth.appleLogin(ctx, res, { identityToken: 'anna', app: 'client', authorizationCode: 'code-2' })).session);
+  assert.equal(db.identities[0]!.refreshTokenEnc, 'enc(code-2)');
+  await auth.appleLogin(ctx, res, { identityToken: 'anna', app: 'client' });
+  assert.equal(db.identities[0]!.refreshTokenEnc, 'enc(code-2)');
+  assert.equal(tokens.calls.length, 1);
+});
+
+test('обмен не удался (Apple недоступен, ключа нет) — вход всё равно идёт, токена нет', async () => {
+  const { auth, ctx, res, db } = setup(tokenStub(true));
+  const r = await auth.appleLogin(ctx, res, { identityToken: 'anna', app: 'client', consent: true, authorizationCode: 'code-x' });
+  const view = await auth.verifyCode(ctx, res, { phone: PHONE, code: CODE, app: 'client', consent: true, pendingApple: r.pendingApple!.token });
+  assert.equal(view.appleLinked, true);
+  assert.equal(db.identities[0]!.refreshTokenEnc, undefined);
 });

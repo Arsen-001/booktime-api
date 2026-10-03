@@ -7860,5 +7860,81 @@ integrations 57, notify 7) → после **0**. Остаток скрипта �
   загрузка JPEG 4000×3000 с GPS → 2048×1536 без EXIF, PNG с прозрачностью → WebP, SVG под видом JPEG → 415, 11 МБ → 413,
   без файла → 422, чужой бизнес → 403, без входа → 401, раздача с заголовками и 304, попытки `..` → 404, галерея принимает
   вперемешку адрес файла и data: URL.
-- Не сделано: документы клиентов (`client_files`) остаются data: URL; уборка неиспользуемых файлов; `openapi/openapi.json`
-  не перегенерирован (`npm run openapi`).
+- Не сделано: ~~документы клиентов (`client_files`) остаются data: URL; уборка неиспользуемых файлов~~ (сделано ниже,
+  04.10.2026); `openapi/openapi.json` не перегенерирован (`npm run openapi`).
+
+### SEO: лёгкий список для sitemap, лимиты для SSR сайта, текст типа 73 из шаблона (04.10.2026)
+- `GET /v1/public/sitemap` (`client/sitemap.service.ts`, без входа): `{ businesses: [{ slug, kind, sphereIds, districts,
+  images, updatedAt }], masters: [{ id, businessSlug, updatedAt }] }`. Правила видимости — как у каталога и публичной
+  страницы: бизнес `active`; мастер `active`, не удалён, онлайн-запись включена, не «по ссылке»/«только мои», есть график
+  и активная онлайн-услуга. Мастерские «Заказов» (сфера заказов + раздел включён) — и без таких мастеров. `masters` —
+  только мастера салонов (у одиночки страница — `/b/<slug>`). Фото — только http(s), до 5. `updatedAt` — позднее из
+  бизнеса и его видимых мастеров. Окна НЕ считаются (каталог считал их каждому мастеру на 14 дней). Ответ — кэш в памяти
+  процесса 10 мин (одновременные запросы ждут один расчёт) и `Cache-Control: public, max-age=600, s-maxage=600,
+  stale-while-revalidate=3600` (только на удачный ответ). Лимит `public-sitemap` 30/мин по IP.
+- SSR сайта (`common/rate-limit/rate-limit.ts`): заголовок `X-BT-SSR` = `SSR_SHARED_SECRET` (сравнение за постоянное
+  время) → у GET-маршрутов с лимитом по IP своя корзина `ssr:<bucket>` и предел × `SSR_RATE_MULTIPLIER` (20). Записи
+  (POST) и лимиты по сессии — как у всех. Секрет не задан — обычные лимиты.
+- `TRUST_PROXY` (число прокси, Railway — 1): `app.set('trust proxy')` — IP для лимитов из `X-Forwarded-For`, а не адрес
+  прокси. Пусто — как раньше.
+- Тип 73 «Просим подтвердить визит» (`jobs/notify-confirm-requests.ts`): текст пуша и фраза Telegram — из шаблона бизнеса
+  этого типа (`NotifyTypeOverride.templates.push` / `.telegram`, язык получателя → ru) с переменными `{companyName}`
+  `{date}` `{time}` `{service}` `{staff}` `{link}` (`fillTemplate` из `notify-log-derive.ts` — тот же, что журнал
+  отправок: пустая переменная не оставляет «мастер: »). Не правили — для пуша старый свой текст вида `confirm_request`,
+  потом наш; для Telegram — наш. Карточка записи и кнопки «Приду / Отменить / Перенести» в Telegram — всегда.
+- Новые переменные: `SSR_SHARED_SECRET`, `SSR_RATE_MULTIPLIER`, `TRUST_PROXY` (.env.example; сайт — docs/DEPLOY.md
+  «Защита API от нагрузки поисковиков»).
+- Тесты: `client/sitemap.test.ts` (5: форма, фильтры, одиночка/«Заказы», кэш, пусто), `common/rate-limit/rate-limit.test.ts`
+  (3: секрет, корзина и предел, guard), `jobs/notify-confirm-requests.test.ts` (+3: шаблоны пуша и Telegram). Всего 174.
+- Не сделано: `openapi/openapi.json` не перегенерирован; живьём не проверено — локальная база без миграции
+  `orders_enabled` (миграции не применялись).
+
+### Отзыв «Войти через Apple», документы клиентов в закрытом хранилище, уборка загрузок (04.10.2026)
+- **Apple, App Store 5.1.1(v).** `POST /v1/auth/apple` принимает `authorizationCode` (необязательно): сервер меняет его на
+  refresh token (`https://appleid.apple.com/auth/token`, client_secret — JWT ES256 ключом .p8, `apple-tokens.ts`) и хранит
+  зашифрованным AES-256-GCM (`common/crypto/secret-box.ts`, ключ `SECRETS_KEY`) в `user_identities.refresh_token_enc` +
+  `token_client_id` (client_id = aud identity token, `AppleProfile.clientId`). Непривязанный Apple — токен ждёт в
+  pendingApple (Redis, уже шифртекст) и ложится на строку при привязке; повторный вход с кодом обновляет токен.
+  Удаление аккаунта (`jobs/auth-housekeeping.ts`): токен читается до транзакции, после неё — `revokeApple` → задача
+  `apple.revoke` в системной очереди (6 попыток, экспонента от 1 мин) → `https://appleid.apple.com/auth/revoke`. Всё по
+  возможности: нет `APPLE_TEAM_ID`/`APPLE_KEY_ID`/`APPLE_PRIVATE_KEY` или `SECRETS_KEY` — обмен и отзыв пропускаются с
+  warn; Apple недоступен при входе — вход идёт без токена; ошибка постановки в очередь — аккаунт всё равно удалён.
+  Сайт передаёт `authorizationCode` из нативного окна (booking-platform `GoogleSignIn.tsx` → `signInWithApple`; плагин
+  booktime-mobile уже отдаёт его).
+- **Документы клиентов.** `POST /v1/biz/:businessId/clients/:id/files/upload` (`clients.edit`, multipart `file` + `name`,
+  лимит `uploads`): `uploads/document.ts::checkDocument` — PDF, JPEG/PNG/GIF/WebP, docx/xlsx (ZIP с `[Content_Types].xml`
+  и `word/`|`xl/`), doc/xls (OLE), txt (UTF-8 без NUL) по сигнатуре, до 10 МБ, без перекодирования →
+  `UploadsService.storeDocument` → закрытое хранилище `PRIVATE_STORAGE` (`createPrivateUploadStorage`: S3 без
+  `S3_PUBLIC_URL` — `private/` в бакете, иначе диск `PRIVATE_FILES_DIR`, production `/data/private`) под
+  `client-files/<бизнес>/<sha256[:32]>.<ext>` + строка `uploads` (квота бизнеса, уборка). Строка `client_files`:
+  `storage_key`, `mime`, `data_url = NULL`. `GET …/clients/:id/files/:fileId/content` (`clients.view`): attachment
+  (filename* UTF-8), nosniff, `private, no-store`, CSP sandbox, CORP same-site; старые data: URL раскодируются (тип —
+  только из безопасного списка, иначе octet-stream). Ответ файла: `dataUrl` (старые — data: URL, новые — = contentUrl,
+  чтобы прежние сборки сайта работали), `contentUrl`, `stored`, `mime`. Все маршруты файлов теперь проверяют, что клиент
+  принадлежит бизнесу из пути (раньше список/добавление/удаление по id клиента из чужого бизнеса не проверялись) — 404.
+  Имя файла из multipart (busboy отдаёт latin1) восстанавливается в UTF-8.
+- **Перенос.** `scripts/migrate-data-urls.ts` вторым шагом переносит `client_files` (`migrateClientFiles`): файл как есть в
+  закрытое хранилище, `storage_key`/`mime`/`size`, `data_url = NULL`; неузнанный тип остаётся data: URL. По умолчанию
+  только отчёт; `--skip=client_files` / `--only=client_files`. Не запускался ни на одной базе. Поиск колонок вынесен в
+  `uploads/references.ts::listTextColumns` (общий с уборкой).
+- **Уборка** `jobs/uploads-cleanup.ts` (воркер, `uploads.cleanup`, 03:40 Ереван): строки `uploads` старше 7 дней, ключ
+  которых не встречается ни в одной text/varchar/JSON-колонке (`references.ts::collectReferencedKeys`: LIKE
+  `'%uploads/%'`/`'%client-files/%'` постранично, превью `_t` сводится к основному ключу; пропускаются журналы
+  `audit_events`, `booking_history`, `schedule_history`, `settings_change_log`, `price_rule_changes`,
+  `notify_log_entries`, `notify_outbox`, `login_events`, `webhook_deliveries`). Без `UPLOADS_CLEANUP=1` — только отчёт в
+  лог (кандидаты, без ссылок, байты, первые 20 ключей). С ним: сначала `deleteMany` строки с повторной проверкой
+  `created_at`, затем файлы (фото + превью / документ). Ошибка поиска ссылок — исключение, ничего не удаляется; ≤ 5000 строк
+  за ночь. Повторная загрузка того же файла освежает `uploads.created_at` (`UploadsService.touch`).
+- Миграция `20261004230000_client_files_storage_apple_tokens` (только файл): `client_files.storage_key`/`mime`, `data_url`
+  NULL-able, индекс `storage_key`; `uploads.mime` VARCHAR(120), индекс `created_at`; `user_identities.refresh_token_enc`
+  TEXT, `token_client_id`. Проверено на временной базе `booktime_check8` (удалена): migrate deploy + seed, `migrate diff`
+  пуст; вживую — загрузка PDF (кириллица в имени), HTML под видом PDF → 415, чужой клиент → 404, без входа → 401,
+  скачивание байт в байт с заголовками, `/v1/files/client-files/…` → 404; уборка на сиде: 1365 колонок за ~1,5 с, логотип
+  по превью-адресу сохранён, ничейное фото и удалённый документ удалены только с apply.
+- Новые переменные: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `SECRETS_KEY`, `PRIVATE_FILES_DIR`, `UPLOADS_CLEANUP`.
+  Новый код ошибки `unsupported_file` (415).
+- Тесты: `apple-tokens.test.ts` (10: SecretBox, client_secret ES256, обмен кода, нет ключей — пропуск, отзыв, удаление
+  аккаунта с отзывом и при сбое), `apple-login.test.ts` (+3: код при первом/повторном входе, сбой обмена),
+  `uploads/documents.test.ts` (18: сигнатуры, хранение как есть, права и чужой клиент, заголовки скачивания, старые
+  data: URL, перенос client_files, поиск ссылок, уборка — пробный режим, apply, сбой). Всего `npm test` — 201.
+

@@ -56,9 +56,14 @@ async function rejects(p: Promise<unknown>, code: string, reason?: RegExp) {
   await assert.rejects(p, (e: unknown) => e instanceof ApiError && e.code === code && (!reason || reason.test(e.message)));
 }
 
-test('верный токен → sub и почта; имени в токене нет', async () => {
+test('верный токен → sub, почта и client_id (aud); имени в токене нет', async () => {
   const { v } = verifier();
-  assert.deepEqual(await v.verify(makeToken({})), { sub: '001234.abcdef0123456789abcdef0123456789.1200', email: 'anna@icloud.com', name: null });
+  assert.deepEqual(await v.verify(makeToken({})), {
+    sub: '001234.abcdef0123456789abcdef0123456789.1200',
+    email: 'anna@icloud.com',
+    name: null,
+    clientId: APP_CLIENT,
+  });
 });
 
 test('aud — любой из APPLE_CLIENT_IDS (приложение бизнеса)', async () => {

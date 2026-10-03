@@ -11,7 +11,7 @@ import { createSmsProvider, SmsCodeSender } from './code-sender/sms.js';
 import { FakeMailSender, type MailSender } from './mail/mail.js';
 import { FakePaymentProvider, type PaymentProvider } from './payments/payments.js';
 import { createPushSenders, type PushSenders } from './push/push.js';
-import { createFileStorage, createUploadStorage, type FileStorage } from './storage/storage.js';
+import { createFileStorage, createPrivateUploadStorage, createUploadStorage, type FileStorage } from './storage/storage.js';
 import { createTelegramBot, type TelegramBot } from './telegram-bot/telegram-bot.js';
 
 /** «Розетки» внешних сервисов (PLAN.md Р14): внедряются по токенам, этапы заменяют заглушки настоящими */
@@ -23,6 +23,8 @@ export const BUSINESS_MESSENGER = Symbol('BUSINESS_MESSENGER');
 export const FILE_STORAGE = Symbol('FILE_STORAGE');
 /** Хранилище фото (диск UPLOADS_DIR или S3) — 04.10.2026 */
 export const UPLOAD_STORAGE = Symbol('UPLOAD_STORAGE');
+/** Закрытое хранилище документов клиентов (наружу не раздаётся) — 04.10.2026 */
+export const PRIVATE_STORAGE = Symbol('PRIVATE_STORAGE');
 export const TELEGRAM_BOT = Symbol('TELEGRAM_BOT');
 
 export type CodeSenders = Record<CodeChannel, CodeSender>;
@@ -54,5 +56,6 @@ export const adapterProviders = [
   { provide: BUSINESS_MESSENGER, useFactory: (): BusinessMessenger => new FakeBusinessMessenger() },
   { provide: FILE_STORAGE, useFactory: (): FileStorage => createFileStorage() },
   { provide: UPLOAD_STORAGE, useFactory: (): FileStorage => createUploadStorage() },
+  { provide: PRIVATE_STORAGE, useFactory: (): FileStorage => createPrivateUploadStorage() },
   { provide: TELEGRAM_BOT, useFactory: (): TelegramBot => createTelegramBot() },
 ];

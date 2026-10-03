@@ -115,9 +115,11 @@ export class S3FileStorage implements FileStorage {
 }
 
 export type StorageConfig =
-  | { driver: 'disk'; uploadsDir: string; storageDir: string }
+  | { driver: 'disk'; uploadsDir: string; storageDir: string; privateDir?: string }
   | {
       driver: 's3';
+      /** Документы клиентов, если бакет публичный (S3_PUBLIC_URL) — тогда они на диске */
+      privateDir?: string;
       endpoint: string;
       region: string;
       bucket: string;
@@ -133,6 +135,7 @@ type StorageEnv = Pick<
   | 'STORAGE_DRIVER'
   | 'STORAGE_DIR'
   | 'UPLOADS_DIR'
+  | 'PRIVATE_FILES_DIR'
   | 'S3_ENDPOINT'
   | 'S3_REGION'
   | 'S3_BUCKET'
@@ -146,6 +149,7 @@ type StorageEnv = Pick<
 
 /** Какой драйвер и с чем: все четыре переменные S3 — S3; STORAGE_DRIVER=s3 без них — ошибка конфигурации */
 export function storageConfig(e: StorageEnv = env): StorageConfig {
+  const privateDir = path.resolve(e.PRIVATE_FILES_DIR || (e.NODE_ENV === 'production' ? '/data/private' : './.private'));
   const accessKeyId = e.S3_ACCESS_KEY_ID || e.S3_ACCESS_KEY;
   const secretAccessKey = e.S3_SECRET_ACCESS_KEY || e.S3_SECRET_KEY;
   if (e.S3_BUCKET && e.S3_ENDPOINT && accessKeyId && secretAccessKey) {
@@ -158,6 +162,7 @@ export function storageConfig(e: StorageEnv = env): StorageConfig {
       secretAccessKey,
       forcePathStyle: e.S3_FORCE_PATH_STYLE,
       publicUrl: e.S3_PUBLIC_URL ? e.S3_PUBLIC_URL.replace(/\/+$/, '') : null,
+      privateDir,
     };
   }
   if (e.STORAGE_DRIVER === 's3') {
@@ -167,6 +172,7 @@ export function storageConfig(e: StorageEnv = env): StorageConfig {
     driver: 'disk',
     uploadsDir: path.resolve(e.UPLOADS_DIR || (e.NODE_ENV === 'production' ? '/data/uploads' : './.uploads')),
     storageDir: path.resolve(e.STORAGE_DIR),
+    privateDir,
   };
 }
 
@@ -188,6 +194,16 @@ function s3Client(cfg: Extract<StorageConfig, { driver: 's3' }>): S3Client {
 export function createFileStorage(cfg: StorageConfig = storageConfig()): FileStorage {
   if (cfg.driver === 's3' && !cfg.publicUrl) return new S3FileStorage(s3Client(cfg), cfg.bucket, 'private/');
   return new LocalFileStorage(cfg.driver === 'disk' ? cfg.storageDir : path.resolve(env.STORAGE_DIR));
+}
+
+/**
+ * Документы клиентов (04.10.2026) — личные данные, наружу не раздаются (только через проверку прав кабинета).
+ * S3 с закрытым бакетом — тот же бакет под private/; публичный бакет (S3_PUBLIC_URL) или без S3 — диск
+ * PRIVATE_FILES_DIR (production — /data/private на постоянном диске Railway, локально ./.private).
+ */
+export function createPrivateUploadStorage(cfg: StorageConfig = storageConfig()): FileStorage {
+  if (cfg.driver === 's3' && !cfg.publicUrl) return new S3FileStorage(s3Client(cfg), cfg.bucket, 'private/');
+  return new LocalFileStorage(cfg.privateDir ?? path.resolve(env.NODE_ENV === 'production' ? '/data/private' : './.private'));
 }
 
 /** Фото (раздаются GET /v1/files/<key> или прямо из бакета по S3_PUBLIC_URL) */

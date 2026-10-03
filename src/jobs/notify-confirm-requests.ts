@@ -1,8 +1,10 @@
+import { env } from '../common/config/env.js';
 import { isLocale, t, type Locale } from '../common/i18n/i18n.js';
 import { newId } from '../common/ids/ids.js';
 import { normalizePhone } from '../common/phone.js';
 import type { PrismaService } from '../common/prisma.service.js';
 import { DEFAULT_TZ, localToUtc, utcToLocal } from '../common/time/time.js';
+import { fillTemplate } from '../modules/notify/notify-log-derive.js';
 import { customTemplateOf } from '../modules/notify/notify-types.service.js';
 import { TYPE_REGISTRY, type NotifyScenario } from '../modules/notify/notify-type-registry.js';
 import { enqueueClientNotification, enqueueOutbox } from '../modules/notify/outbox.js';
@@ -54,6 +56,35 @@ export function confirmConfigOf(row?: { enabled: boolean | null; channels: unkno
   };
 }
 
+type ChannelTemplates = Partial<Record<string, Partial<Record<Locale, string>>>>;
+
+/**
+ * Свой текст бизнеса для канала (экран типа 73 «Уведомления → Просим подтвердить визит», NotifyTypeOverride.templates):
+ * на языке получателя, нет — русский; ничего не правили — undefined (уходит наш текст по умолчанию).
+ */
+export function confirmTemplateOf(templates: unknown, channel: 'push' | 'telegram', locale: Locale): string | undefined {
+  const byLang = (templates as ChannelTemplates | null | undefined)?.[channel];
+  const text = byLang?.[locale]?.trim() || byLang?.ru?.trim();
+  return text || undefined;
+}
+
+/** Переменные шаблона типа 73 — те же имена, что в редакторе и журнале отправок (notify-log-derive.ts::bookingVarsFor) */
+export function confirmTemplateVars(card: { businessName: string; service: string; master: string }, local: string, bookingId: string): Record<string, string> {
+  const date = `${local.slice(8, 10)}.${local.slice(5, 7)}`;
+  const time = local.slice(11, 16);
+  return {
+    companyName: card.businessName,
+    place: card.businessName,
+    date,
+    time,
+    dateTime: `${date} ${time}`,
+    service: card.service,
+    visitServices: card.service,
+    staff: card.master,
+    link: `${env.PUBLIC_SITE_URL}/bookings/${bookingId}`,
+  };
+}
+
 function prevDay(date: string): string {
   const [y = 1970, m = 1, d = 1] = date.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
@@ -86,11 +117,14 @@ function horizonHours(c: ConfirmConditions): number {
  *    напоминание за сутки (replaceReminder24h): одно сообщение в день, а не два подряд с той же кнопкой;
  *  · уважает: тип 73 выключен / сценарий канала «Не отправлять» (NotifyTypeOverride), выключатели записи
  *    (Booking.notifyOverride.pushEnabled / telegramEnabled), вид confirm_request выключен (isKindEnabled — отправитель).
+ *  · текст (04.10.2026) — шаблон бизнеса этого типа для канала (NotifyTypeOverride.templates.push / .telegram) с
+ *    переменными {companyName} {date} {time} {service} {staff} {link}; не правили — наш текст по умолчанию.
  * Ключ дубля — запись + её время: повторный проход ничего не дублирует, перенесённая запись спрашивается заново.
  */
 export async function enqueueConfirmRequests(prisma: PrismaService, now = new Date()): Promise<{ sent: number; candidates: number }> {
   const overrides = await prisma.notifyTypeOverride.findMany({ where: { code: TYPE_CODE } });
   const configByBiz = new Map(overrides.map((o) => [o.businessId, confirmConfigOf(o)]));
+  const templatesByBiz = new Map(overrides.map((o) => [o.businessId, o.templates]));
   const defaults = confirmConfigOf(null);
   const configOf = (businessId: string) => configByBiz.get(businessId) ?? defaults;
 
@@ -146,8 +180,14 @@ export async function enqueueConfirmRequests(prisma: PrismaService, now = new Da
       const locale: Locale = isLocale(user?.locale) ? user.locale : 'ru';
       const card = await bookingCard(prisma, b, locale);
       const params = { service: card.service, date: `${local.slice(8, 10)}.${local.slice(5, 7)}`, time: local.slice(11, 16), place: card.businessName };
-      const custom = await customTemplateOf(prisma, b.businessId, CONFIRM_KIND, locale);
-      const body = custom ? custom.replace(/\{(\w+)\}/g, (_, name: string) => (params as Record<string, string>)[name] ?? `{${name}}`) : t(locale, 'booking.confirmRequest', params);
+      // Текст: шаблон типа 73 бизнеса (канал «Пуш») → свой текст вида confirm_request (старый экран «Тексты») → наш
+      const typeTemplate = confirmTemplateOf(templatesByBiz.get(b.businessId), 'push', locale);
+      const custom = typeTemplate ? undefined : await customTemplateOf(prisma, b.businessId, CONFIRM_KIND, locale);
+      const body = typeTemplate
+        ? fillTemplate(typeTemplate, confirmTemplateVars(card, local, b.id))
+        : custom
+          ? custom.replace(/\{(\w+)\}/g, (_, name: string) => (params as Record<string, string>)[name] ?? `{${name}}`)
+          : t(locale, 'booking.confirmRequest', params);
       const created = await enqueueClientNotification(prisma, {
         businessId: b.businessId,
         kind: CONFIRM_KIND,
@@ -173,13 +213,15 @@ export async function enqueueConfirmRequests(prisma: PrismaService, now = new Da
     for (const link of links) {
       const locale = tgLocale(link.languageCode);
       const card = await bookingCard(prisma, b, locale);
+      const tgTemplate = confirmTemplateOf(templatesByBiz.get(b.businessId), 'telegram', locale);
       const created = await enqueueOutbox(prisma, {
         businessId: b.businessId,
         app: 'telegram',
         kind: CONFIRM_KIND,
         recipientUserId: link.chatId,
         title: card.businessName,
-        body: `${t(locale, 'tg.confirmRequest')}\n\n${cardText(card)}`,
+        // Шаблон типа 73 бизнеса (канал «Telegram») вместо нашей фразы; карточка записи и кнопки — всегда
+        body: `${tgTemplate ? fillTemplate(tgTemplate, confirmTemplateVars(card, local, b.id)) : t(locale, 'tg.confirmRequest')}\n\n${cardText(card)}`,
         dedupeKey: `telegram:${CONFIRM_KIND}:${b.id}:${link.chatId}:${local}`,
         meta: { bookingId: b.id, replyMarkup: bookingKeyboard(b, card, locale) },
       });

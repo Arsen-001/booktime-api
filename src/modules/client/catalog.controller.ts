@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
@@ -7,6 +8,7 @@ import { ZodBody } from '../../common/http/openapi.js';
 import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import { Zod } from '../../common/http/validation.js';
 import { CatalogService } from './catalog.service.js';
+import { SITEMAP_TTL_SEC, SitemapService } from './sitemap.service.js';
 import { callbackBody, demandBody } from './client.schemas.js';
 
 const num = z.coerce.number().optional();
@@ -19,7 +21,20 @@ const intOpt = z.coerce.number().int().positive().optional();
 @ApiTags('client')
 @Controller('v1/public')
 export class PublicCatalogController {
-  constructor(private readonly svc: CatalogService) {}
+  constructor(
+    private readonly svc: CatalogService,
+    private readonly sitemaps: SitemapService,
+  ) {}
+
+  @Get('sitemap')
+  @RateLimit({ bucket: 'public-sitemap', limit: 30, windowSec: 60, by: 'ip' })
+  @ApiOperation({ summary: 'Лёгкий список для sitemap.xml: бизнесы (slug, сферы, районы, фото, дата) и мастера салонов — без окон, кэш 10 мин' })
+  async sitemap(@Res({ passthrough: true }) res: Response) {
+    const out = await this.sitemaps.sitemap();
+    // Только удачный ответ: ошибку (база недоступна) кэшировать CDN и Next не должны
+    res.setHeader('Cache-Control', `public, max-age=${SITEMAP_TTL_SEC}, s-maxage=${SITEMAP_TTL_SEC}, stale-while-revalidate=3600`);
+    return out;
+  }
 
   @Get('catalog')
   @RateLimit({ bucket: 'public-catalog', limit: 120, windowSec: 60, by: 'ip' })

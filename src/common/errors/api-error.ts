@@ -224,6 +224,8 @@ export const ERROR_STATUS = {
   file_too_large: HttpStatus.PAYLOAD_TOO_LARGE,
   unsupported_image: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
   upload_quota: HttpStatus.UNPROCESSABLE_ENTITY,
+  /** Документ клиента (04.10.2026): не PDF / картинка / Word / Excel / текст по сигнатуре */
+  unsupported_file: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

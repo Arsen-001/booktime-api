@@ -16,6 +16,9 @@ import { webhooksDispatch } from './jobs/webhooks-dispatch.js';
 import { businessRetentionTick } from './jobs/business-retention.js';
 import { dbBackup, hasBackupToday } from './jobs/db-backup.js';
 import { ordersPickupReminders } from './jobs/orders-pickup-reminders.js';
+import { uploadsCleanup } from './jobs/uploads-cleanup.js';
+import { createAppleTokenClient, type StoredAppleToken } from './modules/auth/apple-tokens.js';
+import { createPrivateUploadStorage, createUploadStorage } from './adapters/storage/storage.js';
 import { FakeBusinessMessenger } from './adapters/business-sms/business-sms.js';
 import { createTelegramBot } from './adapters/telegram-bot/telegram-bot.js';
 import { env } from './common/config/env.js';
@@ -54,6 +57,8 @@ await queue.upsertJobScheduler('billing-retry', { every: 300_000 }, { name: 'bil
 // Этап 17: доставка вебхуков — подпись + до 5 попыток с отступом (fan-out кладёт AuditService.record); часто,
 // как notify.dispatch — событие должно уйти за секунды
 await queue.upsertJobScheduler('webhooks-dispatch', { every: 10_000 }, { name: 'webhooks.dispatch', data: {} });
+// 04.10.2026: уборка неиспользуемых загрузок (старше 7 дней, ни на что не ссылаются) — ночью; без UPLOADS_CLEANUP=1 только лог
+await queue.upsertJobScheduler('uploads-cleanup', { pattern: '40 3 * * *', tz: 'Asia/Yerevan' }, { name: 'uploads.cleanup', data: {} });
 // Этап 20: хранение и обезличивание при уходе бизнеса (B6) — раз в сутки, срок считается в днях, не в минутах
 await queue.upsertJobScheduler('business-retention', { pattern: '0 4 * * *', tz: 'Asia/Yerevan' }, { name: 'business.retention', data: {} });
 // 03.10.2026: ежедневная копия базы, пока на Railway нет снимков дисков (тариф Hobby) — только где DB_BACKUP=1
@@ -64,6 +69,11 @@ if (env.DB_BACKUP && !(await hasBackupToday(env.DB_BACKUP_DIR))) {
   await queue.add('db.backup', {}, { jobId: `db-backup-${new Date().toISOString().slice(0, 10)}`, removeOnComplete: true, removeOnFail: true });
 }
 const prisma = new PrismaService();
+// Отзыв входа через Apple при удалении аккаунта (04.10.2026): задача с повторами; нет ключа Apple — пропуск с warn
+const appleTokens = createAppleTokenClient();
+const revokeApple = async (t: StoredAppleToken & { userId: string }) => {
+  await queue.add('apple.revoke', t, { attempts: 6, backoff: { type: 'exponential', delay: 60_000 }, removeOnComplete: true, removeOnFail: 100 });
+};
 const journal = journalServices(prisma, createRedis('worker-journal'));
 const notify = notifyServices(prisma);
 const notifyMailings = notifyMailingsJob(prisma);
@@ -86,7 +96,19 @@ const worker = new Worker(
       return;
     }
     if (job.name === 'auth.housekeeping') {
-      logger.info(await authHousekeeping(prisma), 'auth housekeeping');
+      logger.info(await authHousekeeping(prisma, { revokeApple }), 'auth housekeeping');
+      return;
+    }
+    if (job.name === 'apple.revoke') {
+      const t = job.data as StoredAppleToken & { userId: string };
+      // Ошибка Apple — бросаем: BullMQ повторит (6 попыток); после последней — только лог, аккаунт уже удалён
+      const res = await appleTokens.revoke({ refreshTokenEnc: t.refreshTokenEnc, clientId: t.clientId });
+      logger.info({ userId: t.userId, res }, 'apple.revoke');
+      return;
+    }
+    if (job.name === 'uploads.cleanup') {
+      const res = await uploadsCleanup(prisma, { images: createUploadStorage(), documents: createPrivateUploadStorage() }, { apply: env.UPLOADS_CLEANUP });
+      logger.info(res, res.apply ? 'uploads.cleanup' : 'uploads.cleanup (пробный режим: UPLOADS_CLEANUP=1 — удалять)');
       return;
     }
     if (job.name === 'schedule.empty-week') {

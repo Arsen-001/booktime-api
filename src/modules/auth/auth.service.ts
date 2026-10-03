@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { Response } from 'express';
 import type { CodeChannel } from '../../adapters/code-sender/code-sender.js';
 import { AuditService } from '../../common/audit/audit.service.js';
@@ -13,6 +13,7 @@ import { PrismaService } from '../../common/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { AppleIdTokenVerifier, type AppleProfile } from './apple-id-token.js';
 import { APPLE_PENDING, APPLE_PENDING_TTL_SEC, type ApplePendingStore } from './apple-pending.js';
+import { AppleTokenClient, type StoredAppleToken } from './apple-tokens.js';
 import { GoogleIdTokenVerifier, type GoogleProfile } from './google-id-token.js';
 import { GOOGLE_PENDING, GOOGLE_PENDING_TTL_SEC, type GooglePendingStore } from './google-pending.js';
 import { OtpService, type OtpSent } from './otp.service.js';
@@ -102,6 +103,8 @@ export class AuthService {
     @Inject(GOOGLE_PENDING) private readonly googlePending: GooglePendingStore,
     @Inject(AppleIdTokenVerifier) private readonly apple: AppleIdTokenVerifier,
     @Inject(APPLE_PENDING) private readonly applePending: ApplePendingStore,
+    /** Обмен authorizationCode на refresh token (отзыв при удалении аккаунта); нет — токены не сохраняются */
+    @Optional() @Inject(AppleTokenClient) private readonly appleTokens?: AppleTokenClient,
   ) {}
 
   // ─────────── журнал входов (F-10-106) ───────────
@@ -297,18 +300,20 @@ export class AuthService {
     ctx: RequestContext,
     userId: string,
     provider: IdentityProvider,
-    p: { sub: string; email: string | null },
+    p: { sub: string; email: string | null; refreshTokenEnc?: string | null; clientId?: string },
     now: Date,
   ): Promise<boolean> {
     const found = await tx.userIdentity.findUnique({ where: { provider_subject: { provider, subject: p.sub } } });
     if (found && found.userId !== userId) return false;
+    // Apple: зашифрованный refresh token (если приложение прислало authorizationCode) — для отзыва при удалении аккаунта
+    const token = p.refreshTokenEnc ? { refreshTokenEnc: p.refreshTokenEnc, tokenClientId: p.clientId ?? null } : {};
     if (found) {
-      await tx.userIdentity.update({ where: { id: found.id }, data: { email: p.email ?? found.email, lastUsedAt: now } });
+      await tx.userIdentity.update({ where: { id: found.id }, data: { email: p.email ?? found.email, lastUsedAt: now, ...token } });
       return true;
     }
     const before = await tx.userIdentity.findFirst({ where: { userId, provider }, select: { email: true } });
     await tx.userIdentity.deleteMany({ where: { userId, provider } });
-    await tx.userIdentity.create({ data: { id: newId('userIdentity'), provider, subject: p.sub, email: p.email, userId, lastUsedAt: now } });
+    await tx.userIdentity.create({ data: { id: newId('userIdentity'), provider, subject: p.sub, email: p.email, userId, lastUsedAt: now, ...token } });
     await this.audit.record(tx, { ...ctx, member: null }, {
       action: provider === 'google' ? 'googleLinked' : 'appleLinked',
       entityType: 'user',
@@ -370,7 +375,7 @@ export class AuthService {
   async appleLogin(
     ctx: RequestContext,
     res: Response,
-    input: { identityToken: string; app: PhoneApp; consent?: boolean; name?: string },
+    input: { identityToken: string; app: PhoneApp; consent?: boolean; name?: string; authorizationCode?: string },
   ): Promise<AppleLoginView> {
     let profile: AppleProfile;
     try {
@@ -388,7 +393,8 @@ export class AuthService {
     });
     if (!identity) {
       const name = input.name?.trim().slice(0, 120) || null;
-      const pending: AppleProfile = { ...profile, name };
+      const stored = await this.exchangeAppleCode(input.authorizationCode, profile.clientId);
+      const pending: AppleProfile = { ...profile, name, refreshTokenEnc: stored?.refreshTokenEnc ?? null };
       const token = await this.applePending.put(pending);
       await this.logEvent(ctx, { method: 'apple', app: input.app, result: 'apple_unlinked', identifier });
       return { session: null, pendingApple: { token, email: pending.email, name, expiresIn: APPLE_PENDING_TTL_SEC } };
@@ -402,12 +408,20 @@ export class AuthService {
     if (input.app === 'client' && !consentAt && !input.consent) throw new ApiError('consent_required', 'User agreement must be accepted');
     const now = new Date();
     const phone = user.phone;
+    const stored = await this.exchangeAppleCode(input.authorizationCode, profile.clientId);
+    const token = stored ? { refreshTokenEnc: stored.refreshTokenEnc, tokenClientId: stored.clientId } : {};
     await this.prisma.$transaction(async (tx) => {
-      await tx.userIdentity.update({ where: { id: identity.id }, data: { email: profile.email ?? identity.email, lastUsedAt: now } });
+      await tx.userIdentity.update({ where: { id: identity.id }, data: { email: profile.email ?? identity.email, lastUsedAt: now, ...token } });
       await this.prepareAppAccess(tx, ctx, { userId: user.id, phone, app: input.app, consentAt, consent: input.consent, now });
     });
     const sessionId = await this.openPhoneSession(ctx, res, user.id, input.app, 'apple');
     return { session: await this.view(sessionId), pendingApple: null };
+  }
+
+  /** authorizationCode → зашифрованный refresh token Apple; нет кода, клиента или настроек — null (вход не зависит) */
+  private async exchangeAppleCode(code: string | undefined, clientId: string | undefined): Promise<StoredAppleToken | null> {
+    if (!code || !clientId || !this.appleTokens) return null;
+    return this.appleTokens.exchangeCode(code, clientId);
   }
 
   /** Привязан ли Google к вошедшему (профиль) и включён ли вход через Google на сервере */

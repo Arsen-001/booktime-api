@@ -7,6 +7,7 @@ import { env } from '../../common/config/env.js';
 import { REDIS } from '../../common/tokens.js';
 import { AppleIdTokenVerifier } from './apple-id-token.js';
 import { APPLE_PENDING, RedisApplePending } from './apple-pending.js';
+import { AppleTokenClient, createAppleTokenClient } from './apple-tokens.js';
 import { GoogleIdTokenVerifier } from './google-id-token.js';
 import { GOOGLE_PENDING, RedisGooglePending } from './google-pending.js';
 import type { Redis } from 'ioredis';
@@ -25,6 +26,8 @@ import { OtpService } from './otp.service.js';
     // «Войти через Apple» (03.10.2026): то же самое по ключам Apple
     { provide: AppleIdTokenVerifier, useFactory: () => new AppleIdTokenVerifier({ clientIds: env.APPLE_CLIENT_IDS }) },
     { provide: APPLE_PENDING, useFactory: (redis: Redis) => new RedisApplePending(redis), inject: [REDIS] },
+    // Отзыв входа через Apple при удалении аккаунта (04.10.2026): authorizationCode → refresh token (зашифрован)
+    { provide: AppleTokenClient, useFactory: () => createAppleTokenClient() },
   ],
   exports: [OtpService, AuthService],
 })

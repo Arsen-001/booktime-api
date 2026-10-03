@@ -12,3 +12,6 @@ prisma/seed/.cache/
 
 # Фото на диске при разработке (UPLOADS_DIR, «Файлы и фото»)
 /.uploads/
+
+# Документы клиентов на диске при разработке (PRIVATE_FILES_DIR)
+/.private/

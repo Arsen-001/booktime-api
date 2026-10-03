@@ -280,6 +280,11 @@ model UserIdentity {
   userId     String    @map("user_id") @db.VarChar(32)
   createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   lastUsedAt DateTime? @map("last_used_at") @db.DateTime(3)
+  /// Apple (04.10.2026): refresh token, зашифрованный SECRETS_KEY (common/crypto/secret-box.ts) — только чтобы отозвать
+  /// вход при удалении аккаунта (App Store 5.1.1(v)); null — приложение не прислало authorizationCode или ключа нет
+  refreshTokenEnc String? @map("refresh_token_enc") @db.Text
+  /// client_id, которым выдан токен (bundle id / Services ID) — им же отзывается
+  tokenClientId   String? @map("token_client_id") @db.VarChar(255)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -896,13 +901,20 @@ model ClientFile {
   name       String   @db.VarChar(200)
   ext        String   @db.VarChar(10)
   size       Int
-  dataUrl    String   @map("data_url") @db.LongText
+  /// Старые строки и мок: файл целиком data: URL. Новые (04.10.2026) — null, файл в закрытом хранилище (storageKey)
+  dataUrl    String?  @map("data_url") @db.LongText
+  /// client-files/<бизнес>/<sha256[:32]>.<ext> в закрытом хранилище (uploads/document.ts); раздаётся только
+  /// GET /v1/biz/:businessId/clients/:id/files/:fileId/content с правом clients.view
+  storageKey String?  @map("storage_key") @db.VarChar(200)
+  /// Тип по сигнатуре файла (application/pdf, image/jpeg…) — для storageKey
+  mime       String?  @db.VarChar(120)
   uploadedAt DateTime @default(now()) @map("uploaded_at") @db.DateTime(3)
   uploadedBy String   @map("uploaded_by") @db.VarChar(120)
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
+  @@index([storageKey])
   @@map("client_files")
 }
 
@@ -4746,9 +4758,11 @@ model Upload {
   businessId String?  @map("business_id") @db.VarChar(32)
   /// Человек-владелец (/v1/me/uploads); null — фото бизнеса или панели
   userId     String?  @map("user_id") @db.VarChar(32)
-  /// uploads/<владелец>/<sha256[:32]>.<jpg|webp> — по содержимому: тот же файл того же владельца → та же строка
+  /// uploads/<владелец>/<sha256[:32]>.<jpg|webp> (фото) или client-files/<бизнес>/<sha256[:32]>.<ext> (документ клиента,
+  /// закрытое хранилище) — по содержимому: тот же файл того же владельца → та же строка
   key        String   @unique @db.VarChar(200)
-  mime       String   @db.VarChar(40)
+  /// image/jpeg, image/webp; документы клиентов (client-files/…) — application/pdf, Office и т.п.
+  mime       String   @db.VarChar(120)
   /// Основной файл + превью, байт (для квоты)
   bytes      Int
   width      Int
@@ -4759,6 +4773,8 @@ model Upload {
 
   @@index([businessId, createdAt])
   @@index([userId, createdAt])
+  /// Уборка неиспользуемых файлов (jobs/uploads-cleanup.ts): строки старше 7 дней
+  @@index([createdAt])
   @@map("uploads")
 }
 // === end файлы и фото ===
