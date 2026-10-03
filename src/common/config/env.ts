@@ -97,6 +97,10 @@ const schema = z.object({
   DB_BACKUP: z.string().optional().transform((v) => v === '1'),
   /** Папка копий — НЕ внутри STORAGE_DIR (хранилище раздаёт файлы); Railway: /data/backups */
   DB_BACKUP_DIR: z.string().default('./backups'),
+  /** Sentry (мониторинг ошибок): DSN проекта booktime-api; без него — выключен */
+  SENTRY_DSN: z.string().optional(),
+  /** Имя окружения в Sentry; по умолчанию RAILWAY_ENVIRONMENT_NAME (staging / production) */
+  SENTRY_ENVIRONMENT: z.string().optional(),
   /** Сколько последних ежедневных копий хранить */
   DB_BACKUP_KEEP: z.coerce.number().int().min(1).max(365).default(14),
 });

@@ -17,6 +17,7 @@ import { businessRetentionTick } from './jobs/business-retention.js';
 import { dbBackup, hasBackupToday } from './jobs/db-backup.js';
 import { createTelegramBot } from './adapters/telegram-bot/telegram-bot.js';
 import { env } from './common/config/env.js';
+import { captureError, initSentry } from './common/monitoring/sentry.js';
 import { TelegramBotService } from './modules/telegram/telegram-bot.service.js';
 import { startTelegramPolling } from './modules/telegram/telegram-polling.js';
 
@@ -28,6 +29,7 @@ const connection = createRedis('worker');
 const SYSTEM = 'system';
 
 const queue = new Queue(SYSTEM, { connection });
+initSentry('worker');
 await queue.upsertJobScheduler('heartbeat', { every: 60_000 }, { name: 'heartbeat', data: {} });
 await queue.upsertJobScheduler('auth-housekeeping', { every: 3_600_000 }, { name: 'auth.housekeeping', data: {} });
 // F-00-055: воскресенье 18:00 по Еревану — «откройте окна на неделю» (адресаты; пуш — этап 10)
@@ -140,7 +142,10 @@ const worker = new Worker(
   },
   { connection: createRedis('worker-consumer') },
 );
-worker.on('failed', (job, err) => logger.error({ job: job?.name, err }, 'job failed'));
+worker.on('failed', (job, err) => {
+  logger.error({ job: job?.name, err }, 'job failed');
+  captureError(err, { job: job?.name, attempts: job?.attemptsMade });
+});
 logger.info('worker: очереди запущены');
 
 const stop = async () => {

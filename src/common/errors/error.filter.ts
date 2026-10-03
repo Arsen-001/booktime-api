@@ -1,6 +1,7 @@
 import { ArgumentsHost, Catch, HttpException, HttpStatus, type ExceptionFilter } from '@nestjs/common';
 import type { Response } from 'express';
 import { logger } from '../logging/logger.js';
+import { captureError } from '../monitoring/sentry.js';
 import { ZodError } from 'zod';
 import { InvalidLocalTime } from '../time/time.js';
 import { ApiError, type ErrorBody, type ErrorCode } from './api-error.js';
@@ -45,6 +46,8 @@ export class ErrorFilter implements ExceptionFilter {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       body = { code: 'internal', message: 'Internal error' };
       logger.error({ err: exception }, 'unhandled error');
+      const req = host.switchToHttp().getRequest<{ method?: string; route?: { path?: string } }>();
+      captureError(exception, { method: req.method, route: req.route?.path });
     }
     res.status(status).json(body);
   }
