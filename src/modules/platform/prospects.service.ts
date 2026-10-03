@@ -148,6 +148,7 @@ export class ProspectsService {
         info,
         status: info.status,
         name: row.name,
+        address: row.address,
         category: row.category,
         district: row.district,
         staffEstimate: row.staffEstimate,

@@ -273,6 +273,7 @@ export interface ProspectFilter {
 
 interface Filterable {
   name: string;
+  address?: string | null;
   category: string;
   district: string;
   staffEstimate?: number | null;
@@ -287,8 +288,9 @@ export function matchesExceptSystem(p: Filterable, f: ProspectFilter): boolean {
   if (f.staffMin !== undefined && (p.staffEstimate ?? -1) < f.staffMin) return false;
   if (f.staffMax !== undefined && (p.staffEstimate === null || p.staffEstimate === undefined || p.staffEstimate > f.staffMax)) return false;
   if (f.status && p.status !== f.status) return false;
+  // Поиск — по названию и адресу (макет «Места для продаж»: «Название или адрес»)
   const q = normalizeText(f.q);
-  if (q && !normalizeText(p.name).includes(q)) return false;
+  if (q && !normalizeText(`${p.name} ${p.address ?? ''}`).includes(q)) return false;
   return true;
 }
 
