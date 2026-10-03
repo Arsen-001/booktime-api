@@ -249,6 +249,8 @@ model LoginEvent {
   sessionId  String?  @map("session_id") @db.VarChar(32)
   /// code | password | platform | second_factor | google
   method     String   @db.VarChar(16)
+  /// Вход кодом: куда код дошёл — telegram | whatsapp | sms (из otp_requests.channel); иначе null
+  channel    String?  @db.VarChar(10)
   app        String   @db.VarChar(10)
   /// ok | wrong_code | wrong_password | locked | blocked | second_factor_sent | google_unlinked | google_invalid | google_linked | google_taken
   result     String   @db.VarChar(20)

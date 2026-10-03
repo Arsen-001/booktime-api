@@ -18,6 +18,8 @@ export const usersListQuery = z.object({
   /** Был активен (любая сессия) за последние N дней */
   activeDays: z.coerce.number().int().min(1).max(365).optional(),
   telegram: yesNo.optional(),
+  /** Код входа приходил в WhatsApp (и был введён) */
+  whatsapp: yesNo.optional(),
   google: yesNo.optional(),
   status: z.enum(USER_STATUSES).optional(),
   sort: z.enum(USER_SORTS).default('registered'),

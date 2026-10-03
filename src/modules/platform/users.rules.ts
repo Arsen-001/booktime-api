@@ -56,6 +56,24 @@ export function telegramWhere(tg: TelegramSet, connected: boolean): Prisma.UserW
   return { AND: [{ id: { notIn: tg.userIds } }, { OR: [{ phone: null }, { phone: { notIn: tg.phones } }] }] };
 }
 
+/**
+ * WhatsApp у человека (03.10.2026): код входа хоть раз дошёл до него в WhatsApp и был введён — значит, WhatsApp на
+ * этом номере есть и человек им пользуется. Бота, как у Telegram, нет — признак берём из otp_requests (номера).
+ */
+export function whatsappWhere(phones: string[], used: boolean): Prisma.UserWhereInput {
+  if (used) return { phone: { in: phones } };
+  return { OR: [{ phone: null }, { phone: { notIn: phones } }] };
+}
+
+/** Первый вход: что раньше — первый введённый код (его канал) или первый вход через Google/Apple */
+export type FirstLoginVia = 'telegram' | 'whatsapp' | 'sms' | 'google' | 'apple';
+export function firstLoginVia(code: { channel: string; at: Date } | null, external: { method: string; at: Date } | null): FirstLoginVia | null {
+  const viaCode = code && ['telegram', 'whatsapp', 'sms'].includes(code.channel) ? (code as { channel: FirstLoginVia; at: Date }) : null;
+  const viaExt = external && (external.method === 'google' || external.method === 'apple') ? (external as { method: FirstLoginVia; at: Date }) : null;
+  if (viaCode && viaExt) return viaCode.at.getTime() <= viaExt.at.getTime() ? viaCode.channel : viaExt.method;
+  return viaCode?.channel ?? viaExt?.method ?? null;
+}
+
 export function roleWhere(role: Exclude<UsersListQuery['role'], undefined>, multipleIds: string[]): Prisma.UserWhereInput {
   switch (role) {
     case 'client':
@@ -71,10 +89,13 @@ export function roleWhere(role: Exclude<UsersListQuery['role'], undefined>, mult
 }
 
 /**
- * Фильтры списка → where для prisma.user. Телеграм и «несколько ролей» нельзя выразить связью User —
+ * Фильтры списка → where для prisma.user. Телеграм, WhatsApp и «несколько ролей» нельзя выразить связью User —
  * их множества считает сервис заранее и передаёт сюда.
  */
-export function buildUserWhere(q: UsersListQuery, deps: { now: Date; telegram?: TelegramSet; multipleIds?: string[] }): Prisma.UserWhereInput {
+export function buildUserWhere(
+  q: UsersListQuery,
+  deps: { now: Date; telegram?: TelegramSet; whatsappPhones?: string[]; multipleIds?: string[] },
+): Prisma.UserWhereInput {
   const and: Prisma.UserWhereInput[] = [];
   const text = q.q?.trim();
   if (text) {
@@ -92,6 +113,7 @@ export function buildUserWhere(q: UsersListQuery, deps: { now: Date; telegram?: 
   }
   if (q.activeDays) and.push({ sessions: { some: { lastSeenAt: { gte: new Date(deps.now.getTime() - q.activeDays * DAY_MS) } } } });
   if (q.telegram) and.push(telegramWhere(deps.telegram ?? { userIds: [], phones: [] }, q.telegram === 'yes'));
+  if (q.whatsapp) and.push(whatsappWhere(deps.whatsappPhones ?? [], q.whatsapp === 'yes'));
   if (q.google) and.push({ identities: q.google === 'yes' ? { some: { provider: 'google' } } : { none: { provider: 'google' } } });
   if (q.status) and.push(statusWhere(q.status));
   return and.length ? { AND: and } : {};

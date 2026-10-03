@@ -6,7 +6,19 @@ import type { RequestContext } from '../../common/http/context.js';
 import { maskPhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { utcToLocal } from '../../common/time/time.js';
-import { LIVE_STAFF, buildUserWhere, maskIp, rolesOf, sortIds, userStatusOf, type BusinessRole, type TelegramSet, type UserStatus } from './users.rules.js';
+import {
+  LIVE_STAFF,
+  buildUserWhere,
+  firstLoginVia,
+  maskIp,
+  rolesOf,
+  sortIds,
+  userStatusOf,
+  type BusinessRole,
+  type FirstLoginVia,
+  type TelegramSet,
+  type UserStatus,
+} from './users.rules.js';
 import type { UserBlockBody, UsersListQuery } from './users.schemas.js';
 
 /**
@@ -30,6 +42,7 @@ export interface PlatformUserRow {
   lastActiveAt: string | null;
   roles: BusinessRole[];
   telegram: boolean;
+  whatsapp: boolean;
   google: boolean;
   status: UserStatus;
   bookingsCount: number;
@@ -42,7 +55,7 @@ export interface PlatformUsersPage {
   total: number;
   page: number;
   pageSize: number;
-  counters: { total: number; new7d: number; active7d: number; telegram: number };
+  counters: { total: number; new7d: number; active7d: number; telegram: number; whatsapp: number };
 }
 
 export interface PlatformUserCard {
@@ -62,9 +75,13 @@ export interface PlatformUserCard {
   roles: Array<{ businessId: string; businessName: string; businessSlug: string; kind: string; role: BusinessRole; fired: boolean }>;
   networks: Array<{ id: string; name: string }>;
   telegram: { connected: boolean; since: string | null; stopped: boolean };
+  /** Коды входа в WhatsApp: первый и последний введённый */
+  whatsapp: { used: boolean; since: string | null; lastAt: string | null };
+  /** Чем вошёл в первый раз: канал кода или Google/Apple */
+  firstLoginVia: FirstLoginVia | null;
   google: { linked: boolean; email: string | null; since: string | null; lastUsedAt: string | null };
   bookings: { total: number; recent: Array<{ id: string; businessId: string; businessName: string; start: string; status: string }> };
-  logins: Array<{ at: string; method: string; app: string; result: string; ip: string | null }>;
+  logins: Array<{ at: string; method: string; channel: string | null; app: string; result: string; ip: string | null }>;
   activeSessions: number;
 }
 
@@ -80,9 +97,9 @@ export class PlatformUsersService {
   // ─────────── список ───────────
 
   async list(q: UsersListQuery, now = new Date()): Promise<PlatformUsersPage> {
-    const telegram = await this.telegramSet();
+    const [telegram, whatsappPhones] = await Promise.all([this.telegramSet(), this.whatsappPhones()]);
     const multipleIds = q.role === 'multiple' ? await this.multipleRoleIds() : undefined;
-    const where = buildUserWhere(q, { now, telegram, multipleIds });
+    const where = buildUserWhere(q, { now, telegram, whatsappPhones, multipleIds });
     const skip = (q.page - 1) * q.pageSize;
 
     let total: number;
@@ -107,19 +124,26 @@ export class PlatformUsersService {
       pageIds = sorted.slice(skip, skip + q.pageSize).map((r) => r.id);
     }
 
-    const [rows, counters] = await Promise.all([this.rowsFor(pageIds, telegram), this.counters(now, telegram)]);
+    const [rows, counters] = await Promise.all([this.rowsFor(pageIds, telegram, whatsappPhones), this.counters(now, telegram, whatsappPhones)]);
     return { rows, total, page: q.page, pageSize: q.pageSize, counters };
   }
 
-  private async counters(now: Date, tg: TelegramSet): Promise<PlatformUsersPage['counters']> {
+  private async counters(now: Date, tg: TelegramSet, waPhones: string[]): Promise<PlatformUsersPage['counters']> {
     const week = new Date(now.getTime() - 7 * DAY_MS);
-    const [total, new7d, active7d, telegram] = await Promise.all([
+    const [total, new7d, active7d, telegram, whatsapp] = await Promise.all([
       this.prisma.user.count({ where: { deletedAt: null } }),
       this.prisma.user.count({ where: { deletedAt: null, createdAt: { gte: week } } }),
       this.prisma.user.count({ where: { deletedAt: null, sessions: { some: { lastSeenAt: { gte: week } } } } }),
       this.prisma.user.count({ where: { deletedAt: null, OR: [{ id: { in: tg.userIds } }, { phone: { in: tg.phones } }] } }),
+      this.prisma.user.count({ where: { deletedAt: null, phone: { in: waPhones } } }),
     ]);
-    return { total, new7d, active7d, telegram };
+    return { total, new7d, active7d, telegram, whatsapp };
+  }
+
+  /** Номера, на которые код дошёл в WhatsApp и был введён (любое назначение: вход, смена номера, второй шаг) */
+  private async whatsappPhones(): Promise<string[]> {
+    const rows = await this.prisma.otpRequest.findMany({ where: { channel: 'whatsapp', status: 'used' }, distinct: ['phone'], select: { phone: true } });
+    return rows.map((r) => r.phone);
   }
 
   /** Подключённые к боту (не отписались /stop) — по id человека и по номеру */
@@ -156,7 +180,7 @@ export class PlatformUsersService {
     return new Map(rows.filter((r) => r.appUserId).map((r) => [r.appUserId!, r._count._all]));
   }
 
-  private async rowsFor(ids: string[], tg: TelegramSet): Promise<PlatformUserRow[]> {
+  private async rowsFor(ids: string[], tg: TelegramSet, waPhones: string[]): Promise<PlatformUserRow[]> {
     if (!ids.length) return [];
     const [users, lastLogins, lastSeen, bookings] = await Promise.all([
       this.prisma.user.findMany({
@@ -183,6 +207,7 @@ export class PlatformUsersService {
     const seenOf = new Map(lastSeen.map((s) => [s.userId, s._max.lastSeenAt]));
     const tgIds = new Set(tg.userIds);
     const tgPhones = new Set(tg.phones);
+    const wa = new Set(waPhones);
     const byId = new Map(users.map((u) => [u.id, u]));
     return ids
       .map((id) => byId.get(id))
@@ -199,6 +224,7 @@ export class PlatformUsersService {
           lastActiveAt: local(seenOf.get(u.id)),
           roles: rolesOf(u.staff, u.networks.length > 0),
           telegram: tgIds.has(u.id) || (u.phone ? tgPhones.has(u.phone) : false),
+          whatsapp: u.phone ? wa.has(u.phone) : false,
           google: u.identities.length > 0,
           status: userStatusOf(u),
           bookingsCount: bookings.get(u.id) ?? 0,
@@ -233,7 +259,7 @@ export class PlatformUsersService {
     });
     if (!u) throw new ApiError('not_found', 'User not found');
 
-    const [tgLinks, bookingsTotal, recent, logins, activeSessions, lastSeen, blockEvent] = await Promise.all([
+    const [tgLinks, bookingsTotal, recent, logins, activeSessions, lastSeen, blockEvent, waCodes, firstCode, firstExternal] = await Promise.all([
       this.prisma.telegramLink.findMany({
         where: { OR: [{ appUserId: u.id }, ...(u.phone ? [{ phone: u.phone }] : [])] },
         select: { createdAt: true, blockedAt: true },
@@ -248,7 +274,7 @@ export class PlatformUsersService {
       }),
       this.prisma.loginEvent.findMany({
         where: { userId: u.id },
-        select: { at: true, method: true, app: true, result: true, ip: true },
+        select: { at: true, method: true, channel: true, app: true, result: true, ip: true },
         orderBy: { at: 'desc' },
         take: RECENT_LOGINS,
       }),
@@ -257,6 +283,13 @@ export class PlatformUsersService {
       u.blockedAt
         ? this.prisma.auditEvent.findFirst({ where: { entityType: 'user', entityId: u.id, action: 'block' }, select: { diff: true }, orderBy: { at: 'desc' } })
         : Promise.resolve(null),
+      u.phone
+        ? this.prisma.otpRequest.aggregate({ where: { phone: u.phone, channel: 'whatsapp', status: 'used' }, _min: { usedAt: true }, _max: { usedAt: true } })
+        : Promise.resolve(null),
+      u.phone
+        ? this.prisma.otpRequest.findFirst({ where: { phone: u.phone, purpose: 'login', status: 'used' }, select: { channel: true, usedAt: true }, orderBy: { usedAt: 'asc' } })
+        : Promise.resolve(null),
+      this.prisma.loginEvent.findFirst({ where: { userId: u.id, result: 'ok', method: { in: ['google', 'apple'] } }, select: { method: true, at: true }, orderBy: { at: 'asc' } }),
     ]);
     const bizIds = [...new Set(recent.map((b) => b.businessId))];
     const bizNames = bizIds.length ? await this.prisma.business.findMany({ where: { id: { in: bizIds } }, select: { id: true, name: true } }) : [];
@@ -291,12 +324,14 @@ export class PlatformUsersService {
         })),
       networks: u.networks.map((n) => ({ id: n.id, name: n.name })),
       telegram: { connected: Boolean(activeLink), since: local((activeLink ?? tgLinks[0])?.createdAt), stopped: !activeLink && tgLinks.length > 0 },
+      whatsapp: { used: Boolean(waCodes?._max.usedAt), since: local(waCodes?._min.usedAt), lastAt: local(waCodes?._max.usedAt) },
+      firstLoginVia: firstLoginVia(firstCode?.usedAt ? { channel: firstCode.channel, at: firstCode.usedAt } : null, firstExternal),
       google: { linked: Boolean(google), email: google?.email ?? null, since: local(google?.createdAt), lastUsedAt: local(google?.lastUsedAt) },
       bookings: {
         total: bookingsTotal,
         recent: recent.map((b) => ({ id: b.id, businessId: b.businessId, businessName: nameOf.get(b.businessId) ?? '', start: utcToLocal(b.startAt), status: b.status })),
       },
-      logins: logins.map((l) => ({ at: utcToLocal(l.at), method: l.method, app: l.app, result: l.result, ip: maskIp(l.ip) })),
+      logins: logins.map((l) => ({ at: utcToLocal(l.at), method: l.method, channel: l.channel, app: l.app, result: l.result, ip: maskIp(l.ip) })),
       activeSessions,
     };
   }

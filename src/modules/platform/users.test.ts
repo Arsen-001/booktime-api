@@ -53,6 +53,23 @@ test('фильтры: регистрация с–по (границы дня Е
   assert.deepEqual(off.AND[0], { AND: [{ id: { notIn: [] } }, { OR: [{ phone: null }, { phone: { notIn: [] } }] }] });
 });
 
+test('фильтры: WhatsApp — по номерам, куда код дошёл в WhatsApp; «нет» — и люди без номера', () => {
+  const phones = ['+37491123456'];
+  assert.deepEqual(R.buildUserWhere(q({ whatsapp: 'yes' }), { now: NOW, whatsappPhones: phones }), { AND: [{ phone: { in: phones } }] });
+  assert.deepEqual(R.buildUserWhere(q({ whatsapp: 'no' }), { now: NOW, whatsappPhones: phones }), { AND: [{ OR: [{ phone: null }, { phone: { notIn: phones } }] }] });
+  assert.throws(() => q({ whatsapp: 'maybe' }));
+});
+
+test('первый вход: раньше код — его канал, раньше Google/Apple — они; неизвестное — null', () => {
+  const at = (d: string) => new Date(`2026-09-${d}T10:00:00Z`);
+  assert.equal(R.firstLoginVia({ channel: 'whatsapp', at: at('01') }, { method: 'google', at: at('10') }), 'whatsapp');
+  assert.equal(R.firstLoginVia({ channel: 'telegram', at: at('10') }, { method: 'apple', at: at('01') }), 'apple');
+  assert.equal(R.firstLoginVia(null, { method: 'google', at: at('01') }), 'google');
+  assert.equal(R.firstLoginVia({ channel: 'sms', at: at('01') }, null), 'sms');
+  assert.equal(R.firstLoginVia({ channel: 'pigeon', at: at('01') }, { method: 'password', at: at('01') }), null);
+  assert.equal(R.firstLoginVia(null, null), null);
+});
+
 test('статус, роли, маска IP, сортировка с пустыми в конце', () => {
   assert.equal(R.userStatusOf({ blockedAt: new Date(), deleteRequestedAt: new Date(), deletedAt: null }), 'blocked');
   assert.equal(R.userStatusOf({ blockedAt: null, deleteRequestedAt: new Date(), deletedAt: null }), 'delete_requested');
@@ -113,7 +130,7 @@ function memoryDb() {
   const audit: Row[] = [];
   const loginEvents: Row[] = [
     { id: 'le1', userId: 'u_anna', at: new Date('2026-10-02T09:00:00Z'), method: 'google', app: 'client', result: 'ok', ip: '93.184.216.34', identifier: '+374 91 1•• •56', sessionId: 's1' },
-    { id: 'le2', userId: 'u_anna', at: new Date('2026-10-01T09:00:00Z'), method: 'code', app: 'client', result: 'wrong_code', ip: '2a02:2168:8f00:1::5', identifier: '+374 91 1•• •56', sessionId: null },
+    { id: 'le2', userId: 'u_anna', at: new Date('2026-10-01T09:00:00Z'), method: 'code', channel: null, app: 'client', result: 'wrong_code', ip: '2a02:2168:8f00:1::5', identifier: '+374 91 1•• •56', sessionId: null },
   ];
   const bookings: Row[] = [
     { id: 'b1', appUserId: 'u_anna', businessId: 'biz_nuri', startAt: new Date('2026-10-05T07:00:00Z'), status: 'scheduled', deletedAt: null },
@@ -169,6 +186,15 @@ function memoryDb() {
         bookings.filter((b) => b.appUserId === where.appUserId).sort((a, b) => (b.startAt as Date).getTime() - (a.startAt as Date).getTime()).slice(0, take),
     },
     business: { findMany: async () => [{ id: 'biz_nuri', name: 'Nuri Nails' }] },
+    otpRequest: {
+      // Коды Анны: первый вход — кодом в WhatsApp 1 сентября, потом ещё раз в WhatsApp
+      aggregate: async ({ where }: { where: { phone: string; channel: string } }) =>
+        where.phone === '+37491123456' && where.channel === 'whatsapp'
+          ? { _min: { usedAt: new Date('2026-09-01T08:00:00Z') }, _max: { usedAt: new Date('2026-09-20T08:00:00Z') } }
+          : { _min: { usedAt: null }, _max: { usedAt: null } },
+      findFirst: async ({ where }: { where: { phone: string } }) =>
+        where.phone === '+37491123456' ? { channel: 'whatsapp', usedAt: new Date('2026-09-01T08:00:00Z'), codeHash: SECRET_TOKEN_HASH } : null,
+    },
     loginEvent: {
       findMany: async ({ where, take }: { where: { userId: string }; take: number }) => loginEvents.filter((e) => e.userId === where.userId).slice(0, take),
       findFirst: async ({ where }: { where: { userId: string; result: string } }) => loginEvents.find((e) => e.userId === where.userId && e.result === where.result) ?? null,
@@ -250,6 +276,8 @@ test('карточка: все блоки, IP с маской, никаких х
   assert.deepEqual(card.lastLogin, { at: '2026-10-02T13:00', method: 'google' });
   assert.deepEqual(card.roles, [{ businessId: 'biz_nuri', businessName: 'Nuri Nails', businessSlug: 'nuri-nails', kind: 'salon', role: 'master', fired: false }]);
   assert.equal(card.telegram.connected, true);
+  assert.deepEqual(card.whatsapp, { used: true, since: '2026-09-01T12:00', lastAt: '2026-09-20T12:00' });
+  assert.equal(card.firstLoginVia, 'whatsapp');
   assert.deepEqual(card.google, { linked: true, email: 'anna@gmail.com', since: '2026-09-10T04:00', lastUsedAt: '2026-10-02T04:00' });
   assert.equal(card.bookings.total, 2);
   assert.equal(card.bookings.recent[0]!.businessName, 'Nuri Nails');

@@ -108,7 +108,7 @@ export class AuthService {
 
   private async logEvent(
     ctx: RequestContext,
-    e: { userId?: string | null; sessionId?: string | null; method: LoginMethod; app: SessionApp; result: string; identifier?: string },
+    e: { userId?: string | null; sessionId?: string | null; method: LoginMethod; channel?: string; app: SessionApp; result: string; identifier?: string },
   ): Promise<void> {
     await this.prisma.loginEvent.create({
       data: {
@@ -116,6 +116,7 @@ export class AuthService {
         userId: e.userId ?? null,
         sessionId: e.sessionId ?? null,
         method: e.method,
+        channel: e.channel ?? null,
         app: e.app,
         result: e.result,
         identifier: e.identifier?.slice(0, 64) ?? null,
@@ -175,14 +176,15 @@ export class AuthService {
     if (input.app === 'client' && !existing?.appProfile?.consentAt && !input.consent) {
       throw new ApiError('consent_required', 'User agreement must be accepted');
     }
+    let channel: string;
     try {
-      await this.otp.verify({ phone, purpose: 'login' }, input.code);
+      channel = (await this.otp.verify({ phone, purpose: 'login' }, input.code)).channel;
     } catch (err) {
       await this.logEvent(ctx, { userId: existing?.id, method: 'code', app: input.app, result: err instanceof ApiError ? err.code : 'error', identifier: maskPhone(phone) });
       throw err;
     }
     if (existing?.blockedAt || existing?.deletedAt) {
-      await this.logEvent(ctx, { userId: existing.id, method: 'code', app: input.app, result: 'blocked' });
+      await this.logEvent(ctx, { userId: existing.id, method: 'code', channel, app: input.app, result: 'blocked' });
       throw new ApiError('account_blocked', 'Account is blocked');
     }
     // «Войти через Google» с непривязанным аккаунтом (03.10.2026): номер подтверждён кодом — только теперь Google
@@ -208,7 +210,7 @@ export class AuthService {
       return id;
     });
 
-    const sessionId = await this.openPhoneSession(ctx, res, userId, input.app, 'code');
+    const sessionId = await this.openPhoneSession(ctx, res, userId, input.app, 'code', channel);
     const linked: { googleLinked?: boolean; appleLinked?: boolean } = {};
     if (input.pendingGoogle) {
       await this.logEvent(ctx, {
@@ -270,8 +272,8 @@ export class AuthService {
     }
   }
 
-  /** Сессия человека с номером (вход кодом или Google): бизнес — первый из его бизнесов */
-  private async openPhoneSession(ctx: RequestContext, res: Response, userId: string, app: PhoneApp, method: LoginMethod): Promise<string> {
+  /** Сессия человека с номером (вход кодом или Google): бизнес — первый из его бизнесов. channel — куда пришёл код */
+  private async openPhoneSession(ctx: RequestContext, res: Response, userId: string, app: PhoneApp, method: LoginMethod, channel?: string): Promise<string> {
     const memberships = app === 'business' ? await this.memberships.list(userId) : [];
     const sessionId = await this.sessions.open(ctx, res, {
       userId,
@@ -279,7 +281,7 @@ export class AuthService {
       mode: app === 'business' ? 'business' : 'client',
       activeBusinessId: memberships[0]?.businessId ?? null,
     });
-    await this.logEvent(ctx, { userId, sessionId, method, app, result: 'ok' });
+    await this.logEvent(ctx, { userId, sessionId, method, channel, app, result: 'ok' });
     return sessionId;
   }
 
