@@ -7,6 +7,7 @@ const code = z.string().regex(/^\d{4}$/, 'four_digits');
 
 export const sendCodeBody = z.object({
   phone: z.string().min(8).max(24),
+  /** Куда прислать; выключенный или не доставивший канал — код уйдёт в следующий включённый (ответ скажет куда) */
   channel: channel.default('telegram'),
   locale: locale.optional(),
 });
@@ -72,8 +73,13 @@ export const codeSent = z.object({
   challengeId: z.string(),
   resendAfter: z.number(),
   expiresIn: z.number(),
+  /** Куда код ушёл на самом деле (запасной канал, если запрошенный не доставил) */
   channel,
+  /** Включённые каналы — экран кода предлагает «Прислать в <другой>» */
+  channels: z.array(channel),
 });
+
+export const codeChannels = z.object({ channels: z.array(channel) });
 
 export const secondFactor = z.object({
   secondFactor: z.object({ challengeId: z.string(), phoneMasked: z.string(), resendAfter: z.number(), expiresIn: z.number() }),

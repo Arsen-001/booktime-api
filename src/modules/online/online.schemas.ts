@@ -40,7 +40,7 @@ export const monthAvailabilityOut = z.record(z.string(), z.boolean());
 // ─────────────────────────── код перед записью (F-00-007, B2) ───────────────────────────
 
 export const sendBookingCodeBody = z.object({ phone: z.string().min(8).max(24), channel: codeChannel.default('telegram'), locale: z.enum(['ru', 'hy', 'en']).optional() });
-export const codeSentOut = z.object({ challengeId: z.string(), resendAfter: z.number(), expiresIn: z.number(), channel: codeChannel });
+export const codeSentOut = z.object({ challengeId: z.string(), resendAfter: z.number(), expiresIn: z.number(), channel: codeChannel, channels: z.array(codeChannel) });
 
 // ─────────────────────────── создание записи (F-03-091…098) ───────────────────────────
 

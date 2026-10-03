@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { CODE_SENDERS, type CodeSenders } from '../../adapters/adapters.js';
-import type { CodeChannel } from '../../adapters/code-sender/code-sender.js';
+import { CODE_CHANNEL_ORDER, deliverCode, deliveryOrder, enabledChannels, type CodeChannel } from '../../adapters/code-sender/code-sender.js';
 import { env } from '../../common/config/env.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { t, type Locale } from '../../common/i18n/i18n.js';
@@ -12,6 +12,11 @@ import { PrismaService } from '../../common/prisma.service.js';
 /**
  * Коды (docs/backend/05 §6.3, решение E2): 4 цифры, 5 минут, 5 попыток на код, повтор не раньше 60 с,
  * не больше 5 кодов на номер в час и 10 в сутки, с одного адреса — 20 в час. В базе только хэш кода.
+ *
+ * Каналы (03.10.2026): код уходит в запрошенный канал (по умолчанию Telegram); не доставлен — тот же код в следующий
+ * включённый канал (WhatsApp) в том же запросе, одна запись otp_requests — лимиты считаются как за один код.
+ * «Прислать в WhatsApp» / «Прислать SMS» с экрана кода — обычная повторная отправка: те же 60 с и часовые/суточные
+ * лимиты. SMS — последним и со своими лимитами (smsPerPhoneDay, smsPerIpHour, SMS_MAX_PER_HOUR на весь сервис).
  */
 export const OTP = {
   length: 4,
@@ -21,6 +26,9 @@ export const OTP = {
   perPhoneHour: 5,
   perPhoneDay: 10,
   perIpHour: 20,
+  /** SMS платные и цель накрутки (SMS pumping) — свои лимиты сверх общих; исчерпаны — SMS просто не предлагается */
+  smsPerPhoneDay: 3,
+  smsPerIpHour: 5,
 } as const;
 
 /** 'booking' — F-00-007: подтвердить номер перед онлайн-записью без входа, без сессии (этап 8) */
@@ -43,7 +51,10 @@ export interface OtpSent {
   resendAfter: number;
   /** Сколько секунд живёт код */
   expiresIn: number;
+  /** Куда код ушёл на самом деле (может отличаться от запрошенного — запасной канал) */
   channel: CodeChannel;
+  /** Какие каналы включены — экран предлагает «Прислать в <другой>» */
+  channels: CodeChannel[];
 }
 
 function codeHash(otpId: string, code: string): string {
@@ -62,6 +73,11 @@ export class OtpService {
     private readonly prisma: PrismaService,
     @Inject(CODE_SENDERS) private readonly senders: CodeSenders,
   ) {}
+
+  /** Включённые каналы (без учёта номера и лимитов) — экран входа показывает выбор только из них */
+  channels(): CodeChannel[] {
+    return CODE_CHANNEL_ORDER.filter((c) => this.senders[c].enabled);
+  }
 
   async send(input: OtpSendInput): Promise<OtpSent> {
     const now = Date.now();
@@ -84,6 +100,9 @@ export class OtpService {
     if (perDay >= OTP.perPhoneDay) throw new ApiError('rate_limited', 'Too many codes for this number today', undefined, 3600);
     if (perHour >= OTP.perPhoneHour || perIp >= OTP.perIpHour) throw new ApiError('rate_limited', 'Too many codes, try later', undefined, 3600);
 
+    const smsOk = await this.smsAllowedNow(input.phone, input.ip, hourAgo, dayAgo);
+    const order = deliveryOrder(this.senders, input.phone, input.channel).filter((c) => c !== 'sms' || smsOk);
+    if (order.length === 0) throw new ApiError('code_not_delivered', 'No code channel is enabled');
     const id = newId('otp');
     const code = makeCode();
     await this.prisma.$transaction([
@@ -97,7 +116,7 @@ export class OtpService {
           id,
           phone: input.phone,
           purpose: input.purpose,
-          channel: input.channel,
+          channel: order[0]!,
           codeHash: codeHash(id, code),
           subjectId: input.subjectId ?? null,
           userId: input.userId ?? null,
@@ -106,22 +125,42 @@ export class OtpService {
         },
       }),
     ]);
+    let channel: CodeChannel;
     try {
-      const sent = await this.senders[input.channel].send({
+      const sent = await deliverCode(this.senders, order, {
         phone: input.phone,
         code,
         text: t(input.locale, 'auth.code', { code }),
         ttlSec: OTP.ttlSec,
+        locale: input.locale,
       });
-      if (sent.providerMessageId) {
-        await this.prisma.otpRequest.update({ where: { id }, data: { providerMessageId: sent.providerMessageId } });
+      channel = sent.channel;
+      if (sent.providerMessageId || channel !== order[0]) {
+        await this.prisma.otpRequest.update({
+          where: { id },
+          data: { channel, ...(sent.providerMessageId ? { providerMessageId: sent.providerMessageId } : {}) },
+        });
       }
     } catch (err) {
-      logger.warn({ err: (err as Error).message, channel: input.channel }, 'code not delivered');
+      logger.warn({ err: (err as Error).message, channels: order }, 'code not delivered');
       await this.prisma.otpRequest.update({ where: { id }, data: { status: 'failed' } });
       throw new ApiError('code_not_delivered', 'Code could not be delivered via this channel');
     }
-    return { challengeId: id, resendAfter: OTP.resendSec, expiresIn: OTP.ttlSec, channel: input.channel };
+    const channels = enabledChannels(this.senders, input.phone).filter((c) => c !== 'sms' || smsOk);
+    return { challengeId: id, resendAfter: OTP.resendSec, expiresIn: OTP.ttlSec, channel, channels };
+  }
+
+  /** Можно ли сейчас слать SMS: канал включён и не исчерпаны лимиты на номер, адрес и весь сервис (защита от накрутки) */
+  private async smsAllowedNow(phone: string, ip: string, hourAgo: Date, dayAgo: Date): Promise<boolean> {
+    if (!this.senders.sms.enabled) return false;
+    const [perPhone, perIp, total] = await Promise.all([
+      this.prisma.otpRequest.count({ where: { phone, channel: 'sms', sentAt: { gte: dayAgo } } }),
+      this.prisma.otpRequest.count({ where: { ip, channel: 'sms', sentAt: { gte: hourAgo } } }),
+      this.prisma.otpRequest.count({ where: { channel: 'sms', sentAt: { gte: hourAgo } } }),
+    ]);
+    const ok = perPhone < OTP.smsPerPhoneDay && perIp < OTP.smsPerIpHour && total < env.SMS_MAX_PER_HOUR;
+    if (!ok) logger.warn({ perPhone, perIp, total }, 'sms code limit reached — sms skipped');
+    return ok;
   }
 
   /**

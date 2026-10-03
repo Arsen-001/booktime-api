@@ -9,6 +9,7 @@ import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import {
   challengeBody,
   changePasswordBody,
+  codeChannels,
   codeSent,
   logoutAllBody,
   modeBody,
@@ -37,10 +38,19 @@ export class AuthController {
     return { session: await this.auth.view(ctx.session.sessionId) };
   }
 
+  @Get('channels')
+  @ApiOperation({ summary: 'Куда можно прислать код: включённые каналы по порядку (telegram, whatsapp, sms)' })
+  @ZodOk(codeChannels)
+  channels() {
+    return this.auth.codeChannels();
+  }
+
   @Post('code')
   @HttpCode(200)
   @RateLimit({ bucket: 'auth-code-ip', limit: 30, windowSec: 600, by: 'ip' })
-  @ApiOperation({ summary: 'Отправить код входа (4 цифры, 5 мин, повтор через 60 с). Ответ одинаков для любого номера.' })
+  @ApiOperation({ summary:
+      'Отправить код входа (4 цифры, 5 мин, повтор через 60 с). channel — куда просят (по умолчанию telegram); не доставлен — ' +
+      'следующий включённый канал. Ответ: channel — куда ушёл, channels — включённые каналы.' })
   @ZodBody(sendCodeBody)
   @ZodOk(codeSent)
   sendCode(@Ctx() ctx: RequestContext, @Body(new Zod(sendCodeBody)) body: z.infer<typeof sendCodeBody>) {

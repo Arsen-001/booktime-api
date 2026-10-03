@@ -99,6 +99,11 @@ export class AuthService {
 
   // ─────────── вход по коду (F-00-032, F-00-033) ───────────
 
+  /** Куда можно прислать код: Telegram (всегда), WhatsApp и SMS — если настроены (03.10.2026) */
+  codeChannels(): { channels: CodeChannel[] } {
+    return { channels: this.otp.channels() };
+  }
+
   sendCode(ctx: RequestContext, input: { phone: string; channel: CodeChannel; locale?: Locale }): Promise<OtpSent> {
     const phone = normalizePhone(input.phone);
     if (!phone) throw new ApiError('invalid_phone', 'Phone must be +374XXXXXXXX');

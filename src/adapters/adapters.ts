@@ -1,6 +1,13 @@
 import { FakeBusinessMessenger, type BusinessMessenger } from './business-sms/business-sms.js';
 import { env } from '../common/config/env.js';
-import { FakeCodeSender, TelegramGatewaySender, type CodeChannel, type CodeSender } from './code-sender/code-sender.js';
+import {
+  FakeCodeSender,
+  TelegramGatewaySender,
+  WhatsAppCloudSender,
+  type CodeChannel,
+  type CodeSender,
+} from './code-sender/code-sender.js';
+import { createSmsProvider, SmsCodeSender } from './code-sender/sms.js';
 import { FakeMailSender, type MailSender } from './mail/mail.js';
 import { FakePaymentProvider, type PaymentProvider } from './payments/payments.js';
 import { createPushSenders, type PushSenders } from './push/push.js';
@@ -22,9 +29,21 @@ export const adapterProviders = [
   {
     provide: CODE_SENDERS,
     useFactory: (): CodeSenders => ({
-      telegram: env.TELEGRAM_GATEWAY_TOKEN ? new TelegramGatewaySender(env.TELEGRAM_GATEWAY_TOKEN) : new FakeCodeSender('telegram'),
-      whatsapp: new FakeCodeSender('whatsapp'),
-      sms: new FakeCodeSender('sms'),
+      // Telegram без токена — заглушка, но включённая: разработка и DEV_LOGIN_CODE работают как раньше
+      telegram: env.TELEGRAM_GATEWAY_TOKEN ? new TelegramGatewaySender(env.TELEGRAM_GATEWAY_TOKEN) : new FakeCodeSender('telegram', true),
+      // WhatsApp без настроек выключен: не предлагается и не используется как запасной
+      whatsapp:
+        env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID
+          ? new WhatsAppCloudSender({
+              token: env.WHATSAPP_TOKEN,
+              phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+              templateName: env.WHATSAPP_TEMPLATE_NAME,
+              languages: env.WHATSAPP_TEMPLATE_LANGS,
+              apiVersion: env.WHATSAPP_API_VERSION,
+            })
+          : new FakeCodeSender('whatsapp'),
+      // SMS — провайдер по SMS_PROVIDER (Twilio); без него выключен
+      sms: ((p) => (p ? new SmsCodeSender(p, env.SMS_ALLOWED_PREFIXES) : new FakeCodeSender('sms')))(createSmsProvider(env)),
     }),
   },
   { provide: PUSH_SENDERS, useFactory: (): PushSenders => createPushSenders() },

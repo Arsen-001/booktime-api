@@ -222,6 +222,44 @@
         ]
       }
     },
+    "/v1/auth/channels": {
+      "get": {
+        "operationId": "AuthController_channels",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "channels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "telegram",
+                          "whatsapp",
+                          "sms"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "channels"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Куда можно прислать код: включённые каналы по порядку (telegram, whatsapp, sms)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/v1/auth/code": {
       "post": {
         "operationId": "AuthController_sendCode",
@@ -287,20 +325,32 @@
                         "whatsapp",
                         "sms"
                       ]
+                    },
+                    "channels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "telegram",
+                          "whatsapp",
+                          "sms"
+                        ]
+                      }
                     }
                   },
                   "required": [
                     "challengeId",
                     "resendAfter",
                     "expiresIn",
-                    "channel"
+                    "channel",
+                    "channels"
                   ]
                 }
               }
             }
           }
         },
-        "summary": "Отправить код входа (4 цифры, 5 мин, повтор через 60 с). Ответ одинаков для любого номера.",
+        "summary": "Отправить код входа (4 цифры, 5 мин, повтор через 60 с). channel — куда просят (по умолчанию telegram); не доставлен — следующий включённый канал. Ответ: channel — куда ушёл, channels — включённые каналы.",
         "tags": [
           "auth"
         ]
@@ -2113,13 +2163,25 @@
                         "whatsapp",
                         "sms"
                       ]
+                    },
+                    "channels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "telegram",
+                          "whatsapp",
+                          "sms"
+                        ]
+                      }
                     }
                   },
                   "required": [
                     "challengeId",
                     "resendAfter",
                     "expiresIn",
-                    "channel"
+                    "channel",
+                    "channels"
                   ]
                 }
               }
@@ -49170,13 +49232,25 @@
                         "whatsapp",
                         "sms"
                       ]
+                    },
+                    "channels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "telegram",
+                          "whatsapp",
+                          "sms"
+                        ]
+                      }
                     }
                   },
                   "required": [
                     "challengeId",
                     "resendAfter",
                     "expiresIn",
-                    "channel"
+                    "channel",
+                    "channels"
                   ]
                 }
               }

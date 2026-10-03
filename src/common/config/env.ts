@@ -21,6 +21,39 @@ const schema = z.object({
   // Вход (этап 2)
   /** Telegram Gateway: есть токен — код в Telegram уходит по-настоящему; нет — заглушка пишет в лог */
   TELEGRAM_GATEWAY_TOKEN: z.string().optional(),
+  /**
+   * WhatsApp Business Cloud API (03.10.2026): заданы токен и Phone number ID — канал «WhatsApp» включён (по просьбе
+   * человека и как запасной, если Telegram не доставил); не заданы — канала нет. См. README «Вход через WhatsApp».
+   */
+  WHATSAPP_TOKEN: z.string().optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  /** Имя одобренного шаблона категории AUTHENTICATION (кнопка «Copy code») */
+  WHATSAPP_TEMPLATE_NAME: z.string().optional().transform((s) => s || 'booktime_login_code'),
+  /** Языки, на которых шаблон одобрен, через запятую; язык выбирается по локали человека, нет такого — первый */
+  WHATSAPP_TEMPLATE_LANGS: z
+    .string()
+    .optional()
+    .transform((s) => (s || 'ru,en').split(',').map((x) => x.trim()).filter(Boolean)),
+  /** Версия Graph API */
+  WHATSAPP_API_VERSION: z.string().optional().transform((s) => s || 'v23.0'),
+  /**
+   * SMS для кода входа (03.10.2026): самый дорогой канал — последний запасной. Провайдер выбран и ключи заданы —
+   * включён; иначе канала нет. Первый провайдер — Twilio (TWILIO_FROM или TWILIO_MESSAGING_SERVICE_SID).
+   */
+  SMS_PROVIDER: z.enum(['twilio']).optional().or(z.literal('').transform(() => undefined)),
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  /** Номер Twilio (+1…) или Alphanumeric Sender ID ('BookTime') */
+  TWILIO_FROM: z.string().optional(),
+  /** Messaging Service SID (MG…) — вместо TWILIO_FROM */
+  TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
+  /** Защита от накрутки: SMS только на номера с этими префиксами, через запятую */
+  SMS_ALLOWED_PREFIXES: z
+    .string()
+    .optional()
+    .transform((s) => (s || '+374').split(',').map((x) => x.trim()).filter(Boolean)),
+  /** Защита от накрутки: не больше стольких SMS с кодом в час на весь сервис (остальным — Telegram/WhatsApp) */
+  SMS_MAX_PER_HOUR: z.coerce.number().int().positive().default(100),
   /** Постоянный код входа только для разработки (NODE_ENV=development); в остальных средах игнорируется */
   DEV_LOGIN_CODE: z.string().regex(/^\d{4}$/).optional(),
   /** Домен cookie сессии (прод: .booktime.am — чтобы сайт и API на поддоменах видели одну сессию); пусто — хост API */

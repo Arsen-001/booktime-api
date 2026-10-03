@@ -29,7 +29,18 @@ esbuild/tsx: Nest берёт зависимости из метаданных д
 ## Вход при разработке (этап 2)
 
 - Код входа — в логе API (`[fake code-sender]`); при `NODE_ENV=development` и `DEV_LOGIN_CODE=0000` код всегда `0000`.
-  Telegram Gateway настоящий, если задан `TELEGRAM_GATEWAY_TOKEN`; WhatsApp и SMS — заглушки.
+  Telegram Gateway настоящий, если задан `TELEGRAM_GATEWAY_TOKEN` (без него — заглушка, канал работает для разработки).
+- Каналы кода (03.10.2026): `POST /v1/auth/code { channel? }` — по умолчанию Telegram; не доставил — тот же код в
+  следующий включённый канал (Telegram → WhatsApp → SMS). Ответ: `channel` — куда ушёл на самом деле, `channels` —
+  включённые каналы (экран кода предлагает «Прислать в WhatsApp» / «Прислать SMS»). Повтор в другой канал — обычная
+  повторная отправка (60 с, лимиты на номер/адрес). Логика — `src/adapters/code-sender`, `OtpService`; тесты — `npm test`.
+  - WhatsApp: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` (оба — канал включён), `WHATSAPP_TEMPLATE_NAME`
+    (`booktime_login_code`), `WHATSAPP_TEMPLATE_LANGS` (`ru,en`; язык по локали человека, иначе первый),
+    `WHATSAPP_API_VERSION` (`v23.0`). Шаблон — категория AUTHENTICATION, кнопка «Copy code».
+  - SMS: `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` или `TWILIO_MESSAGING_SERVICE_SID`.
+    Защита от накрутки: `SMS_ALLOWED_PREFIXES` (`+374`), `SMS_MAX_PER_HOUR` (`100` на весь сервис), плюс в коде
+    3 SMS на номер в сутки и 5 с адреса в час — дальше SMS не предлагается. Новый провайдер — класс `SmsProvider`
+    в `src/adapters/code-sender/sms.ts` и значение `SMS_PROVIDER`.
 - Клиенты — номера из мока (`+374 00 160 001` — Ани, `au_01`); новый номер создаёт нового человека.
 - Администраторы салонов — логины из мока (`lilit.nuri`, `anahit.atam`, …), пароль = логин, первый вход просит сменить.
 - Команда платформы (`/platform/login` фронта): `platform` / `booktime-dev`, затем код.
