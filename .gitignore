@@ -6,3 +6,6 @@ src/generated/
 .DS_Store
 /storage/
 prisma/seed/.cache/
+
+# Локальные копии базы (jobs/db-backup.ts)
+/backups/

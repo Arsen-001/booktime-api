@@ -499,9 +499,12 @@ function timeBased(ctx: DeriveContext, serviceHours: Record<string, number>): Lo
         }
       }
     }
-    if (t73?.enabled && booking.status === 'awaiting_confirmation') {
+    // Тип 73 (F-05-028, 03.10.2026): «Ожидание клиента» Altegio = наш «Записан» (scheduled) — как отправка
+    // (jobs/notify-confirm-requests.ts) и мок; «Ждёт подтверждения» ждёт мастера, клиенту подтверждать нечего
+    if (t73?.enabled && booking.status === 'scheduled') {
       const channel = pickChannel(t73, hasApp);
       if (!channel) continue;
+      if ((channel === 'push' || channel === 'brandedApp') && ov?.pushEnabled === false) continue;
       const c = t73.conditions;
       const planned =
         c?.useSpecificTime && c.specificTime

@@ -6,6 +6,7 @@ import { notifyKindOf } from '../modules/notify/kinds.js';
 import { TYPE_REGISTRY } from '../modules/notify/notify-type-registry.js';
 import { enqueueClientNotification } from '../modules/notify/outbox.js';
 import { enqueueTelegramReminders } from '../modules/telegram/telegram-reminders.js';
+import { enqueueConfirmRequests } from './notify-confirm-requests.js';
 
 const WINDOWS: { kind: 'reminder24h' | 'reminder2h'; hoursBefore: number }[] = [
   { kind: 'reminder24h', hoursBefore: 24 },
@@ -27,12 +28,15 @@ const MAX_HOURS = 720;
  * Напоминание о визите (тип 1). Решение владельца 01.10.2026: пуш уходит за время из настройки салона «Отправлять за»
  * (своё у услуги → у записи → у типа, по умолчанию 1 ч) — тот же расчёт, что журнал уведомлений (notify-log-derive.ts
  * timeBased) и мок. Telegram — клиенту без приложения, всегда за 24 ч и за 2 ч (`telegram-reminders.ts`); остальных
- * закрывает доска F-00-121 «клиентам без приложения мастер напоминает сам».
+ * закрывает доска F-00-121 «клиентам без приложения мастер напоминает сам». Тем же проходом — запрос подтверждения
+ * (тип 73, `notify-confirm-requests.ts`).
  */
 export async function notifyBookingReminders(prisma: PrismaService): Promise<{ sent: number; candidates: number }> {
   const now = new Date();
-  let sent = 0;
-  let candidates = 0;
+  // ⭐ Тип 73 «Просим подтвердить визит» — ПЕРВЫМ: запрос в Telegram заменяет напоминание за сутки (notify-confirm-requests.ts)
+  const confirm = await enqueueConfirmRequests(prisma, now);
+  let sent = confirm.sent;
+  let candidates = confirm.candidates;
   for (const w of WINDOWS) {
     const from = new Date(now.getTime() + w.hoursBefore * 3_600_000);
     const to = new Date(from.getTime() + WINDOW_MIN * 60_000);

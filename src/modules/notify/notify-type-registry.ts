@@ -149,9 +149,12 @@ export const TYPE_REGISTRY: TypeDef[] = [
     descriptionRu: 'Просим клиента подтвердить, что придёт на визит.',
     descriptionEn: 'We ask the client to confirm they will come.',
     descriptionHy: 'Խնդրում ենք հաճախորդին հաստատել, որ կգա այցի։',
-    enabledDefault: false,
-    availableChannels: ['push', 'email', 'sms', 'brandedApp'],
-    defaultScenario: CLIENT_DEFAULT,
+    // ⭐ 03.10.2026: сервер отправляет (jobs/notify-confirm-requests.ts) — включён по умолчанию, как решил владелец 30.09
+    // (подтверждение — главный способ снизить неявки; 01.10 выключали только потому, что сервер его ещё не слал).
+    // Пуш — клиенту с приложением, Telegram-бот — без приложения (кнопка «Приду» → «Клиент подтвердил»).
+    enabledDefault: true,
+    availableChannels: ['push', 'telegram', 'email', 'sms', 'brandedApp'],
+    defaultScenario: CLIENT_REMINDER_DEFAULT,
     templateRu: '{companyName}: подтвердите визит {date} в {time} ({service}, мастер: {staff}). Подтвердить или отменить: {link}',
     templateEn: '{companyName}: please confirm your visit {date} at {time} ({service}, specialist: {staff}). Confirm or cancel: {link}',
     templateHy: '{companyName}․ խնդրում ենք հաստատել այցը՝ {date}, ժամը {time} ({service}, վարպետ՝ {staff})։ Հաստատել կամ չեղարկել՝ {link}',

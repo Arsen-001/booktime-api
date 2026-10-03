@@ -1,0 +1,39 @@
+# Автопроверки на каждый push и pull request (03.10.2026): клиент Prisma, типы, тесты, права, сборка.
+# Выкладку делает Railway сам; здесь — чтобы сломанное было видно до слияния develop → main.
+name: CI
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Клиент Prisma
+        run: npx prisma generate
+      - name: Типы
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Тесты
+        run: npm test
+      - name: Код сайта для сверки прав
+        uses: actions/checkout@v4
+        with:
+          repository: Arsen-001/booktime-web
+          ref: ${{ github.ref_name == 'main' && 'main' || 'develop' }}
+          path: front
+      - name: Права (permissions) сходятся с сайтом
+        run: node scripts/check-permissions.mjs front
+      - name: Сборка
+        run: npx tsc -p tsconfig.build.json

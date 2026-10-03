@@ -23,6 +23,7 @@ import { TechCardsService } from '../stock/tech-cards.service.js';
 import { recordPrepaymentReceivedTx, recordPrepaymentRefundTx } from '../finance/prepayment-ops.js';
 import { JournalSettingsService } from './journal-settings.js';
 import { UpsellService } from './upsell.service.js';
+import { waitlistOffer } from './waitlist-match.js';
 import { bookingView, eventView, extrasView, type BookingView } from './journal.views.js';
 import {
   PREPAYMENT_HOLD_MIN,
@@ -638,32 +639,14 @@ export class BookingsService {
     const entries = await tx.waitlistEntry.findMany({ where: { businessId: prev.businessId, bookingId: null }, select: { id: true, staffIds: true, serviceIds: true, wishes: true, appUserId: true, notifiedTimes: true } });
     // Длительности услуг, которые ждут: окно короче услуги не предлагаем — записаться в него нельзя (сценарии 30.09:
     // окно 30 мин ушло ждавшей услугу на 45 мин). Как collectRecipients мока (journal-offers, freeMin).
-    const wantedIds = [...new Set(entries.flatMap((e) => arr(e.serviceIds)))];
+    const wantedIds = [...new Set([...entries.flatMap((e) => arr<string>(e.serviceIds)), ...serviceIds])];
     const durations = new Map(
       (wantedIds.length ? await tx.service.findMany({ where: { id: { in: wantedIds } }, select: { id: true, durationMin: true } }) : []).map((s) => [s.id, s.durationMin]),
     );
-    /** Какую услугу заявке предложить в этом окне: из тех, что ждёт, — освободившуюся, иначе любую, что помещается */
-    const offeredService = (e: { serviceIds: unknown }): string | undefined | null => {
-      const svc = arr(e.serviceIds);
-      if (!svc.length) return serviceIds[0];
-      const fits = svc.filter((id) => (durations.get(id) ?? 0) <= prev.durationMin);
-      const same = fits.find((id) => serviceIds.includes(id));
-      if (serviceIds.length && !same) return null; // ждёт другие услуги, чем освободилась, — как раньше, не предлагаем
-      return same ?? fits[0] ?? null;
-    };
-    const matches = entries.filter((e) => {
-      const staffIds = arr(e.staffIds);
-      if (staffIds.length && !staffIds.includes(prev.staffId)) return false;
-      if (offeredService(e) === null) return false;
-      // Желания единого листа ожидания (как waitlistWantsSlot фронта): день (или любой), точное время или интервал
-      const wishes = arr<{ date?: string; time?: string; intervals?: { from: string; to: string }[] }>(e.wishes);
-      if (!wishes.length) return true;
-      return wishes.some((w) => {
-        if (w.date && w.date !== date) return false;
-        if (w.intervals?.length) return w.intervals.some((i) => toMinutes(i.from) <= startMin && startMin < toMinutes(i.to));
-        return !w.time || toMinutes(w.time) === startMin;
-      });
-    });
+    const window = { staffId: prev.staffId, serviceIds, durationMin: prev.durationMin, date, startMin };
+    const offers = new Map(entries.map((e) => [e.id, waitlistOffer(e, window, durations)]));
+    const offeredService = (e: { id: string }) => offers.get(e.id);
+    const matches = entries.filter((e) => offers.get(e.id) !== null);
     const discount = (await this.settings.get(prev.businessId, tx)).hotDiscountPct[prev.staffId] ?? 0;
     await tx.freedSlot.create({
       data: {
@@ -699,6 +682,8 @@ export class BookingsService {
       when: `${local.slice(8, 10)}.${local.slice(5, 7)} ${local.slice(11, 16)}`,
       serviceName: (locale: Locale) => names[locale] || names.ru || '',
       params: { date: local.slice(0, 10), time: local.slice(11, 16), ...(slot.serviceId ? { serviceId: slot.serviceId } : {}) },
+      /** Тап по пушу — сразу запись на это окно (тот же адрес, что кнопка «Записаться» в ленте приложения) */
+      url: (staffId: string) => `/book?staff=${encodeURIComponent(staffId)}&slot=${encodeURIComponent(local)}${slot.serviceId ? `&service=${encodeURIComponent(slot.serviceId)}` : ''}`,
     };
   }
 
@@ -723,6 +708,7 @@ export class BookingsService {
         appUserId: m.appUserId!,
         title: staffName,
         body: t(locale, 'waitlist.slotAvailableAt', { staff: staffName, when: slot.when, service: slot.serviceName(locale) }),
+        url: slot.url(prev.staffId),
         dedupeKey: `client:waitlist:${m.id}:${prev.id}`,
         inbox: { kind: 'waitlist_slot', businessId: prev.businessId, staffId: prev.staffId, params: slot.params },
       });
@@ -1872,6 +1858,7 @@ export class BookingsService {
         appUserId: u.id,
         title: staffName,
         body: t(locale, 'waitlist.slotAvailableAt', { staff: staffName, when: slot.when, service: slot.serviceName(locale) }),
+        url: slot.url(f.staffId),
         dedupeKey: `client:waitlist-sub:${f.id}:${u.id}`,
         inbox: { kind: 'waitlist_slot', businessId: f.businessId, staffId: f.staffId, params: slot.params },
       });

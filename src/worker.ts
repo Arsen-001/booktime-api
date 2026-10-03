@@ -14,6 +14,7 @@ import { notifyEmptyWeek } from './modules/notify/notify-empty-week.js';
 import { billingDispatch } from './jobs/billing-tick.js';
 import { webhooksDispatch } from './jobs/webhooks-dispatch.js';
 import { businessRetentionTick } from './jobs/business-retention.js';
+import { dbBackup } from './jobs/db-backup.js';
 import { createTelegramBot } from './adapters/telegram-bot/telegram-bot.js';
 import { env } from './common/config/env.js';
 import { TelegramBotService } from './modules/telegram/telegram-bot.service.js';
@@ -49,6 +50,9 @@ await queue.upsertJobScheduler('billing-retry', { every: 300_000 }, { name: 'bil
 await queue.upsertJobScheduler('webhooks-dispatch', { every: 10_000 }, { name: 'webhooks.dispatch', data: {} });
 // Этап 20: хранение и обезличивание при уходе бизнеса (B6) — раз в сутки, срок считается в днях, не в минутах
 await queue.upsertJobScheduler('business-retention', { pattern: '0 4 * * *', tz: 'Asia/Yerevan' }, { name: 'business.retention', data: {} });
+// 03.10.2026: ежедневная копия базы, пока на Railway нет снимков дисков (тариф Hobby) — только где DB_BACKUP=1
+if (env.DB_BACKUP) await queue.upsertJobScheduler('db-backup', { pattern: '30 4 * * *', tz: 'Asia/Yerevan' }, { name: 'db.backup', data: {} });
+else await queue.removeJobScheduler('db-backup');
 const prisma = new PrismaService();
 const journal = journalServices(prisma, createRedis('worker-journal'));
 const notify = notifyServices(prisma);
@@ -117,6 +121,11 @@ const worker = new Worker(
     if (job.name === 'webhooks.dispatch') {
       await webhooksDispatch(prisma);
       return;
+    }
+    if (job.name === 'db.backup') {
+      const res = await dbBackup(prisma, env.DB_BACKUP_DIR, env.DB_BACKUP_KEEP);
+      logger.info(res, 'db.backup');
+      return res;
     }
     if (job.name === 'business.retention') {
       const res = await businessRetentionTick(prisma);

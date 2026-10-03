@@ -93,6 +93,12 @@ const schema = z.object({
   TELEGRAM_BOT_POLLING: z.string().optional().transform((v) => v === '1'),
   /** Адрес сайта для ссылок в сообщениях (кнопка «Перенести» → <адрес>/b/<slug>) */
   PUBLIC_SITE_URL: z.string().optional().transform((s) => (s || 'https://booktime.am').replace(/\/+$/, '')),
+  /** '1' — воркер раз в сутки (04:30 Ереван) пишет копию базы в DB_BACKUP_DIR (jobs/db-backup.ts) */
+  DB_BACKUP: z.string().optional().transform((v) => v === '1'),
+  /** Папка копий — НЕ внутри STORAGE_DIR (хранилище раздаёт файлы); Railway: /data/backups */
+  DB_BACKUP_DIR: z.string().default('./backups'),
+  /** Сколько последних ежедневных копий хранить */
+  DB_BACKUP_KEEP: z.coerce.number().int().min(1).max(365).default(14),
 });
 
 export type Env = z.infer<typeof schema>;

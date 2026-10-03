@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { FinanceModule } from '../finance/finance.module.js';
 import { JournalModule } from '../journal/journal.module.js';
+import { LoyaltyModule } from '../loyalty/loyalty.module.js';
 import { ResourcesEventsController } from './resources-events.controller.js';
 import { ResourcesEventsService } from './resources-events.service.js';
 import { ResourcesController } from './resources.controller.js';
@@ -12,7 +13,7 @@ import { ResourcesService } from './resources.service.js';
  * `GroupEventsService` журнала как есть (участники группового события, повтор, серии — не своя копия логики).
  */
 @Module({
-  imports: [JournalModule, FinanceModule],
+  imports: [JournalModule, FinanceModule, LoyaltyModule],
   // ResourcesEventsController СНАЧАЛА: у ResourcesController есть catch-all `@Get(':id')`/`@Patch(':id')`/
   // `@Delete(':id')` — зарегистрируй его первым, и он перехватит /resources/waitlist, /resources/series/:id и
   // т.д. раньше, чем Nest дойдёт до литеральных маршрутов этого контроллера (нашёл на этом же прогоне: `GET

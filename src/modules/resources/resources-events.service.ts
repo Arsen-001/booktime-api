@@ -14,6 +14,7 @@ import { BookingsService, staffActor, type BookingActor } from '../journal/booki
 import { GroupEventsService, type GroupEventInput } from '../journal/group-events.service.js';
 import { bookingView, groupEventView } from '../journal/journal.views.js';
 import { BookingPaymentsService } from '../finance/booking-payments.service.js';
+import { LoyaltyPortRunner } from '../loyalty/port/runner.service.js';
 import { cancelParticipantPaymentTx, PARTICIPANT_PAYMENT_LABEL } from '../finance/prepayment-ops.js';
 import { ResourcesService } from './resources.service.js';
 import { isLocale, t, type Locale } from '../../common/i18n/i18n.js';
@@ -120,6 +121,7 @@ export class ResourcesEventsService {
     private readonly resources: ResourcesService,
     private readonly audit: AuditService,
     private readonly payments: BookingPaymentsService,
+    private readonly loyalty: LoyaltyPortRunner,
   ) {}
 
   private actor(ctx: RequestContext): BookingActor {
@@ -972,7 +974,7 @@ export class ResourcesEventsService {
     const tz = await this.resources.tzOfBusiness(businessId);
     const b = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId } });
     if (!b || b.deletedAt) throw new ApiError('not_found', 'Booking not found');
-    if (method === 'membership' && !b.clientId) throw new ApiError('no_membership', 'No membership available');
+    if (method === 'membership') await this.chargeMembershipVisit(ctx, businessId, b);
     const mark = { method, at: nowLocal() };
     if (method === 'cash' || method === 'card') {
       await this.payments.pay(ctx, businessId, bookingId, { mode: 'quick', methodKey: method });
@@ -983,6 +985,22 @@ export class ResourcesEventsService {
     const amount = Number(b.total) + extrasTotal;
     const row = await this.setParticipantPaymentMark(bookingId, mark, { amount, paid: true } as Prisma.InputJsonValue, { ctx, businessId, amount });
     return bookingView(row, tz);
+  }
+
+  /**
+   * F-06-072 (как payParticipant мока): «Абонемент» — не метка, а списание одного посещения с действующего абонемента
+   * клиента, применимого к услуге участника (тот же расчёт, что вкладка «Лояльность» окна визита: порт
+   * getLoyaltyBookingSummary + adjustMembership). Нет клиента или подходящего абонемента — `no_membership`.
+   * До 03.10.2026 сервер ставил только отметку «Оплачено», и посещение с абонемента не уходило.
+   */
+  private async chargeMembershipVisit(ctx: RequestContext, businessId: string, b: { clientId: string | null; services: unknown }) {
+    if (!b.clientId) throw new ApiError('no_membership', 'No membership available');
+    const serviceId = arr<{ serviceId?: string }>(b.services)[0]?.serviceId;
+    const opts = { businessId, scope: await this.loyalty.scopeOf(businessId), actor: ctx.member!.staffId };
+    const summary = (await this.loyalty.run('getLoyaltyBookingSummary', [businessId, b.clientId, serviceId ? [serviceId] : []], opts)) as { memberships?: { id: string; applicable?: boolean; balanceVisits?: number }[] };
+    const usable = (summary.memberships ?? []).find((m) => m.applicable && (m.balanceVisits ?? 0) > 0);
+    if (!usable) throw new ApiError('no_membership', 'No membership available');
+    await this.loyalty.run('adjustMembership', [businessId, usable.id, { balanceVisits: (usable.balanceVisits ?? 0) - 1 }, ctx.member!.staffId], opts);
   }
 
   /** Отмена оплаты одного участника не трогает других (F-16-060). Нал/карта — отмена платежа визита в финансах
