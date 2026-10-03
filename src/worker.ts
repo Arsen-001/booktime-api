@@ -14,7 +14,7 @@ import { notifyEmptyWeek } from './modules/notify/notify-empty-week.js';
 import { billingDispatch } from './jobs/billing-tick.js';
 import { webhooksDispatch } from './jobs/webhooks-dispatch.js';
 import { businessRetentionTick } from './jobs/business-retention.js';
-import { dbBackup } from './jobs/db-backup.js';
+import { dbBackup, hasBackupToday } from './jobs/db-backup.js';
 import { createTelegramBot } from './adapters/telegram-bot/telegram-bot.js';
 import { env } from './common/config/env.js';
 import { TelegramBotService } from './modules/telegram/telegram-bot.service.js';
@@ -53,6 +53,10 @@ await queue.upsertJobScheduler('business-retention', { pattern: '0 4 * * *', tz:
 // 03.10.2026: ежедневная копия базы, пока на Railway нет снимков дисков (тариф Hobby) — только где DB_BACKUP=1
 if (env.DB_BACKUP) await queue.upsertJobScheduler('db-backup', { pattern: '30 4 * * *', tz: 'Asia/Yerevan' }, { name: 'db.backup', data: {} });
 else await queue.removeJobScheduler('db-backup');
+// Копии за сегодня нет (первый запуск, перезапуск в 04:30) — сделать сейчас; jobId не даёт поставить дважды за день
+if (env.DB_BACKUP && !(await hasBackupToday(env.DB_BACKUP_DIR))) {
+  await queue.add('db.backup', {}, { jobId: `db-backup-${new Date().toISOString().slice(0, 10)}`, removeOnComplete: true, removeOnFail: true });
+}
 const prisma = new PrismaService();
 const journal = journalServices(prisma, createRedis('worker-journal'));
 const notify = notifyServices(prisma);

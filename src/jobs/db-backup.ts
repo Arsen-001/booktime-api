@@ -97,3 +97,9 @@ export async function dbBackup(prisma: PrismaService, backupDir: string, keep: n
   const { size } = await fs.promises.stat(file);
   return { file: name, ...stats, bytes: size, removed: old.length };
 }
+
+/** Есть ли уже копия за сегодня (UTC) — воркер при запуске догоняет пропущенную */
+export async function hasBackupToday(backupDir: string): Promise<boolean> {
+  const file = path.resolve(backupDir, `db-${new Date().toISOString().slice(0, 10)}.sql.gz`);
+  return fs.promises.access(file).then(() => true, () => false);
+}
