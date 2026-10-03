@@ -10,6 +10,7 @@ import { AvailabilityService } from '../availability/availability.service.js';
 import type { FreeSlot } from '../availability/engine.js';
 import { businessView, locationView } from '../businesses/views.js';
 import { JournalService } from '../journal/journal.service.js';
+import { ORDER_SPHERES, ordersEnabledOf } from '../orders/order-rules.js';
 import { sanitizePublicStaff } from '../online/online.service.js';
 import { categoryView, serviceView } from '../services/services.views.js';
 
@@ -41,6 +42,8 @@ const REGULAR_VISITS_THRESHOLD = 3;
 /** Верхний предел кандидатов, которым каталог живьём считает окна за один запрос (Р20: до 500 салонов первый год;
  * дальше — кэш `04 §6` заводить отдельной таблицей, здесь эту роль уже играет versioned Redis-кеш AvailabilityService) */
 const CATALOG_CANDIDATE_CAP = 300;
+
+const isOrdersSphere = (sphere: string): boolean => (ORDER_SPHERES as readonly string[]).includes(sphere);
 
 export interface CatalogQuery {
   search?: string;
@@ -236,7 +239,66 @@ export class CatalogService {
     if (q.lat !== undefined && q.lng !== undefined) out.sort((a, b) => rank(a) - rank(b) || ((a.distanceKm as number) ?? Infinity) - ((b.distanceKm as number) ?? Infinity));
     else out.sort((a, b) => rank(a) - rank(b) || (a.nearestSlots as FreeSlot[])[0]!.start.localeCompare((b.nearestSlots as FreeSlot[])[0]!.start));
 
+    // Мастерские заказов — после тех, к кому можно записаться на время (у них нет окон), ближние — первыми. Как listCatalog мока.
+    const places = await this.ordersPlaces(q, search, searchSpheres, new Set(out.map((e) => (e.business as { id: string }).id)));
+    if (q.lat !== undefined && q.lng !== undefined) places.sort((a, b) => ((a.distanceKm as number) ?? Infinity) - ((b.distanceKm as number) ?? Infinity));
+    out.push(...places);
+
     return q.limit ? out.slice(0, q.limit) : out;
+  }
+
+  /**
+   * Мастерские «заказов» в каталоге (04.10.2026, как ordersPlacesTx мока): ателье, ремонт техники, химчистка, детейлинг
+   * работают не по записи — клиент приносит вещь. Попадают в каталог, только когда клиент их ищет: выбрал такую сферу,
+   * написал «ремонт телефона» / «химчистка» или название мастерской. «Свободно сегодня / завтра», выезд, «принимает» и
+   * материал — про запись по времени, с ними мастерских нет. Раздел «Заказы» выключен — не показываем. Есть мастер с
+   * окнами — бизнес уже в списке обычной карточкой. Одна строка на бизнес: `kind: 'orders'`, окон нет, staff — владелец.
+   */
+  private async ordersPlaces(q: CatalogQuery, search: string, searchSpheres: string[], listed: ReadonlySet<string>): Promise<Record<string, unknown>[]> {
+    if (q.freeToday || q.freeTomorrow || q.workplace || q.accepts || q.material) return [];
+    const bySphere = Boolean(q.sphereId && isOrdersSphere(q.sphereId));
+    const bySearch = searchSpheres.some(isOrdersSphere);
+    if (!bySphere && !bySearch && !search && !q.businessId) return [];
+    const where: Prisma.BusinessWhereInput = { status: 'active' };
+    if (q.businessId) where.id = q.businessId;
+    const candidates = (await this.prisma.business.findMany({ where })).filter((b) => {
+      if (listed.has(b.id)) return false;
+      const spheres = arr(b.sphereIds);
+      if (!spheres.some(isOrdersSphere)) return false;
+      if (!ordersEnabledOf(b.ordersEnabled, b.sphereIds)) return false;
+      if (q.sphereId && !spheres.includes(q.sphereId)) return false;
+      if (searchSpheres.length && !spheres.some((sp) => searchSpheres.includes(sp))) return false;
+      return true;
+    });
+    if (!candidates.length) return [];
+    const ids = candidates.map((b) => b.id);
+    const [locations, staffRows] = await Promise.all([
+      this.prisma.location.findMany({ where: { businessId: { in: ids }, deletedAt: null } }),
+      this.prisma.staff.findMany({ where: { businessId: { in: ids }, deletedAt: null }, include: STAFF_INCLUDE }),
+    ]);
+    const out: Record<string, unknown>[] = [];
+    for (const business of candidates) {
+      const bizLocs = locations.filter((l) => l.businessId === business.id);
+      if (search && !searchSpheres.length) {
+        const hit = norm(business.brandName || business.name).includes(search) || bizLocs.some((l) => norm((l.name as Record<string, string>).ru ?? '').includes(search));
+        if (!hit) continue;
+      }
+      if (q.district && !bizLocs.some((l) => l.district === q.district)) continue;
+      const owner = staffRows.find((s) => s.id === business.ownerStaffId) ?? staffRows.find((s) => s.businessId === business.id);
+      if (!owner) continue;
+      const location = (q.district ? bizLocs.find((l) => l.district === q.district) : undefined) ?? bizLocs[0];
+      const distanceKm = q.lat !== undefined && q.lng !== undefined && location?.lat != null && location?.lng != null ? haversineKm({ lat: q.lat, lng: q.lng }, { lat: Number(location.lat), lng: Number(location.lng) }) : undefined;
+      out.push({
+        kind: 'orders',
+        staff: sanitizePublicStaff(owner),
+        business: businessView(business, bizLocs.map((l) => l.id)),
+        location: location ? locationView(location) : undefined,
+        nearestSlots: [],
+        hotToday: false,
+        distanceKm,
+      });
+    }
+    return out;
   }
 
   private async businessOut(b: Business) {

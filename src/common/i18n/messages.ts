@@ -63,6 +63,7 @@ const en = {
   'tg.cancelKept': 'Okay, the booking stays.',
   'tg.error': 'Something went wrong. Please try again.',
   'order.ready': 'Your order No. {number} at «{business}» is ready. Status: {url}',
+  'order.pickupReminder': 'Reminder: your order No. {number} at «{business}» is ready and waiting for you. Status: {url}',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -122,6 +123,7 @@ const ru: Record<MessageKey, string> = {
   'tg.cancelKept': 'Хорошо, запись остаётся.',
   'tg.error': 'Не получилось. Попробуйте ещё раз.',
   'order.ready': 'Ваш заказ №{number} в «{business}» готов. Статус: {url}',
+  'order.pickupReminder': 'Напоминаем: заказ №{number} в «{business}» готов и ждёт вас. Статус: {url}',
 };
 
 const hy: Record<MessageKey, string> = {
@@ -179,6 +181,7 @@ const hy: Record<MessageKey, string> = {
   'tg.cancelKept': 'Լավ, գրանցումը մնում է։',
   'tg.error': 'Չստացվեց։ Փորձեք կրկին։',
   'order.ready': 'Ձեր №{number} պատվերը «{business}»-ում պատրաստ է։ Կարգավիճակը՝ {url}',
+  'order.pickupReminder': 'Հիշեցնում ենք՝ ձեր №{number} պատվերը «{business}»-ում պատրաստ է և սպասում է ձեզ։ Կարգավիճակը՝ {url}',
 };
 
 export const messages: Record<'ru' | 'hy' | 'en', Record<MessageKey, string>> = { en, ru, hy };

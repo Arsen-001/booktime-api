@@ -219,6 +219,11 @@ export const ERROR_STATUS = {
   nothing_to_refund: HttpStatus.CONFLICT,
   invalid_stream_id: HttpStatus.UNPROCESSABLE_ENTITY,
   duplicate_stream_form: HttpStatus.CONFLICT,
+  // файлы и фото (04.10.2026): нет файла в запросе / больше 10 МБ / не картинка (или HEIC) / квота бизнеса исчерпана
+  file_required: HttpStatus.UNPROCESSABLE_ENTITY,
+  file_too_large: HttpStatus.PAYLOAD_TOO_LARGE,
+  unsupported_image: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+  upload_quota: HttpStatus.UNPROCESSABLE_ENTITY,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;

@@ -390,6 +390,8 @@ model Business {
   adsOptIn                      Boolean   @default(false) @map("ads_opt_in")
   /// Раздел «Заказы» (03.10.2026): null — по сфере (tailor/repair/drycleaning/detailing — включён), иначе как задал владелец
   ordersEnabled                 Boolean?  @map("orders_enabled")
+  /// Напоминать клиенту, что заказ ждёт (04.10.2026): off | 3 | 3_7 (дней после «Готов»); null — по умолчанию 3_7
+  orderPickupReminders          String?   @map("order_pickup_reminders") @db.VarChar(8)
   /// Промокод, введённый при регистрации — применит раздел подписки (этап 18)
   signupPromoCode               String?   @map("signup_promo_code") @db.VarChar(40)
   createdAt                     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
@@ -4710,11 +4712,15 @@ model Order {
   /// { at, status, by }[]
   history         Json
   readyNotifiedAt DateTime? @map("ready_notified_at") @db.DateTime(3)
-  issuedAt        DateTime? @map("issued_at") @db.DateTime(3)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  issuedAt            DateTime? @map("issued_at") @db.DateTime(3)
+  /// Авто-напоминания «заказ готов и ждёт вас» за текущий «Готов» (04.10.2026; сбрасываются при новом переходе в ready)
+  pickupReminderCount Int       @default(0) @map("pickup_reminder_count")
+  pickupRemindedAt    DateTime? @map("pickup_reminded_at") @db.DateTime(3)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
 
   @@unique([businessId, number])
+  @@index([status, pickupReminderCount])
   @@index([businessId, status, createdAt])
   @@index([businessId, createdAt])
   @@index([clientId])
@@ -4729,3 +4735,30 @@ model OrderCounter {
   @@map("order_counters")
 }
 // === end заказы ===
+
+// === файлы и фото (04.10.2026) ===
+/// Загруженное фото (POST /v1/biz/:businessId/uploads, /v1/me/uploads, /v1/platform/uploads): владелец — для квоты,
+/// прав и будущей уборки неиспользуемых файлов. Сам файл — в хранилище (диск UPLOADS_DIR или S3) по `key`;
+/// превью — тот же ключ с суффиксом _t. Поля фото в других таблицах по-прежнему строки-адреса.
+model Upload {
+  id         String   @id @db.VarChar(32)
+  /// Бизнес-владелец (кабинет); null — фото человека (/v1/me) или нашей панели
+  businessId String?  @map("business_id") @db.VarChar(32)
+  /// Человек-владелец (/v1/me/uploads); null — фото бизнеса или панели
+  userId     String?  @map("user_id") @db.VarChar(32)
+  /// uploads/<владелец>/<sha256[:32]>.<jpg|webp> — по содержимому: тот же файл того же владельца → та же строка
+  key        String   @unique @db.VarChar(200)
+  mime       String   @db.VarChar(40)
+  /// Основной файл + превью, байт (для квоты)
+  bytes      Int
+  width      Int
+  height     Int
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  /// staffId / userId / platformMemberId загрузившего
+  createdBy  String?  @map("created_by") @db.VarChar(32)
+
+  @@index([businessId, createdAt])
+  @@index([userId, createdAt])
+  @@map("uploads")
+}
+// === end файлы и фото ===

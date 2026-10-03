@@ -32,6 +32,8 @@ export const patchBusinessBody = z.object({
   adsOptIn: z.boolean().optional(),
   /** Раздел «Заказы» (03.10.2026); null — снова по сфере */
   ordersEnabled: z.boolean().nullable().optional(),
+  /** «Заказ ждёт вас» (04.10.2026): off | 3 | 3_7 дней после «Готов»; null — снова по умолчанию (3_7) */
+  orderPickupReminders: z.enum(['off', '3', '3_7']).nullable().optional(),
 });
 export type PatchBusinessBody = z.infer<typeof patchBusinessBody>;
 
@@ -85,6 +87,7 @@ export const businessOut = z.object({
   bookingRules: z.record(z.string(), z.unknown()).optional(),
   brandName: z.string().optional(),
   ordersEnabled: z.boolean(),
+  orderPickupReminders: z.enum(['off', '3', '3_7']),
   version: z.number(),
 });
 

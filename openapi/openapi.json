@@ -3892,6 +3892,14 @@
                               "ordersEnabled": {
                                 "type": "boolean"
                               },
+                              "orderPickupReminders": {
+                                "type": "string",
+                                "enum": [
+                                  "3",
+                                  "off",
+                                  "3_7"
+                                ]
+                              },
                               "version": {
                                 "type": "number"
                               }
@@ -3910,6 +3918,7 @@
                               "createdAt",
                               "forbidHomeBookingsDuringShift",
                               "ordersEnabled",
+                              "orderPickupReminders",
                               "version"
                             ]
                           }
@@ -4325,6 +4334,14 @@
                     "ordersEnabled": {
                       "type": "boolean"
                     },
+                    "orderPickupReminders": {
+                      "type": "string",
+                      "enum": [
+                        "3",
+                        "off",
+                        "3_7"
+                      ]
+                    },
                     "version": {
                       "type": "number"
                     }
@@ -4343,6 +4360,7 @@
                     "createdAt",
                     "forbidHomeBookingsDuringShift",
                     "ordersEnabled",
+                    "orderPickupReminders",
                     "version"
                   ]
                 }
@@ -4493,6 +4511,21 @@
                       "boolean",
                       "null"
                     ]
+                  },
+                  "orderPickupReminders": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "3",
+                          "off",
+                          "3_7"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -4609,6 +4642,14 @@
                     "ordersEnabled": {
                       "type": "boolean"
                     },
+                    "orderPickupReminders": {
+                      "type": "string",
+                      "enum": [
+                        "3",
+                        "off",
+                        "3_7"
+                      ]
+                    },
                     "version": {
                       "type": "number"
                     }
@@ -4627,6 +4668,7 @@
                     "createdAt",
                     "forbidHomeBookingsDuringShift",
                     "ordersEnabled",
+                    "orderPickupReminders",
                     "version"
                   ]
                 }
@@ -4773,6 +4815,14 @@
                           "ordersEnabled": {
                             "type": "boolean"
                           },
+                          "orderPickupReminders": {
+                            "type": "string",
+                            "enum": [
+                              "3",
+                              "off",
+                              "3_7"
+                            ]
+                          },
                           "version": {
                             "type": "number"
                           }
@@ -4791,6 +4841,7 @@
                           "createdAt",
                           "forbidHomeBookingsDuringShift",
                           "ordersEnabled",
+                          "orderPickupReminders",
                           "version"
                         ]
                       }
@@ -48332,6 +48383,14 @@
                         "ordersEnabled": {
                           "type": "boolean"
                         },
+                        "orderPickupReminders": {
+                          "type": "string",
+                          "enum": [
+                            "3",
+                            "off",
+                            "3_7"
+                          ]
+                        },
                         "version": {
                           "type": "number"
                         }
@@ -48350,6 +48409,7 @@
                         "createdAt",
                         "forbidHomeBookingsDuringShift",
                         "ordersEnabled",
+                        "orderPickupReminders",
                         "version"
                       ]
                     },
@@ -48837,6 +48897,14 @@
                           "ordersEnabled": {
                             "type": "boolean"
                           },
+                          "orderPickupReminders": {
+                            "type": "string",
+                            "enum": [
+                              "3",
+                              "off",
+                              "3_7"
+                            ]
+                          },
                           "version": {
                             "type": "number"
                           }
@@ -48855,6 +48923,7 @@
                           "createdAt",
                           "forbidHomeBookingsDuringShift",
                           "ordersEnabled",
+                          "orderPickupReminders",
                           "version"
                         ]
                       }
@@ -49034,6 +49103,14 @@
                         "ordersEnabled": {
                           "type": "boolean"
                         },
+                        "orderPickupReminders": {
+                          "type": "string",
+                          "enum": [
+                            "3",
+                            "off",
+                            "3_7"
+                          ]
+                        },
                         "version": {
                           "type": "number"
                         }
@@ -49052,6 +49129,7 @@
                         "createdAt",
                         "forbidHomeBookingsDuringShift",
                         "ordersEnabled",
+                        "orderPickupReminders",
                         "version"
                       ]
                     },
@@ -49539,6 +49617,14 @@
                           "ordersEnabled": {
                             "type": "boolean"
                           },
+                          "orderPickupReminders": {
+                            "type": "string",
+                            "enum": [
+                              "3",
+                              "off",
+                              "3_7"
+                            ]
+                          },
                           "version": {
                             "type": "number"
                           }
@@ -49557,6 +49643,7 @@
                           "createdAt",
                           "forbidHomeBookingsDuringShift",
                           "ordersEnabled",
+                          "orderPickupReminders",
                           "version"
                         ]
                       }
@@ -50286,6 +50373,14 @@
                         "ordersEnabled": {
                           "type": "boolean"
                         },
+                        "orderPickupReminders": {
+                          "type": "string",
+                          "enum": [
+                            "3",
+                            "off",
+                            "3_7"
+                          ]
+                        },
                         "version": {
                           "type": "number"
                         }
@@ -50304,6 +50399,7 @@
                         "createdAt",
                         "forbidHomeBookingsDuringShift",
                         "ordersEnabled",
+                        "orderPickupReminders",
                         "version"
                       ]
                     },
@@ -85633,6 +85729,17 @@
                               "null"
                             ]
                           },
+                          "pickupReminderCount": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "pickupRemindedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "createdAt": {
                             "type": "string"
                           },
@@ -85660,6 +85767,8 @@
                           "history",
                           "readyNotifiedAt",
                           "issuedAt",
+                          "pickupReminderCount",
+                          "pickupRemindedAt",
                           "createdAt",
                           "updatedAt"
                         ]
@@ -85982,6 +86091,17 @@
                         "null"
                       ]
                     },
+                    "pickupReminderCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "pickupRemindedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -86009,6 +86129,8 @@
                     "history",
                     "readyNotifiedAt",
                     "issuedAt",
+                    "pickupReminderCount",
+                    "pickupRemindedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -86200,6 +86322,17 @@
                               "null"
                             ]
                           },
+                          "pickupReminderCount": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "pickupRemindedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "createdAt": {
                             "type": "string"
                           },
@@ -86227,6 +86360,8 @@
                           "history",
                           "readyNotifiedAt",
                           "issuedAt",
+                          "pickupReminderCount",
+                          "pickupRemindedAt",
                           "createdAt",
                           "updatedAt"
                         ]
@@ -86549,6 +86684,17 @@
                         "null"
                       ]
                     },
+                    "pickupReminderCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "pickupRemindedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -86576,6 +86722,8 @@
                     "history",
                     "readyNotifiedAt",
                     "issuedAt",
+                    "pickupReminderCount",
+                    "pickupRemindedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -86770,6 +86918,17 @@
                         "null"
                       ]
                     },
+                    "pickupReminderCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "pickupRemindedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -86797,6 +86956,8 @@
                     "history",
                     "readyNotifiedAt",
                     "issuedAt",
+                    "pickupReminderCount",
+                    "pickupRemindedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -87115,6 +87276,17 @@
                         "null"
                       ]
                     },
+                    "pickupReminderCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "pickupRemindedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -87142,6 +87314,8 @@
                     "history",
                     "readyNotifiedAt",
                     "issuedAt",
+                    "pickupReminderCount",
+                    "pickupRemindedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -87335,6 +87509,17 @@
                         "null"
                       ]
                     },
+                    "pickupReminderCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "pickupRemindedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -87362,6 +87547,8 @@
                     "history",
                     "readyNotifiedAt",
                     "issuedAt",
+                    "pickupReminderCount",
+                    "pickupRemindedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -87680,6 +87867,17 @@
                         "null"
                       ]
                     },
+                    "pickupReminderCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "pickupRemindedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -87707,6 +87905,8 @@
                     "history",
                     "readyNotifiedAt",
                     "issuedAt",
+                    "pickupReminderCount",
+                    "pickupRemindedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -87925,6 +88125,17 @@
                         "null"
                       ]
                     },
+                    "pickupReminderCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "pickupRemindedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -87952,6 +88163,8 @@
                     "history",
                     "readyNotifiedAt",
                     "issuedAt",
+                    "pickupReminderCount",
+                    "pickupRemindedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -88171,6 +88384,17 @@
                         "null"
                       ]
                     },
+                    "pickupReminderCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "pickupRemindedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -88198,6 +88422,8 @@
                     "history",
                     "readyNotifiedAt",
                     "issuedAt",
+                    "pickupReminderCount",
+                    "pickupRemindedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -88392,6 +88618,17 @@
                         "null"
                       ]
                     },
+                    "pickupReminderCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "pickupRemindedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -88419,6 +88656,8 @@
                     "history",
                     "readyNotifiedAt",
                     "issuedAt",
+                    "pickupReminderCount",
+                    "pickupRemindedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -88613,6 +88852,17 @@
                         "null"
                       ]
                     },
+                    "pickupReminderCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "pickupRemindedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -88640,6 +88890,8 @@
                     "history",
                     "readyNotifiedAt",
                     "issuedAt",
+                    "pickupReminderCount",
+                    "pickupRemindedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -88779,6 +89031,147 @@
         "summary": "Статус заказа по публичному коду (без телефона клиента, комментария и сотрудников)",
         "tags": [
           "orders"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/uploads": {
+      "post": {
+        "operationId": "UploadsController_biz",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Фото бизнеса (логотип, фото салона/мастера/услуги, сторис, заказы): JPEG/PNG/WebP/GIF до 10 МБ → { id, url, thumbUrl, width, height, bytes }",
+        "tags": [
+          "uploads"
+        ]
+      }
+    },
+    "/v1/me/uploads": {
+      "post": {
+        "operationId": "UploadsController_me",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Фото человека (аватар в профиле клиента)",
+        "tags": [
+          "uploads"
+        ]
+      }
+    },
+    "/v1/platform/uploads": {
+      "post": {
+        "operationId": "UploadsController_platform",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Фото нашей панели (реклама, мастер подключения салона)",
+        "tags": [
+          "uploads"
+        ]
+      }
+    },
+    "/v1/files/{path}": {
+      "get": {
+        "operationId": "FilesController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Файл фото по ключу из url загрузки",
+        "tags": [
+          "uploads"
         ]
       }
     }

@@ -23,7 +23,14 @@ esbuild/tsx: Nest берёт зависимости из метаданных д
 - OpenAPI для фронта: `npm run openapi` → `openapi/openapi.json`.
 - Ошибки API — всегда `{ code, message }` (`src/common/errors`).
 - Конфиг — только переменные окружения (`src/common/config/env.ts` проверяет их при старте).
-- Файлы — адаптер хранилища: `STORAGE_DRIVER=local` (папка) или `s3`.
+- Файлы и фото (04.10.2026): `POST /v1/biz/:businessId/uploads` (любой сотрудник бизнеса), `/v1/me/uploads` (аватар
+  клиента), `/v1/platform/uploads` (наша панель) — multipart, поле `file`, JPEG/PNG/WebP/GIF до 10 МБ (тип — по
+  сигнатуре файла). Сервер перекодирует (≤ 2048 px, превью 512 px `_t`, без EXIF/GPS) и отвечает
+  `{ id, url, thumbUrl, width, height, bytes }`; `url` кладётся в те же поля фото, что раньше брали data: URL (их поля
+  тоже принимают). Хранилище — S3 (`S3_BUCKET` + `S3_ENDPOINT` + `S3_ACCESS_KEY_ID` + `S3_SECRET_ACCESS_KEY`) или диск
+  `UPLOADS_DIR`, раздача диска — `GET /v1/files/<key>` (кэш навсегда). Квота бизнеса — `UPLOADS_QUOTA_MB`, лимит — 60
+  фото за 10 минут на сессию. Код — `src/modules/uploads`, `src/adapters/storage`; перенос старых data: URL —
+  `npx tsx scripts/migrate-data-urls.ts` (без `--apply` только отчёт). Подробно — фронт `docs/DEPLOY.md` «Файлы и фото».
 - Коммит: `npm run commit -- "сообщение"` (isomorphic-git, системный git на этой машине может быть недоступен).
 
 ## Вход при разработке (этап 2)

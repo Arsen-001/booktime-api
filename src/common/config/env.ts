@@ -11,13 +11,36 @@ const schema = z.object({
     .transform((s) => s.split(',').map((x) => x.trim()).filter(Boolean)),
   DATABASE_URL: z.string().startsWith('mysql://'),
   REDIS_URL: z.string().startsWith('redis://'),
+  /**
+   * Хранилище файлов (04.10.2026, «Файлы и фото»). Заданы S3_BUCKET + S3_ENDPOINT + S3_ACCESS_KEY_ID +
+   * S3_SECRET_ACCESS_KEY — всё (фото и выгрузки отчётов) идёт в S3-совместимое хранилище (AWS S3, Cloudflare R2,
+   * Railway Buckets); не заданы — диск: фото в UPLOADS_DIR, выгрузки в STORAGE_DIR. STORAGE_DRIVER=s3 без
+   * этих четырёх — процесс не стартует (src/adapters/storage/storage.ts::storageConfig).
+   */
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  /** Выгрузки отчётов на диске (не раздаются наружу) */
   STORAGE_DIR: z.string().default('./storage'),
+  /** Фото на диске, раздаются GET /v1/files/<key>. По умолчанию: production — /data/uploads (диск Railway), иначе ./.uploads */
+  UPLOADS_DIR: z.string().optional(),
   S3_ENDPOINT: z.string().optional(),
-  S3_REGION: z.string().default('us-east-1'),
-  S3_BUCKET: z.string().default('booktime'),
+  S3_REGION: z.string().optional(),
+  S3_BUCKET: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  /** Адреса вида <endpoint>/<bucket>/<key> (по умолчанию — да: R2, MinIO, Railway); '0' — <bucket>.<endpoint>/<key> */
+  S3_FORCE_PATH_STYLE: z.enum(['0', '1']).default('1').transform((v) => v === '1'),
+  /** Старые имена тех же ключей (до 04.10.2026) — читаются, если новых нет */
   S3_ACCESS_KEY: z.string().optional(),
   S3_SECRET_KEY: z.string().optional(),
+  /**
+   * Публичный адрес бакета (R2: https://files.booktime.am или https://pub-….r2.dev) — ссылки на фото ведут прямо туда.
+   * Пусто — фото из S3 раздаёт API тем же GET /v1/files/<key>.
+   */
+  S3_PUBLIC_URL: z.string().optional(),
+  /** Внешний адрес этого API для ссылок на фото (https://api.booktime.am); пусто — из заголовков запроса (Host / X-Forwarded-*) */
+  PUBLIC_API_URL: z.string().optional(),
+  /** Предел фото на бизнес, МБ (сумма сохранённых файлов); дальше — 422 upload_quota */
+  UPLOADS_QUOTA_MB: z.coerce.number().int().positive().default(2048),
   // Вход (этап 2)
   /** Telegram Gateway: есть токен — код в Telegram уходит по-настоящему; нет — заглушка пишет в лог */
   TELEGRAM_GATEWAY_TOKEN: z.string().optional(),

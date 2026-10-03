@@ -15,6 +15,8 @@ import { billingDispatch } from './jobs/billing-tick.js';
 import { webhooksDispatch } from './jobs/webhooks-dispatch.js';
 import { businessRetentionTick } from './jobs/business-retention.js';
 import { dbBackup, hasBackupToday } from './jobs/db-backup.js';
+import { ordersPickupReminders } from './jobs/orders-pickup-reminders.js';
+import { FakeBusinessMessenger } from './adapters/business-sms/business-sms.js';
 import { createTelegramBot } from './adapters/telegram-bot/telegram-bot.js';
 import { env } from './common/config/env.js';
 import { captureError, initSentry } from './common/monitoring/sentry.js';
@@ -42,6 +44,8 @@ await queue.upsertJobScheduler('notify-dispatch', { every: 20_000 }, { name: 'no
 await queue.upsertJobScheduler('notify-reminders', { every: 300_000 }, { name: 'notify.reminders', data: {} });
 // Этап 21 (лейн notify-log+mailings): рассылки по расписанию (Ув13) — раз в минуту
 await queue.upsertJobScheduler('notify-mailings', { every: 60_000 }, { name: 'notify.mailings', data: {} });
+// 04.10.2026: «Заказ ждёт вас» — клиент не забрал готовый заказ (3 и 7 дней после «Готов»); раз в 15 мин, тихие часы — пропуск
+await queue.upsertJobScheduler('orders-pickup-reminders', { every: 900_000 }, { name: 'orders.pickup-reminders', data: {} });
 // Этап 16: выгрузка отчёта — CSV должен быть готов быстро, не в час по расписанию
 await queue.upsertJobScheduler('reports-export', { every: 15_000 }, { name: 'reports.export', data: {} });
 // Этап 18: подписка — 03:00 по Еревану предупреждения/списания/заморозка, каждые 5 мин повтор списаний (06 §3.3)
@@ -63,6 +67,8 @@ const prisma = new PrismaService();
 const journal = journalServices(prisma, createRedis('worker-journal'));
 const notify = notifyServices(prisma);
 const notifyMailings = notifyMailingsJob(prisma);
+// SMS/WhatsApp провайдера бизнеса — тот же адаптер, что у API (adapters.ts: BUSINESS_MESSENGER)
+const businessMessenger = new FakeBusinessMessenger();
 // Telegram-бот (30.09.2026): без публичного адреса вебхука воркер сам забирает обновления (TELEGRAM_BOT_POLLING=1)
 const stopTelegramPolling = env.TELEGRAM_BOT_POLLING
   ? (() => {
@@ -112,6 +118,11 @@ const worker = new Worker(
     if (job.name === 'notify.reminders') {
       const res = await notifyBookingReminders(prisma);
       if (res.sent) logger.info(res, 'notify.reminders');
+      return;
+    }
+    if (job.name === 'orders.pickup-reminders') {
+      const res = await ordersPickupReminders(prisma, businessMessenger);
+      if (res.sent || res.undelivered) logger.info(res, 'orders.pickup-reminders');
       return;
     }
     if (job.name === 'billing.tick') {

@@ -79,6 +79,9 @@ export const orderOut = z.object({
   history: z.array(historyEntryOut),
   readyNotifiedAt: z.string().nullable(),
   issuedAt: z.string().nullable(),
+  /** «Заказ ждёт вас» (04.10.2026): сколько авто-напоминаний ушло за текущий «Готов» и когда последнее */
+  pickupReminderCount: z.number().int(),
+  pickupRemindedAt: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

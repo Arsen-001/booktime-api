@@ -11,7 +11,31 @@ import { orderStatusUrl, type OrderRow } from './order-rules.js';
 
 /** Вид в очереди и реестре типов (notify/kinds.ts, код 11) */
 export const ORDER_READY_KIND = 'order_ready';
-const TYPE_LABEL = { ru: 'Заказ готов', en: 'Order ready', hy: 'Պատվերը պատրաստ է' };
+/** «Заказ ждёт вас» — авто-напоминание, если клиент не забрал готовый заказ (notify/kinds.ts, код 12; 04.10.2026) */
+export const ORDER_PICKUP_REMINDER_KIND = 'order_pickup_reminder';
+
+/** Чем различаются «Заказ готов» и «Заказ ждёт вас»: вид (включатель бизнеса), текст, подпись в журнале, ключ дубля */
+interface OrderMessageSpec {
+  kind: string;
+  messageKey: 'order.ready' | 'order.pickupReminder';
+  typeLabel: { ru: string; en: string; hy: string };
+  /** Часть ключа дубля: order:<dedupe>:<orderId>:<stamp>:<канал> */
+  dedupe: string;
+}
+
+const READY_SPEC: OrderMessageSpec = {
+  kind: ORDER_READY_KIND,
+  messageKey: 'order.ready',
+  typeLabel: { ru: 'Заказ готов', en: 'Order ready', hy: 'Պատվերը պատրաստ է' },
+  dedupe: 'ready',
+};
+
+const PICKUP_SPEC: OrderMessageSpec = {
+  kind: ORDER_PICKUP_REMINDER_KIND,
+  messageKey: 'order.pickupReminder',
+  typeLabel: { ru: 'Заказ ждёт клиента', en: 'Order awaiting pickup', hy: 'Պատվերը սպասում է հաճախորդին' },
+  dedupe: 'pickup',
+};
 
 export type OrderNotifyChannel = 'push' | 'telegram' | 'sms' | 'whatsapp';
 
@@ -27,12 +51,12 @@ export interface OrderReadyResult {
   channels: OrderNotifyChannel[];
 }
 
-function textOf(locale: Locale, input: OrderReadyInput): string {
-  return t(locale, 'order.ready', { number: input.order.number, business: input.businessName, url: orderStatusUrl(input.siteUrl, input.order.code) });
+function textOf(locale: Locale, input: OrderReadyInput, spec: OrderMessageSpec): string {
+  return t(locale, spec.messageKey, { number: input.order.number, business: input.businessName, url: orderStatusUrl(input.siteUrl, input.order.code) });
 }
 
-function allTexts(input: OrderReadyInput): Record<Locale, string> {
-  return Object.fromEntries(LOCALES.map((l) => [l, textOf(l, input)])) as Record<Locale, string>;
+function allTexts(input: OrderReadyInput, spec: OrderMessageSpec): Record<Locale, string> {
+  return Object.fromEntries(LOCALES.map((l) => [l, textOf(l, input, spec)])) as Record<Locale, string>;
 }
 
 /**
@@ -45,16 +69,29 @@ function allTexts(input: OrderReadyInput): Record<Locale, string> {
  * Каждая попытка пишется в журнал отправок (notify_log_entries). Тип «order_ready» выключен бизнесом — ничего не шлём.
  * Ключ дубля включает метку вызова: повторное «Напомнить, что готов» — новое сообщение.
  */
-export async function notifyOrderReady(db: PrismaService, messenger: BusinessMessenger, input: OrderReadyInput): Promise<OrderReadyResult> {
+export function notifyOrderReady(db: PrismaService, messenger: BusinessMessenger, input: OrderReadyInput): Promise<OrderReadyResult> {
+  return sendOrderMessage(db, messenger, input, READY_SPEC);
+}
+
+/**
+ * «Напоминаем: заказ №N в «Салон» готов и ждёт вас. Статус: …» — клиент не забрал готовый заказ (04.10.2026). Тот же
+ * путь, что «Заказ готов» (пуш → Telegram → SMS/WhatsApp бизнеса → «Не доставлено»), свой вид order_pickup_reminder:
+ * бизнес выключает его отдельно от «Заказ готов». Когда слать — решает задача воркера (jobs/orders-pickup-reminders.ts).
+ */
+export function notifyOrderPickupReminder(db: PrismaService, messenger: BusinessMessenger, input: OrderReadyInput): Promise<OrderReadyResult> {
+  return sendOrderMessage(db, messenger, input, PICKUP_SPEC);
+}
+
+async function sendOrderMessage(db: PrismaService, messenger: BusinessMessenger, input: OrderReadyInput, spec: OrderMessageSpec): Promise<OrderReadyResult> {
   const { order } = input;
   const now = input.now ?? new Date();
-  if (!(await isKindEnabled(db, order.businessId, ORDER_READY_KIND))) return { channels: [] };
+  if (!(await isKindEnabled(db, order.businessId, spec.kind))) return { channels: [] };
 
   // Своя метка на каждый вызов (ULID): повторное «напомнить» — новое сообщение, а не дубль по ключу
   const stamp = newId('order').slice(4);
   const channels: OrderNotifyChannel[] = [];
   const url = `/o/${order.code}`;
-  const texts = allTexts(input);
+  const texts = allTexts(input, spec);
   const log = async (channel: string, status: 'sent' | 'notDelivered', sentLanguage?: Locale) => {
     const cost = status === 'sent' ? costOf(channel, texts[sentLanguage ?? 'ru']) : { costAmd: 0, smsParts: undefined };
     await db.notifyLogEntry.createMany({
@@ -63,10 +100,10 @@ export async function notifyOrderReady(db: PrismaService, messenger: BusinessMes
         {
           id: newId('notifyLogEntry'),
           businessId: order.businessId,
-          dedupeKey: `order:ready:${order.id}:${stamp}:${channel}`,
+          dedupeKey: `order:${spec.dedupe}:${order.id}:${stamp}:${channel}`,
           sentAt: now,
           typeCode: null,
-          typeLabel: TYPE_LABEL,
+          typeLabel: spec.typeLabel,
           channel,
           status,
           contact: order.clientPhone.slice(0, 160),
@@ -98,12 +135,12 @@ export async function notifyOrderReady(db: PrismaService, messenger: BusinessMes
       const locale: Locale = isLocale(user.locale) ? user.locale : 'ru';
       await enqueueClientNotification(db, {
         businessId: order.businessId,
-        kind: ORDER_READY_KIND,
+        kind: spec.kind,
         appUserId: user.id,
         title: input.businessName,
         body: texts[locale],
         url,
-        dedupeKey: `order:ready:${order.id}:${stamp}:push`,
+        dedupeKey: `order:${spec.dedupe}:${order.id}:${stamp}:push`,
         meta: { orderId: order.id },
       });
       channels.push('push');
@@ -118,12 +155,12 @@ export async function notifyOrderReady(db: PrismaService, messenger: BusinessMes
     await enqueueOutbox(db, {
       businessId: order.businessId,
       app: 'telegram',
-      kind: ORDER_READY_KIND,
+      kind: spec.kind,
       recipientUserId: link.chatId,
       title: input.businessName,
       body: texts[locale],
       url,
-      dedupeKey: `order:ready:${order.id}:${stamp}:tg:${link.chatId}`,
+      dedupeKey: `order:${spec.dedupe}:${order.id}:${stamp}:tg:${link.chatId}`,
       meta: { orderId: order.id },
     });
     if (!channels.includes('telegram')) {
@@ -142,7 +179,7 @@ export async function notifyOrderReady(db: PrismaService, messenger: BusinessMes
       try {
         delivered = (await messenger.send({ businessId: order.businessId, to: order.clientPhone, text: texts.ru, channel })).delivered;
       } catch (err) {
-        logger.warn({ err, orderId: order.id }, 'orders: SMS/WhatsApp «заказ готов» не отправлен');
+        logger.warn({ err, orderId: order.id }, `orders: SMS/WhatsApp (${spec.kind}) не отправлен`);
       }
       await log(channel, delivered ? 'sent' : 'notDelivered', 'ru');
       if (delivered) channels.push(channel);

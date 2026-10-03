@@ -7809,3 +7809,56 @@ integrations 57, notify 7) → после **0**. Остаток скрипта �
 - `Business.ordersEnabled` в виде бизнеса (`null` в базе — по сфере), правится `PATCH /v1/biz/:businessId` (`ordersEnabled`,
   `null` — снова по сфере).
 - Тесты `src/modules/orders/orders.test.ts` (20): номер, код, переходы, публичный вид, уведомление.
+
+### Заказы: «Заказ ждёт вас» — напоминание, если клиент не забрал (04.10.2026)
+- Задача воркера `orders.pickup-reminders` (`src/jobs/orders-pickup-reminders.ts`, раз в 15 мин): заказы `status = ready`,
+  через 3 дня после последнего перехода в «Готов» и ещё раз через 7 (по истории; ручное «Отправить ещё раз» срок не
+  сдвигает, но если оно было меньше суток назад — авто-напоминание ждёт). Выданные, отменённые и вернувшиеся в работу —
+  никогда. Воркер лежал и прошли оба срока — одно сообщение (счётчик перескакивает). Тихие часы 21:00–10:00 — проход
+  пропускается (и вид в `QUIET_HOURS_KINDS` для очереди).
+- Идемпотентно: сначала условный `updateMany` (status ready и прежний `pickupReminderCount`) → только захвативший проход
+  шлёт. Новый переход в `ready` обнуляет счётчик (`orders.service.ts setStatus`).
+- Канал — как у «Заказ готов» (`order-notify.ts`, общий `sendOrderMessage`): пуш → Telegram → SMS/WhatsApp бизнеса →
+  «Не доставлено». Свой вид `order_pickup_reminder`, **код 12** в kinds.ts (бизнес выключает отдельно), текст
+  `order.pickupReminder` ru/hy/en («Напоминаем: заказ №{number} в «{business}» готов и ждёт вас. Статус: {url}»), в журнале
+  — «Заказ ждёт клиента».
+- Настройка бизнеса `Business.orderPickupReminders`: `off | 3 | 3_7` (null — по умолчанию `3_7`), в виде бизнеса и
+  `PATCH /v1/biz/:businessId` (`orderPickupReminders`, null — снова по умолчанию).
+- Заказ отдаёт `pickupReminderCount` и `pickupRemindedAt` (кабинет: «Напомнили клиенту: 2 раза, последний — …»).
+- Миграция `20261004200000_order_pickup_reminders` (только файл, базы не трогались): `businesses.order_pickup_reminders`,
+  `orders.pickup_reminder_count`, `orders.pickup_reminded_at`, индекс `(status, pickup_reminder_count)`.
+- Тесты в `orders.test.ts` (+6, всего 26): сроки и режимы, задача на 3-й и 7-й день без дублей, выданные/отменённые/«выкл»,
+  вид выключен, тихие часы, сброс при новом «Готов».
+- Каталог (`catalog.service.ts`, только проверено): фильтр `sphere` и синонимы новых сфер работают, но мастер без
+  опубликованной онлайн-услуги с окнами в выдачу не попадает — мастерские «заказов» без услуг в поиске API пока не видны
+  (во фронте в моке они идут карточкой места `kind: 'orders'`). Нужно: отдавать такие бизнесы записью без окон.
+
+### Файлы и фото: загрузка в хранилище вместо data: URL в базе (04.10.2026)
+- `src/modules/uploads`: `POST /v1/biz/:businessId/uploads` (`@Biz()` — любой сотрудник бизнеса), `POST /v1/me/uploads`
+  (`@Authed()`, аватар клиента), `POST /v1/platform/uploads` (`@Platform()`, реклама и мастер подключения). multipart,
+  поле `file`, multer в памяти с пределом 10 МБ (больше — 413 `file_too_large`). Тип — по сигнатуре (`image.ts::sniffImage`:
+  JPEG/PNG/WebP/GIF; HEIC распознаётся, но сборка sharp его не читает — 415 `unsupported_image`). sharp: поворот по EXIF,
+  ≤ 2048 px, превью 512 px, метаданные (EXIF/GPS) не переносятся; без альфы — JPEG q82 mozjpeg, с альфой — WebP q85.
+  Ответ `{ id, url, thumbUrl, width, height, bytes }`. Лимит `uploads` 60/10 мин на сессию; квота бизнеса
+  `UPLOADS_QUOTA_MB` (2048), человека 100 МБ → 422 `upload_quota`. Тот же файл того же владельца — та же строка.
+- Ключ `uploads/<владелец>/<sha256[:32]>.<jpg|webp>`, превью `…_t.<ext>`. `GET /v1/files/*path` отдаёт только ключи вида
+  `UPLOAD_KEY` (выгрузки отчётов и любые другие пути — 404), кэш `immutable`, `ETag`/304, `nosniff`, CSP `sandbox`,
+  `Cross-Origin-Resource-Policy: cross-origin`; `ContextMiddleware` на этом пути не работает (без чтения сессии на каждое фото).
+- `src/adapters/storage`: `LocalFileStorage` (запись через временный файл + rename, путь проверяется дважды) и
+  `S3FileStorage` (`@aws-sdk/client-s3`, клиент подменяется в тестах). `storageConfig()`: четыре переменные S3 — S3, иначе
+  диск (`UPLOADS_DIR`: production `/data/uploads`, иначе `./.uploads`); `STORAGE_DRIVER=s3` без них — не стартуем.
+  Выгрузки отчётов (`createFileStorage`) — в бакет под `private/`, а при публичном бакете (`S3_PUBLIC_URL`) — на диске.
+- Новые переменные: `UPLOADS_DIR`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (старые `S3_ACCESS_KEY`/`S3_SECRET_KEY` читаются),
+  `S3_PUBLIC_URL`, `S3_FORCE_PATH_STYLE`, `PUBLIC_API_URL`, `UPLOADS_QUOTA_MB`; `S3_BUCKET`/`S3_REGION` больше без значений
+  по умолчанию. Пакеты: `sharp`, `@aws-sdk/client-s3`.
+- Таблица `uploads` (миграция `20261004210000_uploads`, только файл; проверена на временной базе: `migrate diff` пуст).
+- Поля фото во всех схемах по-прежнему строки — принимают и data: URL, и адреса файлов; ответы не менялись.
+- `scripts/migrate-data-urls.ts` (+ `src/modules/uploads/data-url-migration.ts`): ищет `data:image/…;base64` во всех
+  text/JSON-колонках, переносит в хранилище, заменяет адресом, переносит `moderation_items.ref_id` (хеш адреса). По
+  умолчанию отчёт без записи, `--apply` — перенос. Не запускался ни на одной базе.
+- Тесты `src/modules/uploads/uploads.test.ts` (16). Проверено вживую на временной базе `booktime_check21z` (удалена):
+  загрузка JPEG 4000×3000 с GPS → 2048×1536 без EXIF, PNG с прозрачностью → WebP, SVG под видом JPEG → 415, 11 МБ → 413,
+  без файла → 422, чужой бизнес → 403, без входа → 401, раздача с заголовками и 304, попытки `..` → 404, галерея принимает
+  вперемешку адрес файла и data: URL.
+- Не сделано: документы клиентов (`client_files`) остаются data: URL; уборка неиспользуемых файлов; `openapi/openapi.json`
+  не перегенерирован (`npm run openapi`).

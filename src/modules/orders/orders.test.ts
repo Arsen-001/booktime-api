@@ -10,6 +10,7 @@ process.env.REDIS_URL ??= 'redis://localhost:6379';
 const rules = await import('./order-rules.js');
 const { OrdersService, nextOrderNumber, insertOrderWithCode } = await import('./orders.service.js');
 const { notifyOrderReady } = await import('./order-notify.js');
+const { ordersPickupReminders } = await import('../../jobs/orders-pickup-reminders.js');
 const { ApiError } = await import('../../common/errors/api-error.js');
 type Svc = InstanceType<typeof OrdersService>;
 type Prisma = ConstructorParameters<typeof OrdersService>[0];
@@ -27,6 +28,8 @@ function matches(r: Row, where: Row = {}): boolean {
       if ('in' in o && !(o.in as unknown[]).includes(cur)) return false;
       if ('notIn' in o && (o.notIn as unknown[]).includes(cur)) return false;
       if ('not' in o && (o.not === null ? cur === null || cur === undefined : cur === o.not)) return false;
+      if ('lt' in o && !((cur as number) < (o.lt as number))) return false;
+      if ('gte' in o && !((cur as number) >= (o.gte as number))) return false;
       return true;
     }
     return cur === v;
@@ -52,7 +55,7 @@ function memoryPrisma(seed: Record<string, Row[]> = {}) {
     count: async ({ where }: { where?: Row } = {}) => t(name).filter((r) => matches(r, where)).length,
     create: async ({ data }: { data: Row }) => {
       for (const k of uniq[name] ?? []) if (t(name).some((r) => r[k] === data[k])) throw dup();
-      const row = name === 'notifyOutbox' ? { status: 'queued', ...data } : name === 'order' ? { readyNotifiedAt: null, issuedAt: null, createdAt: new Date(), updatedAt: new Date(), ...data } : { ...data };
+      const row = name === 'notifyOutbox' ? { status: 'queued', ...data } : name === 'order' ? { readyNotifiedAt: null, issuedAt: null, pickupReminderCount: 0, pickupRemindedAt: null, createdAt: new Date(), updatedAt: new Date(), ...data } : { ...data };
       t(name).push(row);
       return row;
     },
@@ -366,4 +369,149 @@ test('ordersEnabled: по умолчанию включён у четырёх н
   assert.equal(rules.ordersEnabledOf(null, ['nails', 'repair']), true);
   assert.equal(rules.ordersEnabledOf(false, ['repair']), false);
   assert.equal(rules.ordersEnabledOf(true, ['nails']), true);
+});
+
+// ─────────── «заказ ждёт вас»: напоминание, если не забрали (04.10.2026) ───────────
+
+const DAY = 86_400_000;
+/** «Готов» в 12:00 по Еревану (08:00 UTC) — от него считаем 3 и 7 дней; все «сейчас» ниже — днём, вне тихих часов */
+const READY_AT = new Date('2026-10-01T08:00:00.000Z');
+const after = (ms: number) => new Date(READY_AT.getTime() + ms);
+
+function readyRow(over: Row = {}): Row {
+  return {
+    id: 'ord_r1',
+    businessId: 'biz_1',
+    locationId: null,
+    number: 1007,
+    code: 'AbCdEfGhIj',
+    clientId: 'cl_1',
+    clientName: 'Ани',
+    clientPhone: '+37400160001',
+    items: [{ title: 'Платье', qty: 1 }],
+    photos: [],
+    staffId: 'st_1',
+    status: 'ready',
+    dueDate: null,
+    price: 8000,
+    prepaid: 0,
+    comment: null,
+    history: [
+      { at: new Date(READY_AT.getTime() - DAY).toISOString(), status: 'received', by: 'st_1' },
+      { at: READY_AT.toISOString(), status: 'ready', by: 'st_1' },
+    ],
+    readyNotifiedAt: READY_AT,
+    issuedAt: null,
+    pickupReminderCount: 0,
+    pickupRemindedAt: null,
+    createdAt: new Date(READY_AT.getTime() - DAY),
+    updatedAt: READY_AT,
+    ...over,
+  };
+}
+
+const TG = { telegramLink: [{ chatId: '777', phone: '+37400160001', languageCode: 'ru', blockedAt: null }] };
+
+test('напоминание: сроки 3 и 7 дней, режимы off / 3 / 3_7, только у «Готов»', () => {
+  const r = (over: Row = {}) => readyRow(over) as unknown as Parameters<typeof rules.pickupReminderDue>[0];
+  assert.equal(rules.pickupReminderDue(r(), '3_7', after(3 * DAY - 60_000)), null, 'ещё нет трёх дней');
+  assert.deepEqual(rules.pickupReminderDue(r(), '3_7', after(3 * DAY)), { nextCount: 1 });
+  assert.equal(rules.pickupReminderDue(r({ pickupReminderCount: 1 }), '3_7', after(6 * DAY)), null, 'второе — на седьмой день');
+  assert.deepEqual(rules.pickupReminderDue(r({ pickupReminderCount: 1 }), '3_7', after(7 * DAY)), { nextCount: 2 });
+  assert.equal(rules.pickupReminderDue(r({ pickupReminderCount: 2 }), '3_7', after(30 * DAY)), null, 'больше двух — никогда');
+  assert.equal(rules.pickupReminderDue(r({ pickupReminderCount: 1 }), '3', after(8 * DAY)), null, 'режим «3 дня» — одно');
+  assert.equal(rules.pickupReminderDue(r(), 'off', after(8 * DAY)), null);
+  assert.deepEqual(rules.pickupReminderDue(r(), '3_7', after(8 * DAY)), { nextCount: 2 }, 'воркер лежал — одно сообщение, не два подряд');
+  for (const status of ['issued', 'cancelled', 'in_progress', 'received']) assert.equal(rules.pickupReminderDue(r({ status }), '3_7', after(8 * DAY)), null, status);
+  // Бизнес сам «Отправить ещё раз» вчера вечером — авто-напоминание ждёт сутки с того раза
+  const manual = r({ readyNotifiedAt: after(3 * DAY - 2 * 3_600_000) });
+  assert.equal(rules.pickupReminderDue(manual, '3_7', after(3 * DAY)), null);
+  assert.deepEqual(rules.pickupReminderDue(manual, '3_7', after(4 * DAY)), { nextCount: 1 });
+  assert.equal(rules.pickupReminderModeOf(null), '3_7');
+  assert.equal(rules.pickupReminderModeOf('junk'), '3_7');
+  assert.equal(rules.pickupReminderModeOf('off'), 'off');
+});
+
+test('напоминание: задача шлёт на 3-й и 7-й день, повтор прохода — без дубля', async () => {
+  const { prisma, tables, sent } = world({ ...TG, order: [readyRow()] });
+  const messenger = messengerSpy().messenger;
+  assert.deepEqual(await ordersPickupReminders(prisma, messenger, after(2 * DAY)), { sent: 0, undelivered: 0, quiet: false });
+  assert.equal(tables.notifyOutbox!.length, 0);
+
+  const r1 = await ordersPickupReminders(prisma, messenger, after(3 * DAY + 60_000));
+  assert.equal(r1.sent, 1);
+  const out = tables.notifyOutbox!;
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.kind, 'order_pickup_reminder');
+  assert.equal(out[0]!.body, 'Напоминаем: заказ №1007 в «Ателье Нарине» готов и ждёт вас. Статус: https://booktime.am/o/AbCdEfGhIj');
+  assert.equal(tables.order![0]!.pickupReminderCount, 1);
+  assert.deepEqual(tables.order![0]!.pickupRemindedAt, after(3 * DAY + 60_000));
+  assert.deepEqual(tables.notifyLogEntry!.map((e) => (e.typeLabel as { ru: string }).ru), ['Заказ ждёт клиента']);
+
+  // Тот же момент ещё раз (повтор задачи, второй воркер) и через час — ничего нового
+  await ordersPickupReminders(prisma, messenger, after(3 * DAY + 60_000));
+  await ordersPickupReminders(prisma, messenger, after(3 * DAY + 3_600_000));
+  assert.equal(out.length, 1);
+
+  await ordersPickupReminders(prisma, messenger, after(7 * DAY + 60_000));
+  assert.equal(out.length, 2);
+  assert.equal(tables.order![0]!.pickupReminderCount, 2);
+  await ordersPickupReminders(prisma, messenger, after(20 * DAY));
+  assert.equal(out.length, 2, 'после второго — тишина');
+  assert.equal(sent.length, 0, 'SMS не нужен — есть Telegram');
+});
+
+test('напоминание: выданные и отменённые не трогаем, режим «выключено» — тоже', async () => {
+  const w = world({
+    ...TG,
+    order: [readyRow({ id: 'o1', status: 'issued', issuedAt: after(DAY) }), readyRow({ id: 'o2', code: 'BbCdEfGhIj', status: 'cancelled' }), readyRow({ id: 'o3', code: 'CbCdEfGhIj', status: 'in_progress' })],
+  });
+  await ordersPickupReminders(w.prisma, w.messenger, after(8 * DAY));
+  assert.equal(w.tables.notifyOutbox!.length, 0);
+  assert.ok(w.tables.order!.every((o) => o.pickupReminderCount === 0));
+
+  const off = world({ ...TG, order: [readyRow()] });
+  (off.tables.business![0] as Row).orderPickupReminders = 'off';
+  await ordersPickupReminders(off.prisma, off.messenger, after(8 * DAY));
+  assert.equal(off.tables.notifyOutbox!.length, 0);
+
+  const one = world({ ...TG, order: [readyRow({ pickupReminderCount: 1 })] });
+  (one.tables.business![0] as Row).orderPickupReminders = '3';
+  await ordersPickupReminders(one.prisma, one.messenger, after(8 * DAY));
+  assert.equal(one.tables.notifyOutbox!.length, 0, 'режим «3 дня» — второго нет');
+});
+
+test('напоминание: вид order_pickup_reminder выключен бизнесом — не шлём и не перебираем заказ снова', async () => {
+  const { prisma, tables, messenger } = world({
+    ...TG,
+    order: [readyRow()],
+    businessSetting: [{ businessId: 'biz_1', area: 'notify-types', data: { order_pickup_reminder: { enabled: false } } }],
+  });
+  const res = await ordersPickupReminders(prisma, messenger, after(3 * DAY));
+  assert.equal(tables.notifyOutbox!.length, 0);
+  assert.equal(tables.notifyLogEntry!.length, 0);
+  assert.equal(res.undelivered, 1);
+  assert.equal(tables.order![0]!.pickupReminderCount, 1);
+});
+
+test('напоминание: тихие часы 21:00–10:00 по Еревану — проход пропущен, утром уходит', async () => {
+  const { prisma, tables, messenger } = world({ ...TG, order: [readyRow()] });
+  const night = new Date('2026-10-04T19:30:00.000Z'); // 23:30 по Еревану, срок уже наступил
+  assert.deepEqual(await ordersPickupReminders(prisma, messenger, night), { sent: 0, undelivered: 0, quiet: true });
+  assert.equal(tables.notifyOutbox!.length, 0);
+  await ordersPickupReminders(prisma, messenger, new Date('2026-10-05T06:05:00.000Z')); // 10:05
+  assert.equal(tables.notifyOutbox!.length, 1);
+});
+
+test('напоминание: новый переход в «Готов» обнуляет счётчик — отсчёт заново', async () => {
+  const { svc, tables } = world();
+  const o = await svc.create(ctx, 'biz_1', BODY);
+  await svc.setStatus(ctx, 'biz_1', o.id, 'ready');
+  const row = tables.order!.find((r) => r.id === o.id)!;
+  row.pickupReminderCount = 2;
+  row.pickupRemindedAt = new Date();
+  await svc.setStatus(ctx, 'biz_1', o.id, 'in_progress');
+  const again = await svc.setStatus(ctx, 'biz_1', o.id, 'ready');
+  assert.equal(again.pickupReminderCount, 0);
+  assert.equal(again.pickupRemindedAt, null);
 });

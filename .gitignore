@@ -9,3 +9,6 @@ prisma/seed/.cache/
 
 # Локальные копии базы (jobs/db-backup.ts)
 /backups/
+
+# Фото на диске при разработке (UPLOADS_DIR, «Файлы и фото»)
+/.uploads/

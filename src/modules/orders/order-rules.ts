@@ -75,6 +75,9 @@ export interface OrderRow {
   history: unknown;
   readyNotifiedAt: Date | null;
   issuedAt: Date | null;
+  /** Сколько авто-напоминаний «заказ ждёт вас» ушло за этот «Готов» (сбрасывается при новом переходе в ready) */
+  pickupReminderCount?: number;
+  pickupRemindedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -103,6 +106,8 @@ export function orderView(r: OrderRow) {
     history: arr<OrderHistoryEntry>(r.history),
     readyNotifiedAt: r.readyNotifiedAt?.toISOString() ?? null,
     issuedAt: r.issuedAt?.toISOString() ?? null,
+    pickupReminderCount: r.pickupReminderCount ?? 0,
+    pickupRemindedAt: r.pickupRemindedAt?.toISOString() ?? null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
@@ -156,4 +161,66 @@ export function orderMatches(r: Pick<OrderRow, 'number' | 'clientName' | 'client
 /** Адрес ссылки статуса для клиента */
 export function orderStatusUrl(siteUrl: string, code: string): string {
   return `${siteUrl.replace(/\/+$/, '')}/o/${code}`;
+}
+
+// ─────────── напоминание «заказ ждёт вас» (04.10.2026) ───────────
+
+/**
+ * Напоминание клиенту, который не забрал готовый заказ: выключено / через 3 дня / через 3 и 7 дней после «Готов».
+ * Хранится в Business.orderPickupReminders; null — по умолчанию «3 и 7».
+ */
+export const PICKUP_REMINDER_MODES = ['off', '3', '3_7'] as const;
+export type PickupReminderMode = (typeof PICKUP_REMINDER_MODES)[number];
+export const DEFAULT_PICKUP_REMINDER_MODE: PickupReminderMode = '3_7';
+
+export function pickupReminderModeOf(stored: string | null | undefined): PickupReminderMode {
+  return (PICKUP_REMINDER_MODES as readonly string[]).includes(String(stored)) ? (stored as PickupReminderMode) : DEFAULT_PICKUP_REMINDER_MODE;
+}
+
+/** Через сколько дней после «Готов» — каждое напоминание по порядку */
+export function pickupReminderDays(mode: PickupReminderMode): readonly number[] {
+  return mode === 'off' ? [] : mode === '3' ? [3] : [3, 7];
+}
+
+const DAY_MS = 86_400_000;
+/** Бизнес сам нажал «Отправить ещё раз» меньше суток назад — авто-напоминание подождёт (не два сообщения подряд) */
+const MANUAL_RESEND_GAP_MS = DAY_MS;
+
+/** Когда заказ последний раз стал «Готов» — по истории (ручное «Отправить ещё раз» срок не сдвигает) */
+export function lastReadyAt(r: Pick<OrderRow, 'readyNotifiedAt' | 'history'>): Date | null {
+  const last = arr<OrderHistoryEntry>(r.history).filter((h) => h.status === 'ready').pop();
+  if (last?.at) {
+    const d = new Date(last.at);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return r.readyNotifiedAt ?? null;
+}
+
+export interface PickupReminderPlan {
+  /** Сколько напоминаний будет «отправлено» после этого (новое значение pickupReminderCount) */
+  nextCount: number;
+}
+
+/**
+ * Пора ли напомнить. null — нет: заказ не «Готов» (выдан, отменён, в работе), напоминания выключены, все уже ушли, срок
+ * не настал, или бизнес сам напоминал меньше суток назад. Воркер лежал и прошли оба срока — одно сообщение, а не два
+ * подряд: nextCount сразу перескакивает через все наступившие сроки.
+ */
+export function pickupReminderDue(
+  r: Pick<OrderRow, 'status' | 'readyNotifiedAt' | 'history'> & { pickupReminderCount: number },
+  mode: PickupReminderMode,
+  now: Date,
+): PickupReminderPlan | null {
+  if (r.status !== 'ready') return null;
+  const days = pickupReminderDays(mode);
+  const done = Math.max(0, r.pickupReminderCount || 0);
+  if (done >= days.length) return null;
+  const readyAt = lastReadyAt(r);
+  if (!readyAt) return null;
+  const elapsed = now.getTime() - readyAt.getTime();
+  if (elapsed < days[done]! * DAY_MS) return null;
+  if (r.readyNotifiedAt && r.readyNotifiedAt.getTime() > readyAt.getTime() && now.getTime() - r.readyNotifiedAt.getTime() < MANUAL_RESEND_GAP_MS) return null;
+  let nextCount = done + 1;
+  while (nextCount < days.length && elapsed >= days[nextCount]! * DAY_MS) nextCount++;
+  return { nextCount };
 }

@@ -13,6 +13,8 @@ const STATUS_TO_CODE: Partial<Record<number, ErrorCode>> = {
   [HttpStatus.CONFLICT]: 'conflict',
   [HttpStatus.TOO_MANY_REQUESTS]: 'rate_limited',
   [HttpStatus.BAD_REQUEST]: 'validation',
+  // multer (загрузка файла): больше предела — тот же код, что у проверки размера в uploads
+  [HttpStatus.PAYLOAD_TOO_LARGE]: 'file_too_large',
 };
 
 /** Любая ошибка наружу — только { code, message } (docs/backend/02-api.md §0). Внутренности не утекают. */

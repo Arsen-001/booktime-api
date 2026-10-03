@@ -248,6 +248,8 @@ export const ID_PREFIX = {
   notifyChatMessage: 'chat',
   // заказы (03.10.2026): ателье, ремонт, химчистка, детейлинг
   order: 'ord',
+  // файлы и фото (04.10.2026)
+  upload: 'upl',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

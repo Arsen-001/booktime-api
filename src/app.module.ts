@@ -29,14 +29,16 @@ import { DataRetentionModule } from './modules/data-retention/data-retention.mod
 import { ShortLinksModule } from './modules/shortlinks/shortlinks.module.js';
 import { TelegramModule } from './modules/telegram/telegram.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
+import { UploadsModule } from './modules/uploads/uploads.module.js';
 
 /** Корневой модуль API. Разделы (PLAN.md §6) добавляются сюда по этапам. */
 @Module({
-  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule, ClientsModule, ScheduleModule, JournalModule, JournalMoreModule, WorkdayModule, OnlineModule, ClientModule, NotifyModule, LoyaltyModule, FinanceModule, StockModule, PayrollModule, NetworkModule, ReportsModule, BillingModule, SettingsModule, IntegrationsModule, NotifyChatModule, PlatformModule, DataRetentionModule, ShortLinksModule, TelegramModule, OrdersModule],
+  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule, ClientsModule, ScheduleModule, JournalModule, JournalMoreModule, WorkdayModule, OnlineModule, ClientModule, NotifyModule, LoyaltyModule, FinanceModule, StockModule, PayrollModule, NetworkModule, ReportsModule, BillingModule, SettingsModule, IntegrationsModule, NotifyChatModule, PlatformModule, DataRetentionModule, ShortLinksModule, TelegramModule, OrdersModule, UploadsModule],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(ContextMiddleware).forRoutes('*');
+    // Раздача фото (/v1/files/…) — без сессии: браузер шлёт cookie и с картинками, а чтение сессии из базы на каждое фото не нужно
+    consumer.apply(ContextMiddleware).exclude('v1/files/*path').forRoutes('*');
   }
 }

@@ -234,7 +234,12 @@ export class OrdersService {
     const now = new Date();
     const history = [...((before.history as OrderHistoryEntry[] | null) ?? []), { at: now.toISOString(), status: to, by: ctx.member?.staffId ?? null }];
     const data: Prisma.OrderUncheckedUpdateManyInput = { status: to, history: J(history) };
-    if (to === 'ready') data.readyNotifiedAt = now;
+    if (to === 'ready') {
+      data.readyNotifiedAt = now;
+      // Новый «Готов» — новый отсчёт напоминаний «заказ ждёт вас» (3 и 7 дней с этого момента)
+      data.pickupReminderCount = 0;
+      data.pickupRemindedAt = null;
+    }
     if (to === 'issued') data.issuedAt = now;
     const row = await this.prisma.$transaction(async (tx) => {
       // Статус мог смениться параллельно — переход только из того статуса, который проверили
