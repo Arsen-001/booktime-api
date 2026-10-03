@@ -20,7 +20,20 @@ export const verifyCodeBody = z.object({
   name: z.string().max(120).optional(),
   consent: z.boolean().optional(),
   locale: locale.optional(),
+  /** «Войти через Google» с непривязанным аккаунтом: токен из ответа /v1/auth/google — верный код привяжет Google к номеру */
+  pendingGoogle: z.string().min(16).max(64).optional(),
 });
+
+/** «Войти через Google» (03.10.2026): ID token из Google Identity Services */
+export const googleBody = z.object({
+  idToken: z.string().min(20).max(4096),
+  app: z.enum(['client', 'business']).default('client'),
+  /** Клиент нажал кнопку под текстом «Продолжая, вы принимаете соглашение» (F-14-008) */
+  consent: z.boolean().optional(),
+});
+
+/** Привязать Google из профиля вошедшего */
+export const googleLinkBody = z.object({ idToken: z.string().min(20).max(4096) });
 
 export const passwordBody = z.object({
   login: z.string().min(1).max(64),
@@ -68,6 +81,19 @@ export const sessionView = z.object({
 });
 
 export const sessionOrGuest = z.object({ session: sessionView.nullable() });
+
+/** Ответ verify: с pendingGoogle — привязался ли Google (false — токен истёк или этот Google уже у другого человека) */
+export const verifyView = sessionView.extend({ googleLinked: z.boolean().optional() });
+
+export const googleLogin = z.object({
+  /** Google привязан — сессия открыта (cookie поставлена) */
+  session: sessionView.nullable(),
+  /** Не привязан — нужен номер и код один раз: token передать в /v1/auth/verify как pendingGoogle */
+  pendingGoogle: z.object({ token: z.string(), email: z.string(), name: z.string().nullable(), expiresIn: z.number() }).nullable(),
+});
+
+/** Google в профиле: enabled — вход через Google настроен на сервере; email — привязанный аккаунт или null */
+export const googleStatus = z.object({ enabled: z.boolean(), email: z.string().nullable() });
 
 export const codeSent = z.object({
   challengeId: z.string(),

@@ -398,6 +398,11 @@
                       "hy",
                       "en"
                     ]
+                  },
+                  "pendingGoogle": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 64
                   }
                 },
                 "required": [
@@ -516,6 +521,9 @@
                     },
                     "consent": {
                       "type": "boolean"
+                    },
+                    "googleLinked": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -533,7 +541,364 @@
             }
           }
         },
-        "summary": "Проверить код и войти (клиент или кабинет бизнеса). Ставит httpOnly cookie сессии.",
+        "summary": "Проверить код и войти (клиент или кабинет бизнеса). Ставит httpOnly cookie сессии. pendingGoogle — привязать Google к этому номеру (ответ: googleLinked).",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/google": {
+      "post": {
+        "operationId": "AuthController_google",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "idToken": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 4096
+                  },
+                  "app": {
+                    "default": "client",
+                    "type": "string",
+                    "enum": [
+                      "client",
+                      "business"
+                    ]
+                  },
+                  "consent": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "idToken"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "user": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "phone": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "locale": {
+                                  "type": "string",
+                                  "enum": [
+                                    "ru",
+                                    "hy",
+                                    "en"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "phone",
+                                "locale"
+                              ]
+                            },
+                            "app": {
+                              "type": "string",
+                              "enum": [
+                                "client",
+                                "business",
+                                "platform"
+                              ]
+                            },
+                            "mode": {
+                              "type": "string",
+                              "enum": [
+                                "client",
+                                "business"
+                              ]
+                            },
+                            "activeBusinessId": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "memberships": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "businessId": {
+                                    "type": "string"
+                                  },
+                                  "businessName": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "networkId": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "staffId": {
+                                    "type": "string"
+                                  },
+                                  "role": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "businessId",
+                                  "businessName",
+                                  "kind",
+                                  "networkId",
+                                  "staffId",
+                                  "role"
+                                ]
+                              }
+                            },
+                            "staffLogin": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "mustChangePassword": {
+                              "type": "boolean"
+                            },
+                            "consent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "user",
+                            "app",
+                            "mode",
+                            "activeBusinessId",
+                            "memberships",
+                            "staffLogin",
+                            "mustChangePassword",
+                            "consent"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pendingGoogle": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "token": {
+                              "type": "string"
+                            },
+                            "email": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "expiresIn": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "token",
+                            "email",
+                            "name",
+                            "expiresIn"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "session",
+                    "pendingGoogle"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Войти через Google (ID token из Google Identity Services). Привязан к человеку — сессия (cookie); не привязан — pendingGoogle: номер и код один раз (/v1/auth/code, затем /v1/auth/verify с pendingGoogle), дальше — одним нажатием.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/google/link": {
+      "get": {
+        "operationId": "AuthController_googleStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "email": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "email"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Профиль: привязан ли Google и включён ли вход через Google",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "operationId": "AuthController_googleLink",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "idToken": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 4096
+                  }
+                },
+                "required": [
+                  "idToken"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "email": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "email"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Профиль: привязать Google к вошедшему по номеру (прежний Google заменяется)",
+        "tags": [
+          "auth"
+        ]
+      },
+      "delete": {
+        "operationId": "AuthController_googleUnlink",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "email": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "email"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Профиль: отвязать Google (дальше — вход по номеру и коду)",
         "tags": [
           "auth"
         ]

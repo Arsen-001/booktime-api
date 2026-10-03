@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Put, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Post, Put, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import type { RequestContext } from '../../common/http/context.js';
@@ -11,6 +11,10 @@ import {
   changePasswordBody,
   codeChannels,
   codeSent,
+  googleBody,
+  googleLinkBody,
+  googleLogin,
+  googleStatus,
   logoutAllBody,
   modeBody,
   passwordBody,
@@ -20,6 +24,7 @@ import {
   sessionOrGuest,
   sessionView,
   verifyCodeBody,
+  verifyView,
 } from './auth.schemas.js';
 import { AuthService } from './auth.service.js';
 import type { z } from 'zod';
@@ -60,11 +65,52 @@ export class AuthController {
   @Post('verify')
   @HttpCode(200)
   @RateLimit({ bucket: 'auth-verify-ip', limit: 40, windowSec: 600, by: 'ip' })
-  @ApiOperation({ summary: 'Проверить код и войти (клиент или кабинет бизнеса). Ставит httpOnly cookie сессии.' })
+  @ApiOperation({ summary:
+      'Проверить код и войти (клиент или кабинет бизнеса). Ставит httpOnly cookie сессии. ' +
+      'pendingGoogle — привязать Google к этому номеру (ответ: googleLinked).' })
   @ZodBody(verifyCodeBody)
-  @ZodOk(sessionView)
+  @ZodOk(verifyView)
   verify(@Ctx() ctx: RequestContext, @Res({ passthrough: true }) res: Response, @Body(new Zod(verifyCodeBody)) body: z.infer<typeof verifyCodeBody>) {
     return this.auth.verifyCode(ctx, res, body);
+  }
+
+  @Post('google')
+  @HttpCode(200)
+  @RateLimit({ bucket: 'auth-google-ip', limit: 30, windowSec: 600, by: 'ip' })
+  @ApiOperation({ summary:
+      'Войти через Google (ID token из Google Identity Services). Привязан к человеку — сессия (cookie); не привязан — ' +
+      'pendingGoogle: номер и код один раз (/v1/auth/code, затем /v1/auth/verify с pendingGoogle), дальше — одним нажатием.' })
+  @ZodBody(googleBody)
+  @ZodOk(googleLogin)
+  google(@Ctx() ctx: RequestContext, @Res({ passthrough: true }) res: Response, @Body(new Zod(googleBody)) body: z.infer<typeof googleBody>) {
+    return this.auth.googleLogin(ctx, res, body);
+  }
+
+  @Get('google/link')
+  @Authed()
+  @ApiOperation({ summary: 'Профиль: привязан ли Google и включён ли вход через Google' })
+  @ZodOk(googleStatus)
+  googleStatus(@Ctx() ctx: RequestContext) {
+    return this.auth.googleStatus(ctx);
+  }
+
+  @Post('google/link')
+  @HttpCode(200)
+  @Authed()
+  @RateLimit({ bucket: 'auth-google-link', limit: 20, windowSec: 600, by: 'session' })
+  @ApiOperation({ summary: 'Профиль: привязать Google к вошедшему по номеру (прежний Google заменяется)' })
+  @ZodBody(googleLinkBody)
+  @ZodOk(googleStatus)
+  googleLink(@Ctx() ctx: RequestContext, @Body(new Zod(googleLinkBody)) body: z.infer<typeof googleLinkBody>) {
+    return this.auth.linkGoogle(ctx, body);
+  }
+
+  @Delete('google/link')
+  @Authed()
+  @ApiOperation({ summary: 'Профиль: отвязать Google (дальше — вход по номеру и коду)' })
+  @ZodOk(googleStatus)
+  googleUnlink(@Ctx() ctx: RequestContext) {
+    return this.auth.unlinkGoogle(ctx);
   }
 
   @Post('password')

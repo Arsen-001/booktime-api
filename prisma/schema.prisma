@@ -85,6 +85,7 @@ model User {
   platformMember PlatformMember?
   pushTokens     PushToken[]
   loginEvents    LoginEvent[]
+  identities     UserIdentity[]
   staff          Staff[]
   networks       Network[]
   masterProfile  MasterProfile?
@@ -246,10 +247,10 @@ model LoginEvent {
   id         String   @id @db.VarChar(32)
   userId     String?  @map("user_id") @db.VarChar(32)
   sessionId  String?  @map("session_id") @db.VarChar(32)
-  /// code | password | platform | second_factor
+  /// code | password | platform | second_factor | google
   method     String   @db.VarChar(16)
   app        String   @db.VarChar(10)
-  /// ok | wrong_code | wrong_password | locked | blocked | second_factor_sent
+  /// ok | wrong_code | wrong_password | locked | blocked | second_factor_sent | google_unlinked | google_invalid | google_linked | google_taken
   result     String   @db.VarChar(20)
   /// Что вводили (логин или номер с маской) — для неудачных попыток без userId
   identifier String?  @db.VarChar(64)
@@ -262,6 +263,28 @@ model LoginEvent {
   @@index([userId, at])
   @@index([at])
   @@map("login_events")
+}
+
+/// Внешний вход, привязанный к человеку (03.10.2026): «Войти через Google». Номер телефона остаётся главным — Google
+/// привязывается к человеку только после кода на его номер (или из профиля вошедшего), сам номер не подтверждает.
+model UserIdentity {
+  id         String    @id @db.VarChar(32)
+  /// google (потом — apple)
+  provider   String    @db.VarChar(16)
+  /// Постоянный id аккаунта у провайдера (sub из ID token); email может смениться, sub — нет
+  subject    String    @db.VarChar(255)
+  /// Почта аккаунта на момент последнего входа — только показать в профиле «Google: name@gmail.com»
+  email      String?   @db.VarChar(254)
+  userId     String    @map("user_id") @db.VarChar(32)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  lastUsedAt DateTime? @map("last_used_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, subject])
+  /// Один аккаунт провайдера на человека: привязка нового заменяет прежний
+  @@unique([userId, provider])
+  @@map("user_identities")
 }
 
 /// Токены пушей (05 §4): Web Push (подписка JSON) и FCM

@@ -41,6 +41,13 @@ esbuild/tsx: Nest берёт зависимости из метаданных д
     Защита от накрутки: `SMS_ALLOWED_PREFIXES` (`+374`), `SMS_MAX_PER_HOUR` (`100` на весь сервис), плюс в коде
     3 SMS на номер в сутки и 5 с адреса в час — дальше SMS не предлагается. Новый провайдер — класс `SmsProvider`
     в `src/adapters/code-sender/sms.ts` и значение `SMS_PROVIDER`.
+- «Войти через Google» (03.10.2026): `GOOGLE_CLIENT_ID` — OAuth Client ID (через запятую, если их несколько: web,
+  android, ios); пусто — вход выключен (`google_disabled`). `POST /v1/auth/google { idToken, app, consent? }`: ID token
+  проверяется без библиотек (`src/modules/auth/google-id-token.ts`: подпись RS256 по JWKS Google, `iss`, `aud`, срок,
+  `email_verified`). Google уже привязан (`user_identities`) — сразу сессия; нет — `pendingGoogle` (одноразовый, 10 мин,
+  Redis): обычные `/v1/auth/code` + `/v1/auth/verify { …, pendingGoogle }` — верный код привязывает Google к человеку с этим
+  номером. Почта Google с номером не сопоставляется — номер подтверждает только код. Профиль: `GET|POST|DELETE
+  /v1/auth/google/link`. Журнал входов: `method=google`. Тесты — `google-id-token.test.ts`, `google-login.test.ts`.
 - Клиенты — номера из мока (`+374 00 160 001` — Ани, `au_01`); новый номер создаёт нового человека.
 - Администраторы салонов — логины из мока (`lilit.nuri`, `anahit.atam`, …), пароль = логин, первый вход просит сменить.
 - Команда платформы (`/platform/login` фронта): `platform` / `booktime-dev`, затем код.

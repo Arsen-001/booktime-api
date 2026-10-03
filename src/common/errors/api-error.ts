@@ -32,6 +32,12 @@ export const ERROR_STATUS = {
   code_not_delivered: HttpStatus.BAD_GATEWAY,
   phone_taken: HttpStatus.CONFLICT,
   phone_required: HttpStatus.UNPROCESSABLE_ENTITY,
+  // «Войти через Google» (03.10.2026): токен не прошёл проверку / вход не настроен / ключи Google недоступны /
+  // этот Google-аккаунт уже привязан к другому человеку
+  google_invalid: HttpStatus.UNAUTHORIZED,
+  google_disabled: HttpStatus.SERVICE_UNAVAILABLE,
+  google_unavailable: HttpStatus.SERVICE_UNAVAILABLE,
+  google_taken: HttpStatus.CONFLICT,
   no_business: HttpStatus.FORBIDDEN,
   // бизнес и сотрудники (этап 3) — коды как в моке фронта (src/api/staff.ts, client.ts)
   last_owner: HttpStatus.CONFLICT,

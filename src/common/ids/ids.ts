@@ -31,6 +31,8 @@ export const ID_PREFIX = {
   staffLogin: 'sl',
   platformMember: 'pm',
   loginEvent: 'le',
+  /** Внешний вход, привязанный к человеку (Google, 03.10.2026) */
+  userIdentity: 'uidn',
   pushToken: 'pt',
   // этап 3 — как в срезе staff фронта
   position: 'stpos',

@@ -10,6 +10,9 @@ import { isLocale, type Locale } from '../../common/i18n/i18n.js';
 import { newId } from '../../common/ids/ids.js';
 import { maskPhone, normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
+import { GoogleIdTokenVerifier, type GoogleProfile } from './google-id-token.js';
+import { GOOGLE_PENDING, GOOGLE_PENDING_TTL_SEC, type GooglePendingStore } from './google-pending.js';
 import { OtpService, type OtpSent } from './otp.service.js';
 import { hashPassword, isWeakPassword, verifyPassword } from './passwords.js';
 
@@ -44,7 +47,29 @@ export interface SecondFactorView {
   secondFactor: { challengeId: string; phoneMasked: string; resendAfter: number; expiresIn: number };
 }
 
-type LoginMethod = 'code' | 'password' | 'platform' | 'second_factor';
+type LoginMethod = 'code' | 'password' | 'platform' | 'second_factor' | 'google';
+type PhoneApp = 'client' | 'business';
+
+/** Google-аккаунт ещё не привязан: экран просит номер и код один раз, token — в verify (pendingGoogle) */
+export interface PendingGoogleView {
+  token: string;
+  email: string;
+  name: string | null;
+  expiresIn: number;
+}
+
+/** Ответ «Войти через Google»: либо сессия (аккаунт привязан), либо pendingGoogle (нужен номер и код) */
+export interface GoogleLoginView {
+  session: SessionView | null;
+  pendingGoogle: PendingGoogleView | null;
+}
+
+/** «Google: a•••@gmail.com» — в журнал входов, без полной почты */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf('@');
+  if (at < 1) return '•••';
+  return `${email[0]}•••${email.slice(at)}`.slice(0, 64);
+}
 
 @Injectable()
 export class AuthService {
@@ -54,6 +79,8 @@ export class AuthService {
     private readonly sessions: SessionStore,
     private readonly audit: AuditService,
     @Inject(MEMBERSHIP_LISTER) private readonly memberships: MembershipLister,
+    @Inject(GoogleIdTokenVerifier) private readonly google: GoogleIdTokenVerifier,
+    @Inject(GOOGLE_PENDING) private readonly googlePending: GooglePendingStore,
   ) {}
 
   // ─────────── журнал входов (F-10-106) ───────────
@@ -118,8 +145,8 @@ export class AuthService {
   async verifyCode(
     ctx: RequestContext,
     res: Response,
-    input: { phone: string; code: string; app: 'client' | 'business'; name?: string; consent?: boolean; locale?: Locale },
-  ): Promise<SessionView> {
+    input: { phone: string; code: string; app: PhoneApp; name?: string; consent?: boolean; locale?: Locale; pendingGoogle?: string },
+  ): Promise<SessionView & { googleLinked?: boolean }> {
     const phone = normalizePhone(input.phone);
     if (!phone) throw new ApiError('invalid_phone', 'Phone must be +374XXXXXXXX');
     const existing = await this.prisma.user.findUnique({ where: { phone }, include: { appProfile: { select: { consentAt: true } } } });
@@ -137,54 +164,183 @@ export class AuthService {
       await this.logEvent(ctx, { userId: existing.id, method: 'code', app: input.app, result: 'blocked' });
       throw new ApiError('account_blocked', 'Account is blocked');
     }
+    // «Войти через Google» с непривязанным аккаунтом (03.10.2026): номер подтверждён кодом — только теперь Google
+    // привязывается к человеку с этим номером. Токен одноразовый и гасится здесь; истёк — вход по коду всё равно идёт.
+    const google = input.pendingGoogle ? await this.googlePending.take(input.pendingGoogle) : null;
 
     const now = new Date();
+    let googleLinked = false;
     const userId = await this.prisma.$transaction(async (tx) => {
       let id = existing?.id;
       if (!id) {
         id = newId('user');
-        const name = input.name?.trim().slice(0, 120) || phone;
+        const name = input.name?.trim().slice(0, 120) || google?.name || phone;
         await tx.user.create({ data: { id, phone, name, locale: input.locale ?? 'ru', createdBy: id, updatedBy: id } });
         await this.audit.record(tx, ctx, { action: 'create', entityType: 'user', entityId: id, after: { phone, name } });
       }
-      if (input.app === 'client') {
-        const consentAt = existing?.appProfile?.consentAt ?? (input.consent ? now : null);
-        await tx.appProfile.upsert({
-          where: { userId: id },
-          create: { userId: id, consentAt, consentVersion: consentAt ? CONSENT_VERSION : null },
-          update: existing?.appProfile?.consentAt ? {} : { consentAt, consentVersion: CONSENT_VERSION },
-        });
-      }
-      // F-00-176 (этап 19): салон, подключённый нашей командой на визите, ждёт владельца по номеру телефона —
-      // без отдельного приглашения (ConnectHandoff фронта: «шаг 1 — войдите этим номером»). Пришёл именно этот
-      // номер бизнес-входом и есть непринятый owner-стул с ним — сразу привязать (та же строка, что заводит
-      // ConnectService.finish: userId ещё null). Обычных сотрудников это не касается — те идут через инвайт (F-00-042).
-      if (input.app === 'business') {
-        const unclaimed = await tx.staff.findFirst({
-          where: { phone, role: 'owner', userId: null, deletedAt: null, business: { leftAt: null } },
-          orderBy: { createdAt: 'asc' },
-        });
-        if (unclaimed) {
-          await tx.staff.update({
-            where: { id: unclaimed.id },
-            data: { userId: id, accessEnabled: true, status: unclaimed.status === 'fired' ? 'fired' : 'active', updatedBy: id, version: { increment: 1 } },
-          });
-          await this.audit.record(tx, { ...ctx, member: null }, { action: 'connectOwnerClaimed', entityType: 'staff', entityId: unclaimed.id, businessId: unclaimed.businessId });
-        }
-      }
+      await this.prepareAppAccess(tx, ctx, { userId: id, phone, app: input.app, consentAt: existing?.appProfile?.consentAt ?? null, consent: input.consent, now });
+      if (google) googleLinked = await this.attachGoogle(tx, ctx, id, google, now);
       return id;
     });
 
-    const memberships = input.app === 'business' ? await this.memberships.list(userId) : [];
-    const mode: SessionMode = input.app === 'business' ? 'business' : 'client';
+    const sessionId = await this.openPhoneSession(ctx, res, userId, input.app, 'code');
+    if (input.pendingGoogle) {
+      await this.logEvent(ctx, {
+        userId,
+        sessionId,
+        method: 'google',
+        app: input.app,
+        result: googleLinked ? 'google_linked' : google ? 'google_taken' : 'google_expired',
+        identifier: google ? maskEmail(google.email) : undefined,
+      });
+      return { ...(await this.view(sessionId)), googleLinked };
+    }
+    return this.view(sessionId);
+  }
+
+  /**
+   * Что нужно человеку, вошедшему по номеру (кодом или привязанным Google), до открытия сессии: клиенту — профиль
+   * приложения и согласие (F-14-008); бизнесу — салон, подключённый нашей командой, ждущий владельца по номеру.
+   */
+  private async prepareAppAccess(
+    tx: Prisma.TransactionClient,
+    ctx: RequestContext,
+    a: { userId: string; phone: string; app: PhoneApp; consentAt: Date | null; consent?: boolean; now: Date },
+  ): Promise<void> {
+    if (a.app === 'client') {
+      const consentAt = a.consentAt ?? (a.consent ? a.now : null);
+      await tx.appProfile.upsert({
+        where: { userId: a.userId },
+        create: { userId: a.userId, consentAt, consentVersion: consentAt ? CONSENT_VERSION : null },
+        update: a.consentAt ? {} : { consentAt, consentVersion: CONSENT_VERSION },
+      });
+      return;
+    }
+    // F-00-176 (этап 19): салон, подключённый нашей командой на визите, ждёт владельца по номеру телефона —
+    // без отдельного приглашения (ConnectHandoff фронта: «шаг 1 — войдите этим номером»). Пришёл именно этот
+    // номер бизнес-входом и есть непринятый owner-стул с ним — сразу привязать (та же строка, что заводит
+    // ConnectService.finish: userId ещё null). Обычных сотрудников это не касается — те идут через инвайт (F-00-042).
+    const unclaimed = await tx.staff.findFirst({
+      where: { phone: a.phone, role: 'owner', userId: null, deletedAt: null, business: { leftAt: null } },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (unclaimed) {
+      await tx.staff.update({
+        where: { id: unclaimed.id },
+        data: { userId: a.userId, accessEnabled: true, status: unclaimed.status === 'fired' ? 'fired' : 'active', updatedBy: a.userId, version: { increment: 1 } },
+      });
+      await this.audit.record(tx, { ...ctx, member: null }, { action: 'connectOwnerClaimed', entityType: 'staff', entityId: unclaimed.id, businessId: unclaimed.businessId });
+    }
+  }
+
+  /** Сессия человека с номером (вход кодом или Google): бизнес — первый из его бизнесов */
+  private async openPhoneSession(ctx: RequestContext, res: Response, userId: string, app: PhoneApp, method: LoginMethod): Promise<string> {
+    const memberships = app === 'business' ? await this.memberships.list(userId) : [];
     const sessionId = await this.sessions.open(ctx, res, {
       userId,
-      app: input.app,
-      mode,
+      app,
+      mode: app === 'business' ? 'business' : 'client',
       activeBusinessId: memberships[0]?.businessId ?? null,
     });
-    await this.logEvent(ctx, { userId, sessionId, method: 'code', app: input.app, result: 'ok' });
-    return this.view(sessionId);
+    await this.logEvent(ctx, { userId, sessionId, method, app, result: 'ok' });
+    return sessionId;
+  }
+
+  // ─────────── «Войти через Google» (03.10.2026) ───────────
+
+  /**
+   * Привязать Google к человеку. Этот Google уже у другого человека — false (чужой вход не перехватываем).
+   * У человека был другой Google — заменяется: один Google на человека (unique userId+provider).
+   */
+  private async attachGoogle(tx: Prisma.TransactionClient, ctx: RequestContext, userId: string, g: GoogleProfile, now: Date): Promise<boolean> {
+    const found = await tx.userIdentity.findUnique({ where: { provider_subject: { provider: 'google', subject: g.sub } } });
+    if (found && found.userId !== userId) return false;
+    if (found) {
+      await tx.userIdentity.update({ where: { id: found.id }, data: { email: g.email, lastUsedAt: now } });
+      return true;
+    }
+    const before = await tx.userIdentity.findFirst({ where: { userId, provider: 'google' }, select: { email: true } });
+    await tx.userIdentity.deleteMany({ where: { userId, provider: 'google' } });
+    await tx.userIdentity.create({ data: { id: newId('userIdentity'), provider: 'google', subject: g.sub, email: g.email, userId, lastUsedAt: now } });
+    await this.audit.record(tx, { ...ctx, member: null }, {
+      action: 'googleLinked',
+      entityType: 'user',
+      entityId: userId,
+      before: before ? { google: before.email } : undefined,
+      after: { google: g.email },
+    });
+    return true;
+  }
+
+  /**
+   * POST /v1/auth/google. Google ID token проверен → аккаунт привязан — сразу сессия (как после кода);
+   * не привязан — pendingGoogle: номер обязателен (вся система — на номере), его подтверждает только код.
+   * Почта Google с номером не сопоставляется и человека не находит — иначе Google-входом можно было бы занять чужой номер.
+   */
+  async googleLogin(ctx: RequestContext, res: Response, input: { idToken: string; app: PhoneApp; consent?: boolean }): Promise<GoogleLoginView> {
+    let profile: GoogleProfile;
+    try {
+      profile = await this.google.verify(input.idToken);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'google_invalid') {
+        await this.logEvent(ctx, { method: 'google', app: input.app, result: 'google_invalid' });
+      }
+      throw err;
+    }
+    const identity = await this.prisma.userIdentity.findUnique({
+      where: { provider_subject: { provider: 'google', subject: profile.sub } },
+      include: { user: { include: { appProfile: { select: { consentAt: true } } } } },
+    });
+    if (!identity) {
+      const token = await this.googlePending.put(profile);
+      await this.logEvent(ctx, { method: 'google', app: input.app, result: 'google_unlinked', identifier: maskEmail(profile.email) });
+      return { session: null, pendingGoogle: { token, email: profile.email, name: profile.name, expiresIn: GOOGLE_PENDING_TTL_SEC } };
+    }
+    const user = identity.user;
+    if (user.blockedAt || user.deletedAt || !user.phone) {
+      await this.logEvent(ctx, { userId: user.id, method: 'google', app: input.app, result: 'blocked' });
+      throw new ApiError('account_blocked', 'Account is blocked');
+    }
+    const consentAt = user.appProfile?.consentAt ?? null;
+    if (input.app === 'client' && !consentAt && !input.consent) throw new ApiError('consent_required', 'User agreement must be accepted');
+    const now = new Date();
+    const phone = user.phone;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userIdentity.update({ where: { id: identity.id }, data: { email: profile.email, lastUsedAt: now } });
+      await this.prepareAppAccess(tx, ctx, { userId: user.id, phone, app: input.app, consentAt, consent: input.consent, now });
+    });
+    const sessionId = await this.openPhoneSession(ctx, res, user.id, input.app, 'google');
+    return { session: await this.view(sessionId), pendingGoogle: null };
+  }
+
+  /** Привязан ли Google к вошедшему (профиль) и включён ли вход через Google на сервере */
+  async googleStatus(ctx: RequestContext): Promise<{ enabled: boolean; email: string | null }> {
+    const row = await this.prisma.userIdentity.findFirst({ where: { userId: ctx.session!.userId, provider: 'google' }, select: { email: true } });
+    return { enabled: this.google.enabled, email: row ? (row.email ?? '') : null };
+  }
+
+  /** Привязать Google из профиля вошедшего по номеру человека (не из входа администратора по логину) */
+  async linkGoogle(ctx: RequestContext, input: { idToken: string }): Promise<{ enabled: boolean; email: string | null }> {
+    const session = ctx.session!;
+    if (session.staffLoginId || session.platformMemberId) throw new ApiError('forbidden', 'Phone sign-in only');
+    const profile = await this.google.verify(input.idToken);
+    const linked = await this.prisma.$transaction((tx) => this.attachGoogle(tx, ctx, session.userId, profile, new Date()));
+    await this.logEvent(ctx, { userId: session.userId, sessionId: session.sessionId, method: 'google', app: session.app, result: linked ? 'google_linked' : 'google_taken', identifier: maskEmail(profile.email) });
+    if (!linked) throw new ApiError('google_taken', 'This Google account is linked to another user');
+    return this.googleStatus(ctx);
+  }
+
+  /** Отвязать Google: дальше вход только по номеру и коду */
+  async unlinkGoogle(ctx: RequestContext): Promise<{ enabled: boolean; email: string | null }> {
+    const session = ctx.session!;
+    const row = await this.prisma.userIdentity.findFirst({ where: { userId: session.userId, provider: 'google' } });
+    if (row) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.userIdentity.delete({ where: { id: row.id } });
+        await this.audit.record(tx, { ...ctx, member: null }, { action: 'googleUnlinked', entityType: 'user', entityId: session.userId, before: { google: row.email } });
+      });
+    }
+    return this.googleStatus(ctx);
   }
 
   // ─────────── администратор: логин + пароль (F-00-034) + второй шаг (F-15-159) ───────────

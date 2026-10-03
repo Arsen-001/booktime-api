@@ -11,7 +11,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
  *
  * - Имя → «Удалённый пользователь», телефон → null (номер освобождается, как у Client.purgedAt).
  * - Профиль приложения: пол/дата рождения/район/фото стёрты; согласие (`consentAt`) — оставляем как факт.
- * - Избранное и дневник — личные данные только этого человека, стираются целиком.
+ * - Избранное, дневник и привязанный Google — личные данные только этого человека, стираются целиком.
  * - Лист ожидания — общая таблица и для журнала бизнеса (F-01-156…162): запись остаётся (как у клиента,
  *   «записи остаются с обезличенным клиентом»), обезличивается только имя/телефон на строке.
  * - Звёздочка мастеру (`StarRating`) не трогаем: это только оценка без личных данных, а не «данные приложения»,
@@ -21,6 +21,8 @@ export async function anonymizeAppUserData(tx: Prisma.TransactionClient, userId:
   await tx.appProfile.updateMany({ where: { userId }, data: { gender: 'unknown', birthday: null, district: null, photoUrl: null } });
   await tx.favorite.deleteMany({ where: { appUserId: userId } });
   await tx.diaryEntry.deleteMany({ where: { appUserId: userId } });
+  // Привязанный Google (почта и id аккаунта) — личные данные аккаунта; вход им тоже закрывается
+  await tx.userIdentity.deleteMany({ where: { userId } });
   await tx.waitlistEntry.updateMany({ where: { appUserId: userId }, data: { clientName: 'Удалённый клиент', clientPhone: 'purged' } });
   await new AuditService().record(tx, null, { action: 'purged', entityType: 'user', entityId: userId, after: { name: 'Удалённый пользователь' } });
 }

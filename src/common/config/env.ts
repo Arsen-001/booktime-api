@@ -54,6 +54,14 @@ const schema = z.object({
     .transform((s) => (s || '+374').split(',').map((x) => x.trim()).filter(Boolean)),
   /** Защита от накрутки: не больше стольких SMS с кодом в час на весь сервис (остальным — Telegram/WhatsApp) */
   SMS_MAX_PER_HOUR: z.coerce.number().int().positive().default(100),
+  /**
+   * «Войти через Google» (03.10.2026): OAuth Client ID из Google Cloud Console — через запятую, если клиентов несколько
+   * (web, android, ios): у ID token поле aud должно совпасть с одним из них. Пусто — вход через Google выключен.
+   */
+  GOOGLE_CLIENT_ID: z
+    .string()
+    .optional()
+    .transform((s) => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean)),
   /** Постоянный код входа только для разработки (NODE_ENV=development); в остальных средах игнорируется */
   DEV_LOGIN_CODE: z.string().regex(/^\d{4}$/).optional(),
   /** Домен cookie сессии (прод: .booktime.am — чтобы сайт и API на поддоменах видели одну сессию); пусто — хост API */
