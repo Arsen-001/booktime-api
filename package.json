@@ -8,6 +8,7 @@
     "node": "24"
   },
   "scripts": {
+    "prebuild": "prisma generate",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
