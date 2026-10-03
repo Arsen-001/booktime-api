@@ -8,17 +8,21 @@ export const PROSPECT_CATEGORIES = ['beauty', 'nails', 'barber', 'hair', 'brows_
 export type ProspectCategory = (typeof PROSPECT_CATEGORIES)[number];
 
 export const BOOKING_SYSTEMS = [
-  'emly',
-  'altegio',
-  'fresha',
-  'dikidi',
-  'booksy',
-  'own_site',
-  'other_online',
-  'medical_platform',
+  // Сначала те, кого проще подключить (без системы, Emly выключен), потом конкуренты-онлайн (03.10.2026, макет «Места для продаж»)
   'phone_whatsapp',
   'instagram',
+  'emly_off',
   'unknown',
+  'own_site',
+  'emly',
+  'booker',
+  'altegio',
+  'dikidi',
+  'fresha',
+  'sonline',
+  'booksy',
+  'other_online',
+  'medical_platform',
 ] as const;
 export type BookingSystem = (typeof BOOKING_SYSTEMS)[number];
 
@@ -44,7 +48,7 @@ export type ProspectDistrict = (typeof PROSPECT_DISTRICTS)[number];
 export const PROSPECT_STATUSES = ['new', 'thinking', 'connected', 'refused', 'live'] as const;
 export type ProspectStatus = (typeof PROSPECT_STATUSES)[number];
 
-export const PROSPECT_SORTS = ['staff_desc', 'staff_asc', 'name_asc', 'name_desc'] as const;
+export const PROSPECT_SORTS = ['staff_desc', 'staff_asc', 'name_asc', 'name_desc', 'reviews_desc'] as const;
 export type ProspectSort = (typeof PROSPECT_SORTS)[number];
 
 export interface ProspectReviews {
@@ -294,11 +298,21 @@ export function matchesFilter(p: Filterable, f: ProspectFilter): boolean {
 }
 
 /** По мастерам — неизвестное число всегда в конце; при равенстве — по имени */
-export function sortProspects<T extends { name: string; staffEstimate?: number | null }>(rows: readonly T[], sort: ProspectSort = 'staff_desc'): T[] {
+export function sortProspects<T extends { name: string; staffEstimate?: number | null; reviews?: { count?: number } | null }>(
+  rows: readonly T[],
+  sort: ProspectSort = 'staff_desc',
+): T[] {
   const byName = (a: T, b: T) => a.name.localeCompare(b.name, 'ru', { sensitivity: 'base', numeric: true });
   return [...rows].sort((a, b) => {
     if (sort === 'name_asc') return byName(a, b);
     if (sort === 'name_desc') return byName(b, a);
+    if (sort === 'reviews_desc') {
+      // Больше отзывов — заметнее место; без отзывов — в конце, между ними — по мастерам
+      const ra = a.reviews?.count ?? -1;
+      const rb = b.reviews?.count ?? -1;
+      if (ra !== rb) return rb - ra;
+      return (b.staffEstimate ?? -1) - (a.staffEstimate ?? -1) || byName(a, b);
+    }
     const sa = a.staffEstimate ?? null;
     const sb = b.staffEstimate ?? null;
     if (sa === null && sb === null) return byName(a, b);

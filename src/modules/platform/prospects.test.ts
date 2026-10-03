@@ -151,6 +151,25 @@ test('строка импорта: snake_case → поля, неизвестна
   assert.deepEqual(L.parseImportRow('строка'), { ok: false, reason: 'not_object' });
 });
 
+test('системы записи макета (03.10.2026): Emly выключен, Booker.am, Sonline; порядок — сначала проще подключить', () => {
+  for (const sys of ['emly_off', 'booker', 'sonline'] as const) {
+    const r = L.parseImportRow({ name: `Место ${sys}`, booking_system: sys });
+    assert.ok(r.ok && r.data.bookingSystem === sys, sys);
+  }
+  assert.deepEqual(L.BOOKING_SYSTEMS.slice(0, 3), ['phone_whatsapp', 'instagram', 'emly_off']);
+  assert.equal(L.BOOKING_SYSTEMS.length, new Set(L.BOOKING_SYSTEMS).size);
+});
+
+test('сортировка «больше отзывов»: без отзывов — в конце, при равенстве — по мастерам', () => {
+  const rows = [
+    { name: 'Б', staffEstimate: 3, reviews: null },
+    { name: 'А', staffEstimate: 9, reviews: { count: 40 } },
+    { name: 'В', staffEstimate: 12, reviews: { count: 40 } },
+    { name: 'Г', staffEstimate: 30, reviews: { count: 5 } },
+  ];
+  assert.deepEqual(L.sortProspects(rows, 'reviews_desc').map((r) => r.name), ['В', 'А', 'Г', 'Б']);
+});
+
 test('статус места: не были → последний визит → работает в BookTime при бизнесе', () => {
   assert.equal(L.statusFromVisits([]).status, 'new');
   const visits = [V('v1', 'p', 'refused', '2026-09-01'), V('v2', 'p', 'thinking', '2026-09-20')] as never[];

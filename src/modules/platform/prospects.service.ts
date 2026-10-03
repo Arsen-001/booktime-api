@@ -143,7 +143,17 @@ export class ProspectsService {
     const visits = await this.statusMap();
     return rows.map((row) => {
       const info = statusFromVisits(visits.get(row.id) ?? []);
-      return { row, info, status: info.status, name: row.name, category: row.category, district: row.district, staffEstimate: row.staffEstimate, bookingSystem: row.bookingSystem };
+      return {
+        row,
+        info,
+        status: info.status,
+        name: row.name,
+        category: row.category,
+        district: row.district,
+        staffEstimate: row.staffEstimate,
+        bookingSystem: row.bookingSystem,
+        reviews: (row.reviews ?? null) as ProspectReviews | null,
+      };
     });
   }
 

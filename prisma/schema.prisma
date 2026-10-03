@@ -3841,7 +3841,7 @@ model Prospect {
   staffEstimate Int?     @map("staff_estimate")
   /// Откуда оценка числа мастеров (сайт, Instagram, Google…)
   staffSource   String?  @map("staff_source") @db.VarChar(300)
-  /// emly | altegio | fresha | dikidi | booksy | own_site | other_online | medical_platform | phone_whatsapp | instagram | unknown
+  /// phone_whatsapp | instagram | emly_off | unknown | own_site | emly | booker | altegio | dikidi | fresha | sonline | booksy | other_online | medical_platform
   bookingSystem String   @default("unknown") @map("booking_system") @db.VarChar(20)
   bookingUrl    String?  @map("booking_url") @db.VarChar(500)
   website       String?  @db.VarChar(500)
