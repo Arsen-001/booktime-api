@@ -46,7 +46,8 @@ export interface SessionView {
 }
 
 export interface SecondFactorView {
-  secondFactor: { challengeId: string; phoneMasked: string; resendAfter: number; expiresIn: number };
+  /** channel — куда код ушёл на самом деле (Telegram / WhatsApp / SMS): экран пишет «Код отправлен в Telegram на …» */
+  secondFactor: { challengeId: string; phoneMasked: string; resendAfter: number; expiresIn: number; channel: CodeChannel };
 }
 
 type LoginMethod = 'code' | 'password' | 'platform' | 'second_factor' | 'google' | 'apple';
@@ -499,7 +500,7 @@ export class AuthService {
         subjectId: sl.id,
       });
       await this.logEvent(ctx, { userId: sl.userId, method: 'password', app: 'business', result: 'second_factor_sent' });
-      return { secondFactor: { challengeId: sent.challengeId, phoneMasked: maskPhone(sl.user.phone), resendAfter: sent.resendAfter, expiresIn: sent.expiresIn } };
+      return { secondFactor: { challengeId: sent.challengeId, phoneMasked: maskPhone(sl.user.phone), resendAfter: sent.resendAfter, expiresIn: sent.expiresIn, channel: sent.channel } };
     }
     return this.openStaffSession(ctx, res, sl, 'password');
   }
@@ -570,7 +571,7 @@ export class AuthService {
       subjectId: pm.id,
     });
     await this.logEvent(ctx, { userId: pm.userId, method: 'platform', app: 'platform', result: 'second_factor_sent' });
-    return { secondFactor: { challengeId: sent.challengeId, phoneMasked: maskPhone(pm.user.phone), resendAfter: sent.resendAfter, expiresIn: sent.expiresIn } };
+    return { secondFactor: { challengeId: sent.challengeId, phoneMasked: maskPhone(pm.user.phone), resendAfter: sent.resendAfter, expiresIn: sent.expiresIn, channel: sent.channel } };
   }
 
   async platformVerify(ctx: RequestContext, res: Response, input: { challengeId: string; code: string }) {

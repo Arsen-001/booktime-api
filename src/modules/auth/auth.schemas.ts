@@ -130,7 +130,7 @@ export const codeSent = z.object({
 export const codeChannels = z.object({ channels: z.array(channel) });
 
 export const secondFactor = z.object({
-  secondFactor: z.object({ challengeId: z.string(), phoneMasked: z.string(), resendAfter: z.number(), expiresIn: z.number() }),
+  secondFactor: z.object({ challengeId: z.string(), phoneMasked: z.string(), resendAfter: z.number(), expiresIn: z.number(), channel: channel.optional() }),
 });
 
 export const platformView = z.object({ user, login: z.string(), role: z.string() });
