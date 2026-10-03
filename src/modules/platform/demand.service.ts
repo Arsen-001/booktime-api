@@ -24,7 +24,7 @@ function periodRange(period: DemandPeriod): { from: string; to: string } {
 const capitalize = (text: string) => (text ? text[0]!.toLocaleUpperCase() + text.slice(1) : text);
 
 /** Мирроит FIRST_AWARD_SPHERES фронта (src/api/platform/demand.ts) — вручную, каталога сфер между репо нет */
-const FIRST_AWARD_SPHERES = ['nails', 'barber', 'hair', 'cosmetology', 'massage', 'dental', 'fitness', 'carwash'] as const;
+const FIRST_AWARD_SPHERES = ['nails', 'barber', 'hair', 'cosmetology', 'massage', 'dental', 'fitness', 'carwash', 'tailor', 'repair', 'drycleaning', 'detailing'] as const;
 
 @Injectable()
 export class DemandService {

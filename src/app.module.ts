@@ -28,10 +28,11 @@ import { PlatformModule } from './modules/platform/platform.module.js';
 import { DataRetentionModule } from './modules/data-retention/data-retention.module.js';
 import { ShortLinksModule } from './modules/shortlinks/shortlinks.module.js';
 import { TelegramModule } from './modules/telegram/telegram.module.js';
+import { OrdersModule } from './modules/orders/orders.module.js';
 
 /** Корневой модуль API. Разделы (PLAN.md §6) добавляются сюда по этапам. */
 @Module({
-  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule, ClientsModule, ScheduleModule, JournalModule, JournalMoreModule, WorkdayModule, OnlineModule, ClientModule, NotifyModule, LoyaltyModule, FinanceModule, StockModule, PayrollModule, NetworkModule, ReportsModule, BillingModule, SettingsModule, IntegrationsModule, NotifyChatModule, PlatformModule, DataRetentionModule, ShortLinksModule, TelegramModule],
+  imports: [CommonModule, AuthModule, BusinessesModule, ServicesModule, ResourcesModule, ClientsModule, ScheduleModule, JournalModule, JournalMoreModule, WorkdayModule, OnlineModule, ClientModule, NotifyModule, LoyaltyModule, FinanceModule, StockModule, PayrollModule, NetworkModule, ReportsModule, BillingModule, SettingsModule, IntegrationsModule, NotifyChatModule, PlatformModule, DataRetentionModule, ShortLinksModule, TelegramModule, OrdersModule],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {

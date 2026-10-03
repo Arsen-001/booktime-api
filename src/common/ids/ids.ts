@@ -246,6 +246,8 @@ export const ID_PREFIX = {
   integrationPartnerPayment: 'iapay',
   // этап 21 (сдача, попытка 6) — чат через партнёра (мок newId('chat'))
   notifyChatMessage: 'chat',
+  // заказы (03.10.2026): ателье, ремонт, химчистка, детейлинг
+  order: 'ord',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

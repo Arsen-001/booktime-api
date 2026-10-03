@@ -7788,3 +7788,24 @@ integrations 57, notify 7) → после **0**. Остаток скрипта �
   найдена»; чужой контакт → отказ; `/stop` → blockedAt; повтор update_id игнорируется; напоминание 24ч → очередь →
   отправка (повтор задачи не дублирует); секрет вебхука (403/200); `POST /v1/me/telegram-link` с дев-сессией. Тестовые
   строки после проверки удалены.
+
+### Заказы — ателье, ремонт, химчистка, детейлинг (03.10.2026, решение владельца)
+- Сферы `tailor`, `repair`, `drycleaning`, `detailing`: `SphereId` (loyalty/port/core-types.ts), «первый в сфере»
+  (demand.service.ts), синонимы поиска каталога (catalog.service.ts), шаблоны услуг подключения (connect.service.ts).
+  Остальные места принимают сферу любой строкой — правок не требуют.
+- Модуль `src/modules/orders/*`; таблицы `orders` и `order_counters`, столбец `businesses.orders_enabled` — миграция
+  `20261004100000_orders` (только файл, базы не трогались). Номер — свой у бизнеса с 1001 (атомарный UPDATE счётчика в
+  транзакции создания), `code` — 10 знаков base62 из crypto (уникален, повтор при совпадении).
+- Кабинет: `GET|POST /v1/businesses/:businessId/orders`, `GET|PATCH …/orders/:orderId`, `POST …/:orderId/status`,
+  `POST …/:orderId/notify` (тот же контроллер и по `/v1/biz/:businessId/orders`). Права: смотреть — `journal.view`,
+  остальное — `journal.edit`; телефон клиента без `clients.phones` — маской. Переходы: received→in_progress|ready|cancelled,
+  in_progress→ready|cancelled, ready→issued|in_progress; иначе 422 `invalid_order_transition`; «напомнить» не у готового —
+  422 `order_not_ready`.
+- Публично: `GET /v1/public/orders/:code` (лимит `public-order` 60/мин с IP) — номер, статус, вещи (без заметок), срок,
+  `readyAt`, цена, предоплата, бизнес (имя, телефон филиала, адрес ru, slug). Ни телефона клиента, ни комментария, ни id.
+- «Заказ готов» (`order-notify.ts`, вид `order_ready`, код 11 в kinds.ts, тексты `order.ready` ru/hy/en): пуш клиенту с
+  приложением, Telegram-бот на номере (очередь notify_outbox, шлёт воркер), иначе SMS/WhatsApp провайдера бизнеса
+  (настройка `notify-sms`), иначе «Не доставлено» в журнале отправок. Сбой отправки статус не откатывает.
+- `Business.ordersEnabled` в виде бизнеса (`null` в базе — по сфере), правится `PATCH /v1/biz/:businessId` (`ordersEnabled`,
+  `null` — снова по сфере).
+- Тесты `src/modules/orders/orders.test.ts` (20): номер, код, переходы, публичный вид, уведомление.

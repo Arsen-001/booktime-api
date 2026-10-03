@@ -30,6 +30,8 @@ export const patchBusinessBody = z.object({
   brandName: z.string().max(160).nullable().optional(),
   forbidHomeBookingsDuringShift: z.boolean().optional(),
   adsOptIn: z.boolean().optional(),
+  /** Раздел «Заказы» (03.10.2026); null — снова по сфере */
+  ordersEnabled: z.boolean().nullable().optional(),
 });
 export type PatchBusinessBody = z.infer<typeof patchBusinessBody>;
 
@@ -82,6 +84,7 @@ export const businessOut = z.object({
   socials: z.record(z.string(), z.unknown()).optional(),
   bookingRules: z.record(z.string(), z.unknown()).optional(),
   brandName: z.string().optional(),
+  ordersEnabled: z.boolean(),
   version: z.number(),
 });
 

@@ -388,6 +388,8 @@ model Business {
   brandName                     String?   @map("brand_name") @db.VarChar(160)
   /// Получать предложения поставщиков (F-00-164)
   adsOptIn                      Boolean   @default(false) @map("ads_opt_in")
+  /// Раздел «Заказы» (03.10.2026): null — по сфере (tailor/repair/drycleaning/detailing — включён), иначе как задал владелец
+  ordersEnabled                 Boolean?  @map("orders_enabled")
   /// Промокод, введённый при регистрации — применит раздел подписки (этап 18)
   signupPromoCode               String?   @map("signup_promo_code") @db.VarChar(40)
   createdAt                     DateTime  @default(now()) @map("created_at") @db.DateTime(3)
@@ -4675,3 +4677,55 @@ model NotifyChatMessage {
   @@map("notify_chat_messages")
 }
 // === end stage 21 (сдача, попытка 6: чат через партнёра) ===
+
+// === Заказы (03.10.2026, решение владельца): ателье, ремонт телефонов, химчистка, детейлинг ===
+/// Заказ «сдал вещь — забрал готовую»: что принято, фото, срок, цена, предоплата, статус. Клиент видит статус по
+/// публичной ссылке /o/<code> без входа и получает уведомление «готов». Номер — свой у бизнеса (1001, 1002, …).
+model Order {
+  id              String    @id @db.VarChar(32)
+  businessId      String    @map("business_id") @db.VarChar(32)
+  locationId      String?   @map("location_id") @db.VarChar(32)
+  /// Номер для людей — уникален в бизнесе, с 1001 (order_counters)
+  number          Int
+  /// Публичный токен ссылки /o/<code>: 10 знаков base62 из crypto
+  code            String    @unique @db.VarChar(16)
+  clientId        String?   @map("client_id") @db.VarChar(32)
+  clientName      String    @map("client_name") @db.VarChar(160)
+  /// '+374XXXXXXXX'
+  clientPhone     String    @map("client_phone") @db.VarChar(16)
+  /// { title, qty, note? }[]
+  items           Json
+  /// string[] — адреса/data URI, как Business.photos
+  photos          Json
+  staffId         String?   @map("staff_id") @db.VarChar(32)
+  /// received | in_progress | ready | issued | cancelled
+  status          String    @default("received") @db.VarChar(12)
+  /// 'YYYY-MM-DD'
+  dueDate         String?   @map("due_date") @db.VarChar(10)
+  /// Драмы, целые
+  price           Int       @default(0)
+  prepaid         Int       @default(0)
+  /// Внутренний комментарий — клиенту не показывается
+  comment         String?   @db.VarChar(2000)
+  /// { at, status, by }[]
+  history         Json
+  readyNotifiedAt DateTime? @map("ready_notified_at") @db.DateTime(3)
+  issuedAt        DateTime? @map("issued_at") @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@unique([businessId, number])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, createdAt])
+  @@index([clientId])
+  @@map("orders")
+}
+
+/// Последний выданный номер заказа бизнеса — атомарный UPDATE … +1 в транзакции создания заказа
+model OrderCounter {
+  businessId String @id @map("business_id") @db.VarChar(32)
+  lastNumber Int    @map("last_number")
+
+  @@map("order_counters")
+}
+// === end заказы ===

@@ -1,5 +1,6 @@
 import type { Business, Location, Network, Position, Staff, StaffInvite } from '../../generated/prisma/client.js';
 import { utcToLocal, utcToLocalDate } from '../../common/time/time.js';
+import { ordersEnabledOf } from '../orders/order-rules.js';
 
 /**
  * Представления бизнеса, филиала, сети и сотрудника для КАБИНЕТА своего бизнеса (docs/backend/03 §3, «вид — свой бизнес»).
@@ -32,6 +33,8 @@ export function businessView(b: Business, locationIds: string[]) {
     socials: opt(b.socials as Record<string, unknown> | null),
     bookingRules: opt(b.bookingRules as Record<string, unknown> | null),
     brandName: opt(b.brandName),
+    /** Раздел «Заказы» (03.10.2026): своё значение владельца, иначе по сфере (tailor/repair/drycleaning/detailing) */
+    ordersEnabled: ordersEnabledOf(b.ordersEnabled, b.sphereIds),
     version: b.version,
   };
 }

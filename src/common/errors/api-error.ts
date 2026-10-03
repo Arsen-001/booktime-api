@@ -107,6 +107,9 @@ export const ERROR_STATUS = {
   client_blocked: HttpStatus.FORBIDDEN,
   accepts_mismatch: HttpStatus.UNPROCESSABLE_ENTITY,
   invalid_transition: HttpStatus.CONFLICT,
+  // заказы (03.10.2026): недопустимый переход статуса заказа / «готов» повторно, когда заказ не готов
+  invalid_order_transition: HttpStatus.UNPROCESSABLE_ENTITY,
+  order_not_ready: HttpStatus.UNPROCESSABLE_ENTITY,
   restore_expired: HttpStatus.GONE,
   restore_slot_taken: HttpStatus.CONFLICT,
   not_active: HttpStatus.CONFLICT,

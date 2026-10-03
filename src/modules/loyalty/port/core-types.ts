@@ -42,6 +42,11 @@ export type SphereId =
   | 'dental'
   | 'fitness'
   | 'carwash'
+  // сферы заказов (03.10.2026): ателье, ремонт телефонов и техники, химчистка, детейлинг
+  | 'tailor'
+  | 'repair'
+  | 'drycleaning'
+  | 'detailing'
   | 'general';
 
 /** Районы Еревана (административные) */

@@ -1663,6 +1663,14 @@
                         },
                         "expiresIn": {
                           "type": "number"
+                        },
+                        "channel": {
+                          "type": "string",
+                          "enum": [
+                            "telegram",
+                            "whatsapp",
+                            "sms"
+                          ]
                         }
                       },
                       "required": [
@@ -3881,6 +3889,9 @@
                               "brandName": {
                                 "type": "string"
                               },
+                              "ordersEnabled": {
+                                "type": "boolean"
+                              },
                               "version": {
                                 "type": "number"
                               }
@@ -3898,6 +3909,7 @@
                               "status",
                               "createdAt",
                               "forbidHomeBookingsDuringShift",
+                              "ordersEnabled",
                               "version"
                             ]
                           }
@@ -4310,6 +4322,9 @@
                     "brandName": {
                       "type": "string"
                     },
+                    "ordersEnabled": {
+                      "type": "boolean"
+                    },
                     "version": {
                       "type": "number"
                     }
@@ -4327,6 +4342,7 @@
                     "status",
                     "createdAt",
                     "forbidHomeBookingsDuringShift",
+                    "ordersEnabled",
                     "version"
                   ]
                 }
@@ -4471,6 +4487,12 @@
                   },
                   "adsOptIn": {
                     "type": "boolean"
+                  },
+                  "ordersEnabled": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
                   }
                 }
               }
@@ -4584,6 +4606,9 @@
                     "brandName": {
                       "type": "string"
                     },
+                    "ordersEnabled": {
+                      "type": "boolean"
+                    },
                     "version": {
                       "type": "number"
                     }
@@ -4601,6 +4626,7 @@
                     "status",
                     "createdAt",
                     "forbidHomeBookingsDuringShift",
+                    "ordersEnabled",
                     "version"
                   ]
                 }
@@ -4744,6 +4770,9 @@
                           "brandName": {
                             "type": "string"
                           },
+                          "ordersEnabled": {
+                            "type": "boolean"
+                          },
                           "version": {
                             "type": "number"
                           }
@@ -4761,6 +4790,7 @@
                           "status",
                           "createdAt",
                           "forbidHomeBookingsDuringShift",
+                          "ordersEnabled",
                           "version"
                         ]
                       }
@@ -48299,6 +48329,9 @@
                         "brandName": {
                           "type": "string"
                         },
+                        "ordersEnabled": {
+                          "type": "boolean"
+                        },
                         "version": {
                           "type": "number"
                         }
@@ -48316,6 +48349,7 @@
                         "status",
                         "createdAt",
                         "forbidHomeBookingsDuringShift",
+                        "ordersEnabled",
                         "version"
                       ]
                     },
@@ -48800,6 +48834,9 @@
                           "brandName": {
                             "type": "string"
                           },
+                          "ordersEnabled": {
+                            "type": "boolean"
+                          },
                           "version": {
                             "type": "number"
                           }
@@ -48817,6 +48854,7 @@
                           "status",
                           "createdAt",
                           "forbidHomeBookingsDuringShift",
+                          "ordersEnabled",
                           "version"
                         ]
                       }
@@ -48993,6 +49031,9 @@
                         "brandName": {
                           "type": "string"
                         },
+                        "ordersEnabled": {
+                          "type": "boolean"
+                        },
                         "version": {
                           "type": "number"
                         }
@@ -49010,6 +49051,7 @@
                         "status",
                         "createdAt",
                         "forbidHomeBookingsDuringShift",
+                        "ordersEnabled",
                         "version"
                       ]
                     },
@@ -49494,6 +49536,9 @@
                           "brandName": {
                             "type": "string"
                           },
+                          "ordersEnabled": {
+                            "type": "boolean"
+                          },
                           "version": {
                             "type": "number"
                           }
@@ -49511,6 +49556,7 @@
                           "status",
                           "createdAt",
                           "forbidHomeBookingsDuringShift",
+                          "ordersEnabled",
                           "version"
                         ]
                       }
@@ -50237,6 +50283,9 @@
                         "brandName": {
                           "type": "string"
                         },
+                        "ordersEnabled": {
+                          "type": "boolean"
+                        },
                         "version": {
                           "type": "number"
                         }
@@ -50254,6 +50303,7 @@
                         "status",
                         "createdAt",
                         "forbidHomeBookingsDuringShift",
+                        "ordersEnabled",
                         "version"
                       ]
                     },
@@ -58081,17 +58131,20 @@
                   "bookingSystem": {
                     "type": "string",
                     "enum": [
-                      "emly",
-                      "altegio",
-                      "fresha",
-                      "dikidi",
-                      "booksy",
-                      "own_site",
-                      "other_online",
-                      "medical_platform",
                       "phone_whatsapp",
                       "instagram",
-                      "unknown"
+                      "emly_off",
+                      "unknown",
+                      "own_site",
+                      "emly",
+                      "booker",
+                      "altegio",
+                      "dikidi",
+                      "fresha",
+                      "sonline",
+                      "booksy",
+                      "other_online",
+                      "medical_platform"
                     ]
                   },
                   "bookingUrl": {
@@ -85405,6 +85458,3327 @@
         "summary": "Какие из этих клиентов получают напоминания в Telegram (F-00-121)",
         "tags": [
           "telegram"
+        ]
+      }
+    },
+    "/v1/businesses/{businessId}/orders": {
+      "get": {
+        "operationId": "OrdersController_list[0]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "locationId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "number": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "clientId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "clientName": {
+                            "type": "string"
+                          },
+                          "clientPhone": {
+                            "type": "string"
+                          },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "title": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "qty": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "note": {
+                                  "type": "string",
+                                  "maxLength": 500
+                                }
+                              },
+                              "required": [
+                                "title",
+                                "qty"
+                              ]
+                            }
+                          },
+                          "photos": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "staffId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "dueDate": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "price": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "prepaid": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "comment": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "history": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "at": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "received",
+                                    "in_progress",
+                                    "ready",
+                                    "issued",
+                                    "cancelled"
+                                  ]
+                                },
+                                "by": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "at",
+                                "status",
+                                "by"
+                              ]
+                            }
+                          },
+                          "readyNotifiedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "issuedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "locationId",
+                          "number",
+                          "code",
+                          "clientId",
+                          "clientName",
+                          "clientPhone",
+                          "items",
+                          "photos",
+                          "staffId",
+                          "status",
+                          "dueDate",
+                          "price",
+                          "prepaid",
+                          "comment",
+                          "history",
+                          "readyNotifiedAt",
+                          "issuedAt",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Заказы бизнеса: status=<s|active|all>, q — номер/имя/телефон/вещь, новые сверху",
+        "tags": [
+          "orders"
+        ]
+      },
+      "post": {
+        "operationId": "OrdersController_create[0]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "items": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "qty": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 500
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "qty"
+                      ]
+                    }
+                  },
+                  "photos": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000000
+                    }
+                  },
+                  "staffId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dueDate": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "price": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "prepaid": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "comment": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locationId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "clientName",
+                  "clientPhone",
+                  "items",
+                  "price"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "clientName": {
+                      "type": "string"
+                    },
+                    "clientPhone": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "comment": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "by": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "status",
+                          "by"
+                        ]
+                      }
+                    },
+                    "readyNotifiedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "locationId",
+                    "number",
+                    "code",
+                    "clientId",
+                    "clientName",
+                    "clientPhone",
+                    "items",
+                    "photos",
+                    "staffId",
+                    "status",
+                    "dueDate",
+                    "price",
+                    "prepaid",
+                    "comment",
+                    "history",
+                    "readyNotifiedAt",
+                    "issuedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Принять заказ (статус received, номер с 1001)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/orders": {
+      "get": {
+        "operationId": "OrdersController_list[1]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "locationId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "number": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "clientId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "clientName": {
+                            "type": "string"
+                          },
+                          "clientPhone": {
+                            "type": "string"
+                          },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "title": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "qty": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "note": {
+                                  "type": "string",
+                                  "maxLength": 500
+                                }
+                              },
+                              "required": [
+                                "title",
+                                "qty"
+                              ]
+                            }
+                          },
+                          "photos": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "staffId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "dueDate": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "price": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "prepaid": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "comment": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "history": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "at": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "received",
+                                    "in_progress",
+                                    "ready",
+                                    "issued",
+                                    "cancelled"
+                                  ]
+                                },
+                                "by": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "at",
+                                "status",
+                                "by"
+                              ]
+                            }
+                          },
+                          "readyNotifiedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "issuedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "locationId",
+                          "number",
+                          "code",
+                          "clientId",
+                          "clientName",
+                          "clientPhone",
+                          "items",
+                          "photos",
+                          "staffId",
+                          "status",
+                          "dueDate",
+                          "price",
+                          "prepaid",
+                          "comment",
+                          "history",
+                          "readyNotifiedAt",
+                          "issuedAt",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Заказы бизнеса: status=<s|active|all>, q — номер/имя/телефон/вещь, новые сверху",
+        "tags": [
+          "orders"
+        ]
+      },
+      "post": {
+        "operationId": "OrdersController_create[1]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "items": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "qty": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 500
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "qty"
+                      ]
+                    }
+                  },
+                  "photos": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000000
+                    }
+                  },
+                  "staffId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dueDate": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "price": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "prepaid": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "comment": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locationId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "clientName",
+                  "clientPhone",
+                  "items",
+                  "price"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "clientName": {
+                      "type": "string"
+                    },
+                    "clientPhone": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "comment": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "by": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "status",
+                          "by"
+                        ]
+                      }
+                    },
+                    "readyNotifiedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "locationId",
+                    "number",
+                    "code",
+                    "clientId",
+                    "clientName",
+                    "clientPhone",
+                    "items",
+                    "photos",
+                    "staffId",
+                    "status",
+                    "dueDate",
+                    "price",
+                    "prepaid",
+                    "comment",
+                    "history",
+                    "readyNotifiedAt",
+                    "issuedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Принять заказ (статус received, номер с 1001)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/v1/businesses/{businessId}/orders/{orderId}": {
+      "get": {
+        "operationId": "OrdersController_get[0]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "clientName": {
+                      "type": "string"
+                    },
+                    "clientPhone": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "comment": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "by": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "status",
+                          "by"
+                        ]
+                      }
+                    },
+                    "readyNotifiedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "locationId",
+                    "number",
+                    "code",
+                    "clientId",
+                    "clientName",
+                    "clientPhone",
+                    "items",
+                    "photos",
+                    "staffId",
+                    "status",
+                    "dueDate",
+                    "price",
+                    "prepaid",
+                    "comment",
+                    "history",
+                    "readyNotifiedAt",
+                    "issuedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      },
+      "patch": {
+        "operationId": "OrdersController_patch[0]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "items": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "qty": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 500
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "qty"
+                      ]
+                    }
+                  },
+                  "photos": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000000
+                    }
+                  },
+                  "staffId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dueDate": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "price": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "prepaid": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "comment": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locationId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "clientName": {
+                      "type": "string"
+                    },
+                    "clientPhone": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "comment": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "by": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "status",
+                          "by"
+                        ]
+                      }
+                    },
+                    "readyNotifiedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "locationId",
+                    "number",
+                    "code",
+                    "clientId",
+                    "clientName",
+                    "clientPhone",
+                    "items",
+                    "photos",
+                    "staffId",
+                    "status",
+                    "dueDate",
+                    "price",
+                    "prepaid",
+                    "comment",
+                    "history",
+                    "readyNotifiedAt",
+                    "issuedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/orders/{orderId}": {
+      "get": {
+        "operationId": "OrdersController_get[1]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "clientName": {
+                      "type": "string"
+                    },
+                    "clientPhone": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "comment": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "by": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "status",
+                          "by"
+                        ]
+                      }
+                    },
+                    "readyNotifiedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "locationId",
+                    "number",
+                    "code",
+                    "clientId",
+                    "clientName",
+                    "clientPhone",
+                    "items",
+                    "photos",
+                    "staffId",
+                    "status",
+                    "dueDate",
+                    "price",
+                    "prepaid",
+                    "comment",
+                    "history",
+                    "readyNotifiedAt",
+                    "issuedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      },
+      "patch": {
+        "operationId": "OrdersController_patch[1]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "clientPhone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "clientId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "items": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "qty": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 500
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "qty"
+                      ]
+                    }
+                  },
+                  "photos": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000000
+                    }
+                  },
+                  "staffId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dueDate": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "price": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "prepaid": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000000
+                  },
+                  "comment": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locationId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "clientName": {
+                      "type": "string"
+                    },
+                    "clientPhone": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "comment": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "by": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "status",
+                          "by"
+                        ]
+                      }
+                    },
+                    "readyNotifiedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "locationId",
+                    "number",
+                    "code",
+                    "clientId",
+                    "clientName",
+                    "clientPhone",
+                    "items",
+                    "photos",
+                    "staffId",
+                    "status",
+                    "dueDate",
+                    "price",
+                    "prepaid",
+                    "comment",
+                    "history",
+                    "readyNotifiedAt",
+                    "issuedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/v1/businesses/{businessId}/orders/{orderId}/status": {
+      "post": {
+        "operationId": "OrdersController_status[0]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "received",
+                      "in_progress",
+                      "ready",
+                      "issued",
+                      "cancelled"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "clientName": {
+                      "type": "string"
+                    },
+                    "clientPhone": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "comment": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "by": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "status",
+                          "by"
+                        ]
+                      }
+                    },
+                    "readyNotifiedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "locationId",
+                    "number",
+                    "code",
+                    "clientId",
+                    "clientName",
+                    "clientPhone",
+                    "items",
+                    "photos",
+                    "staffId",
+                    "status",
+                    "dueDate",
+                    "price",
+                    "prepaid",
+                    "comment",
+                    "history",
+                    "readyNotifiedAt",
+                    "issuedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сменить статус; недопустимый переход — 422 invalid_order_transition; ready — уведомление клиенту",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/orders/{orderId}/status": {
+      "post": {
+        "operationId": "OrdersController_status[1]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "received",
+                      "in_progress",
+                      "ready",
+                      "issued",
+                      "cancelled"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "clientName": {
+                      "type": "string"
+                    },
+                    "clientPhone": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "comment": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "by": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "status",
+                          "by"
+                        ]
+                      }
+                    },
+                    "readyNotifiedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "locationId",
+                    "number",
+                    "code",
+                    "clientId",
+                    "clientName",
+                    "clientPhone",
+                    "items",
+                    "photos",
+                    "staffId",
+                    "status",
+                    "dueDate",
+                    "price",
+                    "prepaid",
+                    "comment",
+                    "history",
+                    "readyNotifiedAt",
+                    "issuedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сменить статус; недопустимый переход — 422 invalid_order_transition; ready — уведомление клиенту",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/v1/businesses/{businessId}/orders/{orderId}/notify": {
+      "post": {
+        "operationId": "OrdersController_notify[0]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "clientName": {
+                      "type": "string"
+                    },
+                    "clientPhone": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "comment": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "by": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "status",
+                          "by"
+                        ]
+                      }
+                    },
+                    "readyNotifiedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "locationId",
+                    "number",
+                    "code",
+                    "clientId",
+                    "clientName",
+                    "clientPhone",
+                    "items",
+                    "photos",
+                    "staffId",
+                    "status",
+                    "dueDate",
+                    "price",
+                    "prepaid",
+                    "comment",
+                    "history",
+                    "readyNotifiedAt",
+                    "issuedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Ещё раз сообщить клиенту, что заказ готов (только status=ready, иначе 422 order_not_ready)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/orders/{orderId}/notify": {
+      "post": {
+        "operationId": "OrdersController_notify[1]",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "clientName": {
+                      "type": "string"
+                    },
+                    "clientPhone": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "note": {
+                            "type": "string",
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "comment": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "received",
+                              "in_progress",
+                              "ready",
+                              "issued",
+                              "cancelled"
+                            ]
+                          },
+                          "by": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "status",
+                          "by"
+                        ]
+                      }
+                    },
+                    "readyNotifiedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "locationId",
+                    "number",
+                    "code",
+                    "clientId",
+                    "clientName",
+                    "clientPhone",
+                    "items",
+                    "photos",
+                    "staffId",
+                    "status",
+                    "dueDate",
+                    "price",
+                    "prepaid",
+                    "comment",
+                    "history",
+                    "readyNotifiedAt",
+                    "issuedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Ещё раз сообщить клиенту, что заказ готов (только status=ready, иначе 422 order_not_ready)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/v1/public/orders/{code}": {
+      "get": {
+        "operationId": "PublicOrdersController_byCode",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "received",
+                        "in_progress",
+                        "ready",
+                        "issued",
+                        "cancelled"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string"
+                          },
+                          "qty": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "qty"
+                        ]
+                      }
+                    },
+                    "dueDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "readyAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "price": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "prepaid": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "business": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "address": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "phone",
+                        "address",
+                        "slug"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "number",
+                    "status",
+                    "items",
+                    "dueDate",
+                    "readyAt",
+                    "price",
+                    "prepaid",
+                    "business"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Статус заказа по публичному коду (без телефона клиента, комментария и сотрудников)",
+        "tags": [
+          "orders"
         ]
       }
     }

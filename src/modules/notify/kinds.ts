@@ -35,6 +35,8 @@ export const NOTIFY_KINDS: readonly NotifyKindDef[] = [
   { code: 9, kind: 'waitlist_available', recipient: 'client', messageKey: 'waitlist.slotAvailable' },
   // ⭐ 03.10.2026: «Просим подтвердить визит» (тип 73 каталога, F-05-028) — jobs/notify-confirm-requests.ts
   { code: 10, kind: 'confirm_request', recipient: 'client', messageKey: 'booking.confirmRequest' },
+  // 03.10.2026: «Заказ готов» (раздел «Заказы» — ателье, ремонт, химчистка, детейлинг) — modules/orders/order-notify.ts
+  { code: 11, kind: 'order_ready', recipient: 'client', messageKey: 'order.ready' },
   // бизнесу (05 §3.2)
   { code: 50, kind: 'staff_new_booking', recipient: 'staff', messageKey: 'staff.newBooking' },
   { code: 51, kind: 'staff_client_cancelled', recipient: 'staff', messageKey: 'staff.clientCancelled' },

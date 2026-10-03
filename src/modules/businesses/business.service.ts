@@ -203,6 +203,7 @@ export class BusinessService {
     if (input.brandName !== undefined) data.brandName = input.brandName?.trim() || null;
     if (input.forbidHomeBookingsDuringShift !== undefined) data.forbidHomeBookingsDuringShift = input.forbidHomeBookingsDuringShift;
     if (input.adsOptIn !== undefined) data.adsOptIn = input.adsOptIn;
+    if (input.ordersEnabled !== undefined) data.ordersEnabled = input.ordersEnabled;
     await this.prisma.$transaction(async (tx) => {
       await updateVersioned(tx.business, { id: businessId }, version, data as Record<string, unknown>);
       const after = await tx.business.findUniqueOrThrow({ where: { id: businessId } });
@@ -325,7 +326,7 @@ export class BusinessService {
   }
 }
 
-function pickAudit(b: { name: string; phone: string; sphereIds: unknown; status: string; brandName: string | null; socials: unknown; forbidHomeBookingsDuringShift: boolean; adsOptIn: boolean; description: unknown }) {
+function pickAudit(b: { name: string; phone: string; sphereIds: unknown; status: string; brandName: string | null; socials: unknown; forbidHomeBookingsDuringShift: boolean; adsOptIn: boolean; ordersEnabled: boolean | null; description: unknown }) {
   return {
     name: b.name,
     phone: b.phone,
@@ -336,5 +337,6 @@ function pickAudit(b: { name: string; phone: string; sphereIds: unknown; status:
     description: b.description,
     forbidHomeBookingsDuringShift: b.forbidHomeBookingsDuringShift,
     adsOptIn: b.adsOptIn,
+    ordersEnabled: b.ordersEnabled,
   };
 }

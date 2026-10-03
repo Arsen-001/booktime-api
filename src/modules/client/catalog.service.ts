@@ -26,6 +26,10 @@ const SPHERE_SYNONYMS: Record<string, string[]> = {
   dental: ['зуб', 'стоматолог', 'dental', 'teeth', 'ատամ'],
   fitness: ['тренер', 'фитнес', 'fitness', 'trainer', 'ֆիթնես'],
   carwash: ['мойка', 'автомойка', 'carwash', 'car wash', 'լվացում'],
+  tailor: ['ателье', 'портной', 'пошив', 'подгонка', 'ремонт одежды', 'tailor', 'atelier', 'alteration', 'դերձակ'],
+  repair: ['ремонт телефона', 'ремонт телефонов', 'ремонт техники', 'сервисный центр', 'repair', 'phone repair', 'վերանորոգում'],
+  drycleaning: ['химчистка', 'чистка одежды', 'dry cleaning', 'drycleaning', 'laundry', 'քիմմաքրում'],
+  detailing: ['детейлинг', 'полировка', 'керамика', 'detailing', 'car detailing', 'դեթեյլինգ'],
 };
 
 const CATALOG_DAYS = 14;
