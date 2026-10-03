@@ -22,6 +22,8 @@ export const verifyCodeBody = z.object({
   locale: locale.optional(),
   /** «Войти через Google» с непривязанным аккаунтом: токен из ответа /v1/auth/google — верный код привяжет Google к номеру */
   pendingGoogle: z.string().min(16).max(64).optional(),
+  /** «Войти через Apple» с непривязанным аккаунтом: токен из ответа /v1/auth/apple — верный код привяжет Apple к номеру */
+  pendingApple: z.string().min(16).max(64).optional(),
 });
 
 /** «Войти через Google» (03.10.2026): ID token из Google Identity Services */
@@ -30,6 +32,16 @@ export const googleBody = z.object({
   app: z.enum(['client', 'business']).default('client'),
   /** Клиент нажал кнопку под текстом «Продолжая, вы принимаете соглашение» (F-14-008) */
   consent: z.boolean().optional(),
+});
+
+/** «Войти через Apple» (03.10.2026): identity token из Sign in with Apple */
+export const appleBody = z.object({
+  identityToken: z.string().min(20).max(4096),
+  app: z.enum(['client', 'business']).default('client'),
+  /** Клиент нажал кнопку под текстом «Продолжая, вы принимаете соглашение» (F-14-008) */
+  consent: z.boolean().optional(),
+  /** Имя из первого ответа Apple (givenName + familyName) — Apple присылает его только при первом входе */
+  name: z.string().max(120).optional(),
 });
 
 /** Привязать Google из профиля вошедшего */
@@ -82,14 +94,24 @@ export const sessionView = z.object({
 
 export const sessionOrGuest = z.object({ session: sessionView.nullable() });
 
-/** Ответ verify: с pendingGoogle — привязался ли Google (false — токен истёк или этот Google уже у другого человека) */
-export const verifyView = sessionView.extend({ googleLinked: z.boolean().optional() });
+/**
+ * Ответ verify: с pendingGoogle — привязался ли Google, с pendingApple — Apple
+ * (false — токен истёк или этот аккаунт уже у другого человека)
+ */
+export const verifyView = sessionView.extend({ googleLinked: z.boolean().optional(), appleLinked: z.boolean().optional() });
 
 export const googleLogin = z.object({
   /** Google привязан — сессия открыта (cookie поставлена) */
   session: sessionView.nullable(),
   /** Не привязан — нужен номер и код один раз: token передать в /v1/auth/verify как pendingGoogle */
   pendingGoogle: z.object({ token: z.string(), email: z.string(), name: z.string().nullable(), expiresIn: z.number() }).nullable(),
+});
+
+export const appleLogin = z.object({
+  /** Apple привязан — сессия открыта (cookie поставлена) */
+  session: sessionView.nullable(),
+  /** Не привязан — нужен номер и код один раз: token передать в /v1/auth/verify как pendingApple. email — если Apple дал */
+  pendingApple: z.object({ token: z.string(), email: z.string().nullable(), name: z.string().nullable(), expiresIn: z.number() }).nullable(),
 });
 
 /** Google в профиле: enabled — вход через Google настроен на сервере; email — привязанный аккаунт или null */

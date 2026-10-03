@@ -62,6 +62,14 @@ const schema = z.object({
     .string()
     .optional()
     .transform((s) => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean)),
+  /**
+   * «Войти через Apple» (03.10.2026): bundle id приложений (am.booktime.app, am.booktime.business) и Services ID сайта —
+   * через запятую: у identity token поле aud должно совпасть с одним из них. Пусто — вход через Apple выключен.
+   */
+  APPLE_CLIENT_IDS: z
+    .string()
+    .optional()
+    .transform((s) => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean)),
   /** Постоянный код входа только для разработки (NODE_ENV=development); в остальных средах игнорируется */
   DEV_LOGIN_CODE: z.string().regex(/^\d{4}$/).optional(),
   /** Домен cookie сессии (прод: .booktime.am — чтобы сайт и API на поддоменах видели одну сессию); пусто — хост API */

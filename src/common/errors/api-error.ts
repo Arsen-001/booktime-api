@@ -38,6 +38,10 @@ export const ERROR_STATUS = {
   google_disabled: HttpStatus.SERVICE_UNAVAILABLE,
   google_unavailable: HttpStatus.SERVICE_UNAVAILABLE,
   google_taken: HttpStatus.CONFLICT,
+  // «Войти через Apple» (03.10.2026): токен не прошёл проверку / вход не настроен / ключи Apple недоступны
+  apple_invalid: HttpStatus.UNAUTHORIZED,
+  apple_disabled: HttpStatus.SERVICE_UNAVAILABLE,
+  apple_unavailable: HttpStatus.SERVICE_UNAVAILABLE,
   no_business: HttpStatus.FORBIDDEN,
   // бизнес и сотрудники (этап 3) — коды как в моке фронта (src/api/staff.ts, client.ts)
   last_owner: HttpStatus.CONFLICT,

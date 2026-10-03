@@ -5,6 +5,8 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { env } from '../../common/config/env.js';
 import { REDIS } from '../../common/tokens.js';
+import { AppleIdTokenVerifier } from './apple-id-token.js';
+import { APPLE_PENDING, RedisApplePending } from './apple-pending.js';
 import { GoogleIdTokenVerifier } from './google-id-token.js';
 import { GOOGLE_PENDING, RedisGooglePending } from './google-pending.js';
 import type { Redis } from 'ioredis';
@@ -20,6 +22,9 @@ import { OtpService } from './otp.service.js';
     // «Войти через Google» (03.10.2026): проверка ID token по ключам Google; ожидание привязки — в Redis
     { provide: GoogleIdTokenVerifier, useFactory: () => new GoogleIdTokenVerifier({ clientIds: env.GOOGLE_CLIENT_ID }) },
     { provide: GOOGLE_PENDING, useFactory: (redis: Redis) => new RedisGooglePending(redis), inject: [REDIS] },
+    // «Войти через Apple» (03.10.2026): то же самое по ключам Apple
+    { provide: AppleIdTokenVerifier, useFactory: () => new AppleIdTokenVerifier({ clientIds: env.APPLE_CLIENT_IDS }) },
+    { provide: APPLE_PENDING, useFactory: (redis: Redis) => new RedisApplePending(redis), inject: [REDIS] },
   ],
   exports: [OtpService, AuthService],
 })

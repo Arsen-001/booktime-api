@@ -24,6 +24,7 @@ export interface VisitInput {
   currentTool?: string;
   willingToPay?: number;
   responsibleId: string;
+  prospectId?: string;
 }
 
 function todayLocal(): string {
@@ -69,6 +70,7 @@ function view(row: Prisma.SalesVisitGetPayload<object>) {
     responsibleId: row.responsibleId,
     businessId: row.businessId ?? undefined,
     promoCodeId: row.promoCodeId ?? undefined,
+    prospectId: row.prospectId ?? undefined,
     history: (row.history ?? []) as HistoryEvent[],
     createdAt: utcToLocal(row.createdAt),
     updatedAt: utcToLocal(row.updatedAt),
@@ -123,6 +125,9 @@ export class VisitsService {
     const placeName = input.placeName.trim();
     if (!placeName) throw new ApiError('validation', 'Place name required', { placeName: 'required' });
     const cleaned = { ...input, ...this.clean(input), placeName };
+    if (cleaned.prospectId && !(await this.prisma.prospect.findUnique({ where: { id: cleaned.prospectId }, select: { id: true } }))) {
+      throw new ApiError('validation', 'Prospect not found', { prospectId: 'not_found' });
+    }
     const now = new Date();
     const history: HistoryEvent[] = [{ id: newId('salesVisitEvent'), at: utcToLocal(now), kind: 'created', status: cleaned.status }];
     const row = await this.prisma.salesVisit.create({
@@ -142,6 +147,7 @@ export class VisitsService {
         currentTool: cleaned.currentTool ?? null,
         willingToPay: cleaned.willingToPay !== undefined ? BigInt(cleaned.willingToPay) : null,
         responsibleId: cleaned.responsibleId,
+        prospectId: cleaned.prospectId ?? null,
         history: history as unknown as Prisma.InputJsonValue,
       },
     });
@@ -170,6 +176,7 @@ export class VisitsService {
       ...(cleaned.currentTool !== undefined ? { currentTool: cleaned.currentTool } : {}),
       ...(cleaned.willingToPay !== undefined ? { willingToPay: BigInt(cleaned.willingToPay) } : {}),
       ...(cleaned.responsibleId !== undefined ? { responsibleId: cleaned.responsibleId } : {}),
+      ...(cleaned.prospectId !== undefined ? { prospectId: cleaned.prospectId || null } : {}),
       // cleanInput снимает поле, если статус больше не 'thinking'/'refused' — patch содержал 'status' явно,
       // а undefined из cleanInput значит «очистить», не «не трогать»
       callbackDate: 'callbackDate' in patch || (patch.status && patch.status !== 'thinking') ? (cleaned.callbackDate ?? null) : undefined,

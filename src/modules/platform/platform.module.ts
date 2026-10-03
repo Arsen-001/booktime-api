@@ -13,6 +13,8 @@ import { PlatformSupportController } from './support.controller.js';
 import { PlatformSupportService } from './support.service.js';
 import { PlatformVisitsController } from './visits.controller.js';
 import { VisitsService } from './visits.service.js';
+import { PlatformProspectsController } from './prospects.controller.js';
+import { ProspectsService } from './prospects.service.js';
 import { PlatformDemandController } from './demand.controller.js';
 import { DemandService } from './demand.service.js';
 import { PlatformAdsController, PublicAdsController } from './ads.controller.js';
@@ -24,6 +26,8 @@ import { PlatformNotesService } from './notes.service.js';
 import { PlatformConnectController, PlatformConnectResultController } from './connect.controller.js';
 import { ConnectService } from './connect.service.js';
 import { PlatformTeamController } from './team.controller.js';
+import { PlatformUsersController } from './users.controller.js';
+import { PlatformUsersService } from './users.service.js';
 
 /**
  * Этап 19 — модерация и наша панель (docs/backend/02 §19, 06 §1). Попытка 3 достроила последнее, что оставалось:
@@ -34,6 +38,7 @@ import { PlatformTeamController } from './team.controller.js';
 @Module({
   controllers: [
     PlatformTeamController,
+    PlatformUsersController,
     PlatformModerationController,
     BizModerationController,
     ModerationStatusController,
@@ -43,6 +48,7 @@ import { PlatformTeamController } from './team.controller.js';
     PlatformIdeasController,
     PlatformSphereController,
     PlatformVisitsController,
+    PlatformProspectsController,
     PlatformOverviewController,
     PlatformDemandController,
     PlatformAdsController,
@@ -59,12 +65,14 @@ import { PlatformTeamController } from './team.controller.js';
     IdeasService,
     SphereRequestsService,
     VisitsService,
+    ProspectsService,
     OverviewService,
     DemandService,
     AdsService,
     StoriesService,
     PlatformNotesService,
     ConnectService,
+    PlatformUsersService,
   ],
   exports: [ModerationService],
 })

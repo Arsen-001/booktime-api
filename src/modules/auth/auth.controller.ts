@@ -7,6 +7,8 @@ import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import {
+  appleBody,
+  appleLogin,
   challengeBody,
   changePasswordBody,
   codeChannels,
@@ -67,7 +69,7 @@ export class AuthController {
   @RateLimit({ bucket: 'auth-verify-ip', limit: 40, windowSec: 600, by: 'ip' })
   @ApiOperation({ summary:
       'Проверить код и войти (клиент или кабинет бизнеса). Ставит httpOnly cookie сессии. ' +
-      'pendingGoogle — привязать Google к этому номеру (ответ: googleLinked).' })
+      'pendingGoogle — привязать Google к этому номеру (ответ: googleLinked); pendingApple — Apple (ответ: appleLinked).' })
   @ZodBody(verifyCodeBody)
   @ZodOk(verifyView)
   verify(@Ctx() ctx: RequestContext, @Res({ passthrough: true }) res: Response, @Body(new Zod(verifyCodeBody)) body: z.infer<typeof verifyCodeBody>) {
@@ -84,6 +86,19 @@ export class AuthController {
   @ZodOk(googleLogin)
   google(@Ctx() ctx: RequestContext, @Res({ passthrough: true }) res: Response, @Body(new Zod(googleBody)) body: z.infer<typeof googleBody>) {
     return this.auth.googleLogin(ctx, res, body);
+  }
+
+  @Post('apple')
+  @HttpCode(200)
+  @RateLimit({ bucket: 'auth-apple-ip', limit: 30, windowSec: 600, by: 'ip' })
+  @ApiOperation({ summary:
+      'Войти через Apple (identity token из Sign in with Apple; name — имя из первого ответа Apple). Привязан к человеку — ' +
+      'сессия (cookie); не привязан — pendingApple: номер и код один раз (/v1/auth/code, затем /v1/auth/verify с ' +
+      'pendingApple), дальше — одним нажатием.' })
+  @ZodBody(appleBody)
+  @ZodOk(appleLogin)
+  apple(@Ctx() ctx: RequestContext, @Res({ passthrough: true }) res: Response, @Body(new Zod(appleBody)) body: z.infer<typeof appleBody>) {
+    return this.auth.appleLogin(ctx, res, body);
   }
 
   @Get('google/link')

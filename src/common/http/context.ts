@@ -49,9 +49,11 @@ export interface RequestContext {
 
 export type RequestWithContext = Request & { ctx: RequestContext };
 
-export const SESSION_COOKIE = 'bt_session';
+/** Суффикс имён cookie (03.10.2026): staging — COOKIE_SUFFIX=_stg, чтобы при общем домене .booktime.am его cookie не путались с production */
+const COOKIE_SUFFIX = process.env.COOKIE_SUFFIX ?? '';
+export const SESSION_COOKIE = `bt_session${COOKIE_SUFFIX}`;
 /** Сессия команды платформы — своя cookie: человек из команды может в том же браузере быть и клиентом */
-export const PLATFORM_COOKIE = 'bt_platform';
+export const PLATFORM_COOKIE = `bt_platform${COOKIE_SUFFIX}`;
 
 /** Пути, для которых сессия берётся из PLATFORM_COOKIE */
 export function isPlatformPath(path: string): boolean {

@@ -3811,6 +3811,8 @@ model SalesVisit {
   responsibleId String   @map("responsible_id") @db.VarChar(32)
   businessId    String?  @map("business_id") @db.VarChar(32)
   promoCodeId   String?  @map("promo_code_id") @db.VarChar(32)
+  /// Место из базы «Места» (Prospect), к которому ходили; статус места выводится из последнего визита
+  prospectId    String?  @map("prospect_id") @db.VarChar(32)
   /// VisitEvent[] фронта — {id, at, kind, status?, date?, text?}
   history       Json
   createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
@@ -3818,7 +3820,50 @@ model SalesVisit {
 
   @@index([status, callbackDate])
   @@index([businessId])
+  @@index([prospectId])
   @@map("sales_visits")
+}
+
+/// «Места» (03.10.2026): база заведений Еревана, куда отдел продаж может предложить BookTime. Наполняется импортом
+/// (JSON от сборщиков данных, upsert по dedupKey) и правкой в панели. Статус («не были / думает / подключили /
+/// отказ / работает в BookTime») не хранится — выводится из последнего SalesVisit с этим prospectId.
+model Prospect {
+  id            String   @id @db.VarChar(32)
+  name          String   @db.VarChar(200)
+  /// beauty | nails | barber | hair | brows_lashes | cosmetology | massage_spa | clinic | dental | other
+  category      String   @default("other") @db.VarChar(16)
+  /// DistrictId фронта (kentron, achapnyak, malatia-sebastia…) или unknown
+  district      String   @default("unknown") @db.VarChar(20)
+  address       String?  @db.VarChar(300)
+  branches      Int?
+  staffEstimate Int?     @map("staff_estimate")
+  /// Откуда оценка числа мастеров (сайт, Instagram, Google…)
+  staffSource   String?  @map("staff_source") @db.VarChar(300)
+  /// emly | altegio | fresha | dikidi | booksy | own_site | other_online | medical_platform | phone_whatsapp | instagram | unknown
+  bookingSystem String   @default("unknown") @map("booking_system") @db.VarChar(20)
+  bookingUrl    String?  @map("booking_url") @db.VarChar(500)
+  website       String?  @db.VarChar(500)
+  instagram     String?  @db.VarChar(500)
+  /// Общий телефон заведения (не личный)
+  phone         String?  @db.VarChar(40)
+  /// { rating?, count?, text? }
+  reviews       Json?
+  /// string[] — где нашли сведения
+  sourceUrls    Json     @map("source_urls")
+  note          String?  @db.VarChar(2000)
+  /// string[]
+  tags          Json?
+  /// Нормализованное «имя|адрес» (нижний регистр, без знаков) — ключ дедупликации импорта
+  dedupKey      String   @unique @map("dedup_key") @db.VarChar(255)
+  version       Int      @default(1)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([bookingSystem])
+  @@index([category])
+  @@index([district])
+  @@index([staffEstimate])
+  @@map("prospects")
 }
 
 /// Общий счётчик последовательных номеров панели (сейчас — только 'support': единая нумерация

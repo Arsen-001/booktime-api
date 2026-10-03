@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { localized } from '../businesses/business.schemas.js';
+import { BOOKING_SYSTEMS, PROSPECT_CATEGORIES, PROSPECT_DISTRICTS, PROSPECT_SORTS, PROSPECT_STATUSES } from './prospects.logic.js';
 
 /** Схемы zod раздела «platform» (docs/backend/06 §1, 02 §19) — тела запросов и валидация входа. */
 
@@ -97,7 +98,7 @@ export const sphereSaveBody = z.object({
 // ─────────────────────────── Визиты (F-00-177) ───────────────────────────
 
 export const VISIT_STATUSES = ['connected', 'thinking', 'refused'] as const;
-export const VISIT_TOOLS = ['dikidi', 'altegio', 'whatsapp', 'notebook', 'other', 'nothing'] as const;
+export const VISIT_TOOLS = ['dikidi', 'altegio', 'emly', 'fresha', 'whatsapp', 'notebook', 'other', 'nothing'] as const;
 
 export const visitListQuery = z.object({ status: z.enum(VISIT_STATUSES).optional(), district: z.string().max(40).optional() });
 
@@ -116,10 +117,64 @@ export const visitInputBody = z.object({
   currentTool: z.enum(VISIT_TOOLS).optional(),
   willingToPay: z.number().int().nonnegative().optional(),
   responsibleId: z.string().min(1).max(32),
+  /** Визит к месту из базы «Места» — статус места берётся из последнего визита */
+  prospectId: z.string().max(32).optional(),
 });
 
 export const visitPatchBody = visitInputBody.partial();
 export const completeCallbackBody = z.object({ note: z.string().max(2000).optional() });
+
+// ─────────────────────────── Места (03.10.2026) ───────────────────────────
+
+const csvList = <T extends readonly [string, ...string[]]>(values: T) =>
+  z
+    .string()
+    .max(400)
+    .transform((s) => s.split(',').map((x) => x.trim()).filter(Boolean))
+    .pipe(z.array(z.enum(values)));
+
+export const prospectListQuery = z.object({
+  /** Системы записи через запятую: emly,altegio */
+  systems: csvList(BOOKING_SYSTEMS).optional(),
+  category: z.enum(PROSPECT_CATEGORIES).optional(),
+  district: z.enum(PROSPECT_DISTRICTS).optional(),
+  staffMin: z.coerce.number().int().nonnegative().optional(),
+  staffMax: z.coerce.number().int().nonnegative().optional(),
+  status: z.enum(PROSPECT_STATUSES).optional(),
+  q: z.string().max(100).optional(),
+  sort: z.enum(PROSPECT_SORTS).optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+const reviewsSchema = z.object({ rating: z.number().min(0).max(5).optional(), count: z.number().int().nonnegative().optional(), text: z.string().max(300).optional() });
+
+/** Правка места в панели: все поля по желанию; пустая строка — очистить */
+export const prospectPatchBody = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  category: z.enum(PROSPECT_CATEGORIES).optional(),
+  district: z.enum(PROSPECT_DISTRICTS).optional(),
+  address: z.string().max(300).optional(),
+  branches: z.number().int().nonnegative().max(100000).nullable().optional(),
+  staffEstimate: z.number().int().nonnegative().max(100000).nullable().optional(),
+  staffSource: z.string().max(300).optional(),
+  bookingSystem: z.enum(BOOKING_SYSTEMS).optional(),
+  bookingUrl: z.string().max(500).optional(),
+  website: z.string().max(500).optional(),
+  instagram: z.string().max(500).optional(),
+  phone: z.string().max(40).optional(),
+  reviews: reviewsSchema.nullable().optional(),
+  sourceUrls: z.array(z.string().max(500)).max(30).optional(),
+  note: z.string().max(2000).optional(),
+  tags: z.array(z.string().max(40)).max(20).optional(),
+});
+
+/**
+ * Импорт: JSON-массив строк от сборщиков данных (snake_case: name, category, district, address, branches, staff_estimate,
+ * staff_source, booking_system, booking_url, website, instagram, phone, reviews?, source_urls). Строки разбирает
+ * prospects.logic.parseImportRow — плохая строка не роняет весь файл, а попадает в «пропущено».
+ */
+export const prospectImportBody = z.array(z.record(z.string(), z.unknown())).max(10000);
 
 // ─────────────────────────── Копии (F-00-183) ───────────────────────────
 

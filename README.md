@@ -48,6 +48,11 @@ esbuild/tsx: Nest берёт зависимости из метаданных д
   Redis): обычные `/v1/auth/code` + `/v1/auth/verify { …, pendingGoogle }` — верный код привязывает Google к человеку с этим
   номером. Почта Google с номером не сопоставляется — номер подтверждает только код. Профиль: `GET|POST|DELETE
   /v1/auth/google/link`. Журнал входов: `method=google`. Тесты — `google-id-token.test.ts`, `google-login.test.ts`.
+- «Войти через Apple» (03.10.2026): `APPLE_CLIENT_IDS` — bundle id приложений и Services ID сайта через запятую; пусто —
+  вход выключен (`apple_disabled`). `POST /v1/auth/apple { identityToken, app, consent?, name? }` (name — имя из первого
+  ответа Apple, в токене его нет): токен проверяется так же без библиотек (`apple-id-token.ts`; общий кэш JWKS и RS256 —
+  `jwks.ts`), почты может не быть (`email: null`). Привязан — сессия; нет — `pendingApple` → `/v1/auth/verify { …,
+  pendingApple }` (ответ `appleLinked`). Журнал входов: `method=apple`. Тесты — `apple-id-token.test.ts`, `apple-login.test.ts`.
 - Клиенты — номера из мока (`+374 00 160 001` — Ани, `au_01`); новый номер создаёт нового человека.
 - Администраторы салонов — логины из мока (`lilit.nuri`, `anahit.atam`, …), пароль = логин, первый вход просит сменить.
 - Команда платформы (`/platform/login` фронта): `platform` / `booktime-dev`, затем код.

@@ -403,6 +403,11 @@
                     "type": "string",
                     "minLength": 16,
                     "maxLength": 64
+                  },
+                  "pendingApple": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 64
                   }
                 },
                 "required": [
@@ -524,6 +529,9 @@
                     },
                     "googleLinked": {
                       "type": "boolean"
+                    },
+                    "appleLinked": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -541,7 +549,7 @@
             }
           }
         },
-        "summary": "Проверить код и войти (клиент или кабинет бизнеса). Ставит httpOnly cookie сессии. pendingGoogle — привязать Google к этому номеру (ответ: googleLinked).",
+        "summary": "Проверить код и войти (клиент или кабинет бизнеса). Ставит httpOnly cookie сессии. pendingGoogle — привязать Google к этому номеру (ответ: googleLinked); pendingApple — Apple (ответ: appleLinked).",
         "tags": [
           "auth"
         ]
@@ -757,6 +765,228 @@
           }
         },
         "summary": "Войти через Google (ID token из Google Identity Services). Привязан к человеку — сессия (cookie); не привязан — pendingGoogle: номер и код один раз (/v1/auth/code, затем /v1/auth/verify с pendingGoogle), дальше — одним нажатием.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/apple": {
+      "post": {
+        "operationId": "AuthController_apple",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "identityToken": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 4096
+                  },
+                  "app": {
+                    "default": "client",
+                    "type": "string",
+                    "enum": [
+                      "client",
+                      "business"
+                    ]
+                  },
+                  "consent": {
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "identityToken"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "user": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "phone": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "locale": {
+                                  "type": "string",
+                                  "enum": [
+                                    "ru",
+                                    "hy",
+                                    "en"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "phone",
+                                "locale"
+                              ]
+                            },
+                            "app": {
+                              "type": "string",
+                              "enum": [
+                                "client",
+                                "business",
+                                "platform"
+                              ]
+                            },
+                            "mode": {
+                              "type": "string",
+                              "enum": [
+                                "client",
+                                "business"
+                              ]
+                            },
+                            "activeBusinessId": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "memberships": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "businessId": {
+                                    "type": "string"
+                                  },
+                                  "businessName": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "networkId": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "staffId": {
+                                    "type": "string"
+                                  },
+                                  "role": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "businessId",
+                                  "businessName",
+                                  "kind",
+                                  "networkId",
+                                  "staffId",
+                                  "role"
+                                ]
+                              }
+                            },
+                            "staffLogin": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "mustChangePassword": {
+                              "type": "boolean"
+                            },
+                            "consent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "user",
+                            "app",
+                            "mode",
+                            "activeBusinessId",
+                            "memberships",
+                            "staffLogin",
+                            "mustChangePassword",
+                            "consent"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pendingApple": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "token": {
+                              "type": "string"
+                            },
+                            "email": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "expiresIn": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "token",
+                            "email",
+                            "name",
+                            "expiresIn"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "session",
+                    "pendingApple"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Войти через Apple (identity token из Sign in with Apple; name — имя из первого ответа Apple). Привязан к человеку — сессия (cookie); не привязан — pendingApple: номер и код один раз (/v1/auth/code, затем /v1/auth/verify с pendingApple), дальше — одним нажатием.",
         "tags": [
           "auth"
         ]
@@ -56556,6 +56786,113 @@
         ]
       }
     },
+    "/v1/platform/users": {
+      "get": {
+        "operationId": "PlatformUsersController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Люди: поиск (имя, телефон), фильтры, сортировка, страница; счётчики сверху. Телефон — с маской",
+        "tags": [
+          "platform-users"
+        ]
+      }
+    },
+    "/v1/platform/users/{id}": {
+      "get": {
+        "operationId": "PlatformUsersController_card",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Карточка человека: профиль, роли, Telegram, Google, записи, входы (IP с маской), активные сессии",
+        "tags": [
+          "platform-users"
+        ]
+      }
+    },
+    "/v1/platform/users/{id}/block": {
+      "post": {
+        "operationId": "PlatformUsersController_block",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Заблокировать (причина обязательна; все сессии отзываются) / разблокировать. Только admin команды",
+        "tags": [
+          "platform-users"
+        ]
+      }
+    },
+    "/v1/platform/users/{id}/sessions/revoke": {
+      "post": {
+        "operationId": "PlatformUsersController_revokeSessions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Завершить все сессии человека. Только admin команды",
+        "tags": [
+          "platform-users"
+        ]
+      }
+    },
     "/v1/platform/moderation": {
       "get": {
         "operationId": "PlatformModerationController_list",
@@ -57544,6 +57881,324 @@
         ],
         "tags": [
           "platform-visits"
+        ]
+      }
+    },
+    "/v1/platform/prospects": {
+      "get": {
+        "operationId": "PlatformProspectsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Список мест: фильтры (системы записи, сфера, район, мастеров от/до, статус, поиск), сортировка, страницы, счётчики по системам",
+        "tags": [
+          "platform-prospects"
+        ]
+      }
+    },
+    "/v1/platform/prospects/export": {
+      "get": {
+        "operationId": "PlatformProspectsController_exportCsv",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "CSV мест с теми же фильтрами, что список: { fileName, csv, rows }",
+        "tags": [
+          "platform-prospects"
+        ]
+      }
+    },
+    "/v1/platform/prospects/import": {
+      "post": {
+        "operationId": "PlatformProspectsController_import",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "maxItems": 10000,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Импорт JSON-массива мест (snake_case), upsert по «имя|адрес»; отчёт added/updated/unchanged/skipped",
+        "tags": [
+          "platform-prospects"
+        ]
+      }
+    },
+    "/v1/platform/prospects/{id}": {
+      "get": {
+        "operationId": "PlatformProspectsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-prospects"
+        ]
+      },
+      "put": {
+        "operationId": "PlatformProspectsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "beauty",
+                      "nails",
+                      "barber",
+                      "hair",
+                      "brows_lashes",
+                      "cosmetology",
+                      "massage_spa",
+                      "clinic",
+                      "dental",
+                      "other"
+                    ]
+                  },
+                  "district": {
+                    "type": "string",
+                    "enum": [
+                      "kentron",
+                      "arabkir",
+                      "davtashen",
+                      "malatia-sebastia",
+                      "nor-nork",
+                      "achapnyak",
+                      "shengavit",
+                      "avan",
+                      "erebuni",
+                      "kanaker-zeytun",
+                      "nork-marash",
+                      "nubarashen",
+                      "unknown"
+                    ]
+                  },
+                  "address": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "branches": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "staffEstimate": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "staffSource": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "bookingSystem": {
+                    "type": "string",
+                    "enum": [
+                      "emly",
+                      "altegio",
+                      "fresha",
+                      "dikidi",
+                      "booksy",
+                      "own_site",
+                      "other_online",
+                      "medical_platform",
+                      "phone_whatsapp",
+                      "instagram",
+                      "unknown"
+                    ]
+                  },
+                  "bookingUrl": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "website": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "instagram": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "reviews": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "rating": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 5
+                          },
+                          "count": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "text": {
+                            "type": "string",
+                            "maxLength": 300
+                          }
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sourceUrls": {
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "tags": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-prospects"
+        ]
+      },
+      "delete": {
+        "operationId": "PlatformProspectsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "platform-prospects"
         ]
       }
     },

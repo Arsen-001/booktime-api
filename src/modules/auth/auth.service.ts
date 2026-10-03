@@ -11,6 +11,8 @@ import { newId } from '../../common/ids/ids.js';
 import { maskPhone, normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { AppleIdTokenVerifier, type AppleProfile } from './apple-id-token.js';
+import { APPLE_PENDING, APPLE_PENDING_TTL_SEC, type ApplePendingStore } from './apple-pending.js';
 import { GoogleIdTokenVerifier, type GoogleProfile } from './google-id-token.js';
 import { GOOGLE_PENDING, GOOGLE_PENDING_TTL_SEC, type GooglePendingStore } from './google-pending.js';
 import { OtpService, type OtpSent } from './otp.service.js';
@@ -47,7 +49,9 @@ export interface SecondFactorView {
   secondFactor: { challengeId: string; phoneMasked: string; resendAfter: number; expiresIn: number };
 }
 
-type LoginMethod = 'code' | 'password' | 'platform' | 'second_factor' | 'google';
+type LoginMethod = 'code' | 'password' | 'platform' | 'second_factor' | 'google' | 'apple';
+/** Внешний вход, привязанный к человеку (user_identities.provider) */
+type IdentityProvider = 'google' | 'apple';
 type PhoneApp = 'client' | 'business';
 
 /** Google-аккаунт ещё не привязан: экран просит номер и код один раз, token — в verify (pendingGoogle) */
@@ -62,6 +66,20 @@ export interface PendingGoogleView {
 export interface GoogleLoginView {
   session: SessionView | null;
   pendingGoogle: PendingGoogleView | null;
+}
+
+/** Apple-аккаунт ещё не привязан: экран просит номер и код один раз, token — в verify (pendingApple). Почты может не быть */
+export interface PendingAppleView {
+  token: string;
+  email: string | null;
+  name: string | null;
+  expiresIn: number;
+}
+
+/** Ответ «Войти через Apple»: либо сессия (аккаунт привязан), либо pendingApple (нужен номер и код) */
+export interface AppleLoginView {
+  session: SessionView | null;
+  pendingApple: PendingAppleView | null;
 }
 
 /** «Google: a•••@gmail.com» — в журнал входов, без полной почты */
@@ -81,6 +99,8 @@ export class AuthService {
     @Inject(MEMBERSHIP_LISTER) private readonly memberships: MembershipLister,
     @Inject(GoogleIdTokenVerifier) private readonly google: GoogleIdTokenVerifier,
     @Inject(GOOGLE_PENDING) private readonly googlePending: GooglePendingStore,
+    @Inject(AppleIdTokenVerifier) private readonly apple: AppleIdTokenVerifier,
+    @Inject(APPLE_PENDING) private readonly applePending: ApplePendingStore,
   ) {}
 
   // ─────────── журнал входов (F-10-106) ───────────
@@ -145,8 +165,8 @@ export class AuthService {
   async verifyCode(
     ctx: RequestContext,
     res: Response,
-    input: { phone: string; code: string; app: PhoneApp; name?: string; consent?: boolean; locale?: Locale; pendingGoogle?: string },
-  ): Promise<SessionView & { googleLinked?: boolean }> {
+    input: { phone: string; code: string; app: PhoneApp; name?: string; consent?: boolean; locale?: Locale; pendingGoogle?: string; pendingApple?: string },
+  ): Promise<SessionView & { googleLinked?: boolean; appleLinked?: boolean }> {
     const phone = normalizePhone(input.phone);
     if (!phone) throw new ApiError('invalid_phone', 'Phone must be +374XXXXXXXX');
     const existing = await this.prisma.user.findUnique({ where: { phone }, include: { appProfile: { select: { consentAt: true } } } });
@@ -167,23 +187,28 @@ export class AuthService {
     // «Войти через Google» с непривязанным аккаунтом (03.10.2026): номер подтверждён кодом — только теперь Google
     // привязывается к человеку с этим номером. Токен одноразовый и гасится здесь; истёк — вход по коду всё равно идёт.
     const google = input.pendingGoogle ? await this.googlePending.take(input.pendingGoogle) : null;
+    // То же для «Войти через Apple»; пришли оба токена — привязываются оба
+    const apple = input.pendingApple ? await this.applePending.take(input.pendingApple) : null;
 
     const now = new Date();
     let googleLinked = false;
+    let appleLinked = false;
     const userId = await this.prisma.$transaction(async (tx) => {
       let id = existing?.id;
       if (!id) {
         id = newId('user');
-        const name = input.name?.trim().slice(0, 120) || google?.name || phone;
+        const name = input.name?.trim().slice(0, 120) || google?.name || apple?.name || phone;
         await tx.user.create({ data: { id, phone, name, locale: input.locale ?? 'ru', createdBy: id, updatedBy: id } });
         await this.audit.record(tx, ctx, { action: 'create', entityType: 'user', entityId: id, after: { phone, name } });
       }
       await this.prepareAppAccess(tx, ctx, { userId: id, phone, app: input.app, consentAt: existing?.appProfile?.consentAt ?? null, consent: input.consent, now });
-      if (google) googleLinked = await this.attachGoogle(tx, ctx, id, google, now);
+      if (google) googleLinked = await this.attachIdentity(tx, ctx, id, 'google', google, now);
+      if (apple) appleLinked = await this.attachIdentity(tx, ctx, id, 'apple', apple, now);
       return id;
     });
 
     const sessionId = await this.openPhoneSession(ctx, res, userId, input.app, 'code');
+    const linked: { googleLinked?: boolean; appleLinked?: boolean } = {};
     if (input.pendingGoogle) {
       await this.logEvent(ctx, {
         userId,
@@ -193,9 +218,20 @@ export class AuthService {
         result: googleLinked ? 'google_linked' : google ? 'google_taken' : 'google_expired',
         identifier: google ? maskEmail(google.email) : undefined,
       });
-      return { ...(await this.view(sessionId)), googleLinked };
+      linked.googleLinked = googleLinked;
     }
-    return this.view(sessionId);
+    if (input.pendingApple) {
+      await this.logEvent(ctx, {
+        userId,
+        sessionId,
+        method: 'apple',
+        app: input.app,
+        result: appleLinked ? 'apple_linked' : apple ? 'apple_taken' : 'apple_expired',
+        identifier: apple?.email ? maskEmail(apple.email) : undefined,
+      });
+      linked.appleLinked = appleLinked;
+    }
+    return { ...(await this.view(sessionId)), ...linked };
   }
 
   /**
@@ -249,25 +285,33 @@ export class AuthService {
   // ─────────── «Войти через Google» (03.10.2026) ───────────
 
   /**
-   * Привязать Google к человеку. Этот Google уже у другого человека — false (чужой вход не перехватываем).
-   * У человека был другой Google — заменяется: один Google на человека (unique userId+provider).
+   * Привязать внешний вход (Google, Apple) к человеку. Этот аккаунт уже у другого человека — false (чужой вход не
+   * перехватываем). У человека был другой аккаунт того же провайдера — заменяется: один на человека (unique userId+provider).
+   * Аудит — googleLinked / appleLinked. Apple даёт почту не всегда: нет в этот раз — прежняя остаётся.
    */
-  private async attachGoogle(tx: Prisma.TransactionClient, ctx: RequestContext, userId: string, g: GoogleProfile, now: Date): Promise<boolean> {
-    const found = await tx.userIdentity.findUnique({ where: { provider_subject: { provider: 'google', subject: g.sub } } });
+  private async attachIdentity(
+    tx: Prisma.TransactionClient,
+    ctx: RequestContext,
+    userId: string,
+    provider: IdentityProvider,
+    p: { sub: string; email: string | null },
+    now: Date,
+  ): Promise<boolean> {
+    const found = await tx.userIdentity.findUnique({ where: { provider_subject: { provider, subject: p.sub } } });
     if (found && found.userId !== userId) return false;
     if (found) {
-      await tx.userIdentity.update({ where: { id: found.id }, data: { email: g.email, lastUsedAt: now } });
+      await tx.userIdentity.update({ where: { id: found.id }, data: { email: p.email ?? found.email, lastUsedAt: now } });
       return true;
     }
-    const before = await tx.userIdentity.findFirst({ where: { userId, provider: 'google' }, select: { email: true } });
-    await tx.userIdentity.deleteMany({ where: { userId, provider: 'google' } });
-    await tx.userIdentity.create({ data: { id: newId('userIdentity'), provider: 'google', subject: g.sub, email: g.email, userId, lastUsedAt: now } });
+    const before = await tx.userIdentity.findFirst({ where: { userId, provider }, select: { email: true } });
+    await tx.userIdentity.deleteMany({ where: { userId, provider } });
+    await tx.userIdentity.create({ data: { id: newId('userIdentity'), provider, subject: p.sub, email: p.email, userId, lastUsedAt: now } });
     await this.audit.record(tx, { ...ctx, member: null }, {
-      action: 'googleLinked',
+      action: provider === 'google' ? 'googleLinked' : 'appleLinked',
       entityType: 'user',
       entityId: userId,
-      before: before ? { google: before.email } : undefined,
-      after: { google: g.email },
+      before: before ? { [provider]: before.email } : undefined,
+      after: { [provider]: p.email },
     });
     return true;
   }
@@ -313,6 +357,56 @@ export class AuthService {
     return { session: await this.view(sessionId), pendingGoogle: null };
   }
 
+  // ─────────── «Войти через Apple» (03.10.2026) ───────────
+
+  /**
+   * POST /v1/auth/apple — как googleLogin. Identity token проверен → Apple привязан — сразу сессия; не привязан —
+   * pendingApple: номер подтверждает только код. Почта Apple (если есть) с номером не сопоставляется.
+   * name — имя из первого ответа Apple приложению: в токене его нет, а нужно для нового человека.
+   */
+  async appleLogin(
+    ctx: RequestContext,
+    res: Response,
+    input: { identityToken: string; app: PhoneApp; consent?: boolean; name?: string },
+  ): Promise<AppleLoginView> {
+    let profile: AppleProfile;
+    try {
+      profile = await this.apple.verify(input.identityToken);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'apple_invalid') {
+        await this.logEvent(ctx, { method: 'apple', app: input.app, result: 'apple_invalid' });
+      }
+      throw err;
+    }
+    const identifier = profile.email ? maskEmail(profile.email) : undefined;
+    const identity = await this.prisma.userIdentity.findUnique({
+      where: { provider_subject: { provider: 'apple', subject: profile.sub } },
+      include: { user: { include: { appProfile: { select: { consentAt: true } } } } },
+    });
+    if (!identity) {
+      const name = input.name?.trim().slice(0, 120) || null;
+      const pending: AppleProfile = { ...profile, name };
+      const token = await this.applePending.put(pending);
+      await this.logEvent(ctx, { method: 'apple', app: input.app, result: 'apple_unlinked', identifier });
+      return { session: null, pendingApple: { token, email: pending.email, name, expiresIn: APPLE_PENDING_TTL_SEC } };
+    }
+    const user = identity.user;
+    if (user.blockedAt || user.deletedAt || !user.phone) {
+      await this.logEvent(ctx, { userId: user.id, method: 'apple', app: input.app, result: 'blocked', identifier });
+      throw new ApiError('account_blocked', 'Account is blocked');
+    }
+    const consentAt = user.appProfile?.consentAt ?? null;
+    if (input.app === 'client' && !consentAt && !input.consent) throw new ApiError('consent_required', 'User agreement must be accepted');
+    const now = new Date();
+    const phone = user.phone;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userIdentity.update({ where: { id: identity.id }, data: { email: profile.email ?? identity.email, lastUsedAt: now } });
+      await this.prepareAppAccess(tx, ctx, { userId: user.id, phone, app: input.app, consentAt, consent: input.consent, now });
+    });
+    const sessionId = await this.openPhoneSession(ctx, res, user.id, input.app, 'apple');
+    return { session: await this.view(sessionId), pendingApple: null };
+  }
+
   /** Привязан ли Google к вошедшему (профиль) и включён ли вход через Google на сервере */
   async googleStatus(ctx: RequestContext): Promise<{ enabled: boolean; email: string | null }> {
     const row = await this.prisma.userIdentity.findFirst({ where: { userId: ctx.session!.userId, provider: 'google' }, select: { email: true } });
@@ -324,7 +418,7 @@ export class AuthService {
     const session = ctx.session!;
     if (session.staffLoginId || session.platformMemberId) throw new ApiError('forbidden', 'Phone sign-in only');
     const profile = await this.google.verify(input.idToken);
-    const linked = await this.prisma.$transaction((tx) => this.attachGoogle(tx, ctx, session.userId, profile, new Date()));
+    const linked = await this.prisma.$transaction((tx) => this.attachIdentity(tx, ctx, session.userId, 'google', profile, new Date()));
     await this.logEvent(ctx, { userId: session.userId, sessionId: session.sessionId, method: 'google', app: session.app, result: linked ? 'google_linked' : 'google_taken', identifier: maskEmail(profile.email) });
     if (!linked) throw new ApiError('google_taken', 'This Google account is linked to another user');
     return this.googleStatus(ctx);
