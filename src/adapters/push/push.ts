@@ -116,6 +116,10 @@ export class FcmSender implements PushSender {
           message: {
             token: target.token,
             notification: { title: message.title, body: message.body },
+            // Приложения BookTime (booktime-mobile): со звуком; на Android — без задержки в режиме экономии
+            android: { priority: 'HIGH', notification: { sound: 'default' } },
+            apns: { payload: { aps: { sound: 'default' } } },
+            // url — приложение открывает эту страницу по нажатию (src/lib/native/NativeAppBridge.tsx сайта)
             ...(message.url ? { webpush: { fcm_options: { link: message.url } }, data: { url: message.url } } : {}),
           },
         }),
