@@ -353,15 +353,18 @@ export class SettingsService {
   }
 
   async checklist(businessId: string) {
-    const [staffCount, services, schedules, profile] = await Promise.all([
+    const [staffCount, services, schedules, profile, client] = await Promise.all([
       this.prisma.staff.count({ where: { businessId, deletedAt: null, status: { not: 'fired' } } }),
       this.prisma.service.findMany({ where: { businessId }, select: { staffIds: true, onlineBookable: true } }),
       this.prisma.workSchedule.count({ where: { businessId } }),
       this.companyProfile(businessId),
+      this.prisma.client.findFirst({ where: { businessId, deletedAt: null }, select: { id: true } }),
     ]);
     return [
       { id: 'services', done: services.length > 0, href: '/biz/services' },
       { id: 'staff', done: staffCount > 1, href: '/biz/staff' },
+      // Переезд с Altegio / Excel (04.10.2026): база клиентов загружена или уже набралась из записей
+      { id: 'clients', done: Boolean(client), href: '/biz/clients/import' },
       { id: 'staffServices', done: services.some((s) => Array.isArray(s.staffIds) && s.staffIds.length > 0), href: '/biz/services' },
       { id: 'schedule', done: schedules > 0, href: '/biz/schedule' },
       { id: 'online', done: services.some((s) => s.onlineBookable), href: '/biz/online' },

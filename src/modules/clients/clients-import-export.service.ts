@@ -1,42 +1,37 @@
 import { Injectable } from '@nestjs/common';
-import dayjs from 'dayjs';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { normalizePhone } from '../../common/phone.js';
 import { clientRowView } from './clients.views.js';
+import { cleanImportRow, fillEmptyPatch, IMPORT_BATCH_MAX, type ImportRowInput } from './clients-import.rules.js';
 
-export const IMPORT_MAX_ROWS = 500;
-
-function parseImportGender(v: string): 'male' | 'female' | undefined {
-  const s = v.trim().toUpperCase();
-  if (s === 'M' || s === '1') return 'male';
-  if (s === 'F' || s === '2') return 'female';
-  return undefined;
-}
-
-/** «ДД-ММ» или «ДД-ММ-ГГГГ» → 'YYYY-MM-DD'; без года подставляется текущий (F-04-128) */
-function parseImportBirthday(v: string): string | undefined {
-  const m = v.trim().match(/^(\d{2})-(\d{2})(?:-(\d{4}))?$/);
-  if (!m) return undefined;
-  const [, dd, mm, yyyy] = m;
-  const year = yyyy ?? String(dayjs().year());
-  const candidate = `${year}-${mm}-${dd}`;
-  return dayjs(candidate, 'YYYY-MM-DD', true).isValid() ? candidate : undefined;
-}
-
-interface RowOutcome {
-  ok: boolean;
-  error?: string;
-  created?: boolean;
+type ImportStatus = 'created' | 'updated' | 'skipped' | 'error';
+type ImportCode = 'exists' | 'nothingToFill' | 'duplicateInFile' | 'phoneFormat' | 'noPhone' | 'invalid';
+export interface ImportRowResult {
+  rowIndex: number;
+  status: ImportStatus;
+  code?: ImportCode;
   clientId?: string;
 }
 
+export interface ImportBatchArgs {
+  rows: ImportRowInput[];
+  onExisting: 'skip' | 'fillEmpty';
+  dryRun?: boolean;
+  runId?: string;
+  authorName: string;
+  method: 'paste' | 'file';
+  rejectedBeforeSend?: number;
+}
+
 /**
- * Порт `applyImportRow` фронта (src/api/clients/importExport.ts): создаёт клиента, либо — тот же номер уже
- * в базе — прибавляет «Продано/Оплачено» к существующей карточке (F-04-129), не создаёт дубль (F-00-128).
+ * Импорт клиентов пачками (F-04-126…129, F-00-190; «переезд за минуту», 04.10.2026). Номер — ключ клиента бизнеса:
+ * повтор того же файла не создаёт дублей и ничего не удваивает. Номер уже в базе: «skip» — пропустить,
+ * «fillEmpty» — дописать только пустые поля (fillEmptyPatch). Пачка пишется одной транзакцией; dryRun — то же
+ * решение по каждой строке без записи (экран показывает «новых / уже в базе / не загрузятся» до загрузки).
  */
 @Injectable()
 export class ClientsImportExportService {
@@ -45,116 +40,138 @@ export class ClientsImportExportService {
     private readonly audit: AuditService,
   ) {}
 
-  private async applyImportRow(ctx: RequestContext, businessId: string, headers: string[], values: string[]): Promise<RowOutcome> {
-    const get = (target: string): string | undefined => {
-      const i = headers.indexOf(target);
-      return i >= 0 ? values[i]?.trim() : undefined;
-    };
-    const name = get('name');
-    const phoneRaw = get('phone');
-    if (!name) return { ok: false, error: 'Не заполнено имя' };
-    if (!phoneRaw) return { ok: false, error: 'Не заполнен телефон' };
-    if (!/^\d{7,15}$/.test(phoneRaw)) return { ok: false, error: 'Телефон должен быть числом без «+», тире и пробелов' };
-
-    const emailRaw = get('email');
-    if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) return { ok: false, error: 'Неверный формат email' };
-
-    const genderRaw = get('gender');
-    const gender = genderRaw ? parseImportGender(genderRaw) : undefined;
-    if (genderRaw && !gender) return { ok: false, error: 'Пол должен быть M/F или 1/2' };
-
-    const birthdayRaw = get('birthday');
-    const birthday = birthdayRaw ? parseImportBirthday(birthdayRaw) : undefined;
-    if (birthdayRaw && !birthday) return { ok: false, error: 'Дата рождения должна быть ДД-ММ или ДД-ММ-ГГГГ' };
-
-    const soldRaw = get('sold');
-    const paidRaw = get('paid');
-    const balanceRaw = get('balance');
-    const discountRaw = get('discount');
-    const card = get('card');
-    const additionalPhoneRaw = get('additionalPhone');
-    const comment = get('comment');
-    const lastName = get('lastName');
-
-    const normalizedImportPhone = normalizePhone(`+${phoneRaw}`);
-    const existing = await this.prisma.client.findFirst({
-      where: { businessId, deletedAt: null, phone: normalizedImportPhone ?? `+${phoneRaw}` },
-    });
-
-    const addSold = BigInt(Number(soldRaw) || 0) + BigInt(Number(balanceRaw) || 0);
-    const addPaid = BigInt(Number(paidRaw) || 0) + BigInt(Number(balanceRaw) || 0);
-
-    if (existing) {
-      await this.prisma.client.update({
-        where: { id: existing.id },
-        data: {
-          importedSold: existing.importedSold + addSold,
-          paidAmount: existing.paidAmount + addPaid,
-          cardNumber: card || existing.cardNumber,
-          discountPercent: discountRaw !== undefined && discountRaw !== '' ? Number(discountRaw) : existing.discountPercent,
-          additionalPhone: additionalPhoneRaw || existing.additionalPhone,
-          note: comment ? (existing.note ? `${existing.note}\n${comment}` : comment) : existing.note,
-        },
-      });
-      return { ok: true, created: false, clientId: existing.id };
+  async importBatch(ctx: RequestContext, businessId: string, args: ImportBatchArgs): Promise<{ runId?: string; results: ImportRowResult[] }> {
+    if (args.rows.length > IMPORT_BATCH_MAX) throw new ApiError('too_many_rows', `Up to ${IMPORT_BATCH_MAX} rows per call`);
+    const results: ImportRowResult[] = [];
+    const clean: ImportRowInput[] = [];
+    const seen = new Set<string>();
+    for (const raw of args.rows) {
+      const c = cleanImportRow(raw);
+      if ('error' in c) {
+        results.push({ rowIndex: raw.rowIndex, status: 'error', code: c.error });
+        continue;
+      }
+      if (seen.has(c.row.phone)) {
+        results.push({ rowIndex: raw.rowIndex, status: 'skipped', code: 'duplicateInFile' });
+        continue;
+      }
+      seen.add(c.row.phone);
+      clean.push(c.row);
     }
 
-    const id = newId('client');
-    await this.prisma.client.create({
-      data: {
-        id,
-        businessId,
-        phone: `+${phoneRaw}`,
-        name,
-        lastName: lastName || null,
-        gender: gender ?? 'unknown',
-        birthday: birthday ?? null,
-        tags: [],
-        note: comment || null,
-        cardNumber: card || null,
-        discountPercent: discountRaw !== undefined && discountRaw !== '' ? Number(discountRaw) : 0,
-        paidAmount: addPaid,
-        importedSold: addSold,
-        additionalPhone: additionalPhoneRaw || null,
-        source: 'import',
-        createdBy: ctx.member!.staffId,
-        updatedBy: ctx.member!.staffId,
+    const staffId = ctx.member!.staffId;
+    const apply = async (tx: Prisma.TransactionClient | PrismaService) => {
+      const existing = clean.length
+        ? await tx.client.findMany({ where: { businessId, deletedAt: null, phone: { in: clean.map((r) => r.phone) } } })
+        : [];
+      const byPhone = new Map(existing.map((c) => [c.phone, c]));
+      const toCreate: Prisma.ClientCreateManyInput[] = [];
+      for (const row of clean) {
+        const ex = byPhone.get(row.phone);
+        if (ex) {
+          if (args.onExisting === 'skip') {
+            results.push({ rowIndex: row.rowIndex, status: 'skipped', code: 'exists', clientId: ex.id });
+            continue;
+          }
+          const patch = fillEmptyPatch(ex, row);
+          if (Object.keys(patch).length === 0) {
+            results.push({ rowIndex: row.rowIndex, status: 'skipped', code: 'nothingToFill', clientId: ex.id });
+            continue;
+          }
+          if (!args.dryRun) {
+            await tx.client.update({ where: { id: ex.id }, data: { ...patch, updatedBy: staffId, version: { increment: 1 } } });
+          }
+          results.push({ rowIndex: row.rowIndex, status: 'updated', clientId: ex.id });
+          continue;
+        }
+        if (args.dryRun) {
+          results.push({ rowIndex: row.rowIndex, status: 'created' });
+          continue;
+        }
+        const id = newId('client');
+        toCreate.push({
+          id,
+          businessId,
+          phone: row.phone,
+          name: row.name,
+          lastName: row.lastName ?? null,
+          gender: row.gender ?? 'unknown',
+          birthday: row.birthday ?? null,
+          email: row.email ?? null,
+          note: row.note ?? null,
+          tags: row.tags ?? [],
+          additionalPhone: row.additionalPhone ?? null,
+          discountPercent: row.discountPercent ?? 0,
+          cardNumber: row.cardNumber ?? null,
+          importedSold: BigInt(row.sold ?? 0),
+          paidAmount: BigInt(row.paid ?? 0),
+          source: 'import',
+          createdBy: staffId,
+          updatedBy: staffId,
+        });
+        results.push({ rowIndex: row.rowIndex, status: 'created', clientId: id });
+      }
+      if (toCreate.length) await tx.client.createMany({ data: toCreate });
+    };
+
+    if (args.dryRun) {
+      await apply(this.prisma);
+      return { results: results.sort((a, b) => a.rowIndex - b.rowIndex) };
+    }
+
+    const count = (s: ImportStatus) => results.filter((r) => r.status === s).length;
+    let runId = args.runId;
+    await this.prisma.$transaction(
+      async (tx) => {
+        await apply(tx);
+        const created = count('created');
+        const updated = count('updated');
+        const errors = count('error');
+        // Прогон из нескольких пачек — одна строка журнала: первая пачка создаёт, следующие прибавляют
+        const prev = runId ? await tx.clientImportRun.findFirst({ where: { id: runId, businessId } }) : null;
+        if (prev) {
+          await tx.clientImportRun.update({
+            where: { id: prev.id },
+            data: {
+              totalRows: { increment: args.rows.length },
+              createdCount: { increment: created },
+              updatedCount: { increment: updated },
+              rejectedCount: { increment: errors },
+            },
+          });
+        } else {
+          const before = args.rejectedBeforeSend ?? 0;
+          runId = newId('clientImportRun');
+          await tx.clientImportRun.create({
+            data: {
+              id: runId,
+              businessId,
+              authorName: args.authorName,
+              method: args.method,
+              totalRows: args.rows.length + before,
+              createdCount: created,
+              updatedCount: updated,
+              rejectedCount: errors + before,
+            },
+          });
+        }
+        await this.audit.record(tx, ctx, {
+          action: 'import',
+          entityType: 'clientImport',
+          entityId: runId!,
+          businessId,
+          after: { created, updated, skipped: count('skipped'), rejected: errors, onExisting: args.onExisting },
+        });
       },
-    });
-    return { ok: true, created: true, clientId: id };
-  }
-
-  async runImport(ctx: RequestContext, businessId: string, authorName: string, mapping: string[], rows: string[][], method: 'paste' | 'file') {
-    if (rows.length > IMPORT_MAX_ROWS) throw new ApiError('too_many_rows', `Up to ${IMPORT_MAX_ROWS} rows at a time`);
-    const results: { rowIndex: number; raw: string[]; ok: boolean; error?: string; clientId?: string; created?: boolean }[] = [];
-    let created = 0;
-    let updated = 0;
-    for (let i = 0; i < rows.length; i++) {
-      const outcome = await this.applyImportRow(ctx, businessId, mapping, rows[i] ?? []);
-      results.push({ rowIndex: i, raw: rows[i] ?? [], ok: outcome.ok, error: outcome.error, clientId: outcome.clientId, created: outcome.created });
-      if (outcome.ok && outcome.created) created++;
-      else if (outcome.ok) updated++;
-    }
-    const summary = {
-      id: newId('clientImportRun'),
-      at: new Date(),
-      authorName,
-      method,
-      totalRows: rows.length,
-      createdCount: created,
-      updatedCount: updated,
-      rejectedCount: rows.length - created - updated,
-    };
-    await this.prisma.$transaction(async (tx) => {
-      await tx.clientImportRun.create({ data: { ...summary, businessId } });
-      await this.audit.record(tx, ctx, { action: 'import', entityType: 'clientImport', entityId: businessId, businessId, after: { created, updated, rejected: summary.rejectedCount } });
-    });
-    return { results, summary: { ...summary, at: summary.at.toISOString() } };
+      { timeout: 60_000, maxWait: 10_000 },
+    );
+    return { runId, results: results.sort((a, b) => a.rowIndex - b.rowIndex) };
   }
 
   async listImportRuns(businessId: string) {
     const rows = await this.prisma.clientImportRun.findMany({ where: { businessId }, orderBy: { at: 'desc' }, take: 50 });
-    return rows.map((r) => ({ ...r, at: r.at.toISOString() }));
+    // Пропущенные отдельной колонкой не хранятся: всё, что не создано, не дополнено и не отклонено
+    return rows.map((r) => ({ ...r, at: r.at.toISOString(), skippedCount: Math.max(0, r.totalRows - r.createdCount - r.updatedCount - r.rejectedCount) }));
   }
 
   // ─────────── выгрузка (F-04-130, P4: закрыта по умолчанию, право clients.export) ───────────

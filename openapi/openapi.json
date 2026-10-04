@@ -44738,6 +44738,9 @@
                       },
                       "rejectedCount": {
                         "type": "number"
+                      },
+                      "skippedCount": {
+                        "type": "number"
                       }
                     },
                     "required": [
@@ -47293,7 +47296,7 @@
     },
     "/v1/biz/{businessId}/clients/import": {
       "post": {
-        "operationId": "ClientsController_runImport",
+        "operationId": "ClientsController_importClients",
         "parameters": [
           {
             "name": "businessId",
@@ -47311,67 +47314,190 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "rows": {
+                    "minItems": 1,
+                    "maxItems": 1000,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "rowIndex": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000
+                        },
+                        "name": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "lastName": {
+                          "type": "string",
+                          "maxLength": 120
+                        },
+                        "phone": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "additionalPhone": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "email": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 4000
+                        },
+                        "birthday": {
+                          "type": "string",
+                          "maxLength": 10
+                        },
+                        "gender": {
+                          "type": "string",
+                          "enum": [
+                            "male",
+                            "female"
+                          ]
+                        },
+                        "tags": {
+                          "maxItems": 20,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 80
+                          }
+                        },
+                        "discountPercent": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "sold": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000000
+                        },
+                        "paid": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000000
+                        },
+                        "cardNumber": {
+                          "type": "string",
+                          "maxLength": 60
+                        }
+                      },
+                      "required": [
+                        "rowIndex",
+                        "name",
+                        "phone"
+                      ]
+                    }
+                  },
+                  "onExisting": {
+                    "default": "fillEmpty",
+                    "type": "string",
+                    "enum": [
+                      "skip",
+                      "fillEmpty"
+                    ]
+                  },
+                  "dryRun": {
+                    "type": "boolean"
+                  },
+                  "runId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
                   "authorName": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 120
                   },
-                  "mapping": {
-                    "maxItems": 30,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "enum": [
-                        "ignore",
-                        "name",
-                        "lastName",
-                        "phone",
-                        "additionalPhone",
-                        "email",
-                        "comment",
-                        "birthday",
-                        "gender",
-                        "sold",
-                        "paid",
-                        "balance",
-                        "discount",
-                        "card"
-                      ]
-                    }
-                  },
-                  "rows": {
-                    "maxItems": 500,
-                    "type": "array",
-                    "items": {
-                      "maxItems": 30,
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "maxLength": 500
-                      }
-                    }
-                  },
                   "method": {
-                    "default": "paste",
+                    "default": "file",
                     "type": "string",
                     "enum": [
                       "paste",
                       "file"
                     ]
+                  },
+                  "rejectedBeforeSend": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  },
+                  "final": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
-                  "authorName",
-                  "mapping",
-                  "rows"
+                  "rows",
+                  "authorName"
                 ]
               }
             }
           }
         },
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "rowIndex": {
+                            "type": "number"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "created",
+                              "updated",
+                              "skipped",
+                              "error"
+                            ]
+                          },
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "exists",
+                              "nothingToFill",
+                              "duplicateInFile",
+                              "phoneFormat",
+                              "noPhone",
+                              "invalid"
+                            ]
+                          },
+                          "clientId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "rowIndex",
+                          "status"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "results"
+                  ]
+                }
+              }
+            }
           }
         },
         "security": [
@@ -47379,7 +47505,7 @@
             "cookie": []
           }
         ],
-        "summary": "Импорт из Excel/CSV — до 500 строк, разбор текста делает экран (parseImportText)",
+        "summary": "Импорт клиентов пачкой до 1000 строк (экран разбирает файл сам): номер уже в базе — onExisting skip | fillEmpty (только пустые поля), dryRun — проверка без записи; пачка — одна транзакция",
         "tags": [
           "clients"
         ]

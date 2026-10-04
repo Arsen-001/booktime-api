@@ -195,27 +195,35 @@ export const fineRightsBody = z.record(z.string(), z.boolean());
 
 // ─────────── импорт / выгрузка (F-04-126…130) ───────────
 
-export const importColumnTarget = z.enum([
-  'ignore',
-  'name',
-  'lastName',
-  'phone',
-  'additionalPhone',
-  'email',
-  'comment',
-  'birthday',
-  'gender',
-  'sold',
-  'paid',
-  'balance',
-  'discount',
-  'card',
-]);
-export const runImportBody = z.object({
+/**
+ * Пачка импорта (04.10.2026, «переезд за минуту»): экран сам разбирает файл и шлёт нормализованные строки, до
+ * IMPORT_BATCH_MAX за вызов; сервер проверяет их заново (clients-import.rules.ts). dryRun — только проверить.
+ */
+export const importRowBody = z.object({
+  rowIndex: z.number().int().min(0).max(1_000_000),
+  name: z.string().max(200),
+  lastName: z.string().max(120).optional(),
+  phone: z.string().max(40),
+  additionalPhone: z.string().max(40).optional(),
+  email: z.string().max(200).optional(),
+  note: z.string().max(4000).optional(),
+  birthday: z.string().max(10).optional(),
+  gender: z.enum(['male', 'female']).optional(),
+  tags: z.array(z.string().max(80)).max(20).optional(),
+  discountPercent: z.number().int().min(0).max(100).optional(),
+  sold: z.number().int().min(0).max(1_000_000_000).optional(),
+  paid: z.number().int().min(0).max(1_000_000_000).optional(),
+  cardNumber: z.string().max(60).optional(),
+});
+export const importBatchBody = z.object({
+  rows: z.array(importRowBody).min(1).max(1000),
+  onExisting: z.enum(['skip', 'fillEmpty']).default('fillEmpty'),
+  dryRun: z.boolean().optional(),
+  runId: id32.optional(),
   authorName: z.string().min(1).max(120),
-  mapping: z.array(importColumnTarget).max(30),
-  rows: z.array(z.array(z.string().max(500)).max(30)).max(500),
-  method: z.enum(['paste', 'file']).default('paste'),
+  method: z.enum(['paste', 'file']).default('file'),
+  rejectedBeforeSend: z.number().int().min(0).max(1_000_000).optional(),
+  final: z.boolean().optional(),
 });
 
 export const exportClientsBody = z.object({
@@ -295,6 +303,13 @@ export const importRunOut = z.object({
   createdCount: z.number(),
   updatedCount: z.number(),
   rejectedCount: z.number(),
+  skippedCount: z.number().optional(),
 });
-export const importRowResultOut = z.object({ rowIndex: z.number(), raw: z.array(z.string()), ok: z.boolean(), error: z.string().optional(), clientId: z.string().optional(), created: z.boolean().optional() });
+export const importRowResultOut = z.object({
+  rowIndex: z.number(),
+  status: z.enum(['created', 'updated', 'skipped', 'error']),
+  code: z.enum(['exists', 'nothingToFill', 'duplicateInFile', 'phoneFormat', 'noPhone', 'invalid']).optional(),
+  clientId: z.string().optional(),
+});
+export const importBatchOut = z.object({ runId: z.string().optional(), results: z.array(importRowResultOut) });
 export const exportLogEntryOut = z.object({ id: z.string(), at: z.string(), authorName: z.string(), count: z.number(), method: z.enum(['download', 'email']) });

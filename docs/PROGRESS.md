@@ -7938,3 +7938,30 @@ integrations 57, notify 7) → после **0**. Остаток скрипта �
   `uploads/documents.test.ts` (18: сигнатуры, хранение как есть, права и чужой клиент, заголовки скачивания, старые
   data: URL, перенос client_files, поиск ссылок, уборка — пробный режим, apply, сбой). Всего `npm test` — 201.
 
+
+### Импорт клиентов за минуту: пачки до 1000 строк, «дополнить пустые поля», пробный прогон (04.10.2026)
+
+- **`POST /v1/biz/:businessId/clients/import`** — новое тело (старое `{ mapping, rows: string[][] }` убрано вместе с
+  экраном, который его слал): `{ rows: ImportRow[] (1…1000), onExisting: 'skip' | 'fillEmpty', dryRun?, runId?,
+  authorName, method, rejectedBeforeSend?, final? }`. Экран сам разбирает .xlsx/.csv и шлёт нормализованные строки
+  (`name, lastName, phone, additionalPhone, email, note, birthday, gender, tags, discountPercent, sold, paid,
+  cardNumber`); сервер проверяет заново (`clients-import.rules.ts`, порт `src/domain/clients/importRules.ts` фронта):
+  телефон → `+374XXXXXXXX` из любого вида («093 000 000», «37493000000», «3,7493E+10»), иностранный — E.164 (с «+»/«00»
+  или 11–15 цифр без плюса, как выгружает Altegio); плохие почта/дата/второй номер выбрасываются, строка остаётся; без
+  имени — имя = номер. Ответ: `{ runId?, results: [{ rowIndex, status: created|updated|skipped|error, code?, clientId? }] }`.
+- Ключ — номер в бизнесе (удалённые и чужие не в счёт): повтор номера в пачке — `skipped/duplicateInFile`; номер в базе —
+  `skip` → `skipped/exists`, `fillEmpty` → только пустые поля (`fillEmptyPatch`: имя не трогаем, «Продано/Оплачено» —
+  только если там 0), нечего дописать — `skipped/nothingToFill`. Повтор того же файла ничего не удваивает (у Altegio
+  суммы складывались, F-04-129 — заменено решением 04.10). Пачка — одна транзакция (`createMany` новых + точечные
+  `update`, таймаут 60 с); `dryRun` — те же решения без записи и без журнала. Прогон из нескольких пачек — одна строка
+  `client_import_runs` (первая пачка создаёт и возвращает `runId`, следующие прибавляют); `skippedCount` в
+  `GET …/clients/import-runs` вычисляется (total − created − updated − rejected), колонки нет — миграции не нужно.
+  Визиты/первый/последний визит из прошлой системы своего поля не имеют — экран кладёт их строкой в `note`.
+- Право — `clients.edit` (было `settings.manage`), лимит — 120 вызовов за 10 минут на сессию (корзина `clients-import`).
+- Чек-лист запуска `GET …/onboarding/checklist`: новый шаг `clients` («Загрузите клиентов», готово — есть хоть один
+  клиент), ведёт на `/biz/clients/import`.
+- Проверено: `tsc` 0; `npm test` 213 (+12 `clients/clients-import.test.ts`: телефоны, очистка строки, повторы, fillEmpty
+  без удвоения, skip, dryRun, чужие/удалённые, журнал из нескольких пачек, лимит 1000 в схеме и сервисе, право и лимит
+  частоты маршрута). На временной базе `booktime_check_import` (migrate deploy + seed, удалена): пачка 1000 строк —
+  dryRun 17 мс, запись 412 мс, повтор — 1000 × skipped, существующая карточка — имя сохранено, пустая почта дописана.
+  `openapi/openapi.json` не перегенерирован (`npm run openapi`).

@@ -37,11 +37,11 @@ import {
   exportLogEntryOut,
   fileOut,
   fineRightsBody,
-  importRowResultOut,
+  importBatchBody,
+  importBatchOut,
   importRunOut,
   lostAfterDaysBody,
   mergeBody,
-  runImportBody,
   searchBody,
   setColumnsBody,
   showFullNameBody,
@@ -553,14 +553,17 @@ export class ClientsController {
   // ─────────── импорт (F-04-126…129) ───────────
 
   @Post('clients/import')
-  @Biz('settings.manage')
-  @ZodBody(runImportBody)
-  @ApiOperation({ summary: 'Импорт из Excel/CSV — до 500 строк, разбор текста делает экран (parseImportText)' })
-  runImport(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(runImportBody)) body: z.infer<typeof runImportBody>) {
-    return this.importExport.runImport(ctx, businessId, body.authorName, body.mapping, body.rows, body.method).then((r) => ({
-      results: r.results as unknown as z.infer<typeof importRowResultOut>[],
-      summary: r.summary,
-    }));
+  @Biz('clients.edit')
+  // Файл в 20 000 строк — 20 пачек проверки + 20 пачек записи; с запасом на повторы после обрыва связи
+  @RateLimit({ bucket: 'clients-import', limit: 120, windowSec: 600, by: 'session' })
+  @ZodBody(importBatchBody)
+  @ZodOk(importBatchOut)
+  @ApiOperation({
+    summary:
+      'Импорт клиентов пачкой до 1000 строк (экран разбирает файл сам): номер уже в базе — onExisting skip | fillEmpty (только пустые поля), dryRun — проверка без записи; пачка — одна транзакция',
+  })
+  importClients(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(importBatchBody)) body: z.infer<typeof importBatchBody>) {
+    return this.importExport.importBatch(ctx, businessId, body);
   }
 
   // ─────────── выгрузка (F-04-130, P4) ───────────
