@@ -11,6 +11,7 @@ import { normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { CONSENT_VERSION } from '../auth/auth.service.js';
 import { OtpService } from '../auth/otp.service.js';
+import { buildMyDataExport, DATA_EXPORT_LIMIT, DATA_EXPORT_LOGIN_EVENTS, dataExportFilename } from './account-data-export.js';
 import type { patchAccountBody, pushTokenBody } from './account.schemas.js';
 
 /** Удаление аккаунта наступает через 25 дней после запроса, до того — можно отменить (F-10-129, F-15-158) */
@@ -138,6 +139,70 @@ export class AccountService {
   async listDataExports(ctx: RequestContext) {
     const rows = await this.prisma.accountDataExport.findMany({ where: { userId: ctx.session!.userId }, orderBy: { at: 'asc' }, take: 50 });
     return rows.map((r) => ({ id: r.id, requestedAt: r.at.toISOString(), ready: true }));
+  }
+
+  /**
+   * Файл «Мои данные» (04.10.2026): собирается сразу, без очереди — только данные самого человека
+   * (account-data-export.ts). Каждая выгрузка записывается в историю и журнал, как POST account/data-export.
+   */
+  async exportMyData(ctx: RequestContext) {
+    const userId = ctx.session!.userId;
+    const take = DATA_EXPORT_LIMIT;
+    const [user, appProfile, identities, bookings, favorites, starRatings, staffReviews, locationReviews, diary, staff, sessions, loginEvents] =
+      await Promise.all([
+        this.prisma.user.findUniqueOrThrow({ where: { id: userId } }),
+        this.prisma.appProfile.findUnique({ where: { userId } }),
+        this.prisma.userIdentity.findMany({ where: { userId }, select: { provider: true, email: true, createdAt: true, lastUsedAt: true } }),
+        this.prisma.booking.findMany({ where: { appUserId: userId }, orderBy: { startAt: 'desc' }, take }),
+        this.prisma.favorite.findMany({ where: { appUserId: userId }, orderBy: { createdAt: 'desc' }, take }),
+        this.prisma.starRating.findMany({ where: { appUserId: userId }, take }),
+        this.prisma.staffReview.findMany({ where: { appUserId: userId }, take }),
+        this.prisma.locationReview.findMany({ where: { appUserId: userId }, take }),
+        this.prisma.diaryEntry.findMany({ where: { appUserId: userId }, orderBy: { date: 'desc' }, take }),
+        this.prisma.staff.findMany({ where: { userId }, take: 200 }),
+        this.prisma.session.findMany({ where: { userId, revokedAt: null, expiresAt: { gt: new Date() } }, orderBy: { lastSeenAt: 'desc' }, take: 100 }),
+        this.prisma.loginEvent.findMany({ where: { userId }, orderBy: { at: 'desc' }, take: DATA_EXPORT_LOGIN_EVENTS }),
+      ]);
+    const businessIds = new Set<string>([...bookings.map((b) => b.businessId), ...staffReviews.map((r) => r.businessId), ...locationReviews.map((r) => r.businessId), ...staff.map((s) => s.businessId)]);
+    const staffIds = new Set<string>([...bookings.map((b) => b.staffId), ...starRatings.map((r) => r.staffId), ...staffReviews.map((r) => r.staffId)]);
+    const serviceIds = new Set<string>();
+    for (const b of bookings) for (const s of (Array.isArray(b.services) ? (b.services as { serviceId?: string }[]) : [])) if (s.serviceId) serviceIds.add(s.serviceId);
+    const [businesses, masters, services] = await Promise.all([
+      businessIds.size ? this.prisma.business.findMany({ where: { id: { in: [...businessIds] } }, select: { id: true, name: true } }) : [],
+      staffIds.size ? this.prisma.staff.findMany({ where: { id: { in: [...staffIds] } }, select: { id: true, name: true } }) : [],
+      serviceIds.size ? this.prisma.service.findMany({ where: { id: { in: [...serviceIds] } }, select: { id: true, name: true } }) : [],
+    ]);
+
+    const id = newId('accountDataExport');
+    const exports = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.accountDataExport.create({ data: { id, userId } });
+      await this.audit.record(tx, ctx, { action: 'export', entityType: 'user', entityId: userId, after: { at: created.at.toISOString(), download: true } });
+      return tx.accountDataExport.findMany({ where: { userId }, orderBy: { at: 'desc' }, take: 50, select: { at: true } });
+    });
+
+    const now = new Date();
+    const data = buildMyDataExport(
+      {
+        user,
+        appProfile,
+        identities,
+        bookings,
+        businessNames: new Map(businesses.map((b) => [b.id, b.name])),
+        staffNames: new Map(masters.map((m) => [m.id, m.name])),
+        serviceNames: new Map(services.map((s) => [s.id, s.name])),
+        favorites,
+        starRatings,
+        staffReviews,
+        locationReviews,
+        diary,
+        staff,
+        sessions,
+        loginEvents,
+        dataExports: exports,
+      },
+      now,
+    );
+    return { filename: dataExportFilename(now), data };
   }
 
   /**

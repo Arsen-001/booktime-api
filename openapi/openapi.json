@@ -2522,6 +2522,26 @@
         ]
       }
     },
+    "/v1/me/data-export": {
+      "get": {
+        "operationId": "AccountController_downloadMyData",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Скачать мои данные одним JSON-файлом (F-15-154, 04.10.2026): профиль, входы Google/Apple без токенов, согласие, свои записи, избранное, отзывы, дневник, свои карточки сотрудника, входы. Content-Disposition: attachment",
+        "tags": [
+          "account"
+        ]
+      }
+    },
     "/v1/me/account/data-exports": {
       "get": {
         "operationId": "AccountController_listDataExports",

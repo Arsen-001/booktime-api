@@ -120,6 +120,17 @@ const schema = z.object({
   UPLOADS_CLEANUP: z.string().optional().transform((v) => v === '1'),
   /** Постоянный код входа только для разработки (NODE_ENV=development); в остальных средах игнорируется */
   DEV_LOGIN_CODE: z.string().regex(/^\d{4}$/).optional(),
+  /**
+   * Вход проверяющих App Store / Google Play (04.10.2026, docs/store/review-notes.md фронта). Оба заданы — номера из
+   * REVIEW_LOGIN_PHONES (E.164 через запятую, '+37400000101,+37400000102') входят постоянным кодом REVIEW_LOGIN_CODE
+   * (4 цифры), сообщение никуда не отправляется; лимиты и попытки — как у всех. Пусто хотя бы одно — выключено.
+   */
+  REVIEW_LOGIN_PHONES: z
+    .string()
+    .optional()
+    .transform((s) => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean))
+    .pipe(z.array(z.string().regex(/^\+\d{8,15}$/, 'REVIEW_LOGIN_PHONES: номера в формате +374XXXXXXXX через запятую'))),
+  REVIEW_LOGIN_CODE: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().regex(/^\d{4}$/, 'REVIEW_LOGIN_CODE: ровно 4 цифры').optional()),
   /** Домен cookie сессии (прод: .booktime.am — чтобы сайт и API на поддоменах видели одну сессию); пусто — хост API */
   COOKIE_DOMAIN: z.string().optional(),
   /** Cookie только по HTTPS (прод — да) */

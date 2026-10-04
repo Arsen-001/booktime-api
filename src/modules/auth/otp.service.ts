@@ -7,6 +7,7 @@ import { ApiError } from '../../common/errors/api-error.js';
 import { t, type Locale } from '../../common/i18n/i18n.js';
 import { newId } from '../../common/ids/ids.js';
 import { logger } from '../../common/logging/logger.js';
+import { maskPhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
 
 /**
@@ -67,6 +68,19 @@ function makeCode(): string {
   return String(randomInt(0, 10 ** OTP.length)).padStart(OTP.length, '0');
 }
 
+/**
+ * Вход проверяющих магазинов (env REVIEW_LOGIN_PHONES + REVIEW_LOGIN_CODE): номер в списке — постоянный код, сообщение
+ * не отправляется. Выключено, если пусто хотя бы одно. Сам код в лог не пишется.
+ */
+export function reviewLoginCode(phone: string): string | undefined {
+  const code = env.REVIEW_LOGIN_CODE;
+  if (!code || env.REVIEW_LOGIN_PHONES.length === 0) return undefined;
+  return env.REVIEW_LOGIN_PHONES.includes(phone) ? code : undefined;
+}
+
+/** otp_requests.channel и журнал входов для входа проверяющих — чтобы такие входы было видно */
+export const REVIEW_CHANNEL = 'review';
+
 @Injectable()
 export class OtpService {
   constructor(
@@ -99,6 +113,9 @@ export class OtpService {
     ]);
     if (perDay >= OTP.perPhoneDay) throw new ApiError('rate_limited', 'Too many codes for this number today', undefined, 3600);
     if (perHour >= OTP.perPhoneHour || perIp >= OTP.perIpHour) throw new ApiError('rate_limited', 'Too many codes, try later', undefined, 3600);
+
+    const reviewCode = reviewLoginCode(input.phone);
+    if (reviewCode) return this.sendReview(input, reviewCode, now);
 
     const smsOk = await this.smsAllowedNow(input.phone, input.ip, hourAgo, dayAgo);
     const order = deliveryOrder(this.senders, input.phone, input.channel).filter((c) => c !== 'sms' || smsOk);
@@ -148,6 +165,33 @@ export class OtpService {
     }
     const channels = enabledChannels(this.senders, input.phone).filter((c) => c !== 'sms' || smsOk);
     return { challengeId: id, resendAfter: OTP.resendSec, expiresIn: OTP.ttlSec, channel, channels };
+  }
+
+  /** Номер проверяющего: та же запись otp_requests (лимиты, попытки, срок), но код постоянный и никуда не уходит */
+  private async sendReview(input: OtpSendInput, code: string, now: number): Promise<OtpSent> {
+    const id = newId('otp');
+    await this.prisma.$transaction([
+      this.prisma.otpRequest.updateMany({
+        where: { phone: input.phone, purpose: input.purpose, status: 'sent' },
+        data: { status: 'superseded' },
+      }),
+      this.prisma.otpRequest.create({
+        data: {
+          id,
+          phone: input.phone,
+          purpose: input.purpose,
+          channel: REVIEW_CHANNEL,
+          codeHash: codeHash(id, code),
+          subjectId: input.subjectId ?? null,
+          userId: input.userId ?? null,
+          ip: input.ip,
+          expiresAt: new Date(now + OTP.ttlSec * 1000),
+        },
+      }),
+    ]);
+    logger.info({ phone: maskPhone(input.phone), purpose: input.purpose }, 'review login code used (REVIEW_LOGIN_PHONES) — no message sent');
+    const channels = enabledChannels(this.senders, input.phone).filter((c) => c !== 'sms');
+    return { challengeId: id, resendAfter: OTP.resendSec, expiresIn: OTP.ttlSec, channel: 'telegram', channels: channels.length ? channels : ['telegram'] };
   }
 
   /** Можно ли сейчас слать SMS: канал включён и не исчерпаны лимиты на номер, адрес и весь сервис (защита от накрутки) */

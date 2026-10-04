@@ -27,7 +27,7 @@ function memoryPrisma() {
       rows.filter((r) => match(r, where)).sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())[0] ?? null,
     count: async ({ where }: { where: Record<string, unknown> }) => rows.filter((r) => match(r, where)).length,
     create: async ({ data }: { data: Omit<Row, 'sentAt' | 'status'> }) => {
-      const row = { status: 'sent', sentAt: new Date(), ...data } as Row;
+      const row = { status: 'sent', attempts: 0, sentAt: new Date(), ...data } as unknown as Row;
       rows.push(row);
       return row;
     },
@@ -165,3 +165,78 @@ test('SMS выключен — запрос channel=sms уходит в Telegram
   assert.equal(sent.channel, 'telegram');
   assert.equal(senders.sms.calls.length, 0);
 });
+
+// ─────────── вход проверяющих магазинов (REVIEW_LOGIN_PHONES + REVIEW_LOGIN_CODE) ───────────
+
+const { env } = await import('../../common/config/env.js');
+const REVIEW_PHONE = '+37400000101';
+
+function withReview(phones: string[], code: string | undefined, fn: () => Promise<void>) {
+  return async () => {
+    const before = { phones: env.REVIEW_LOGIN_PHONES, code: env.REVIEW_LOGIN_CODE };
+    env.REVIEW_LOGIN_PHONES = phones;
+    env.REVIEW_LOGIN_CODE = code;
+    try {
+      await fn();
+    } finally {
+      env.REVIEW_LOGIN_PHONES = before.phones;
+      env.REVIEW_LOGIN_CODE = before.code;
+    }
+  };
+}
+
+test('вход проверяющих: env пустой — обычный случайный код, сообщение уходит', withReview([], undefined, async () => {
+  const { otp, senders, prisma } = setup({});
+  const sent = await otp.send({ ...base, phone: REVIEW_PHONE, channel: 'telegram' });
+  assert.equal(sent.channel, 'telegram');
+  assert.equal(senders.telegram.calls.length, 1);
+  assert.equal(prisma.rows[0]!.channel, 'telegram');
+}));
+
+test('вход проверяющих: задан только номер без кода — выключено', withReview([REVIEW_PHONE], undefined, async () => {
+  const { otp, senders } = setup({});
+  await otp.send({ ...base, phone: REVIEW_PHONE, channel: 'telegram' });
+  assert.equal(senders.telegram.calls.length, 1);
+}));
+
+test('вход проверяющих: номер из списка — постоянный код, ничего не отправлено, вход проходит', withReview([REVIEW_PHONE], '4821', async () => {
+  const { otp, senders, prisma } = setup({});
+  const sent = await otp.send({ ...base, phone: REVIEW_PHONE, channel: 'telegram' });
+  assert.equal(sent.channel, 'telegram');
+  assert.deepEqual(sent.channels, ['telegram']);
+  assert.equal(senders.telegram.calls.length, 0);
+  assert.equal(prisma.rows.length, 1);
+  assert.equal(prisma.rows[0]!.channel, 'review');
+  const ok = await otp.verify({ phone: REVIEW_PHONE, purpose: 'login' }, '4821');
+  assert.equal(ok.id, sent.challengeId);
+}));
+
+test('вход проверяющих: неверный код отклоняется, попытки считаются', withReview([REVIEW_PHONE], '4821', async () => {
+  const { otp } = setup({});
+  await otp.send({ ...base, phone: REVIEW_PHONE, channel: 'telegram' });
+  await apiError(otp.verify({ phone: REVIEW_PHONE, purpose: 'login' }, '0000'), 'wrong_code');
+  for (let i = 2; i < OTP.maxAttempts; i++) await apiError(otp.verify({ phone: REVIEW_PHONE, purpose: 'login' }, '0000'), 'wrong_code');
+  await apiError(otp.verify({ phone: REVIEW_PHONE, purpose: 'login' }, '0000'), 'code_attempts');
+  await apiError(otp.verify({ phone: REVIEW_PHONE, purpose: 'login' }, '4821'), 'code_attempts');
+}));
+
+test('вход проверяющих: чужой номер с этим кодом — обычный код и wrong_code', withReview([REVIEW_PHONE], '4821', async () => {
+  const { otp, senders } = setup({});
+  await otp.send({ ...base, channel: 'telegram' });
+  assert.equal(senders.telegram.calls.length, 1);
+  const real = senders.telegram.calls[0]!;
+  if (real !== '4821') await apiError(otp.verify({ phone: base.phone, purpose: 'login' }, '4821'), 'wrong_code');
+}));
+
+test('вход проверяющих: лимиты те же — 60 с между кодами и часовой лимит', withReview([REVIEW_PHONE], '4821', async () => {
+  const { otp, prisma } = setup({});
+  const p = { ...base, phone: REVIEW_PHONE, channel: 'telegram' as const };
+  await otp.send(p);
+  await apiError(otp.send(p), 'code_resend_wait');
+  for (let i = 1; i < OTP.perPhoneHour; i++) {
+    age(prisma.rows, OTP.resendSec);
+    await otp.send(p);
+  }
+  age(prisma.rows, OTP.resendSec);
+  await apiError(otp.send(p), 'rate_limited');
+}));

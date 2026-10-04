@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { z } from 'zod';
 import type { RequestContext, RequestWithContext } from '../../common/http/context.js';
 import { Authed, Ctx } from '../../common/http/guards.js';
@@ -69,6 +70,24 @@ export class AccountController {
   @ZodOk(dataExportRow)
   requestDataExport(@Ctx() ctx: RequestContext) {
     return this.account.requestDataExport(ctx);
+  }
+
+  @Get('data-export')
+  @RateLimit({ bucket: 'data-export', limit: 10, windowSec: 3600, by: 'session' })
+  @ApiOperation({
+    summary:
+      'Скачать мои данные одним JSON-файлом (F-15-154, 04.10.2026): профиль, входы Google/Apple без токенов, согласие, ' +
+      'свои записи, избранное, отзывы, дневник, свои карточки сотрудника, входы. Content-Disposition: attachment',
+  })
+  async downloadMyData(@Ctx() ctx: RequestContext, @Res() res: Response): Promise<void> {
+    const { filename, data } = await this.account.exportMyData(ctx);
+    const body = Buffer.from(JSON.stringify(data, null, 2), 'utf8');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Length', String(body.length));
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(200).end(body);
   }
 
   @Get('account/data-exports')
