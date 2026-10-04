@@ -7,7 +7,6 @@ import {
   type CodeChannel,
   type CodeSender,
 } from './code-sender/code-sender.js';
-import { createSmsProvider, SmsCodeSender } from './code-sender/sms.js';
 import { FakeMailSender, type MailSender } from './mail/mail.js';
 import { FakePaymentProvider, type PaymentProvider } from './payments/payments.js';
 import { createPushSenders, type PushSenders } from './push/push.js';
@@ -46,8 +45,9 @@ export const adapterProviders = [
               apiVersion: env.WHATSAPP_API_VERSION,
             })
           : new FakeCodeSender('whatsapp'),
-      // SMS — провайдер по SMS_PROVIDER (Twilio); без него выключен
-      sms: ((p) => (p ? new SmsCodeSender(p, env.SMS_ALLOWED_PREFIXES) : new FakeCodeSender('sms')))(createSmsProvider(env)),
+      // SMS для кода входа выключен всегда (владелец 04.10.2026: «нужно и Telegram, и WhatsApp»). Отправка SMS
+      // (SmsCodeSender, SMS_PROVIDER) осталась в code-sender/sms.ts — вернуть: new SmsCodeSender(createSmsProvider(env), env.SMS_ALLOWED_PREFIXES)
+      sms: new FakeCodeSender('sms'),
     }),
   },
   { provide: PUSH_SENDERS, useFactory: (): PushSenders => createPushSenders() },

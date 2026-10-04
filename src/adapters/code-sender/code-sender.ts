@@ -5,7 +5,7 @@ import { logger } from '../../common/logging/logger.js';
  * Отправка кода входа (PLAN.md Р14, docs/backend/05 §6). Telegram Gateway — настоящий (если задан
  * TELEGRAM_GATEWAY_TOKEN, без него — заглушка в лог, канал остаётся включённым для разработки).
  * WhatsApp Business Cloud API — настоящий, если заданы WHATSAPP_TOKEN и WHATSAPP_PHONE_NUMBER_ID; без них канал выключен.
- * SMS — заглушка и выключен, пока не выбран провайдер (E7).
+ * SMS — для кода входа выключен (владелец 04.10.2026: только Telegram и WhatsApp), см. adapters.ts.
  */
 export type CodeChannel = 'telegram' | 'whatsapp' | 'sms';
 
