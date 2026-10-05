@@ -41,15 +41,28 @@ const staff = (businessId: string, serviceIds: string[]): Row => ({
   accepts: 'all', calendarVisibility: 'all', status: 'active', onlineBookingEnabled: true, deletedAt: null, version: 1, locations: [],
 });
 
+/** ⭐ «Приём заказа» — скрытая услуга записи на сдачу (05.10.2026) */
+const intake = (id: string, businessId: string): Row => ({
+  id, businessId, name: { ru: 'Приём заказа' }, durationMin: 15, priceMin: 0n, priceMax: null, order: 0, kind: 'intake', sphereId: 'detailing', active: true, onlineBookable: true, staffIds: [`${businessId}-owner`],
+});
+
 function makeService() {
   const tables: Record<string, Row[]> = {
-    business: [business('fixpoint', ['repair']), business('barber', ['barber']), business('atelier-off', ['tailor'], { ordersEnabled: false })],
+    business: [business('fixpoint', ['repair']), business('barber', ['barber']), business('atelier-off', ['tailor'], { ordersEnabled: false }), business('detail', ['detailing'])],
     location: [],
-    staff: [staff('fixpoint', []), staff('barber', ['svc1']), staff('atelier-off', [])],
-    service: [{ id: 'svc1', businessId: 'barber', name: { ru: 'Стрижка' }, durationMin: 30, priceMin: 5000n, priceMax: null, order: 0, kind: 'individual', sphereId: 'barber', active: true, onlineBookable: true, staffIds: ['barber-owner'] }],
+    staff: [staff('fixpoint', []), staff('barber', ['svc1']), staff('atelier-off', ['svc_off_intake']), staff('detail', ['svc_intake'])],
+    service: [
+      { id: 'svc1', businessId: 'barber', name: { ru: 'Стрижка' }, durationMin: 30, priceMin: 5000n, priceMax: null, order: 0, kind: 'individual', sphereId: 'barber', active: true, onlineBookable: true, staffIds: ['barber-owner'] },
+      intake('svc_intake', 'detail'),
+      intake('svc_off_intake', 'atelier-off'),
+    ],
     serviceCategory: [],
     bookingLink: [],
-    workSchedule: [{ businessId: 'barber', staffId: 'barber-owner' }],
+    workSchedule: [
+      { businessId: 'barber', staffId: 'barber-owner' },
+      { businessId: 'detail', staffId: 'detail-owner' },
+      { businessId: 'atelier-off', staffId: 'atelier-off-owner' },
+    ],
     businessSetting: [],
     onlineRecord: [],
     booking: [],
@@ -76,4 +89,17 @@ test('обычный салон — ordersEnabled: false, запись как р
 test('ателье с выключенными «Заказами» — ordersEnabled: false', async () => {
   const d = await makeService().publicBusinessData('atelier-off');
   assert.equal(d.ordersEnabled, false);
+});
+
+test('⭐ запись на сдачу: «Приём заказа» приходит на страницу (kind intake), мастер приёма виден', async () => {
+  const d = await makeService().publicBusinessData('detail');
+  assert.equal(d.ordersEnabled, true);
+  assert.deepEqual(d.services.map((x) => [x.id, x.kind]), [['svc_intake', 'intake']]);
+  assert.equal(d.staff.length, 1);
+});
+
+test('⭐ запись на сдачу: «Заказы» выключены — «Приём заказа» не показывается, мастер без услуг не виден', async () => {
+  const d = await makeService().publicBusinessData('atelier-off');
+  assert.deepEqual(d.services, []);
+  assert.deepEqual(d.staff, []);
 });

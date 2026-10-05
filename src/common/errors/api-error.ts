@@ -116,6 +116,12 @@ export const ERROR_STATUS = {
   estimate_not_pending: HttpStatus.CONFLICT,
   estimate_changed: HttpStatus.CONFLICT,
   estimate_already_decided: HttpStatus.CONFLICT,
+  // ⭐ запись на сдачу (05.10.2026): включить некому принимать / запись не «Приём заказа» / запись отменена / заказ по
+  // этой записи уже принят
+  intake_no_staff: HttpStatus.UNPROCESSABLE_ENTITY,
+  not_intake_booking: HttpStatus.UNPROCESSABLE_ENTITY,
+  booking_cancelled: HttpStatus.CONFLICT,
+  intake_already_accepted: HttpStatus.CONFLICT,
   restore_expired: HttpStatus.GONE,
   restore_slot_taken: HttpStatus.CONFLICT,
   not_active: HttpStatus.CONFLICT,

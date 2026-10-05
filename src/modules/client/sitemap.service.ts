@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service.js';
-import { ORDER_SPHERES, ordersEnabledOf } from '../orders/order-rules.js';
+import { INTAKE_KIND, ORDER_SPHERES, ordersEnabledOf } from '../orders/order-rules.js';
 
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 
@@ -87,7 +87,7 @@ export class SitemapService {
         select: { id: true, businessId: true, sphereIds: true, serviceIds: true, updatedAt: true },
       }),
       this.prisma.location.findMany({ where: { businessId: { in: businessIds }, deletedAt: null }, select: { businessId: true, district: true } }),
-      this.prisma.service.findMany({ where: { businessId: { in: businessIds }, active: true, onlineBookable: true }, select: { id: true } }),
+      this.prisma.service.findMany({ where: { businessId: { in: businessIds }, active: true, onlineBookable: true, kind: { not: INTAKE_KIND } }, select: { id: true } }),
     ]);
     const scheduled = staffRows.length
       ? new Set((await this.prisma.workSchedule.findMany({ where: { staffId: { in: staffRows.map((s) => s.id) } }, select: { staffId: true } })).map((r) => r.staffId))

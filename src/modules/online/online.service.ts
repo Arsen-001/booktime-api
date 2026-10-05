@@ -15,7 +15,7 @@ import { AvailabilityService } from '../availability/availability.service.js';
 import type { FreeSlot } from '../availability/engine.js';
 import { businessView, locationView, staffView } from '../businesses/views.js';
 import { OtpService } from '../auth/otp.service.js';
-import { ordersEnabledOf } from '../orders/order-rules.js';
+import { INTAKE_KIND, ordersEnabledOf } from '../orders/order-rules.js';
 import { categoryView, serviceView } from '../services/services.views.js';
 import { BookingsService, clientActor, coreClient, staffActor } from '../journal/bookings.service.js';
 import { ModerationService, photoModerationRefId } from '../platform/moderation.service.js';
@@ -136,13 +136,16 @@ export class OnlineService {
 
   async publicBusinessData(slug: string, formId?: string) {
     const business = await this.businessBySlug(slug);
-    const [locations, staffRows, services, categories, links] = await Promise.all([
+    const [locations, staffRows, allServices, categories, links] = await Promise.all([
       this.prisma.location.findMany({ where: { businessId: business.id, deletedAt: null }, orderBy: { sortOrder: 'asc' } }),
       this.prisma.staff.findMany({ where: { businessId: business.id, deletedAt: null }, include: { locations: { select: { locationId: true } } } }),
       this.prisma.service.findMany({ where: { businessId: business.id, active: true, onlineBookable: true } }),
       this.prisma.serviceCategory.findMany({ where: { businessId: business.id } }),
       this.prisma.bookingLink.findMany({ where: { businessId: business.id } }),
     ]);
+    // ⭐ «Приём заказа» (запись на сдачу, 05.10.2026) — только пока у бизнеса включены «Заказы»
+    const ordersOn = ordersEnabledOf(business.ordersEnabled, business.sphereIds);
+    const services = ordersOn ? allServices : allServices.filter((s) => s.kind !== INTAKE_KIND);
     const location = locations[0];
     // F-00-077: мастер принимает только на дому — точный адрес виден клиенту лишь после подтверждённой записи.
     const ownerStaff = staffRows.find((s) => s.id === business.ownerStaffId);
@@ -210,7 +213,7 @@ export class OnlineService {
       addressHidden,
       // Мастерская «заказов» (ателье, ремонт, химчистка, детейлинг): без онлайн-услуг страница показывает не пустую
       // запись, а «принесите в часы работы, о готовности сообщат» и контакты (05.10.2026)
-      ordersEnabled: ordersEnabledOf(business.ordersEnabled, business.sphereIds),
+      ordersEnabled: ordersOn,
     };
   }
 

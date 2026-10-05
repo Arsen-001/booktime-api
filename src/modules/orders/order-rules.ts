@@ -102,6 +102,8 @@ export interface OrderRow {
   estimateStatus?: string | null;
   estimateSentAt?: Date | null;
   estimateRemindedAt?: Date | null;
+  /** ⭐ Запись на сдачу (05.10.2026): заказ принят по этой записи журнала */
+  bookingId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -133,6 +135,7 @@ export function orderView(r: OrderRow) {
     pickupReminderCount: r.pickupReminderCount ?? 0,
     pickupRemindedAt: r.pickupRemindedAt?.toISOString() ?? null,
     estimate: estimateView(r),
+    bookingId: r.bookingId ?? null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
@@ -347,3 +350,42 @@ export function estimateReminderDue(r: Pick<OrderRow, 'status' | 'estimateStatus
   if (r.estimateStatus !== 'pending' || !canSendEstimate(r.status) || r.estimateRemindedAt || !r.estimateSentAt) return false;
   return now.getTime() - r.estimateSentAt.getTime() >= ESTIMATE_REMINDER_AFTER_MS;
 }
+
+// ─────────── ⭐ запись на сдачу по времени (05.10.2026) ───────────
+// Мастерская включает «Запись на сдачу»: клиент на /b/<slug> выбирает короткое окно, когда принесёт вещь, — это обычная
+// запись журнала на скрытую услугу «Приём заказа» (Service.kind = 'intake': в каталоге, поиске и выборе услуг её нет),
+// описание вещи — комментарий записи. При визите мастер одним нажатием принимает заказ по записи (Order.bookingId).
+
+export const INTAKE_KIND = 'intake';
+/** Длина окна приёма, мин — выбор в настройках заказов */
+export const INTAKE_SLOT_OPTIONS = [10, 15, 20, 30, 45, 60] as const;
+export const DEFAULT_INTAKE_SLOT_MIN = 15;
+
+/** Название скрытой услуги — его видят клиент (в записи и напоминаниях) и журнал */
+export const INTAKE_SERVICE_NAME = { ru: 'Приём заказа', hy: 'Պատվերի ընդունում', en: 'Order drop-off' } as const;
+
+/** Длина окна: из списка, иначе ближайшее разрешённое (старое значение или ручная правка услуги) */
+export function intakeSlotOf(min: number | null | undefined): number {
+  if (!min || !Number.isFinite(min)) return DEFAULT_INTAKE_SLOT_MIN;
+  return [...INTAKE_SLOT_OPTIONS].sort((a, b) => Math.abs(a - min) - Math.abs(b - min) || a - b)[0]!;
+}
+
+/** Настройки «Записи на сдачу» из строки услуги (нет услуги — выключено, окно по умолчанию) */
+export function intakeSettingsView(svc: { id: string; active: boolean; onlineBookable: boolean; durationMin: number; staffIds: unknown } | null) {
+  return {
+    enabled: Boolean(svc && svc.active && svc.onlineBookable),
+    slotMin: svc ? intakeSlotOf(svc.durationMin) : DEFAULT_INTAKE_SLOT_MIN,
+    staffIds: svc && Array.isArray(svc.staffIds) ? (svc.staffIds as string[]) : [],
+    serviceId: svc?.id ?? null,
+  };
+}
+export type IntakeSettingsView = ReturnType<typeof intakeSettingsView>;
+
+/** Запись — «Приём заказа»: среди строк записи есть услуга мастерской intake */
+export function isIntakeBooking(services: unknown, intakeServiceId: string | null | undefined): boolean {
+  if (!intakeServiceId || !Array.isArray(services)) return false;
+  return (services as { serviceId?: string }[]).some((l) => l?.serviceId === intakeServiceId);
+}
+
+/** Из записи на сдачу — в заказ можно, пока запись не отменена и не удалена (опоздал после «не пришёл» — тоже можно) */
+export const INTAKE_CLOSED_STATUSES: readonly string[] = ['cancelled_by_client', 'cancelled_by_master'];

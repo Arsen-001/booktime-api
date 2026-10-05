@@ -10,6 +10,7 @@ import { newId } from '../../common/ids/ids.js';
 import { logger } from '../../common/logging/logger.js';
 import { maskPhone, normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { assertIntakeAcceptable } from './order-intake.service.js';
 import { notifyOrderEstimate, notifyOrderReady } from './order-notify.js';
 import {
   ACTIVE_ORDER_STATUSES,
@@ -163,36 +164,48 @@ export class OrdersService {
     const phone = this.phoneOf(body.clientPhone);
     const prepaid = body.prepaid ?? 0;
     this.checkMoney(body.price, prepaid);
-    await this.checkStaff(businessId, body.staffId);
-    await this.checkLocation(businessId, body.locationId);
+    // ⭐ По записи на сдачу (05.10.2026): мастер и филиал — из записи, если не выбраны в форме
+    const fromBooking = body.bookingId ? await assertIntakeAcceptable(this.prisma, businessId, body.bookingId) : null;
+    const staffId = body.staffId === undefined ? (fromBooking?.staffId ?? null) : body.staffId;
+    const locationId = body.locationId ?? fromBooking?.locationId ?? null;
+    await this.checkStaff(businessId, staffId);
+    await this.checkLocation(businessId, locationId);
     const clientId = await this.resolveClientId(businessId, body.clientId, phone);
     const by = ctx.member?.staffId ?? null;
     const now = new Date();
     const history: OrderHistoryEntry[] = [{ at: now.toISOString(), status: 'received', by }];
-    const row = await this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma
+      .$transaction(async (tx) => {
       const number = await nextOrderNumber(tx, businessId);
       const created = await insertOrderWithCode(tx, {
         id: newId('order'),
         businessId,
-        locationId: body.locationId ?? null,
+        locationId,
         number,
         clientId,
         clientName: body.clientName.trim(),
         clientPhone: phone,
         items: J(body.items),
         photos: J(body.photos ?? []),
-        staffId: body.staffId ?? null,
+        staffId,
         status: 'received',
         dueDate: body.dueDate ?? null,
         price: body.price,
         prepaid,
         comment: body.comment?.trim() || null,
         history: J(history),
+        ...(body.bookingId ? { bookingId: body.bookingId } : {}),
         createdAt: now,
       });
       await this.audit.record(tx, ctx, { action: 'created', entityType: 'order', entityId: created.id, businessId, after: auditOf(created) });
       return created;
-    });
+    })
+      .catch((err: unknown) => {
+        // Два нажатия «Принять заказ» по одной записи разом: второе упирается в уникальный orders.booking_id
+        const target = String((err as { meta?: { target?: unknown } }).meta?.target ?? '');
+        if (body.bookingId && errCode(err) === 'P2002' && target.includes('booking')) throw new ApiError('intake_already_accepted', 'Order for this booking already exists');
+        throw err;
+      });
     return this.out(ctx, row);
   }
 

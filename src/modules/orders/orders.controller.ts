@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
@@ -6,8 +6,13 @@ import { Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { RateLimit } from '../../common/rate-limit/rate-limit.js';
+import { OrderIntakeService } from './order-intake.service.js';
 import {
   createOrderBody,
+  intakeBookingOut,
+  intakeBookingsQuery,
+  intakeSettingsBody,
+  intakeSettingsOut,
   listOrdersQuery,
   orderListOut,
   orderOut,
@@ -29,7 +34,10 @@ import { OrdersService } from './orders.service.js';
 @ApiTags('orders')
 @Controller(['v1/businesses/:businessId/orders', 'v1/biz/:businessId/orders'])
 export class OrdersController {
-  constructor(private readonly svc: OrdersService) {}
+  constructor(
+    private readonly svc: OrdersService,
+    private readonly intake: OrderIntakeService,
+  ) {}
 
   @Get()
   @Biz('journal.view')
@@ -43,9 +51,39 @@ export class OrdersController {
   @Biz('journal.edit')
   @ZodBody(createOrderBody)
   @ZodOk(orderOut)
-  @ApiOperation({ summary: 'Принять заказ (статус received, номер с 1001)' })
-  create(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(createOrderBody)) body: z.infer<typeof createOrderBody>) {
-    return this.svc.create(ctx, businessId, body);
+  @ApiOperation({ summary: 'Принять заказ (статус received, номер с 1001); bookingId — по записи на сдачу (один заказ на запись, 409 intake_already_accepted)' })
+  async create(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(createOrderBody)) body: z.infer<typeof createOrderBody>) {
+    const order = await this.svc.create(ctx, businessId, body);
+    // ⭐ По записи на сдачу: клиент пришёл — запись «Пришёл» (best-effort, заказ уже принят)
+    if (body.bookingId) await this.intake.markArrived(ctx, businessId, body.bookingId);
+    return order;
+  }
+
+  // ─────────── ⭐ запись на сдачу по времени (05.10.2026) — до ':orderId', иначе 'intake' примется за id заказа ───────────
+
+  @Get('intake')
+  @Biz('journal.view')
+  @ZodOk(intakeSettingsOut)
+  @ApiOperation({ summary: '«Запись на сдачу»: вкл/выкл, длина окна приёма, кто принимает (скрытая услуга kind=intake)' })
+  intakeSettings(@Param('businessId') businessId: string) {
+    return this.intake.settings(businessId);
+  }
+
+  @Put('intake')
+  @Biz('settings.manage')
+  @ZodBody(intakeSettingsBody)
+  @ZodOk(intakeSettingsOut)
+  @ApiOperation({ summary: 'Сохранить «Запись на сдачу»: создаёт/правит услугу «Приём заказа»; некому принимать — 422 intake_no_staff' })
+  setIntakeSettings(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(intakeSettingsBody)) body: z.infer<typeof intakeSettingsBody>) {
+    return this.intake.setSettings(ctx, businessId, body);
+  }
+
+  @Get('intake/bookings')
+  @Biz('journal.view')
+  @ZodOk(z.array(intakeBookingOut))
+  @ApiOperation({ summary: 'Записи на сдачу за день (date=YYYY-MM-DD): кто придёт, что сдаёт, принят ли уже заказ' })
+  intakeBookings(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Query(new Zod(intakeBookingsQuery)) q: z.infer<typeof intakeBookingsQuery>) {
+    return this.intake.bookingsOn(ctx, businessId, q.date);
   }
 
   @Get(':orderId')

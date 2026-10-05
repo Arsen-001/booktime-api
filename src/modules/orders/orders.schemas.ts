@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ESTIMATE_STATUSES, ORDER_HISTORY_EVENTS, ORDER_STATUSES } from './order-rules.js';
+import { ESTIMATE_STATUSES, INTAKE_SLOT_OPTIONS, ORDER_HISTORY_EVENTS, ORDER_STATUSES } from './order-rules.js';
 
 const id32 = z.string().min(1).max(32);
 const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
@@ -26,6 +26,8 @@ export const createOrderBody = z.object({
   prepaid: amd.optional(),
   comment: z.string().max(2000).nullable().optional(),
   locationId: id32.nullable().optional(),
+  /** ⭐ Принять заказ по записи на сдачу (05.10.2026): запись «Приём заказа» этого бизнеса; по одной записи — один заказ */
+  bookingId: id32.optional(),
 });
 export type CreateOrderBody = z.infer<typeof createOrderBody>;
 
@@ -85,6 +87,42 @@ export const listOrdersQuery = z.object({
 });
 export type ListOrdersQuery = z.infer<typeof listOrdersQuery>;
 
+// ─────────── ⭐ запись на сдачу по времени (05.10.2026) ───────────
+
+const slotMin = z.number().int().refine((v) => (INTAKE_SLOT_OPTIONS as readonly number[]).includes(v), { message: `one of ${INTAKE_SLOT_OPTIONS.join(', ')}` });
+
+/** Вкл/выкл, длина окна приёма и кто принимает (пусто — все активные сотрудники) */
+export const intakeSettingsBody = z.object({
+  enabled: z.boolean(),
+  slotMin,
+  staffIds: z.array(id32).max(200).optional(),
+});
+export type IntakeSettingsBody = z.infer<typeof intakeSettingsBody>;
+
+export const intakeBookingsQuery = z.object({ date: ymd });
+
+export const intakeSettingsOut = z.object({
+  enabled: z.boolean(),
+  slotMin: z.number().int(),
+  staffIds: z.array(z.string()),
+  serviceId: z.string().nullable(),
+});
+
+export const intakeBookingOut = z.object({
+  bookingId: z.string(),
+  start: z.string(),
+  durationMin: z.number().int(),
+  status: z.string(),
+  staffId: z.string(),
+  clientId: z.string().nullable(),
+  clientName: z.string(),
+  clientPhone: z.string(),
+  /** Что сдают — комментарий клиента к записи */
+  description: z.string().nullable(),
+  orderId: z.string().nullable(),
+  orderNumber: z.number().int().nullable(),
+});
+
 // ─────────── ответы (OpenAPI) ───────────
 
 const historyEntryOut = z.object({
@@ -134,6 +172,8 @@ export const orderOut = z.object({
   pickupRemindedAt: z.string().nullable(),
   /** ⭐ Смета (05.10.2026); null — не отправляли */
   estimate: estimateOut.nullable(),
+  /** ⭐ Принят по записи на сдачу (05.10.2026); null — принят у стойки */
+  bookingId: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

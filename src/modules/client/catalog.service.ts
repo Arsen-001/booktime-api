@@ -10,7 +10,7 @@ import { AvailabilityService } from '../availability/availability.service.js';
 import type { FreeSlot } from '../availability/engine.js';
 import { businessView, locationView } from '../businesses/views.js';
 import { JournalService } from '../journal/journal.service.js';
-import { ORDER_SPHERES, ordersEnabledOf } from '../orders/order-rules.js';
+import { INTAKE_KIND, ORDER_SPHERES, ordersEnabledOf } from '../orders/order-rules.js';
 import { sanitizePublicStaff } from '../online/online.service.js';
 import { categoryView, serviceView } from '../services/services.views.js';
 
@@ -163,7 +163,7 @@ export class CatalogService {
     if (q.district) rows = rows.filter((s) => locations.some((l) => l.businessId === s.businessId && l.district === q.district));
 
     const serviceIds = [...new Set(rows.flatMap((s) => arr(s.serviceIds)))];
-    const services = await this.prisma.service.findMany({ where: { id: { in: serviceIds }, active: true, onlineBookable: true } });
+    const services = await this.prisma.service.findMany({ where: { id: { in: serviceIds }, active: true, onlineBookable: true, kind: { not: INTAKE_KIND } } });
     const servicesOf = (s: StaffRow) => services.filter((sv) => arr<string>(s.serviceIds).includes(sv.id));
 
     if (search && !searchSpheres.length) {
@@ -315,7 +315,7 @@ export class CatalogService {
     if (!business) throw new ApiError('not_found', 'Staff not found');
     const locations = await this.prisma.location.findMany({ where: { id: { in: staff.locations.map((l) => l.locationId) }, deletedAt: null } });
     const serviceIds = arr<string>(staff.serviceIds);
-    const services = await this.prisma.service.findMany({ where: { id: { in: serviceIds }, active: true, onlineBookable: true } });
+    const services = await this.prisma.service.findMany({ where: { id: { in: serviceIds }, active: true, onlineBookable: true, kind: { not: INTAKE_KIND } } });
     // Пришли из поиска («стрижка») — окна под найденную услугу; иначе под самую короткую (окон под неё больше всего)
     const service = services.find((sv) => sv.id === serviceId) ?? this.shortestService(services);
     // Студия «дома» у частного мастера — до подтверждённой записи только район (F-00-077)
@@ -371,7 +371,7 @@ export class CatalogService {
     const scheduled = new Set((await this.prisma.workSchedule.findMany({ where: { staffId: { in: staffRows.map((r) => r.id) } }, select: { staffId: true } })).map((r) => r.staffId));
     const staffList = staffRows.filter((s) => scheduled.has(s.id));
     const visibleIds = new Set(staffList.map((s) => s.id));
-    const services = await this.prisma.service.findMany({ where: { businessId, active: true, onlineBookable: true } });
+    const services = await this.prisma.service.findMany({ where: { businessId, active: true, onlineBookable: true, kind: { not: INTAKE_KIND } } });
     const visibleServices = services.filter((s) => arr<string>(s.staffIds).some((id) => visibleIds.has(id)));
     let regularsCount = 0;
     for (const s of staffList) regularsCount += await this.countRegulars(s.id);

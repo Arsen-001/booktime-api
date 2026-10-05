@@ -685,7 +685,7 @@ model Service {
   /// LocalizedText
   name               Json
   description        Json?
-  /// individual | group
+  /// individual | group | intake («Приём заказа» мастерской — запись на сдачу, 05.10.2026; в каталоге не видна)
   kind               String   @default("individual") @db.VarChar(10)
   durationMin        Int      @map("duration_min")
   /// «От–до» (F-00-057); нет поля — фиксированная длительность
@@ -4736,6 +4736,8 @@ model Order {
   estimateSentAt      DateTime? @map("estimate_sent_at") @db.DateTime(3)
   /// Напоминание «ждём ответа по смете» ушло (одно на версию сметы)
   estimateRemindedAt  DateTime? @map("estimate_reminded_at") @db.DateTime(3)
+  /// ⭐ Запись на сдачу (05.10.2026): заказ принят по записи «Приём заказа» из журнала — одна запись = один заказ
+  bookingId           String?   @unique @map("booking_id") @db.VarChar(32)
   createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
 
