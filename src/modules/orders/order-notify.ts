@@ -23,6 +23,8 @@ export const ORDER_ESTIMATE_REMINDER_KIND = 'order_estimate_reminder';
 interface OrderMessageSpec {
   kind: string;
   messageKey: 'order.ready' | 'order.pickupReminder' | 'order.estimate' | 'order.estimateReminder';
+  /** ⭐ Выдача по времени (06.10.2026): тот же вид и та же ссылка, текст — «выберите, когда заберёте» */
+  pickupKey?: 'order.readyPickup' | 'order.pickupReminderPickup';
   typeLabel: { ru: string; en: string; hy: string };
   /** Часть ключа дубля: order:<dedupe>:<orderId>:<stamp>:<канал> */
   dedupe: string;
@@ -31,6 +33,7 @@ interface OrderMessageSpec {
 const READY_SPEC: OrderMessageSpec = {
   kind: ORDER_READY_KIND,
   messageKey: 'order.ready',
+  pickupKey: 'order.readyPickup',
   typeLabel: { ru: 'Заказ готов', en: 'Order ready', hy: 'Պատվերը պատրաստ է' },
   dedupe: 'ready',
 };
@@ -38,6 +41,7 @@ const READY_SPEC: OrderMessageSpec = {
 const PICKUP_SPEC: OrderMessageSpec = {
   kind: ORDER_PICKUP_REMINDER_KIND,
   messageKey: 'order.pickupReminder',
+  pickupKey: 'order.pickupReminderPickup',
   typeLabel: { ru: 'Заказ ждёт клиента', en: 'Order awaiting pickup', hy: 'Պատվերը սպասում է հաճախորդին' },
   dedupe: 'pickup',
 };
@@ -65,6 +69,11 @@ export interface OrderReadyInput {
   now?: Date;
   /** Сумма сметы, ֏ — для «Смета по заказу» */
   total?: number;
+  /**
+   * ⭐ Выдача по времени (06.10.2026): мастерская принимает по времени, а клиент ещё не выбрал — «Заказ готов» и «Заказ
+   * ждёт вас» зовут выбрать время по той же ссылке /o/<code>
+   */
+  pickup?: boolean;
 }
 
 export interface OrderReadyResult {
@@ -78,7 +87,7 @@ export function amdText(amount: number): string {
 }
 
 function textOf(locale: Locale, input: OrderReadyInput, spec: OrderMessageSpec): string {
-  return t(locale, spec.messageKey, {
+  return t(locale, input.pickup && spec.pickupKey ? spec.pickupKey : spec.messageKey, {
     number: input.order.number,
     business: input.businessName,
     url: orderStatusUrl(input.siteUrl, input.order.code),

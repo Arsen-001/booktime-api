@@ -104,6 +104,8 @@ export interface OrderRow {
   estimateRemindedAt?: Date | null;
   /** ⭐ Запись на сдачу (05.10.2026): заказ принят по этой записи журнала */
   bookingId?: string | null;
+  /** ⭐ Выдача по времени (06.10.2026): запись клиента «Выдача заказа» (последняя; отменённая — значит, записи нет) */
+  pickupBookingId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -136,6 +138,7 @@ export function orderView(r: OrderRow) {
     pickupRemindedAt: r.pickupRemindedAt?.toISOString() ?? null,
     estimate: estimateView(r),
     bookingId: r.bookingId ?? null,
+    pickupBookingId: r.pickupBookingId ?? null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
@@ -160,7 +163,7 @@ export interface PublicBusinessInfo {
  * Публичный вид /o/<code>: только то, что нужно клиенту. Никогда — телефон клиента, внутренний комментарий, id
  * сотрудников, фото (могут содержать личное) и id самого заказа.
  */
-export function publicOrderView(r: OrderRow, business: PublicBusinessInfo) {
+export function publicOrderView(r: OrderRow, business: PublicBusinessInfo, pickup: PublicPickupView | null = null) {
   const est = estimateView(r);
   return {
     number: r.number,
@@ -176,6 +179,8 @@ export function publicOrderView(r: OrderRow, business: PublicBusinessInfo) {
         ? { status: est.status, version: est.version, lines: est.lines, total: est.total, comment: est.comment, sentAt: est.sentAt, decidedAt: est.decidedAt, clientComment: est.clientComment }
         : null,
     business: { name: business.name, phone: business.phone, address: business.address, slug: business.slug },
+    // ⭐ Выдача по времени (06.10.2026) — только у готового заказа
+    pickup: r.status === 'ready' ? pickup : null,
   };
 }
 export type PublicOrderView = ReturnType<typeof publicOrderView>;
@@ -389,3 +394,47 @@ export function isIntakeBooking(services: unknown, intakeServiceId: string | nul
 
 /** Из записи на сдачу — в заказ можно, пока запись не отменена и не удалена (опоздал после «не пришёл» — тоже можно) */
 export const INTAKE_CLOSED_STATUSES: readonly string[] = ['cancelled_by_client', 'cancelled_by_master'];
+
+// ─────────── ⭐ выдача по времени (06.10.2026) ───────────
+// Заказ «Готов» — клиент на /o/<code> сам выбирает, когда придёт забрать: то же окно, что у приёма («Запись на сдачу»:
+// длина, кто принимает, часы), но запись — на вторую скрытую услугу «Выдача заказа» (Service.kind = 'pickup'). Её нет в
+// каталоге, на странице мастерской и в общем потоке онлайн-записи (onlineBookable = false): записаться на неё можно
+// только по ссылке заказа — по одной активной записи на заказ (Order.pickupBookingId). В журнале — «Выдача: №…», в
+// «Заказах» — «Забирают сегодня» с кнопкой «Выдать». «Сдают сегодня» её не видит: там только услуга intake.
+
+export const PICKUP_KIND = 'pickup';
+/** Скрытые услуги раздела «Заказы»: в каталоге, поиске, выборе услуг и на публичной странице их нет */
+export const ORDER_SERVICE_KINDS: readonly string[] = [INTAKE_KIND, PICKUP_KIND];
+export const isOrderServiceKind = (kind: string | null | undefined) => ORDER_SERVICE_KINDS.includes(String(kind));
+
+/** Название второй скрытой услуги — его видят клиент (в своих записях и напоминаниях) и журнал */
+export const PICKUP_SERVICE_NAME = { ru: 'Выдача заказа', hy: 'Պատվերի ստացում', en: 'Order pickup' } as const;
+
+/** На сколько дней вперёд (включая сегодня) клиент выбирает время, когда заберёт */
+export const PICKUP_DAYS = 7;
+
+/** Запись — «Выдача заказа»: среди строк записи есть услуга мастерской pickup (тот же признак, что у приёма) */
+export const isPickupBooking = isIntakeBooking;
+
+/** Выбрать время выдачи можно только у готового заказа */
+export const canBookPickup = (status: string) => status === 'ready';
+
+/** Комментарий записи на выдачу — что забирают: «№1024 · iPhone 14 — замена экрана» (не длиннее 150 знаков) */
+export const PICKUP_COMMENT_MAX = 150;
+export function pickupBookingComment(number: number, items: unknown): string {
+  const what = arr<OrderItem>(items)
+    .map((i) => (i.qty > 1 ? `${i.title} ×${i.qty}` : i.title))
+    .join(' · ');
+  const text = what ? `№${number} · ${what}` : `№${number}`;
+  return text.length > PICKUP_COMMENT_MAX ? `${text.slice(0, PICKUP_COMMENT_MAX - 1)}…` : text;
+}
+
+/**
+ * Что видит клиент на /o/<code> про выдачу: null — выбирать нечего (заказ не готов, или выдача по времени выключена и
+ * записи нет). enabled — можно выбрать/поменять время; booking — его активная запись (время местное, Ереван).
+ */
+export interface PublicPickupView {
+  enabled: boolean;
+  slotMin: number;
+  booking: { start: string; status: string } | null;
+}

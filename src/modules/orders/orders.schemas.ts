@@ -174,6 +174,8 @@ export const orderOut = z.object({
   estimate: estimateOut.nullable(),
   /** ⭐ Принят по записи на сдачу (05.10.2026); null — принят у стойки */
   bookingId: z.string().nullable(),
+  /** ⭐ Выдача по времени (06.10.2026): запись клиента «Выдача заказа»; null — время не выбирал */
+  pickupBookingId: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -190,4 +192,32 @@ export const publicOrderOut = z.object({
   prepaid: z.number().int(),
   estimate: estimateOut.omit({ remindedAt: true, decidedBy: true }).nullable(),
   business: z.object({ name: z.string(), phone: z.string(), address: z.string(), slug: z.string() }),
+  /** ⭐ Выдача по времени (06.10.2026): null — выбирать нечего (не готов или мастерская не принимает по времени) */
+  pickup: z.object({ enabled: z.boolean(), slotMin: z.number().int(), booking: z.object({ start: z.string(), status: z.string() }).nullable() }).nullable(),
+});
+
+// ─────────── ⭐ выдача по времени (06.10.2026) ───────────
+
+/** Клиент выбирает время, когда заберёт готовый заказ: 'YYYY-MM-DDTHH:mm' по Еревану */
+export const publicPickupBody = z.object({ start: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'YYYY-MM-DDTHH:mm') });
+
+export const publicPickupSlotsOut = z.object({
+  slotMin: z.number().int(),
+  days: z.array(z.object({ date: z.string(), slots: z.array(z.string()) })),
+});
+
+export const pickupBookingOut = z.object({
+  bookingId: z.string(),
+  start: z.string(),
+  durationMin: z.number().int(),
+  status: z.string(),
+  staffId: z.string(),
+  clientId: z.string().nullable(),
+  clientName: z.string(),
+  clientPhone: z.string(),
+  orderId: z.string().nullable(),
+  orderNumber: z.number().int().nullable(),
+  orderStatus: z.enum(ORDER_STATUSES).nullable(),
+  /** Что забирают */
+  items: z.string().nullable(),
 });

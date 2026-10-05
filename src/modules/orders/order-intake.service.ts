@@ -10,6 +10,7 @@ import { logger } from '../../common/logging/logger.js';
 import { DEFAULT_TZ, localDayRangeUtc, utcToLocal } from '../../common/time/time.js';
 import { BookingsService, staffActor } from '../journal/bookings.service.js';
 import { INTAKE_CLOSED_STATUSES, INTAKE_KIND, INTAKE_SERVICE_NAME, intakeSettingsView, isIntakeBooking, type IntakeSettingsView } from './order-rules.js';
+import { syncPickupService } from './order-pickup.service.js';
 import type { IntakeSettingsBody } from './orders.schemas.js';
 
 type Db = Pick<Prisma.TransactionClient, 'service'>;
@@ -109,6 +110,8 @@ export class OrderIntakeService {
           },
         });
       }
+      // ⭐ Выдача по времени (06.10.2026): «Выдача заказа» — то же окно и те же люди, включена вместе с приёмом
+      await syncPickupService(tx, { businessId, sphereId: arr(business.sphereIds)[0] ?? 'general', durationMin: body.slotMin, staffIds, enabled: body.enabled, by });
       // Пара Service.staffIds ↔ Staff.serviceIds (её читают окна и проверка записи)
       for (const s of staff) {
         const own = arr(s.serviceIds);

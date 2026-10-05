@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
@@ -7,6 +7,7 @@ import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import { OrderIntakeService } from './order-intake.service.js';
+import { OrderPickupService } from './order-pickup.service.js';
 import {
   createOrderBody,
   intakeBookingOut,
@@ -18,8 +19,11 @@ import {
   orderOut,
   orderStatusBody,
   patchOrderBody,
+  pickupBookingOut,
   publicEstimateDecisionBody,
   publicOrderOut,
+  publicPickupBody,
+  publicPickupSlotsOut,
   sendEstimateBody,
   staffEstimateDecisionBody,
 } from './orders.schemas.js';
@@ -37,6 +41,7 @@ export class OrdersController {
   constructor(
     private readonly svc: OrdersService,
     private readonly intake: OrderIntakeService,
+    private readonly pickup: OrderPickupService,
   ) {}
 
   @Get()
@@ -86,6 +91,16 @@ export class OrdersController {
     return this.intake.bookingsOn(ctx, businessId, q.date);
   }
 
+  // ─────────── ⭐ выдача по времени (06.10.2026) — тоже до ':orderId' ───────────
+
+  @Get('pickups')
+  @Biz('journal.view')
+  @ZodOk(z.array(pickupBookingOut))
+  @ApiOperation({ summary: '«Забирают сегодня»: записи на выдачу за день (date=YYYY-MM-DD) — кто придёт, за каким заказом, выдан ли он' })
+  pickups(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Query(new Zod(intakeBookingsQuery)) q: z.infer<typeof intakeBookingsQuery>) {
+    return this.pickup.bookingsOn(ctx, businessId, q.date);
+  }
+
   @Get(':orderId')
   @Biz('journal.view')
   @ZodOk(orderOut)
@@ -106,8 +121,11 @@ export class OrdersController {
   @ZodBody(orderStatusBody)
   @ZodOk(orderOut)
   @ApiOperation({ summary: 'Сменить статус; недопустимый переход — 422 invalid_order_transition; ready — уведомление клиенту' })
-  status(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('orderId') orderId: string, @Body(new Zod(orderStatusBody)) body: z.infer<typeof orderStatusBody>) {
-    return this.svc.setStatus(ctx, businessId, orderId, body.status);
+  async status(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('orderId') orderId: string, @Body(new Zod(orderStatusBody)) body: z.infer<typeof orderStatusBody>) {
+    const order = await this.svc.setStatus(ctx, businessId, orderId, body.status);
+    // ⭐ Выдали заказ, на который клиент записался по времени, — запись на выдачу «Пришёл» (best-effort)
+    if (body.status === 'issued' && order.pickupBookingId) await this.intake.markArrived(ctx, businessId, order.pickupBookingId);
+    return order;
   }
 
   @Post(':orderId/notify')
@@ -156,7 +174,10 @@ export class OrdersController {
 @ApiTags('orders')
 @Controller('v1/public/orders')
 export class PublicOrdersController {
-  constructor(private readonly svc: OrdersService) {}
+  constructor(
+    private readonly svc: OrdersService,
+    private readonly pickup: OrderPickupService,
+  ) {}
 
   @Get(':code')
   @RateLimit({ bucket: 'public-order', limit: 60, windowSec: 60, by: 'ip' })
@@ -174,5 +195,35 @@ export class PublicOrdersController {
   @ApiOperation({ summary: '⭐ Клиент отвечает на смету по ссылке: approve | decline (+ комментарий); повтор того же — без изменений; устаревшая версия — 409 estimate_changed' })
   decideEstimate(@Param('code') code: string, @Body(new Zod(publicEstimateDecisionBody)) body: z.infer<typeof publicEstimateDecisionBody>) {
     return this.svc.decideEstimatePublic(code, body.decision, body.version, body.comment);
+  }
+
+  // ─────────── ⭐ выдача по времени (06.10.2026) ───────────
+
+  @Get(':code/pickup')
+  @RateLimit({ bucket: 'public-order-pickup-slots', limit: 30, windowSec: 60, by: 'ip' })
+  @ZodOk(publicPickupSlotsOut)
+  @ApiOperation({ summary: '⭐ Готовый заказ: свободное время выдачи на неделю вперёд (дни без окон не приходят); не готов — 422 order_not_ready, выключено — 409 pickup_disabled' })
+  pickupSlots(@Param('code') code: string) {
+    return this.pickup.slots(code);
+  }
+
+  @Post(':code/pickup')
+  @HttpCode(200)
+  @RateLimit({ bucket: 'public-order-pickup', limit: 10, windowSec: 60, by: 'ip' })
+  @ZodBody(publicPickupBody)
+  @ZodOk(publicOrderOut)
+  @ApiOperation({ summary: '⭐ Клиент выбирает, когда заберёт: одна активная запись на заказ; тот же выбор — без изменений, другое время — замена прежней; занято — 409 slot_taken' })
+  async bookPickup(@Param('code') code: string, @Body(new Zod(publicPickupBody)) body: z.infer<typeof publicPickupBody>) {
+    await this.pickup.book(code, body.start);
+    return this.svc.publicByCode(code);
+  }
+
+  @Delete(':code/pickup')
+  @RateLimit({ bucket: 'public-order-pickup', limit: 10, windowSec: 60, by: 'ip' })
+  @ZodOk(publicOrderOut)
+  @ApiOperation({ summary: '⭐ «Не смогу в это время»: снять запись на выдачу (нет записи — без изменений)' })
+  async cancelPickup(@Param('code') code: string) {
+    await this.pickup.cancel(code);
+    return this.svc.publicByCode(code);
   }
 }

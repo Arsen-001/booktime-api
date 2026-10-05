@@ -64,6 +64,8 @@ const en = {
   'tg.error': 'Something went wrong. Please try again.',
   'order.ready': 'Your order No. {number} at «{business}» is ready. Status: {url}',
   'order.pickupReminder': 'Reminder: your order No. {number} at «{business}» is ready and waiting for you. Status: {url}',
+  'order.readyPickup': 'Your order No. {number} at «{business}» is ready. Choose when to pick it up: {url}',
+  'order.pickupReminderPickup': 'Reminder: your order No. {number} at «{business}» is ready and waiting for you. Choose when to pick it up: {url}',
   'order.estimate': 'Estimate for your order No. {number} at «{business}»: {total}. Approve or decline here: {url}',
   'order.estimateReminder': '«{business}» is waiting for your reply on the estimate for order No. {number} ({total}). Reply here: {url}',
 } as const;
@@ -126,6 +128,8 @@ const ru: Record<MessageKey, string> = {
   'tg.error': 'Не получилось. Попробуйте ещё раз.',
   'order.ready': 'Ваш заказ №{number} в «{business}» готов. Статус: {url}',
   'order.pickupReminder': 'Напоминаем: заказ №{number} в «{business}» готов и ждёт вас. Статус: {url}',
+  'order.readyPickup': 'Ваш заказ №{number} в «{business}» готов. Выберите, когда удобно забрать: {url}',
+  'order.pickupReminderPickup': 'Напоминаем: заказ №{number} в «{business}» готов и ждёт вас. Выберите, когда удобно забрать: {url}',
   'order.estimate': 'Смета по заказу №{number} в «{business}»: {total}. Согласуйте или откажитесь по ссылке: {url}',
   'order.estimateReminder': '«{business}» ждёт вашего ответа по смете заказа №{number} ({total}). Ответить: {url}',
 };
@@ -186,6 +190,8 @@ const hy: Record<MessageKey, string> = {
   'tg.error': 'Չստացվեց։ Փորձեք կրկին։',
   'order.ready': 'Ձեր №{number} պատվերը «{business}»-ում պատրաստ է։ Կարգավիճակը՝ {url}',
   'order.pickupReminder': 'Հիշեցնում ենք՝ ձեր №{number} պատվերը «{business}»-ում պատրաստ է և սպասում է ձեզ։ Կարգավիճակը՝ {url}',
+  'order.readyPickup': 'Ձեր №{number} պատվերը «{business}»-ում պատրաստ է։ Ընտրեք, երբ է հարմար գալ վերցնելու՝ {url}',
+  'order.pickupReminderPickup': 'Հիշեցնում ենք՝ ձեր №{number} պատվերը «{business}»-ում պատրաստ է և սպասում է ձեզ։ Ընտրեք, երբ է հարմար գալ վերցնելու՝ {url}',
   'order.estimate': '«{business}»-ում ձեր №{number} պատվերի նախահաշիվը՝ {total}։ Համաձայնեք կամ հրաժարվեք հղումով՝ {url}',
   'order.estimateReminder': '«{business}»-ը սպասում է ձեր պատասխանին №{number} պատվերի նախահաշվի վերաբերյալ ({total})։ Պատասխանել՝ {url}',
 };

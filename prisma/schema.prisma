@@ -4738,6 +4738,9 @@ model Order {
   estimateRemindedAt  DateTime? @map("estimate_reminded_at") @db.DateTime(3)
   /// ⭐ Запись на сдачу (05.10.2026): заказ принят по записи «Приём заказа» из журнала — одна запись = один заказ
   bookingId           String?   @unique @map("booking_id") @db.VarChar(32)
+  /// ⭐ Выдача по времени (06.10.2026): запись клиента на «Выдача заказа» (скрытая услуга kind=pickup), выбранная по
+  /// ссылке /o/<code>; одна активная на заказ — новая запись заменяет прежнюю
+  pickupBookingId     String?   @unique @map("pickup_booking_id") @db.VarChar(32)
   createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
 

@@ -132,7 +132,7 @@ export const serviceOut = z
     categoryId: z.string(),
     sphereId: z.string(),
     name: localized,
-    kind: z.enum(['individual', 'group', 'intake']),
+    kind: z.enum(['individual', 'group', 'intake', 'pickup']),
     durationMin: z.number(),
     priceMin: z.number(),
     photos: z.array(z.string()),

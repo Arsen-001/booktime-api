@@ -57,6 +57,7 @@ import {
   type StatusActor,
 } from './rules.js';
 import { attachReferralInTx } from '../loyalty/referral.service.js';
+import { PICKUP_KIND } from '../orders/order-rules.js';
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaService | Tx;
@@ -158,6 +159,12 @@ export interface PlaceInput {
   addOns?: { serviceIds?: string[]; productIds?: string[] };
   /** «Пригласи подругу»: код из личной ссылки — привязка нового клиента к пригласившему (attachReferralInTx) */
   referralCode?: string;
+  /**
+   * ⭐ Выдача по времени (06.10.2026): запись на скрытую услугу «Выдача заказа» (kind pickup) по ссылке готового заказа —
+   * только из OrderPickupService. Услуга не онлайн (в общем потоке её нет), окно проверяется как у онлайн-записи,
+   * статус — сразу «Записан» (без подтверждения и предоплаты: время предложила сама мастерская).
+   */
+  orderPickup?: boolean;
 }
 
 /** BookingInput фронта (createBooking «как есть»: строки уже посчитаны) */
@@ -905,7 +912,9 @@ export class BookingsService {
           if (online) {
             const lineStaff = line.staffId ?? staff.id;
             const assigned = arr(svc.staffIds).includes(lineStaff) || arr(staff.serviceIds).includes(svc.id);
-            if (!svc.onlineBookable || !assigned) throw new ApiError('service_unavailable', 'Service is not bookable online');
+            // ⭐ «Выдача заказа» — только по ссылке заказа (orderPickup), в общем онлайн-потоке её нет
+            const pickup = svc.kind === PICKUP_KIND;
+            if (pickup !== Boolean(input.orderPickup) || (!svc.onlineBookable && !pickup) || !assigned) throw new ApiError('service_unavailable', 'Service is not bookable online');
           }
           return { svc, line };
         });
@@ -976,6 +985,7 @@ export class BookingsService {
           ? await this.recentNoShows(tx, { staffId: staff.id, clientId: who.clientId, appUserId: who.appUserId, months: noShowRule.months })
           : 0;
         let status: BookingStatus = online || !input.status ? newBookingStatus({ source: input.source, staff: statusStaff, workplace, isOwnClient: own, clientNoShows }) : input.status;
+        if (online && input.orderPickup) status = 'scheduled';
         // О28: окно, которое предложил сам мастер, — он уже согласен: без второго подтверждения (предоплату ждём как обычно)
         if (online && input.acceptsOffer && status === 'awaiting_confirmation') status = 'scheduled';
         // О6 (как мок, meta.confirmAfterPayment): без предоплаты запись ждала бы мастера — после «Деньги пришли» она

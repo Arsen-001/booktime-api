@@ -122,6 +122,10 @@ export const ERROR_STATUS = {
   not_intake_booking: HttpStatus.UNPROCESSABLE_ENTITY,
   booking_cancelled: HttpStatus.CONFLICT,
   intake_already_accepted: HttpStatus.CONFLICT,
+  // ⭐ выдача по времени (06.10.2026): мастерская не принимает по времени (выключено) / пока выбирали, время поменяли
+  // с другого устройства
+  pickup_disabled: HttpStatus.CONFLICT,
+  pickup_changed: HttpStatus.CONFLICT,
   restore_expired: HttpStatus.GONE,
   restore_slot_taken: HttpStatus.CONFLICT,
   not_active: HttpStatus.CONFLICT,

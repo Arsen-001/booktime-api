@@ -4,6 +4,7 @@ import { logger } from '../common/logging/logger.js';
 import type { PrismaService } from '../common/prisma.service.js';
 import { inQuietHours } from '../modules/notify/quiet-hours.js';
 import { notifyOrderPickupReminder } from '../modules/orders/order-notify.js';
+import { activePickupBooking, pickupSetupOf } from '../modules/orders/order-pickup.service.js';
 import { pickupReminderDue, pickupReminderModeOf, type OrderRow } from '../modules/orders/order-rules.js';
 
 /** Сколько готовых заказов разбираем за один проход (готовых-невыданных у бизнеса единицы — с большим запасом) */
@@ -59,11 +60,16 @@ export async function ordersPickupReminders(db: PrismaService, messenger: Busine
     });
     if (claimed.count !== 1) continue;
     try {
+      // ⭐ Выдача по времени (06.10.2026): ещё не выбрал время, а мастерская принимает по времени — «выберите, когда заберёте»
+      const pickup = await Promise.all([pickupSetupOf(db, order.businessId), activePickupBooking(db, order)])
+        .then(([setup, booked]) => Boolean(setup?.enabled) && !booked)
+        .catch(() => false);
       const out = await notifyOrderPickupReminder(db, messenger, {
         order,
         businessName: biz.brandName || biz.name || 'BookTime',
         siteUrl: env.PUBLIC_SITE_URL,
         now,
+        pickup,
       });
       if (out.channels.length) res.sent++;
       else res.undelivered++;

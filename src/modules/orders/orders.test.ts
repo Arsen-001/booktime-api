@@ -77,7 +77,7 @@ function memoryPrisma(seed: Record<string, Row[]> = {}) {
       return { count: rows.length };
     },
   });
-  const names = ['order', 'orderCounter', 'business', 'location', 'staff', 'client', 'user', 'pushToken', 'telegramLink', 'notifyOutbox', 'notifyLogEntry', 'inboxItem', 'businessSetting', 'auditEvent'];
+  const names = ['order', 'orderCounter', 'business', 'location', 'staff', 'client', 'user', 'pushToken', 'telegramLink', 'notifyOutbox', 'notifyLogEntry', 'inboxItem', 'businessSetting', 'auditEvent', 'service', 'booking'];
   const prisma: Record<string, unknown> = Object.fromEntries(names.map((n) => [n, table(n)]));
   prisma.$transaction = async (fn: (tx: unknown) => unknown) => fn(prisma);
   return { tables, prisma: prisma as unknown as Prisma };
@@ -249,7 +249,7 @@ test('публичный вид: ни телефона клиента, ни ко
   const { svc } = world();
   const o = await svc.create(ctx, 'biz_1', BODY);
   const pub = await svc.publicByCode(o.code);
-  assert.deepEqual(Object.keys(pub).sort(), ['business', 'dueDate', 'estimate', 'items', 'number', 'prepaid', 'price', 'readyAt', 'status']);
+  assert.deepEqual(Object.keys(pub).sort(), ['business', 'dueDate', 'estimate', 'items', 'number', 'pickup', 'prepaid', 'price', 'readyAt', 'status']);
   assert.equal(pub.estimate, null);
   assert.deepEqual(pub.items, [{ title: 'Платье', qty: 1 }], 'заметка к вещи — внутренняя');
   assert.deepEqual(pub.business, { name: 'Ателье Нарине', phone: '+37410111111', address: 'Ереван, Абовяна 1', slug: 'narine' });

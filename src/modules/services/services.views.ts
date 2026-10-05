@@ -40,8 +40,9 @@ export function serviceView(s: Service) {
     sphereId: s.sphereId,
     name: s.name as Record<string, string>,
     description: opt(s.description as Record<string, string> | null),
-    // 'intake' — «Приём заказа» мастерской (запись на сдачу, 05.10.2026): в каталоге и выборе услуг не показывается
-    kind: s.kind as 'individual' | 'group' | 'intake',
+    // 'intake' — «Приём заказа» мастерской (запись на сдачу, 05.10.2026), 'pickup' — «Выдача заказа» (выдача по времени,
+    // 06.10.2026): в каталоге и выборе услуг не показываются
+    kind: s.kind as 'individual' | 'group' | 'intake' | 'pickup',
     durationMin: s.durationMin,
     durationMax: opt(s.durationMax),
     priceMin: moneyToJson(s.priceMin),

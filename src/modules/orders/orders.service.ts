@@ -11,6 +11,7 @@ import { logger } from '../../common/logging/logger.js';
 import { maskPhone, normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { assertIntakeAcceptable } from './order-intake.service.js';
+import { pickupPublicInfo, pickupSetupOf } from './order-pickup.service.js';
 import { notifyOrderEstimate, notifyOrderReady } from './order-notify.js';
 import {
   ACTIVE_ORDER_STATUSES,
@@ -285,7 +286,9 @@ export class OrdersService {
   private async notifyReady(order: OrderRow, now: Date): Promise<void> {
     try {
       const biz = await this.prisma.business.findUnique({ where: { id: order.businessId }, select: { name: true, brandName: true } });
-      await notifyOrderReady(this.prisma, this.messenger, { order, businessName: biz?.brandName || biz?.name || 'BookTime', siteUrl: env.PUBLIC_SITE_URL, now });
+      // ⭐ Выдача по времени (06.10.2026): мастерская принимает по времени — в сообщении «выберите, когда заберёте»
+      const pickup = Boolean((await pickupSetupOf(this.prisma, order.businessId).catch(() => null))?.enabled);
+      await notifyOrderReady(this.prisma, this.messenger, { order, businessName: biz?.brandName || biz?.name || 'BookTime', siteUrl: env.PUBLIC_SITE_URL, now, pickup });
     } catch (err) {
       logger.error({ err, orderId: order.id }, 'orders: уведомление «заказ готов» упало');
     }
@@ -433,7 +436,8 @@ export class OrdersService {
       ? await this.prisma.location.findFirst({ where: { id: row.locationId, businessId: row.businessId }, select: { address: true, phone: true } })
       : await this.prisma.location.findFirst({ where: { businessId: row.businessId, deletedAt: null }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], select: { address: true, phone: true } });
     const address = (loc?.address as { ru?: string; hy?: string; en?: string } | null) ?? null;
-    return publicOrderView(row, { name: biz.name, phone: loc?.phone || biz.phone, address: address?.ru || address?.hy || address?.en || '', slug: biz.slug });
+    const pickup = await pickupPublicInfo(this.prisma, row);
+    return publicOrderView(row, { name: biz.name, phone: loc?.phone || biz.phone, address: address?.ru || address?.hy || address?.en || '', slug: biz.slug }, pickup);
   }
 }
 
