@@ -40,7 +40,17 @@ export interface DBooking {
   /** местное */
   createdAt: string;
   deleted: boolean;
-  override: { sendOnSave?: boolean; smsEnabled?: boolean; emailEnabled?: boolean; pushEnabled?: boolean; smsTimingHours?: number; emailTimingHours?: number; pushTimingHours?: number } | null;
+  override: {
+    sendOnSave?: boolean;
+    smsEnabled?: boolean;
+    emailEnabled?: boolean;
+    pushEnabled?: boolean;
+    smsTimingHours?: number;
+    emailTimingHours?: number;
+    pushTimingHours?: number;
+    /** окно записи → «Уведомления о визите» → Telegram; нет поля — включено */
+    telegramEnabled?: boolean;
+  } | null;
 }
 
 export interface DClient {
@@ -50,6 +60,8 @@ export interface DClient {
   email: string | null;
   appUserId: string | null;
   birthday: string | null;
+  /** Номер клиента подключён к Telegram-боту (TelegramLink, не заблокирован) — только тогда тип 73 уходит в Telegram */
+  telegramLinked?: boolean;
 }
 
 export interface DEvent {
@@ -253,10 +265,17 @@ function forChannel(ctx: DeriveContext, channel: NotifyChannel, vars: VarsByLang
 const CHECK_ORDER: NotifyChannel[] = ['email', 'adminApp', 'push', 'brandedApp', 'sms'];
 const APP_CHANNELS = new Set<NotifyChannel>(['push', 'brandedApp']);
 
-function pickChannel(type: NotificationTypeOut | undefined, hasApp: boolean): NotifyChannel | undefined {
+/** Порядок с Telegram — как мок (engine.ts::previewDelivery): после пушей, до SMS */
+const CHECK_ORDER_TELEGRAM: NotifyChannel[] = ['email', 'adminApp', 'push', 'brandedApp', 'telegram', 'sms'];
+
+/**
+ * Канал строки журнала. `hasTelegram` не передан — Telegram не рассматривается (типы, которые сервер в Telegram не шлёт);
+ * передан (тип 73) — как мок: клиенту с приложением в Telegram не дублируем, без подключённого бота — канал не дошёл.
+ */
+function pickChannel(type: NotificationTypeOut | undefined, hasApp: boolean, hasTelegram?: boolean): NotifyChannel | undefined {
   if (!type || !type.enabled) return undefined;
   let failed = false;
-  for (const channel of CHECK_ORDER) {
+  for (const channel of hasTelegram === undefined ? CHECK_ORDER : CHECK_ORDER_TELEGRAM) {
     if (!type.availableChannels.includes(channel)) continue;
     const scenario = type.channels.find((c) => c.channel === channel)?.scenario ?? 'off';
     if (scenario === 'off') continue;
@@ -264,7 +283,8 @@ function pickChannel(type: NotificationTypeOut | undefined, hasApp: boolean): No
       if (failed) return channel;
       continue;
     }
-    if (APP_CHANNELS.has(channel) && !hasApp) {
+    if (channel === 'telegram' && hasApp) continue;
+    if ((APP_CHANNELS.has(channel) && !hasApp) || (channel === 'telegram' && !hasTelegram)) {
       failed = true;
       continue;
     }
@@ -501,9 +521,10 @@ function timeBased(ctx: DeriveContext, serviceHours: Record<string, number>): Lo
       }
     }
     // Тип 73 (F-05-028, 03.10.2026): «Ожидание клиента» Altegio = наш «Записан» (scheduled) — как отправка
-    // (jobs/notify-confirm-requests.ts) и мок; «Ждёт подтверждения» ждёт мастера, клиенту подтверждать нечего
+    // (jobs/notify-confirm-requests.ts) и мок; «Ждёт подтверждения» ждёт мастера, клиенту подтверждать нечего.
+    // Без приложения — Telegram-бот, если номер клиента подключён и Telegram у записи не выключен (как отправка)
     if (t73?.enabled && booking.status === 'scheduled') {
-      const channel = pickChannel(t73, hasApp);
+      const channel = pickChannel(t73, hasApp, !!client.telegramLinked && ov?.telegramEnabled !== false);
       if (!channel) continue;
       if ((channel === 'push' || channel === 'brandedApp') && ov?.pushEnabled === false) continue;
       const c = t73.conditions;

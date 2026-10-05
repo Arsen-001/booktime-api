@@ -4,6 +4,7 @@ import { BUSINESS_MESSENGER, MAIL_SENDER } from '../../adapters/adapters.js';
 import type { MailSender } from '../../adapters/mail/mail.js';
 import type { BusinessMessenger } from '../../adapters/business-sms/business-sms.js';
 import { ApiError } from '../../common/errors/api-error.js';
+import { normalizePhone } from '../../common/phone.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { localToUtc, nowLocal, utcToLocal } from '../../common/time/time.js';
@@ -463,6 +464,11 @@ export class NotifyLogService {
     ]);
     const clients = new Map<string, DClient>();
     for (const c of await resolveAppUsers(this.prisma, [...clientRows, ...birthdayRows])) clients.set(c.id, c);
+    // Тип 73 без приложения уходит в Telegram-бот (jobs/notify-confirm-requests.ts) — журналу нужно, кто его подключил
+    const phoneOf = new Map([...clients.values()].map((c) => [c.id, c.phone ? normalizePhone(c.phone) : undefined]));
+    const phones = [...new Set([...phoneOf.values()].filter((p): p is string => !!p))];
+    const linked = phones.length ? new Set((await this.prisma.telegramLink.findMany({ where: { phone: { in: phones }, blockedAt: null }, select: { phone: true } })).map((l) => l.phone)) : new Set<string>();
+    for (const c of clients.values()) if (linked.has(phoneOf.get(c.id) ?? '')) c.telegramLinked = true;
     const prefRows = clients.size ? await this.prisma.clientNotifyPref.findMany({ where: { clientId: { in: [...clients.keys()] } } }) : [];
     const clientPrefs = new Map<string, DClientPrefs>(
       prefRows.map((p) => [
