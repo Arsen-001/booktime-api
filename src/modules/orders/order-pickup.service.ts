@@ -6,16 +6,17 @@ import { newId } from '../../common/ids/ids.js';
 import { logger } from '../../common/logging/logger.js';
 import { maskPhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { RateLimitService } from '../../common/rate-limit/rate-limit.js';
 import { DEFAULT_TZ, localDayRangeUtc, nowLocal, utcToLocal } from '../../common/time/time.js';
 import { AvailabilityService } from '../availability/availability.service.js';
 import { BookingsService, clientActor } from '../journal/bookings.service.js';
 import { findIntakeService } from './order-intake.service.js';
+import { publicOrderByCode } from './order-public.js';
 import {
   canBookPickup,
   INTAKE_CLOSED_STATUSES,
   intakeSlotOf,
   isPickupBooking,
-  ORDER_CODE_RE,
   ordersEnabledOf,
   PICKUP_DAYS,
   PICKUP_KIND,
@@ -31,6 +32,12 @@ type SvcDb = Pick<Prisma.TransactionClient, 'service'>;
 type InfoDb = Pick<Prisma.TransactionClient, 'service' | 'business' | 'booking'>;
 const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
 const LOCAL_START_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+/**
+ * Сколько раз за час можно выбрать/поменять/снять время выдачи по ОДНОЙ ссылке заказа (сверх лимита по IP в контроллере):
+ * каждая смена — новая запись в журнале и пуш мастерской «новая запись» / «клиент отменил»; со сменой адресов лимит по IP
+ * этого не сдерживает. Человеку хватает с запасом.
+ */
+export const PICKUP_CHANGES_PER_CODE = { limit: 12, windowSec: 3600 } as const;
 
 /** «Забирают сегодня» в «Заказах»: запись на выдачу и её заказ */
 export interface PickupBookingView {
@@ -163,12 +170,18 @@ export class OrderPickupService {
     private readonly prisma: PrismaService,
     @Optional() private readonly availability?: AvailabilityService,
     @Optional() private readonly bookings?: BookingsService,
+    @Optional() private readonly limits?: RateLimitService,
   ) {}
 
+  /** Лимит изменений по коду заказа (только для существующего заказа — случайные коды ключей в Redis не плодят) */
+  private async hitCodeLimit(code: string): Promise<void> {
+    if (!this.limits) return;
+    const res = await this.limits.hit(`public-order-pickup-code:${code}`, PICKUP_CHANGES_PER_CODE.limit, PICKUP_CHANGES_PER_CODE.windowSec);
+    if (!res.allowed) throw new ApiError('rate_limited', `Too many requests, retry in ${res.retryAfter}s`);
+  }
+
   private async orderByCode(code: string): Promise<OrderRow> {
-    const row = ORDER_CODE_RE.test(code) ? ((await this.prisma.order.findUnique({ where: { code } })) as OrderRow | null) : null;
-    if (!row) throw new ApiError('not_found', 'Order not found');
-    return row;
+    return publicOrderByCode(this.prisma, code);
   }
 
   private async readySetup(order: OrderRow): Promise<PickupSetup> {
@@ -224,6 +237,7 @@ export class OrderPickupService {
     const setup = await this.readySetup(order);
     const current = await activePickupBooking(this.prisma, order);
     if (current && utcToLocal(current.startAt, DEFAULT_TZ) === start) return;
+    await this.hitCodeLimit(code);
     const today = nowLocal(DEFAULT_TZ).slice(0, 10);
     const date = start.slice(0, 10);
     if (date < today || date > addDaysLocal(today, PICKUP_DAYS - 1)) throw new ApiError('slot_taken', 'Start is outside the pickup window');
@@ -264,17 +278,25 @@ export class OrderPickupService {
   /** «Не смогу в это время»: снять запись на выдачу (её нет — успех без изменений) */
   async cancel(code: string): Promise<void> {
     const order = await this.orderByCode(code);
+    // Только у готового заказа: выданный (запись «Пришёл») или отменённый — ссылку на запись не трогаем, это история
+    if (!canBookPickup(order.status)) return;
     const current = await activePickupBooking(this.prisma, order);
     if (!current) return;
-    await this.cancelBooking(order.businessId, current.id);
+    await this.hitCodeLimit(code);
+    // Снять не вышло (запись уже «Пришёл» / «Не пришёл») — ошибка клиенту, связь заказа с записью остаётся
+    await this.cancelBooking(order.businessId, current.id, { strict: true });
     await this.prisma.order.updateMany({ where: { id: order.id, pickupBookingId: current.id }, data: { pickupBookingId: null } });
   }
 
   /** Снять запись на выдачу от имени клиента — без правил «поздней отмены» (это не визит, неявку не ставим) */
-  private async cancelBooking(businessId: string, bookingId: string): Promise<void> {
-    await this.bookings?.changeStatus(clientActor(null, 'link_holder'), [businessId], bookingId, 'cancelled_by_client', 'client').catch((err: unknown) => {
+  private async cancelBooking(businessId: string, bookingId: string, opts: { strict?: boolean } = {}): Promise<void> {
+    if (!this.bookings) return;
+    try {
+      await this.bookings.changeStatus(clientActor(null, 'link_holder'), [businessId], bookingId, 'cancelled_by_client', 'client');
+    } catch (err) {
+      if (opts.strict) throw err;
       logger.warn({ err, bookingId }, 'orders: запись на выдачу не снята');
-    });
+    }
   }
 
   /** «Забирают сегодня»: записи на выдачу за день (время Еревана) — кто придёт, за каким заказом и выдан ли он уже */

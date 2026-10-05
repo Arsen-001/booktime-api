@@ -20,7 +20,6 @@ import {
   estimateTotalOf,
   FIRST_ORDER_NUMBER,
   newOrderCode,
-  ORDER_CODE_RE,
   orderMatches,
   orderView,
   planEstimateDecision,
@@ -33,6 +32,7 @@ import {
   type OrderView,
   type PublicOrderView,
 } from './order-rules.js';
+import { publicOrderByCode } from './order-public.js';
 import type { CreateOrderBody, ListOrdersQuery, PatchOrderBody, SendEstimateBody } from './orders.schemas.js';
 
 type Tx = Prisma.TransactionClient;
@@ -355,8 +355,7 @@ export class OrdersService {
    * ответа — успех без изменений; ответ на устаревшую смету — 409 estimate_changed (страница перечитает новую).
    */
   async decideEstimatePublic(code: string, decision: EstimateDecision, version: number, comment?: string | null): Promise<PublicOrderView> {
-    const row = ORDER_CODE_RE.test(code) ? ((await this.prisma.order.findUnique({ where: { code } })) as OrderRow | null) : null;
-    if (!row) throw new ApiError('not_found', 'Order not found');
+    const row = await publicOrderByCode(this.prisma, code);
     await this.applyEstimateDecision(row, decision, version, comment ?? null, { by: null, decidedBy: 'client', ctx: null });
     return this.publicByCode(code);
   }
@@ -428,8 +427,7 @@ export class OrdersService {
   // ─────────── публичная страница /o/<code> ───────────
 
   async publicByCode(code: string): Promise<PublicOrderView> {
-    const row = ORDER_CODE_RE.test(code) ? ((await this.prisma.order.findUnique({ where: { code } })) as OrderRow | null) : null;
-    if (!row) throw new ApiError('not_found', 'Order not found');
+    const row = await publicOrderByCode(this.prisma, code);
     const biz = await this.prisma.business.findUnique({ where: { id: row.businessId }, select: { name: true, phone: true, slug: true } });
     if (!biz) throw new ApiError('not_found', 'Order not found');
     const loc = row.locationId

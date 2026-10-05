@@ -416,6 +416,19 @@ export const PICKUP_DAYS = 7;
 /** Запись — «Выдача заказа»: среди строк записи есть услуга мастерской pickup (тот же признак, что у приёма) */
 export const isPickupBooking = isIntakeBooking;
 
+/**
+ * Онлайн-запись (ссылка, виджет, приложение) на услугу: «Выдача заказа» — только по ссылке заказа (orderPickup, его
+ * ставит лишь OrderPickupService) и никакая другая услуга с orderPickup; «Приём заказа» — только пока у бизнеса включены
+ * «Заказы»; остальное — если услуга онлайн.
+ */
+export function onlineServiceAllowed(svc: { kind?: string | null; onlineBookable: boolean }, orderPickup: boolean, ordersOn: boolean): boolean {
+  const pickup = svc.kind === PICKUP_KIND;
+  if (pickup !== orderPickup) return false;
+  if (pickup) return ordersOn;
+  if (svc.kind === INTAKE_KIND && !ordersOn) return false;
+  return svc.onlineBookable;
+}
+
 /** Выбрать время выдачи можно только у готового заказа */
 export const canBookPickup = (status: string) => status === 'ready';
 

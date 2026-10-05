@@ -125,9 +125,9 @@ const ORDER: Row = {
 };
 
 /** Окна: staffId → date → starts */
-function world(opts: { seed?: Record<string, Row[]>; free?: Record<string, Record<string, string[]>> } = {}) {
+function world(opts: { seed?: Record<string, Row[]>; free?: Record<string, Record<string, string[]>>; limits?: unknown; failStatus?: boolean } = {}) {
   const m = memoryPrisma({
-    business: [{ id: 'biz_1', sphereIds: ['repair'], ordersEnabled: null }],
+    business: [{ id: 'biz_1', status: 'active', leftAt: null, sphereIds: ['repair'], ordersEnabled: null }],
     staff: [
       { id: 'st_1', businessId: 'biz_1', deletedAt: null, status: 'active', onlineBookingEnabled: true, serviceIds: [] },
       { id: 'st_2', businessId: 'biz_1', deletedAt: null, status: 'active', onlineBookingEnabled: true, serviceIds: [] },
@@ -161,13 +161,14 @@ function world(opts: { seed?: Record<string, Row[]>; free?: Record<string, Recor
       return { booking: { id } };
     },
     changeStatus: async (_a: unknown, _b: string[], id: string, status: string) => {
+      if (opts.failStatus) throw new ApiError('invalid_transition', 'Cannot change');
       statusCalls.push(`${id}:${status}`);
       const r = m.tables.booking!.find((b) => b.id === id);
       if (r) r.status = status;
       return {};
     },
   };
-  const pickup = new OrderPickupService(m.prisma as never, availability as never, bookings as never);
+  const pickup = new OrderPickupService(m.prisma as never, availability as never, bookings as never, opts.limits as never);
   const orders = new OrdersService(m.prisma as never, audit as never, { send: async () => ({ delivered: true }) } as never);
   return { ...m, pickup, orders, placed, statusCalls };
 }
@@ -189,7 +190,7 @@ test('правила: «Выдача заказа» — скрытая услу�
 
 test('настройка приёма заводит и «Выдачу заказа»: то же окно и люди, не онлайн; выключение выключает обе', async () => {
   const m = memoryPrisma({
-    business: [{ id: 'biz_1', sphereIds: ['repair'] }],
+    business: [{ id: 'biz_1', status: 'active', leftAt: null, sphereIds: ['repair'] }],
     staff: [{ id: 'st_1', businessId: 'biz_1', deletedAt: null, status: 'active', serviceIds: [] }],
   });
   const intake = new OrderIntakeService(m.prisma as never, audit as never);
@@ -215,7 +216,7 @@ test('/o/<code>: у готового заказа — можно выбрать 
   const info = await pickupPublicInfo(w.prisma as never, ORDER as never);
   assert.deepEqual(info, { enabled: true, slotMin: 15, booking: null });
   assert.equal(await pickupPublicInfo(w.prisma as never, { ...ORDER, status: 'in_progress' } as never), null);
-  const off = world({ seed: { business: [{ id: 'biz_1', sphereIds: ['repair'], ordersEnabled: false }] } });
+  const off = world({ seed: { business: [{ id: 'biz_1', status: 'active', leftAt: null, sphereIds: ['repair'], ordersEnabled: false }] } });
   assert.equal(await pickupPublicInfo(off.prisma as never, ORDER as never), null);
   const noIntake = world({ seed: { service: [] } });
   assert.equal(await pickupPublicInfo(noIntake.prisma as never, ORDER as never), null);
@@ -285,7 +286,7 @@ test('гонка двух устройств: ссылку заказа успе
 test('не готов — order_not_ready; приём выключен — pickup_disabled; ничего не записано', async () => {
   const notReady = world({ seed: { order: [{ ...ORDER, status: 'issued' }] } });
   await assert.rejects(notReady.pickup.book('AbCdEf1234', `${tomorrow}T10:15`), (e: unknown) => e instanceof ApiError && e.code === 'order_not_ready');
-  const off = world({ seed: { business: [{ id: 'biz_1', sphereIds: ['repair'], ordersEnabled: false }] } });
+  const off = world({ seed: { business: [{ id: 'biz_1', status: 'active', leftAt: null, sphereIds: ['repair'], ordersEnabled: false }] } });
   await assert.rejects(off.pickup.book('AbCdEf1234', `${tomorrow}T10:15`), (e: unknown) => e instanceof ApiError && e.code === 'pickup_disabled');
   assert.equal(notReady.placed.length + off.placed.length, 0);
 });
@@ -313,6 +314,90 @@ test('«Не смогу»: запись снята, ссылка очищена;
   await again.pickup.book('AbCdEf1234', `${tomorrow}T10:15`);
   again.tables.booking![0]!.status = 'cancelled_by_master';
   assert.equal((await pickupPublicInfo(again.prisma as never, again.tables.order![0] as never))?.booking, null);
+});
+
+// ─────────── безопасность публичных действий (06.10.2026) ───────────
+
+test('«Не смогу» у выданного заказа — без изменений: запись «Пришёл» не трогаем, связь с заказом остаётся', async () => {
+  const w = world();
+  await w.pickup.book('AbCdEf1234', `${tomorrow}T10:15`);
+  w.tables.booking![0]!.status = 'arrived';
+  w.tables.order![0]!.status = 'issued';
+  await w.pickup.cancel('AbCdEf1234');
+  assert.equal(w.tables.order![0]!.pickupBookingId, 'bk_1');
+  assert.deepEqual(w.statusCalls, []);
+});
+
+test('«Не смогу»: запись снять не вышло — ошибка, связь заказа с записью не теряется', async () => {
+  const w = world({ failStatus: true });
+  await w.pickup.book('AbCdEf1234', `${tomorrow}T10:15`);
+  await assert.rejects(w.pickup.cancel('AbCdEf1234'), (e: unknown) => e instanceof ApiError && e.code === 'invalid_transition');
+  assert.equal(w.tables.order![0]!.pickupBookingId, 'bk_1');
+});
+
+test('лимит по коду заказа (сверх лимита по IP): смены и отмены сверх лимита — rate_limited, новой записи нет; повтор того же — не считается', async () => {
+  const { PICKUP_CHANGES_PER_CODE } = await import('./order-pickup.service.js');
+  const counts = new Map<string, number>();
+  const limits = {
+    hit: async (key: string, limit: number) => {
+      const n = (counts.get(key) ?? 0) + 1;
+      counts.set(key, n);
+      return { allowed: n <= limit, retryAfter: 60 };
+    },
+  };
+  const w = world({ limits });
+  await w.pickup.book('AbCdEf1234', `${tomorrow}T10:15`);
+  await w.pickup.book('AbCdEf1234', `${tomorrow}T10:15`); // двойное нажатие — без записи и без счёта
+  assert.equal(counts.get('public-order-pickup-code:AbCdEf1234'), 1);
+  counts.set('public-order-pickup-code:AbCdEf1234', PICKUP_CHANGES_PER_CODE.limit);
+  await assert.rejects(w.pickup.book('AbCdEf1234', `${tomorrow}T10:00`), (e: unknown) => e instanceof ApiError && e.code === 'rate_limited');
+  await assert.rejects(w.pickup.cancel('AbCdEf1234'), (e: unknown) => e instanceof ApiError && e.code === 'rate_limited');
+  assert.equal(w.placed.length, 1, 'новой записи нет');
+  assert.deepEqual(w.statusCalls, [], 'прежняя не снята');
+  assert.equal(w.tables.order![0]!.pickupBookingId, 'bk_1');
+  // несуществующий код — счётчик не заводится
+  await assert.rejects(w.pickup.book('ZZZZZZZZZZ', `${tomorrow}T10:00`), (e: unknown) => e instanceof ApiError && e.code === 'not_found');
+  assert.equal(counts.has('public-order-pickup-code:ZZZZZZZZZZ'), false);
+});
+
+test('онлайн-запись: «Выдача заказа» — только с orderPickup; «Приём заказа» — только при включённых «Заказах»; orderPickup не открывает другие услуги', () => {
+  const pickupSvc = { kind: 'pickup', onlineBookable: false };
+  const intakeSvc = { kind: 'intake', onlineBookable: true };
+  const usual = { kind: 'individual', onlineBookable: true };
+  assert.equal(rules.onlineServiceAllowed(pickupSvc, false, true), false, 'общий поток не записывает на выдачу');
+  assert.equal(rules.onlineServiceAllowed({ ...pickupSvc, onlineBookable: true }, false, true), false, 'даже если её сделали онлайн');
+  assert.equal(rules.onlineServiceAllowed(pickupSvc, true, true), true);
+  assert.equal(rules.onlineServiceAllowed(pickupSvc, true, false), false, '«Заказы» выключены');
+  assert.equal(rules.onlineServiceAllowed(usual, true, true), false, 'orderPickup — только для «Выдачи заказа»');
+  assert.equal(rules.onlineServiceAllowed(intakeSvc, false, true), true);
+  assert.equal(rules.onlineServiceAllowed(intakeSvc, false, false), false, '«Заказы» выключены — сдачи по записи нет');
+  assert.equal(rules.onlineServiceAllowed(usual, false, false), true);
+  assert.equal(rules.onlineServiceAllowed({ ...usual, onlineBookable: false }, false, true), false);
+});
+
+test('бизнес-черновик или ушёл с платформы: окна, запись и «Не смогу» по ссылке — 404 not_found, ничего не меняется', async () => {
+  for (const patch of [{ status: 'draft' }, { leftAt: new Date() }]) {
+    const w = world();
+    await w.pickup.book('AbCdEf1234', `${tomorrow}T10:15`);
+    Object.assign(w.tables.business![0]!, patch);
+    const nf = (e: unknown) => e instanceof ApiError && e.code === 'not_found';
+    await assert.rejects(w.pickup.slots('AbCdEf1234'), nf);
+    await assert.rejects(w.pickup.book('AbCdEf1234', `${tomorrow}T10:00`), nf);
+    await assert.rejects(w.pickup.cancel('AbCdEf1234'), nf);
+    assert.equal(w.placed.length, 1);
+    assert.deepEqual(w.statusCalls, []);
+    assert.equal(w.tables.order![0]!.pickupBookingId, 'bk_1');
+  }
+});
+
+test('замороженный бизнес: выбрать, поменять и снять время выдачи по ссылке можно', async () => {
+  const w = world();
+  w.tables.business![0]!.status = 'frozen';
+  assert.ok((await w.pickup.slots('AbCdEf1234')).days.length);
+  await w.pickup.book('AbCdEf1234', `${tomorrow}T10:15`);
+  assert.equal(w.tables.order![0]!.pickupBookingId, 'bk_1');
+  await w.pickup.cancel('AbCdEf1234');
+  assert.equal(w.tables.order![0]!.pickupBookingId, null);
 });
 
 // ─────────── кабинет: «Забирают сегодня» ───────────

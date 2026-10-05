@@ -57,7 +57,7 @@ import {
   type StatusActor,
 } from './rules.js';
 import { attachReferralInTx } from '../loyalty/referral.service.js';
-import { PICKUP_KIND } from '../orders/order-rules.js';
+import { onlineServiceAllowed, ordersEnabledOf } from '../orders/order-rules.js';
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaService | Tx;
@@ -860,7 +860,9 @@ export class BookingsService {
   async place(actor: BookingActor, input: PlaceInput, opts: { idempotent?: boolean } = {}): Promise<{ booking: BookingView; client?: Record<string, unknown> }> {
     void opts;
     const online = isOnlineSource(input.source);
-    if (!online && actor.ctx?.member) assertJournal(actor.ctx, 'journal.create', input.staffId);
+    // Сотрудник (кабинет) — всегда с правом journal.create на этого мастера, какой бы source он ни прислал: онлайн-источник
+    // (link/widget/app) снимает проверку только у настоящих публичных путей (клиент, держатель ссылки — без членства)
+    if (actor.ctx?.member && (actor.kind === 'staff' || !online)) assertJournal(actor.ctx, 'journal.create', input.staffId);
     const tz = await this.tzOfLocation(this.prisma, input.locationId ?? null);
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(input.start)) throw new ApiError('validation', 'Invalid start', { start: 'YYYY-MM-DDTHH:mm' });
 
@@ -901,7 +903,7 @@ export class BookingsService {
     const result = await this.prisma.$transaction(
       async (tx) => {
         const staff = await tx.staff.findFirst({ where: { id: input.staffId, businessId: input.businessId, deletedAt: null }, select: STAFF_SELECT });
-        const business = await tx.business.findUnique({ where: { id: input.businessId }, select: { id: true, status: true, bookingRules: true } });
+        const business = await tx.business.findUnique({ where: { id: input.businessId }, select: { id: true, status: true, bookingRules: true, ordersEnabled: true, sphereIds: true } });
         if (!staff || !business) throw new ApiError('not_found', 'Staff or business not found');
         if (!input.services.length && !input.groupEventId) throw new ApiError('service_unavailable', 'No services');
 
@@ -913,8 +915,9 @@ export class BookingsService {
             const lineStaff = line.staffId ?? staff.id;
             const assigned = arr(svc.staffIds).includes(lineStaff) || arr(staff.serviceIds).includes(svc.id);
             // ⭐ «Выдача заказа» — только по ссылке заказа (orderPickup), в общем онлайн-потоке её нет
-            const pickup = svc.kind === PICKUP_KIND;
-            if (pickup !== Boolean(input.orderPickup) || (!svc.onlineBookable && !pickup) || !assigned) throw new ApiError('service_unavailable', 'Service is not bookable online');
+            // «Приём заказа» — только пока у бизнеса включены «Заказы» (на странице её тогда и не видно)
+            const ordersOn = ordersEnabledOf(business.ordersEnabled, business.sphereIds);
+            if (!onlineServiceAllowed(svc, Boolean(input.orderPickup), ordersOn) || !assigned) throw new ApiError('service_unavailable', 'Service is not bookable online');
           }
           return { svc, line };
         });

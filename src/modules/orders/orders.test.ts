@@ -99,7 +99,7 @@ const ctx = {
 
 function world(seed: Record<string, Row[]> = {}) {
   const m = memoryPrisma({
-    business: [{ id: 'biz_1', name: 'Ателье Нарине', brandName: null, phone: '+37410000000', slug: 'narine' }],
+    business: [{ id: 'biz_1', status: 'active', leftAt: null, name: 'Ателье Нарине', brandName: null, phone: '+37410000000', slug: 'narine' }],
     location: [{ id: 'loc_1', businessId: 'biz_1', address: { ru: 'Ереван, Абовяна 1' }, phone: '+37410111111', deletedAt: null, sortOrder: 0 }],
     staff: [{ id: 'st_1', businessId: 'biz_1', deletedAt: null }],
     client: [{ id: 'cl_1', businessId: 'biz_1', phone: '+37400160001', appUserId: null, deletedAt: null }],
@@ -685,4 +685,25 @@ test('смета: напоминание через сутки — одно на
   await ordersEstimateReminders(w.prisma, w.messenger, at(2 * DAY));
   assert.equal(w.tables.notifyOutbox!.length, m);
   assert.ok(!rules.estimateReminderDue({ status: 'ready', estimateStatus: 'pending', estimateSentAt: sentAt, estimateRemindedAt: null }, at(2 * DAY)), 'заказ уже готов — не напоминаем');
+});
+
+test('ссылка заказа бизнеса-черновика или ушедшего с платформы: статус и смета — 404 not_found, ничего не меняется', async () => {
+  for (const patch of [{ status: 'draft' }, { leftAt: new Date() }]) {
+    const { svc, tables } = world();
+    const o = await svc.create(ctx, 'biz_1', DIAG);
+    await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: LINES });
+    Object.assign(tables.business![0]!, patch);
+    await assert.rejects(svc.publicByCode(o.code), (e: unknown) => e instanceof ApiError && e.code === 'not_found', JSON.stringify(patch));
+    await assert.rejects(svc.decideEstimatePublic(o.code, 'approve', 1), (e: unknown) => e instanceof ApiError && e.code === 'not_found');
+    assert.equal(tables.order![0]!.estimateStatus, 'pending');
+  }
+});
+
+test('замороженный бизнес (не оплатил подписку) — вещь клиента у него: статус и смета по ссылке работают', async () => {
+  const { svc, tables } = world();
+  const o = await svc.create(ctx, 'biz_1', DIAG);
+  await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: LINES });
+  tables.business![0]!.status = 'frozen';
+  assert.equal((await svc.publicByCode(o.code)).number, o.number);
+  assert.equal((await svc.decideEstimatePublic(o.code, 'approve', 1)).estimate!.status, 'approved');
 });
