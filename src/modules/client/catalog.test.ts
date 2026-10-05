@@ -54,7 +54,7 @@ const staff = (id: string, businessId: string, sphereIds: string[], serviceIds: 
 });
 
 /** Барбершоп с мастером и окнами (завтра 10:00 или сегодня 18:00), ателье, химчистка с выключенными «Заказами», ремонт без мастеров */
-function makeService(opts: { slotDay?: string; tailorBookable?: boolean } = {}) {
+function makeService(opts: { slotDay?: string; tailorBookable?: boolean; tailorNoSlots?: boolean } = {}) {
   const tables: Record<string, Row[]> = {
     business: [
       business('barber1', 'Игла Барбер', ['barber']),
@@ -74,7 +74,10 @@ function makeService(opts: { slotDay?: string; tailorBookable?: boolean } = {}) 
     tables.workSchedule!.push({ staffId: 'tailor1-owner' });
   }
   const day = opts.slotDay ?? tomorrow;
-  const availability = { nearestSlots: async () => [{ staffId: 'barber1-owner', locationId: 'barber1-loc', start: `${day}T10:00`, end: `${day}T10:30`, workplace: 'salon' }] };
+  const availability = {
+    nearestSlots: async (businessId: string) =>
+      opts.tailorNoSlots && businessId === 'tailor1' ? [] : [{ staffId: 'barber1-owner', locationId: 'barber1-loc', start: `${day}T10:00`, end: `${day}T10:30`, workplace: 'salon' }],
+  };
   return new CatalogService(memoryPrisma(tables) as unknown as Ctor[0], availability as unknown as Ctor[1], {} as Ctor[2]);
 }
 
@@ -128,4 +131,15 @@ test('мастера с окнами — первыми, мастерские �
 test('у мастерской есть мастер с окнами — одна обычная карточка, без дубля места', async () => {
   const out = await makeService({ tailorBookable: true }).catalog({ sphereId: 'tailor' });
   assert.deepEqual(kinds(out), ['master:tailor1']);
+});
+
+test('у мастера мастерской есть онлайн-услуга, но окон на 14 дней нет — карточка места, а не пропажа из поиска', async () => {
+  const out = await makeService({ tailorBookable: true, tailorNoSlots: true }).catalog({ sphereId: 'tailor' });
+  assert.deepEqual(kinds(out), ['orders:tailor1']);
+});
+
+test('обычные сферы — как раньше: мастер с окнами, без карточек места', async () => {
+  const svc = makeService();
+  assert.deepEqual(kinds(await svc.catalog({ sphereId: 'barber' })), ['master:barber1']);
+  assert.deepEqual(kinds(await svc.catalog({ sphereId: 'nails' })), []);
 });

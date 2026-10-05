@@ -15,6 +15,7 @@ import { AvailabilityService } from '../availability/availability.service.js';
 import type { FreeSlot } from '../availability/engine.js';
 import { businessView, locationView, staffView } from '../businesses/views.js';
 import { OtpService } from '../auth/otp.service.js';
+import { ordersEnabledOf } from '../orders/order-rules.js';
 import { categoryView, serviceView } from '../services/services.views.js';
 import { BookingsService, clientActor, coreClient, staffActor } from '../journal/bookings.service.js';
 import { ModerationService, photoModerationRefId } from '../platform/moderation.service.js';
@@ -207,6 +208,9 @@ export class OnlineService {
       packages: await this.publicPackages(business.id),
       hourCycle,
       addressHidden,
+      // Мастерская «заказов» (ателье, ремонт, химчистка, детейлинг): без онлайн-услуг страница показывает не пустую
+      // запись, а «принесите в часы работы, о готовности сообщат» и контакты (05.10.2026)
+      ordersEnabled: ordersEnabledOf(business.ordersEnabled, business.sphereIds),
     };
   }
 

@@ -163,10 +163,40 @@ export class AccountService {
         this.prisma.session.findMany({ where: { userId, revokedAt: null, expiresAt: { gt: new Date() } }, orderBy: { lastSeenAt: 'desc' }, take: 100 }),
         this.prisma.loginEvent.findMany({ where: { userId }, orderBy: { at: 'desc' }, take: DATA_EXPORT_LOGIN_EVENTS }),
       ]);
-    const businessIds = new Set<string>([...bookings.map((b) => b.businessId), ...staffReviews.map((r) => r.businessId), ...locationReviews.map((r) => r.businessId), ...staff.map((s) => s.businessId)]);
+    // Клиентская часть (05.10.2026): свои карточки в салонах — по appUserId и по своему (подтверждённому) номеру;
+    // карты, сертификаты и абонементы — заведённые из приложения или проданные на эти карточки.
+    const salonCards = await this.prisma.client.findMany({
+      where: { deletedAt: null, purgedAt: null, OR: [{ appUserId: userId }, ...(user.phone ? [{ phone: user.phone }] : [])] },
+      orderBy: { createdAt: 'desc' },
+      take,
+    });
+    const clientIds = salonCards.map((c) => c.id);
+    const mine = clientIds.length ? { OR: [{ appUserId: userId }, { clientId: { in: clientIds } }] } : { appUserId: userId };
+    const [loyaltyCards, certificates, memberships, waitlist, supportTickets, telegram, demandLeads] = await Promise.all([
+      this.prisma.loyaltyCard.findMany({ where: mine, include: { cardType: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take }),
+      this.prisma.certificate.findMany({ where: mine, include: { type: { select: { name: true } } }, orderBy: { soldAt: 'desc' }, take }),
+      this.prisma.membershipSale.findMany({ where: mine, include: { type: { select: { name: true } } }, orderBy: { soldAt: 'desc' }, take }),
+      this.prisma.waitlistEntry.findMany({ where: { appUserId: userId }, orderBy: { createdAt: 'desc' }, take }),
+      this.prisma.supportTicket.findMany({ where: { appUserId: userId }, orderBy: { createdAt: 'desc' }, take }),
+      this.prisma.telegramLink.findMany({ where: { appUserId: userId }, take: 20 }),
+      this.prisma.demandLead.findMany({ where: { appUserId: userId }, orderBy: { createdAt: 'desc' }, take }),
+    ]);
+
+    const businessIds = new Set<string>([
+      ...bookings.map((b) => b.businessId),
+      ...staffReviews.map((r) => r.businessId),
+      ...locationReviews.map((r) => r.businessId),
+      ...staff.map((s) => s.businessId),
+      ...salonCards.map((c) => c.businessId),
+      ...loyaltyCards.map((c) => c.businessId),
+      ...certificates.map((c) => c.businessId),
+      ...memberships.map((m) => m.businessId),
+      ...waitlist.map((w) => w.businessId),
+    ]);
     const staffIds = new Set<string>([...bookings.map((b) => b.staffId), ...starRatings.map((r) => r.staffId), ...staffReviews.map((r) => r.staffId)]);
     const serviceIds = new Set<string>();
     for (const b of bookings) for (const s of (Array.isArray(b.services) ? (b.services as { serviceId?: string }[]) : [])) if (s.serviceId) serviceIds.add(s.serviceId);
+    for (const w of waitlist) for (const id of Array.isArray(w.serviceIds) ? w.serviceIds : []) if (typeof id === 'string') serviceIds.add(id);
     const [businesses, masters, services] = await Promise.all([
       businessIds.size ? this.prisma.business.findMany({ where: { id: { in: [...businessIds] } }, select: { id: true, name: true } }) : [],
       staffIds.size ? this.prisma.staff.findMany({ where: { id: { in: [...staffIds] } }, select: { id: true, name: true } }) : [],
@@ -199,6 +229,14 @@ export class AccountService {
         sessions,
         loginEvents,
         dataExports: exports,
+        loyaltyCards: loyaltyCards.map((c) => ({ ...c, cardType: c.cardType?.name ?? null })),
+        certificates: certificates.map((c) => ({ ...c, type: c.type?.name ?? null })),
+        memberships: memberships.map((m) => ({ ...m, type: m.type?.name ?? null })),
+        waitlist,
+        salonCards,
+        supportTickets,
+        telegram,
+        demandLeads,
       },
       now,
     );

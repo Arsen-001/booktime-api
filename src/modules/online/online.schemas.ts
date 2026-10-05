@@ -29,6 +29,8 @@ export const publicBusinessOut = z.object({
   packages: z.array(z.unknown()),
   hourCycle: z.enum(['24', '12']),
   addressHidden: z.boolean(),
+  /** Раздел «Заказы» включён (мастерская: принимает вещи без записи по времени) */
+  ordersEnabled: z.boolean(),
 });
 
 // ─────────────────────────── окна виджета ───────────────────────────

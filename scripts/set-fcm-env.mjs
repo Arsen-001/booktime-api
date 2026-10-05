@@ -9,6 +9,8 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const [file, env] = process.argv.slice(2);
 if (!file || !['staging', 'production'].includes(env)) {
@@ -30,6 +32,7 @@ execFileSync(
     '--set', `FCM_CLIENT_EMAIL=${key.client_email}`,
     '--set', `FCM_PRIVATE_KEY=${key.private_key}`,
   ],
-  { stdio: ['ignore', 'ignore', 'inherit'] },
+  // Railway привязан к папке сервера — запускаем оттуда, откуда бы ни вызвали скрипт
+  { cwd: resolve(dirname(fileURLToPath(import.meta.url)), '..'), stdio: ['ignore', 'ignore', 'inherit'] },
 );
 console.log(`✓ ${env}: FCM_PROJECT_ID=${key.project_id}, FCM_CLIENT_EMAIL=${key.client_email}, FCM_PRIVATE_KEY задан (не печатается)`);

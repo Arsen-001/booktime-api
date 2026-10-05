@@ -45,7 +45,11 @@ function input(): RawExportInput {
 
 test('файл «Мои данные»: верхние ключи и основные поля', () => {
   const out = buildMyDataExport(input(), d('2026-10-04T12:00:00Z'));
-  assert.deepEqual(Object.keys(out), ['format', 'exportedAt', 'profile', 'appProfile', 'consents', 'identities', 'bookings', 'favorites', 'reviews', 'diary', 'staffProfiles', 'sessions', 'loginEvents', 'dataExports']);
+  assert.deepEqual(Object.keys(out), [
+    'format', 'exportedAt', 'profile', 'appProfile', 'consents', 'identities', 'bookings', 'favorites', 'reviews',
+    'loyaltyCards', 'certificates', 'memberships', 'waitlist', 'salonCards', 'supportTickets', 'telegram', 'searchRequests',
+    'diary', 'staffProfiles', 'sessions', 'loginEvents', 'dataExports',
+  ]);
   assert.equal(out.profile.phone, '+37400160001');
   assert.deepEqual(out.consents, [{ document: 'terms', version: '2026-09', acceptedAt: '2026-09-01T10:00:00.000Z' }]);
   assert.equal(out.bookings[0]!.business, 'Nuri Nail Studio');
@@ -65,6 +69,58 @@ test('файл «Мои данные»: секреты и лишние поля 
   for (const key of ['tokenHash', 'passwordHash', 'refreshTokenEnc', 'subject', 'accessHash', 'prepayment', '"token"', 'codeHash']) {
     assert.ok(!json.includes(key), `нет поля ${key}`);
   }
+});
+
+/** Клиент без кабинета: карты, сертификаты, абонементы, лист ожидания, карточки в салонах, обращения */
+function clientInput(): RawExportInput {
+  const base = input();
+  const salonSecrets = { note: 'SECRET_SALON_NOTE', tags: ['SECRET_TAG'], customFieldValues: { f1: 'SECRET_FIELD' }, nationalId: 'SECRET_ID', avatarUrl: 'data:SECRET', importanceClass: 'gold' };
+  return {
+    ...base,
+    staff: [],
+    loyaltyCards: [{ businessId: 'biz_1', cardType: 'Золотая', number: 'C-001', balance: 1200n, createdAt: d('2026-09-05T10:00:00Z'), data: { SECRET_: 1 } } as never],
+    certificates: [{ businessId: 'biz_1', type: 'На 10 000', code: 'GIFT-1', total: 10000n, balance: 4000n, status: 'active', soldAt: d('2026-09-06T10:00:00Z'), expiresAt: d('2027-09-06T10:00:00Z') }],
+    memberships: [{ businessId: 'biz_1', type: '10 визитов', code: 'M-1', totalVisits: 10, remainingVisits: 7, status: 'active', soldAt: d('2026-09-07T10:00:00Z'), expiresAt: d('2026-12-07T10:00:00Z'), frozenUntil: null }],
+    waitlist: [{ businessId: 'biz_1', serviceIds: ['sv_1'], wishes: [{ date: '2026-10-10' }], comment: '', bookingId: null, createdAt: d('2026-10-02T10:00:00Z'), clientPhone: '+37400160001', tags: ['SECRET_TAG'] } as never],
+    salonCards: [
+      {
+        businessId: 'biz_1', name: 'Ани', lastName: null, phone: '+37400160001', email: null, birthday: '1995-05-01', gender: 'female', locale: 'hy',
+        adConsent: { given: true, at: '2026-09-01T10:00:00.000Z', method: 'app', recordedBy: 'SECRET_STAFF' }, birthdayGreetingOptOut: null, createdAt: d('2026-09-01T10:00:00Z'),
+        ...salonSecrets,
+      } as never,
+    ],
+    supportTickets: [{ number: 12, subject: 'Вопрос', message: 'Как отменить?', channel: 'app', topic: 'booking', status: 'answered', messages: [{ id: 'm1', author: 'them', text: 'Как отменить?', at: '2026-10-03T10:00:00.000Z' }, { id: 'm2', author: 'us', text: 'В «Мои записи»', at: '2026-10-03T11:00:00.000Z' }], createdAt: d('2026-10-03T10:00:00Z'), updatedAt: d('2026-10-03T11:00:00Z') }],
+    telegram: [{ phone: '+37400160001', languageCode: 'hy', blockedAt: null, createdAt: d('2026-09-10T10:00:00Z'), chatId: 'SECRET_CHAT' } as never],
+    demandLeads: [{ query: 'шугаринг', district: 'kentron', notify: true, createdAt: d('2026-09-20T10:00:00Z') }],
+  };
+}
+
+test('файл «Мои данные» клиента: карты, сертификаты, абонементы, лист ожидания, карточки салонов, согласия', () => {
+  const out = buildMyDataExport(clientInput(), d('2026-10-05T12:00:00Z'));
+  assert.deepEqual(out.loyaltyCards, [{ business: 'Nuri Nail Studio', cardType: 'Золотая', number: 'C-001', balance: 1200, currency: 'AMD', issuedAt: '2026-09-05T10:00:00.000Z' }]);
+  assert.equal(out.certificates[0]!.balance, 4000);
+  assert.equal(out.memberships[0]!.remainingVisits, 7);
+  assert.deepEqual(out.waitlist[0]!.services, [{ ru: 'Маникюр', en: 'Manicure' }]);
+  assert.equal(out.waitlist[0]!.comment, null);
+  assert.equal(out.salonCards[0]!.business, 'Nuri Nail Studio');
+  assert.deepEqual(out.consents[1], { document: 'salon_ads', business: 'Nuri Nail Studio', given: true, at: '2026-09-01T10:00:00.000Z', method: 'app' });
+  assert.deepEqual(out.supportTickets[0]!.messages.map((m) => m.author), ['me', 'support']);
+  assert.deepEqual(out.telegram, [{ phone: '+37400160001', language: 'hy', linkedAt: '2026-09-10T10:00:00.000Z', stoppedAt: null }]);
+  assert.deepEqual(out.searchRequests, [{ query: 'шугаринг', district: 'kentron', notifyWhenAvailable: true, at: '2026-09-20T10:00:00.000Z' }]);
+  assert.deepEqual(out.staffProfiles, []);
+});
+
+test('файл «Мои данные» клиента: заметки, теги, поля и файлы салона, chat id Telegram в файл не попадают', () => {
+  const json = JSON.stringify(buildMyDataExport(clientInput()));
+  assert.doesNotMatch(json, /SECRET/);
+  for (const key of ['"note"', '"tags"', 'customFieldValues', 'nationalId', 'avatarUrl', 'importanceClass', 'recordedBy', 'chatId']) {
+    assert.ok(!json.includes(key), `нет поля ${key}`);
+  }
+});
+
+test('без клиентских списков (старый вызов) — пустые массивы, а не ошибка', () => {
+  const out = buildMyDataExport(input());
+  assert.deepEqual([out.loyaltyCards, out.certificates, out.memberships, out.waitlist, out.salonCards, out.supportTickets, out.telegram, out.searchRequests], [[], [], [], [], [], [], [], []]);
 });
 
 test('имя файла — booktime-my-data-ГГГГ-ММ-ДД.json', () => {

@@ -2,6 +2,9 @@
  * «Мои данные» (04.10.2026, F-15-154; App Store / GDPR-подобная копия данных): GET /v1/me/data-export отдаёт JSON-файл
  * с данными самого человека — профиль, входы Google/Apple (без токенов и id у провайдера), согласие, свои записи как
  * клиента, избранное, отзывы, дневник, свои карточки сотрудника. Базы клиентов салона здесь нет (у неё своя выгрузка).
+ * 05.10.2026 — для клиента без кабинета добавлено: карты лояльности, сертификаты, абонементы, лист ожидания, свои
+ * карточки клиента в салонах (только личные поля и согласие на рекламу — без заметок, тегов и файлов салона), обращения
+ * в поддержку, привязка Telegram-бота и заявки «сообщить, когда появится».
  *
  * Только белый список полей: секреты (хеши паролей и сессий, refresh token Apple, accessHash записи, токены пушей)
  * в файл попасть не могут, даже если строку из базы передали целиком — buildMyDataExport берёт поля поимённо.
@@ -92,16 +95,66 @@ export interface RawExportInput {
   sessions: { app: string; device: string; ip: string; createdAt: Date; lastSeenAt: Date }[];
   loginEvents: { at: Date; method: string; channel: string | null; app: string; result: string; device: string; ip: string }[];
   dataExports: { at: Date }[];
+  /** 05.10.2026 — клиентская часть (необязательные: старые вызовы и тесты собираются без них) */
+  loyaltyCards?: { businessId: string; cardType: string | null; number: string; balance: Num; createdAt: Date }[];
+  certificates?: { businessId: string; type: string | null; code: string; total: Num; balance: Num; status: string; soldAt: Date; expiresAt: Date }[];
+  memberships?: {
+    businessId: string;
+    type: string | null;
+    code: string;
+    totalVisits: number | null;
+    remainingVisits: number | null;
+    status: string;
+    soldAt: Date;
+    expiresAt: Date;
+    frozenUntil: DateLike;
+  }[];
+  waitlist?: { businessId: string; serviceIds: unknown; wishes: unknown; comment: string; bookingId: string | null; createdAt: Date }[];
+  salonCards?: {
+    businessId: string;
+    name: string;
+    lastName: string | null;
+    phone: string;
+    email: string | null;
+    birthday: string | null;
+    gender: string;
+    locale: string | null;
+    adConsent: unknown;
+    birthdayGreetingOptOut: boolean | null;
+    createdAt: Date;
+  }[];
+  supportTickets?: { number: number | null; subject: string; message: string; channel: string; topic: string; status: string; messages: unknown; createdAt: Date; updatedAt: Date }[];
+  telegram?: { phone: string; languageCode: string | null; blockedAt: DateLike; createdAt: Date }[];
+  demandLeads?: { query: string; district: string | null; notify: boolean; createdAt: Date }[];
 }
 
 const iso = (d: DateLike) => (d ? d.toISOString() : null);
+const strList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+/** Согласие на рекламу из карточки салона (ConsentRecord) — только «дал/нет», когда и как; кто записал — не берём */
+const adConsentOf = (v: unknown) => {
+  if (!v || typeof v !== 'object') return null;
+  const c = v as { given?: unknown; at?: unknown; method?: unknown };
+  return { given: c.given === true, at: typeof c.at === 'string' ? c.at : null, method: typeof c.method === 'string' ? c.method : null };
+};
+/** Переписка обращения — только автор (мы/вы), текст и время */
+const ticketMessages = (v: unknown) =>
+  (Array.isArray(v) ? v : []).flatMap((m) => {
+    if (!m || typeof m !== 'object') return [];
+    const x = m as { author?: unknown; text?: unknown; at?: unknown };
+    return [{ author: x.author === 'us' ? 'support' : 'me', text: typeof x.text === 'string' ? x.text : '', at: typeof x.at === 'string' ? x.at : null }];
+  });
 const num = (n: Num) => (n == null ? 0 : Number(n));
 
 /** Собрать файл «Мои данные» — только перечисленные поля (см. шапку файла) */
 export function buildMyDataExport(input: RawExportInput, now = new Date()) {
   const u = input.user;
   const p = input.appProfile;
-  const cap = <T>(rows: T[]) => rows.slice(0, DATA_EXPORT_LIMIT);
+  const cap = <T>(rows: T[] | undefined) => (rows ?? []).slice(0, DATA_EXPORT_LIMIT);
+  const biz = (id: string) => input.businessNames.get(id) ?? null;
+  const salonConsents = cap(input.salonCards).flatMap((c) => {
+    const a = adConsentOf(c.adConsent);
+    return a ? [{ document: 'salon_ads', business: biz(c.businessId), given: a.given, at: a.at, method: a.method }] : [];
+  });
   return {
     format: 'booktime-my-data/1',
     exportedAt: now.toISOString(),
@@ -126,7 +179,10 @@ export function buildMyDataExport(input: RawExportInput, now = new Date()) {
           newsPushOptOut: p.newsPushOptOut,
         }
       : null,
-    consents: p?.consentAt ? [{ document: 'terms', version: p.consentVersion, acceptedAt: iso(p.consentAt) }] : [],
+    consents: [
+      ...(p?.consentAt ? [{ document: 'terms', version: p.consentVersion, acceptedAt: iso(p.consentAt) }] : []),
+      ...salonConsents,
+    ],
     identities: input.identities.map((i) => ({ provider: i.provider, email: i.email, linkedAt: iso(i.createdAt), lastUsedAt: iso(i.lastUsedAt) })),
     bookings: cap(input.bookings).map((b) => ({
       id: b.id,
@@ -165,6 +221,62 @@ export function buildMyDataExport(input: RawExportInput, now = new Date()) {
       })),
       places: cap(input.locationReviews).map((r) => ({ business: input.businessNames.get(r.businessId) ?? null, bookingId: r.bookingId, text: r.text, at: iso(r.createdAt) })),
     },
+    loyaltyCards: cap(input.loyaltyCards).map((c) => ({ business: biz(c.businessId), cardType: c.cardType, number: c.number, balance: num(c.balance), currency: 'AMD', issuedAt: iso(c.createdAt) })),
+    certificates: cap(input.certificates).map((c) => ({
+      business: biz(c.businessId),
+      type: c.type,
+      code: c.code,
+      total: num(c.total),
+      balance: num(c.balance),
+      currency: 'AMD',
+      status: c.status,
+      soldAt: iso(c.soldAt),
+      expiresAt: iso(c.expiresAt),
+    })),
+    memberships: cap(input.memberships).map((m) => ({
+      business: biz(m.businessId),
+      type: m.type,
+      code: m.code,
+      totalVisits: m.totalVisits,
+      remainingVisits: m.remainingVisits,
+      status: m.status,
+      soldAt: iso(m.soldAt),
+      expiresAt: iso(m.expiresAt),
+      frozenUntil: iso(m.frozenUntil),
+    })),
+    waitlist: cap(input.waitlist).map((w) => ({
+      business: biz(w.businessId),
+      services: strList(w.serviceIds).map((id) => input.serviceNames.get(id) ?? null),
+      wishes: Array.isArray(w.wishes) ? w.wishes : [],
+      comment: w.comment || null,
+      closedByBookingId: w.bookingId,
+      createdAt: iso(w.createdAt),
+    })),
+    salonCards: cap(input.salonCards).map((c) => ({
+      business: biz(c.businessId),
+      name: c.name,
+      lastName: c.lastName,
+      phone: c.phone,
+      email: c.email,
+      birthday: c.birthday,
+      gender: c.gender,
+      locale: c.locale,
+      birthdayGreetingOptOut: c.birthdayGreetingOptOut,
+      createdAt: iso(c.createdAt),
+    })),
+    supportTickets: cap(input.supportTickets).map((t) => ({
+      number: t.number,
+      subject: t.subject,
+      message: t.message,
+      channel: t.channel,
+      topic: t.topic,
+      status: t.status,
+      messages: ticketMessages(t.messages),
+      createdAt: iso(t.createdAt),
+      updatedAt: iso(t.updatedAt),
+    })),
+    telegram: (input.telegram ?? []).map((t) => ({ phone: t.phone, language: t.languageCode, linkedAt: iso(t.createdAt), stoppedAt: iso(t.blockedAt) })),
+    searchRequests: cap(input.demandLeads).map((l) => ({ query: l.query, district: l.district, notifyWhenAvailable: l.notify, at: iso(l.createdAt) })),
     diary: cap(input.diary).map((d) => ({ service: d.serviceName, master: d.masterName, date: d.date, amount: num(d.amount), addedAt: iso(d.createdAt) })),
     staffProfiles: input.staff.map((s) => ({
       business: input.businessNames.get(s.businessId) ?? null,

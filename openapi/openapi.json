@@ -49451,6 +49451,9 @@
                     },
                     "addressHidden": {
                       "type": "boolean"
+                    },
+                    "ordersEnabled": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -49466,7 +49469,8 @@
                     "businessStars",
                     "packages",
                     "hourCycle",
-                    "addressHidden"
+                    "addressHidden",
+                    "ordersEnabled"
                   ]
                 }
               }
@@ -50171,6 +50175,9 @@
                     },
                     "addressHidden": {
                       "type": "boolean"
+                    },
+                    "ordersEnabled": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -50186,7 +50193,8 @@
                     "businessStars",
                     "packages",
                     "hourCycle",
-                    "addressHidden"
+                    "addressHidden",
+                    "ordersEnabled"
                   ]
                 }
               }

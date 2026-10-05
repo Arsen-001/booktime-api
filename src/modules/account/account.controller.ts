@@ -77,7 +77,8 @@ export class AccountController {
   @ApiOperation({
     summary:
       'Скачать мои данные одним JSON-файлом (F-15-154, 04.10.2026): профиль, входы Google/Apple без токенов, согласие, ' +
-      'свои записи, избранное, отзывы, дневник, свои карточки сотрудника, входы. Content-Disposition: attachment',
+      'свои записи, избранное, отзывы, карты, сертификаты, абонементы, лист ожидания, свои карточки в салонах, обращения, ' +
+      'дневник, свои карточки сотрудника, входы. Content-Disposition: attachment',
   })
   async downloadMyData(@Ctx() ctx: RequestContext, @Res() res: Response): Promise<void> {
     const { filename, data } = await this.account.exportMyData(ctx);
