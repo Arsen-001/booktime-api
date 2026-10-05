@@ -8,7 +8,7 @@ import {
   type CodeSender,
 } from './code-sender/code-sender.js';
 import { FakeMailSender, type MailSender } from './mail/mail.js';
-import { FakePaymentProvider, type PaymentProvider } from './payments/payments.js';
+import { createPaymentProvider, type PaymentProvider } from './payments/payments.js';
 import { createPushSenders, type PushSenders } from './push/push.js';
 import { createFileStorage, createPrivateUploadStorage, createUploadStorage, type FileStorage } from './storage/storage.js';
 import { createTelegramBot, type TelegramBot } from './telegram-bot/telegram-bot.js';
@@ -52,7 +52,8 @@ export const adapterProviders = [
   },
   { provide: PUSH_SENDERS, useFactory: (): PushSenders => createPushSenders() },
   { provide: MAIL_SENDER, useFactory: (): MailSender => new FakeMailSender() },
-  { provide: PAYMENTS, useFactory: (): PaymentProvider => new FakePaymentProvider() },
+  // Заглушка оплаты — только при разработке и в тестах; на production оплаты выключены до выбора провайдера (06.10.2026)
+  { provide: PAYMENTS, useFactory: (): PaymentProvider => createPaymentProvider() },
   { provide: BUSINESS_MESSENGER, useFactory: (): BusinessMessenger => new FakeBusinessMessenger() },
   { provide: FILE_STORAGE, useFactory: (): FileStorage => createFileStorage() },
   { provide: UPLOAD_STORAGE, useFactory: (): FileStorage => createUploadStorage() },

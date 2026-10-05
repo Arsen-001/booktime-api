@@ -8,7 +8,9 @@ import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { utcToLocal } from '../../common/time/time.js';
+import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import { auditOut, exportLogBody, exportOut, loginRowOut } from './staff.schemas.js';
+import { DATA_OP_ACTION, dataOpBody, dataOpOut, dataOpView, listDataOps, recordDataOp } from './data-ops.js';
 
 type Diff = Record<string, [unknown, unknown]>;
 
@@ -56,7 +58,8 @@ export class JournalsController {
     const rows = await this.prisma.auditEvent.findMany({
       where: {
         businessId,
-        action: { not: 'export' },
+        // Выгрузки и «Операции с данными» — свои вкладки журнала, не «Изменения»
+        action: { notIn: ['export', DATA_OP_ACTION] },
         ...(entity ? { entityType: entity } : {}),
         ...(entityId ? { entityId } : {}),
         ...(action ? { action } : {}),
@@ -120,6 +123,31 @@ export class JournalsController {
         at: utcToLocal(r.at),
       };
     });
+  }
+
+  // ─────────── «Операции с данными» (F-02-063, F-14-114, F-04-126/130): загрузки, выгрузки, массовое удаление ───────────
+
+  @Post('data-ops')
+  @HttpCode(200)
+  @Biz()
+  @RateLimit({ bucket: 'data-ops', limit: 120, windowSec: 600, by: 'session' })
+  @ApiOperation({ summary: 'Записать операцию с данными, которую экран собрал сам (выгрузка файла в браузере, импорт по строкам). Автор — из сессии' })
+  @ZodBody(dataOpBody)
+  @ZodOk(dataOpOut)
+  async logDataOp(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(dataOpBody)) body: z.infer<typeof dataOpBody>) {
+    const id = await this.prisma.$transaction((tx) => recordDataOp(tx, ctx, businessId, body));
+    return dataOpView(await this.prisma.auditEvent.findUniqueOrThrow({ where: { id } }));
+  }
+
+  @Get('data-ops')
+  @Biz('clients.export')
+  @ApiOperation({ summary: 'Журнал «Операции с данными», новые → старые (до 500): kinds=import,export,delete; area=clients|services|…' })
+  @ApiQuery({ name: 'kinds', required: false })
+  @ApiQuery({ name: 'area', required: false })
+  @ZodOk(z.array(dataOpOut))
+  dataOps(@Param('businessId') businessId: string, @Query('kinds') kinds?: string, @Query('area') area?: string) {
+    const list = (kinds ?? '').split(',').filter((k): k is 'import' | 'export' | 'delete' => k === 'import' || k === 'export' || k === 'delete');
+    return listDataOps(this.prisma, businessId, { kinds: list.length ? list : undefined, area: area || undefined });
   }
 
   @Get('logins')

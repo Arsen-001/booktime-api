@@ -118,6 +118,13 @@ const schema = z.object({
    * ссылается. Без '1' — только пишет в лог, что удалил бы (пробный режим); '1' — удаляет файлы и строки uploads.
    */
   UPLOADS_CLEANUP: z.string().optional().transform((v) => v === '1'),
+  /**
+   * Оплата подписки и монет (06.10.2026, F-00-022/026): провайдер (ArCa / Idram / Telcell) не выбран. Без переменной —
+   * заглушка «платёж прошёл» только при NODE_ENV development/test, иначе оплаты выключены (503 payments_unavailable).
+   * '1' — заглушка и в production-сборке (локальные прогоны; на Railway НЕ задавать, в окружении production
+   * игнорируется); '0' — выключить оплаты и при разработке (проверить экран «оплата скоро»).
+   */
+  PAYMENTS_FAKE: z.enum(['0', '1']).optional().or(z.literal('').transform(() => undefined)),
   /** Постоянный код входа только для разработки (NODE_ENV=development); в остальных средах игнорируется */
   DEV_LOGIN_CODE: z.string().regex(/^\d{4}$/).optional(),
   /**

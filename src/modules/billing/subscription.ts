@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { Prisma } from '../../generated/prisma/client.js';
-import type { PaymentProvider } from '../../adapters/payments/payments.js';
+import { assertPaymentsAvailable, type PaymentProvider } from '../../adapters/payments/payments.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { newId } from '../../common/ids/ids.js';
 import { money, moneyToJson, percentOf } from '../../common/money/money.js';
@@ -225,6 +225,8 @@ export interface ChargeInput {
  * «Счёт для фирмы» (invoice) — деньги ещё не пришли: неоплаченный счёт, срок не продлевается (отметит наша панель).
  */
 export async function chargeSubscription(prisma: PrismaService, payments: PaymentProvider, input: ChargeInput) {
+  // Провайдер не подключён (production до выбора ArCa / Idram / Telcell) — 503 до любых записей; «счёт для фирмы» — можно
+  if (input.method !== 'invoice') assertPaymentsAvailable(payments);
   if (![1, 3, 6, 12].includes(input.months)) throw new ApiError('validation', 'months must be 1|3|6|12', { months: 'oneOf' });
   const q = await quoteFor(prisma, input.businessId, input.months);
   if (q.total <= 0) throw new ApiError('validation', 'Nothing to pay');
@@ -421,8 +423,9 @@ export async function billingTick(prisma: PrismaService, payments: PaymentProvid
         }
         continue;
       }
-      // Срок вышел: автопродление с сохранённой карты, иначе — сразу отсрочка без попыток
-      if (sub.autoRenew && sub.savedCardId) {
+      // Срок вышел: автопродление с сохранённой карты, иначе — сразу отсрочка без попыток. Оплаты выключены (нет
+      // провайдера) — карты как нет: без попыток списания и без «оплата не прошла»
+      if (sub.autoRenew && sub.savedCardId && payments.available) {
         const card = await prisma.savedCard.findUnique({ where: { id: sub.savedCardId } });
         const ok = card && !card.unavailable ? await tryAutoCharge(prisma, payments, sub.businessId, card.method as PayMethod) : false;
         if (ok) {
@@ -449,7 +452,7 @@ export async function billingTick(prisma: PrismaService, payments: PaymentProvid
       res.frozen++;
       continue;
     }
-    if (sub.autoRenew && sub.savedCardId && sub.retryAt && now >= sub.retryAt) {
+    if (sub.autoRenew && sub.savedCardId && payments.available && sub.retryAt && now >= sub.retryAt) {
       const card = await prisma.savedCard.findUnique({ where: { id: sub.savedCardId } });
       const ok = card && !card.unavailable ? await tryAutoCharge(prisma, payments, sub.businessId, card.method as PayMethod) : false;
       if (ok) res.charged++;

@@ -20,6 +20,7 @@ import { ResourcesService } from './resources.service.js';
 import { isLocale, t, type Locale } from '../../common/i18n/i18n.js';
 import { notifyKindOf } from '../notify/kinds.js';
 import { enqueueClientNotification } from '../notify/outbox.js';
+import { recordDataOp } from '../staff/data-ops.js';
 
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const addMin = (d: Date, m: number) => new Date(d.getTime() + m * 60_000);
@@ -231,6 +232,7 @@ export class ResourcesEventsService {
     const now = new Date();
     const toCancel = await this.prisma.groupEvent.findMany({ where: { id: { in: eventIds }, businessId, status: 'scheduled', startAt: { gte: now } }, select: { id: true } });
     for (const e of toCancel) await this.groupEvents.update(ctx, [businessId], e.id, { status: 'cancelled' });
+    await recordDataOp(this.prisma, ctx, businessId, { kind: 'delete', area: 'resources', entity: 'groupEvents', count: toCancel.length });
     return { cancelledCount: toCancel.length };
   }
 

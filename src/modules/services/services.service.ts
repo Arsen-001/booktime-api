@@ -22,6 +22,7 @@ import type {
   TechBreakMode,
 } from './services.schemas.js';
 import { categoryOnlineNameView, categoryView, defaultPackageExtra, packageWithExtraView, serviceExtraView, serviceView } from './services.views.js';
+import { recordDataOp } from '../staff/data-ops.js';
 
 /** Мест на мастера в подписке — сверх этого нужно покупать (F-00-085); сама цена — в platform_prices (photoSlotCoins) */
 const PHOTO_BASE_SLOTS = 6;
@@ -300,6 +301,7 @@ export class ServicesService {
         applied += 1;
       }
       if (applied) await this.audit.record(tx, ctx, { action: 'import', entityType: 'service', entityId: businessId, businessId, before: null, after: { applied, failed: failed.length } });
+      await recordDataOp(tx, ctx, businessId, { kind: 'import', area: 'services', entity: 'services', count: applied, ...(failed.length ? { failed: failed.length } : {}) });
     });
     return { applied, failed };
   }

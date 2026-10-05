@@ -9,6 +9,7 @@ import { ScheduleService } from '../schedule/schedule.service.js';
 import { ReportsSettingsService } from './reports-settings.service.js';
 import { inRange, localDateAt, locationsOf, tzMapOf, wideUtcBounds, type ReportRange } from './reports-common.js';
 import { DEFAULT_TZ, utcToLocal } from '../../common/time/time.js';
+import { recordDataOp } from '../staff/data-ops.js';
 
 const ONLINE_SOURCES = new Set(['app', 'link', 'widget']);
 const norm = (s: string) => s.trim().toLowerCase();
@@ -456,6 +457,7 @@ export class ReportsJournalService {
     // DataExportOperationType мока не несёт 'import' (только upload|copyFromExcel|emailLink|browserDownload,
     // src/domain/reports.ts) — ближайшее по смыслу 'upload' (файл был загружен), решение записано, не меняю тип.
     if (created > 0) await this.exports.logManual(ctx, businessId, { type: 'appointmentsImport', operation: 'upload', fileName: `appointments-import-${Date.now()}.csv`, rowCount: created });
+    if (created > 0) await recordDataOp(this.prisma, ctx, businessId, { kind: 'import', area: 'reports', entity: 'appointmentsImport', count: created, ...(failed ? { failed } : {}) });
     return { created, failed };
   }
 

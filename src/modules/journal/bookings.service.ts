@@ -13,10 +13,12 @@ import { DEFAULT_TZ, localDayRangeUtc, localToUtc, nowLocal, utcToLocal, utcToLo
 import { AvailabilityService } from '../availability/availability.service.js';
 import { toMinutes } from '../availability/engine.js';
 import { OccupyService, personKeyOf, visibilityOf, type BlockInput, type ResourceBlockInput } from '../availability/occupy.js';
+import { findHomeShiftConflict } from '../availability/home-shift.js';
 import { isLocale, t, type Locale } from '../../common/i18n/i18n.js';
 import { customTemplateOf } from '../notify/notify-types.service.js';
 import { notifyKindOf } from '../notify/kinds.js';
 import { isStaffEventEnabled } from '../notify/notify-staff-prefs.service.js';
+import { notifyStaffOfStaffAction } from '../notify/staff-notices.js';
 import { enqueueClientNotification, enqueueOutbox } from '../notify/outbox.js';
 import { LoyaltyProgramService } from '../loyalty/loyalty-program.service.js';
 import { TechCardsService } from '../stock/tech-cards.service.js';
@@ -432,6 +434,12 @@ export class BookingsService {
       sourceId: row.id,
       holdUntil: row.holdUntil,
     }));
+    // F-00-047: домашняя запись (дома / выезд) в часы смены салона, где владелец это запретил, — нельзя.
+    // Прошлое (allowOverlap) не проверяем — как и пересечения: это отметка о том, что уже было.
+    if (!opts.allowOverlap) {
+      const clash = await findHomeShiftConflict(tx, { staffIds, workplace: row.workplace, startAt: row.startAt, endAt });
+      if (clash) throw new ApiError('home_during_shift', `Home booking during salon shift ${clash.date} ${clash.from}-${clash.to}`);
+    }
     const keys = await this.occupy.occupy(tx, {
       blocks,
       resources,
@@ -516,6 +524,8 @@ export class BookingsService {
     if (rows.length) await tx.bookingEvent.createMany({ data: rows });
     if (next.appUserId) await this.pushInbox(tx, next, rows, next.appUserId, by);
     await this.notifyStaff(tx, next, rows, by);
+    // 06.10.2026: мастеру — «назначили / перенесли / отменили / не пришёл», администраторам — «коллега создал запись»
+    await notifyStaffOfStaffAction(tx, next, rows, by, tz);
   }
 
   /**

@@ -38,6 +38,14 @@ export class VisitCashController {
     return rows.filter((r) => canJournal(ctx, 'journal.view', r.booking.staffId));
   }
 
+  // Раньше ':bookingId' — иначе 'cash-desks' попал бы туда как id визита
+  @Get('cash-desks')
+  @Biz('journal.view')
+  @ApiOperation({ summary: 'Кассы для оплаты наличными в визите — настоящие кассы «Финансов» (F-14-094/097); bookingId — кассы его филиала' })
+  cashDesks(@Param('businessId') businessId: string, @Query('bookingId') bookingId?: string) {
+    return this.svc.listCashDesks(businessId, bookingId || undefined);
+  }
+
   @Get(':bookingId')
   @Biz('journal.view')
   @ApiOperation({ summary: 'Визит в разрезе продаж/оплат (F-14-092…098)' })

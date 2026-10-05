@@ -12,6 +12,7 @@ import { assertJournal, BookingsService, staffActor, type BookingActor } from '.
 import { type JournalArea } from './journal-settings.js';
 import { bookingView, extrasView } from './journal.views.js';
 import { extrasOf, linesDuration, occupiesTime, type BookingStatus, type ServiceLine } from './rules.js';
+import { recordDataOp } from '../staff/data-ops.js';
 
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const addMin = (d: Date, m: number) => new Date(d.getTime() + m * 60_000);
@@ -661,8 +662,12 @@ export class JournalService {
   }
 
   async logDataOp(ctx: RequestContext, businessId: string, kind: 'import' | 'export', count: number) {
-    const r = await this.prisma.dataExport.create({
-      data: { id: newId('dataExport'), businessId, area: kind === 'import' ? 'bookings-import' : 'bookings', authorId: ctx.member!.staffId, authorName: ctx.member!.name, count },
+    const r = await this.prisma.$transaction(async (tx) => {
+      // Общий журнал «Операции с данными» (F-01-182/183) — рядом со «своим» журналом выгрузок записей
+      await recordDataOp(tx, ctx, businessId, { kind, area: 'journal', entity: 'bookings', count });
+      return tx.dataExport.create({
+        data: { id: newId('dataExport'), businessId, area: kind === 'import' ? 'bookings-import' : 'bookings', authorId: ctx.member!.staffId, authorName: ctx.member!.name, count },
+      });
     });
     return { id: r.id, kind, count, authorStaffId: r.authorId ?? '', at: utcToLocal(r.at) };
   }

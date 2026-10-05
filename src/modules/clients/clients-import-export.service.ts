@@ -7,6 +7,7 @@ import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { clientRowView } from './clients.views.js';
 import { cleanImportRow, fillEmptyPatch, IMPORT_BATCH_MAX, type ImportRowInput } from './clients-import.rules.js';
+import { recordDataOp } from '../staff/data-ops.js';
 
 type ImportStatus = 'created' | 'updated' | 'skipped' | 'error';
 type ImportCode = 'exists' | 'nothingToFill' | 'duplicateInFile' | 'phoneFormat' | 'noPhone' | 'invalid';
@@ -162,6 +163,17 @@ export class ClientsImportExportService {
           businessId,
           after: { created, updated, skipped: count('skipped'), rejected: errors, onExisting: args.onExisting },
         });
+        // «Операции с данными»: одна строка на прогон (пачки прибавляют), числа — итог прогона
+        const run = await tx.clientImportRun.findFirst({ where: { id: runId!, businessId } });
+        if (run) {
+          await recordDataOp(
+            tx,
+            ctx,
+            businessId,
+            { kind: 'import', area: 'clients', entity: 'clients', count: run.createdCount + run.updatedCount, ...(run.rejectedCount ? { failed: run.rejectedCount } : {}) },
+            run.id,
+          );
+        }
       },
       { timeout: 60_000, maxWait: 10_000 },
     );
@@ -182,6 +194,7 @@ export class ClientsImportExportService {
     await this.prisma.$transaction(async (tx) => {
       await tx.dataExport.create({ data: { id: newId('dataExport'), businessId, area: 'clients', authorId: ctx.member!.staffId, authorName, count: view.length, fileName } });
       await this.audit.record(tx, ctx, { action: 'export', entityType: 'clientExport', entityId: businessId, businessId, after: { count: view.length, fileName } });
+      await recordDataOp(tx, ctx, businessId, { kind: 'export', area: 'clients', entity: 'clients', count: view.length, fileName });
     });
     return view;
   }

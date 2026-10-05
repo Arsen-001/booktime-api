@@ -435,12 +435,7 @@ function eventDriven(ctx: DeriveContext, events: DEvent[]): LogRow[] {
         emit(t4, channel, { ru: `Ваша запись на ${vars.ru.date} в ${vars.ru.time} отменена.`, en: `Your booking on ${vars.en.date} at ${vars.en.time} was cancelled.` }, { ru: 'Отмена записи', en: 'Booking cancelled' });
         continue;
       }
-      if (event.toStatus === 'no_show') {
-        if (event.at > booking.start) continue;
-        const channel = pickChannel(t75, hasApp);
-        if (!channel) continue;
-        emit(t75, channel, { ru: `Вы не пришли на запись ${vars.ru.date} в ${vars.ru.time}.`, en: `You missed your booking on ${vars.en.date} at ${vars.en.time}.` }, { ru: 'Не пришёл', en: 'No-show' });
-      }
+      // Тип 75 «Клиент не пришёл» (06.10.2026) — настоящая отправка и строка журнала (jobs/notify-client-auto.ts), не выводим
       continue;
     }
     if (event.kind === 'moved') {
@@ -831,9 +826,9 @@ export function deriveLogRows(ctx: DeriveContext, input: DeriveInput): LogRow[] 
   const rows = [
     ...eventDriven(ctx, input.events),
     ...timeBased(ctx, input.serviceReminderHours),
-    ...invites(ctx, input.events),
-    ...winback(ctx, input.arrived, input.windowFrom),
-    ...birthdays(ctx, input.birthdayClients),
+    // 06.10.2026: типы 75, 72, 55, 3 (и 6/20) шлёт сервер сам (jobs/notify-client-auto.ts) и пишет в журнал настоящие строки
+    // с настоящим статусом — здесь их больше не выводим, иначе в журнале был бы двойник с выдуманным «доставлено».
+    // Функции invites/winback/birthdays оставлены для сверки с моком (liveLog.ts).
     ...adminStaff(ctx, input.events),
   ];
   // F-05-090: настройки клиента ко всем клиентским строкам разом

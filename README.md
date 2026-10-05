@@ -37,6 +37,16 @@ esbuild/tsx: Nest берёт зависимости из метаданных д
   старше 7 дней и без ссылок в базе; удаляет только при `UPLOADS_CLEANUP=1`, иначе отчёт в лог.
 - Коммит: `npm run commit -- "сообщение"` (isomorphic-git, системный git на этой машине может быть недоступен).
 
+## Оплата подписки и монет (06.10.2026)
+
+- Платёжный провайдер (ArCa / Idram / Telcell) не выбран. Заглушка `FakePaymentProvider` («платёж прошёл сразу») —
+  только при `NODE_ENV=development/test` или `PAYMENTS_FAKE=1` (на Railway не задаётся, в окружении `production`
+  игнорируется). Иначе (staging, production) оплаты выключены: `POST …/billing/pay` картой/Idram/Telcell,
+  `PUT …/billing/card`, `POST …/coins/buy` → `503 payments_unavailable`, в базе ничего не меняется; автопродление не
+  пытается списать. `GET …/billing` → `paymentsAvailable` — экран вместо оплаты показывает «Оплата картой скоро — напишите
+  нам». Без провайдера работают: «счёт для фирмы», пробный период, бесплатные месяцы и подарки монет из нашей панели.
+  Выбор — `src/adapters/payments/payments.ts::pickPaymentProvider`; тесты — `src/modules/billing/payments-disabled.test.ts`.
+
 ## Вход при разработке (этап 2)
 
 - Код входа — в логе API (`[fake code-sender]`); при `NODE_ENV=development` и `DEV_LOGIN_CODE=0000` код всегда `0000`.

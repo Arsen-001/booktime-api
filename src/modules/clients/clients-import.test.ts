@@ -77,7 +77,8 @@ function client(over: Row = {}): Row {
 }
 
 function setup(clients: Row[] = []) {
-  const db = { client: table(clients), clientImportRun: table(), audits: [] as Row[] };
+  // auditEvent — общий журнал «Операции с данными» (staff/data-ops.ts): одна строка на прогон импорта
+  const db = { client: table(clients), clientImportRun: table(), auditEvent: table(), audits: [] as Row[] };
   const prisma = { ...db, $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db) };
   const audit = { record: async (_tx: unknown, _ctx: unknown, input: Row) => void db.audits.push(input) };
   const svc = new ClientsImportExportService(prisma as never, audit as never);
@@ -210,6 +211,11 @@ test('importBatch: прогон из нескольких пачек — одн�
   assert.equal(db.clientImportRun.rows.length, 1);
   const run = db.clientImportRun.rows[0]!;
   assert.deepEqual([run.totalRows, run.createdCount, run.rejectedCount], [5, 2, 3]);
+  // «Операции с данными»: прогон из двух пачек — одна строка, числа — итог прогона
+  const ops = db.auditEvent.rows.filter((r) => r.action === 'data_op');
+  assert.equal(ops.length, 1);
+  assert.equal(ops[0]!.entityId, run.id);
+  assert.deepEqual([(ops[0]!.diff as Row).count, (ops[0]!.diff as Row).failed], [[null, 2], [null, 3]]);
   // чужой runId не прибавляется к чужому журналу — заводится новый прогон
   db.clientImportRun.rows[0]!.businessId = 'biz_2';
   await svc.importBatch(ctx, 'biz_1', { ...base, runId: first.runId, rows: [{ rowIndex: 0, name: 'D', phone: '093000003' }] });

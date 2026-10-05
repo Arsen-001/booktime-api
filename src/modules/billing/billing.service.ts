@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PAYMENTS } from '../../adapters/adapters.js';
-import type { PaymentProvider } from '../../adapters/payments/payments.js';
+import { assertPaymentsAvailable, type PaymentProvider } from '../../adapters/payments/payments.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
@@ -35,8 +35,12 @@ export class BillingService {
 
   // ─────────── подписка ───────────
 
-  view(businessId: string) {
-    return subscriptionView(this.prisma, businessId);
+  /**
+   * Подписка + `paymentsAvailable`: принимаем ли оплату картой / Idram / Telcell (06.10.2026). false — экран вместо
+   * оплаты показывает «Оплата картой скоро — напишите нам»; «счёт для фирмы» остаётся.
+   */
+  async view(businessId: string) {
+    return { ...(await subscriptionView(this.prisma, businessId)), paymentsAvailable: this.payments.available };
   }
 
   quote(businessId: string, months: number) {
@@ -97,6 +101,8 @@ export class BillingService {
    * заглушка кладёт ссылку-маску; настоящий адаптер вернёт токен после 3-D Secure.
    */
   async setCard(ctx: RequestContext, businessId: string, input: { method: 'card' | 'idram' | 'telcell'; label?: string }) {
+    // Без провайдера карту не сохраняем: фальшивый токен на production не нужен (F-00-022, 06.10.2026)
+    assertPaymentsAvailable(this.payments);
     await ensureSubscription(this.prisma, businessId);
     const label = input.label?.trim() || (input.method === 'card' ? '•• 4242' : input.method === 'idram' ? 'Idram' : 'Telcell');
     await this.prisma.$transaction(async (tx) => {
@@ -184,10 +190,12 @@ export class BillingService {
   }
 
   /**
-   * Купить пакет (F-00-026): оплата провайдером (заглушка — сразу), затем в одной транзакции счёт «монеты»
+   * Купить пакет (F-00-026): оплата провайдером (заглушка при разработке — сразу; на production провайдера нет — 503), затем в одной транзакции счёт «монеты»
    * и приход в журнал. Idempotency-Key — ключ движения: повтор того же запроса не начислит дважды.
    */
   async buyCoins(ctx: RequestContext, businessId: string, packageId: string, idempotencyKey?: string) {
+    // Без провайдера монеты не продаём (F-00-026): только подарок из нашей панели (grantCoinsByPlatform)
+    assertPaymentsAvailable(this.payments);
     const pkg = await this.prisma.coinPackage.findFirst({ where: { id: packageId, active: true } });
     if (!pkg) throw new ApiError('not_found', 'Package not found');
     if (idempotencyKey) {

@@ -68,7 +68,7 @@ export class BillingController {
   @Post('billing/pay')
   @Biz('billing.manage')
   @Idempotent()
-  @ApiOperation({ summary: 'Оплатить: карта/Idram/Telcell (заглушка провайдера) или счёт для фирмы (F-15-083/084)' })
+  @ApiOperation({ summary: 'Оплатить: карта/Idram/Telcell или счёт для фирмы (F-15-083/084); провайдер не подключён — 503 payments_unavailable (кроме счёта)' })
   @ZodBody(payBody)
   pay(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(payBody)) body: z.infer<typeof payBody>) {
     return this.billing.pay(ctx, businessId, body);
@@ -142,7 +142,7 @@ export class BillingController {
   @Post('coins/buy')
   @Biz('billing.manage')
   @Idempotent()
-  @ApiOperation({ summary: 'Купить пакет монет (F-00-026, В-15)' })
+  @ApiOperation({ summary: 'Купить пакет монет (F-00-026, В-15); провайдер не подключён — 503 payments_unavailable' })
   @ZodBody(buyCoinsBody)
   buy(@Ctx() ctx: RequestContext, @Req() req: RequestWithContext, @Param('businessId') businessId: string, @Body(new Zod(buyCoinsBody)) body: z.infer<typeof buyCoinsBody>) {
     return this.billing.buyCoins(ctx, businessId, body.packageId, req.header('idempotency-key') ?? undefined);

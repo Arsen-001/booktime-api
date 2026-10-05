@@ -42,11 +42,26 @@ export const NOTIFY_KINDS: readonly NotifyKindDef[] = [
   // ⭐ 05.10.2026: «Смета по заказу» — согласовать цену после диагностики, и напоминание, если не ответил за сутки
   { code: 13, kind: 'order_estimate', recipient: 'client', messageKey: 'order.estimate' },
   { code: 14, kind: 'order_estimate_reminder', recipient: 'client', messageKey: 'order.estimateReminder' },
+  // ⭐ 06.10.2026: типы каталога 75/72/6+20/3/55 — jobs/notify-client-auto.ts (текст — шаблон типа в каталоге)
+  { code: 15, kind: 'client_no_show', recipient: 'client', messageKey: 'client.noShow' },
+  { code: 16, kind: 'noshow_invite', recipient: 'client', messageKey: 'client.noShowInvite' },
+  { code: 17, kind: 'review_request', recipient: 'client', messageKey: 'client.reviewRequest' },
+  { code: 18, kind: 'birthday', recipient: 'client', messageKey: 'client.birthday' },
+  { code: 19, kind: 'repeat_invite', recipient: 'client', messageKey: 'client.repeatInvite' },
   // бизнесу (05 §3.2)
   { code: 50, kind: 'staff_new_booking', recipient: 'staff', messageKey: 'staff.newBooking' },
   { code: 51, kind: 'staff_client_cancelled', recipient: 'staff', messageKey: 'staff.clientCancelled' },
   { code: 52, kind: 'staff_client_rescheduled', recipient: 'staff', messageKey: 'staff.clientRescheduled' },
   { code: 53, kind: 'staff_empty_week', recipient: 'staff', messageKey: 'staff.emptyWeek' },
+  // 06.10.2026: мастеру и администраторам о действиях персонала (типы каталога 56/57/42/13/76) и задачи воркера
+  // «заявка ждёт ответа» (F-00-067), «пришёл · сумма / не пришёл» (F-00-127) — modules/notify/staff-notices.ts
+  { code: 54, kind: 'staff_colleague_booked', recipient: 'staff', messageKey: 'staff.colleagueBooked' },
+  { code: 55, kind: 'staff_assigned', recipient: 'staff', messageKey: 'staff.assigned' },
+  { code: 56, kind: 'staff_booking_moved', recipient: 'staff', messageKey: 'staff.bookingMoved' },
+  { code: 57, kind: 'staff_booking_cancelled', recipient: 'staff', messageKey: 'staff.bookingCancelled' },
+  { code: 58, kind: 'staff_client_no_show', recipient: 'staff', messageKey: 'staff.clientNoShow' },
+  { code: 59, kind: 'staff_request_reminder', recipient: 'staff', messageKey: 'staff.requestReminder' },
+  { code: 60, kind: 'staff_visit_mark', recipient: 'staff', messageKey: 'staff.visitMark' },
 ] as const;
 
 export const NOTIFY_KIND_BY_NAME = new Map(NOTIFY_KINDS.map((k) => [k.kind, k]));
@@ -56,4 +71,4 @@ export function notifyKindOf(kind: string): NotifyKindDef | undefined {
 }
 
 /** Отправлять вне тихих часов 21:00–10:00 по Еревану (§5, зафиксировано PLAN.md §6 №10 «E6») — только эти виды */
-export const QUIET_HOURS_KINDS = new Set(['news', 'order_pickup_reminder', 'order_estimate_reminder']);
+export const QUIET_HOURS_KINDS = new Set(['news', 'order_pickup_reminder', 'order_estimate_reminder', 'client_no_show', 'noshow_invite', 'review_request', 'birthday', 'repeat_invite']);

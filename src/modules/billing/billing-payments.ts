@@ -1,10 +1,7 @@
-import { FakePaymentProvider, type PaymentProvider } from '../../adapters/payments/payments.js';
-
 /**
- * Провайдер оплаты для воркера (автопродление): тот же выбор, что `PAYMENTS` в adapters.ts. Провайдер не выбран
- * (PLAN §10, D8: ArCa / Idram / Telcell) — заглушка проводит платёж сразу. Настоящий адаптер вернёт `pending`,
- * и подписку продлит вебхук провайдера (`BillingService.settleCharge`).
+ * Провайдер оплаты для воркера (автопродление): тот же выбор, что `PAYMENTS` в adapters.ts
+ * (adapters/payments/payments.ts::createPaymentProvider). Провайдер не выбран (PLAN §10, D8: ArCa / Idram / Telcell):
+ * при разработке — заглушка, на production оплаты выключены. Настоящий адаптер вернёт `pending`, и подписку продлит
+ * вебхук провайдера (`settleCharge`).
  */
-export function createPaymentProvider(): PaymentProvider {
-  return new FakePaymentProvider();
-}
+export { createPaymentProvider } from '../../adapters/payments/payments.js';

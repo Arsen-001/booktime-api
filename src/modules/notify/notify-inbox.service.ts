@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service.js';
 import { isOnlineSource } from '../journal/rules.js';
 import { dayCloseInboxEvents } from './day-close-notice.js';
+import { requestReminderInboxEvents } from '../../jobs/notify-staff-request-reminders.js';
 
 /** Тот же словарь, что InboxEventKind фронта (src/api/notify.ts) — колокольчик кабинета читает те же переходы */
-export type InboxEventKind = 'created' | 'onlineCreated' | 'cancelled' | 'moved' | 'deleted' | 'delayed' | 'dayClosed';
+export type InboxEventKind = 'created' | 'onlineCreated' | 'cancelled' | 'moved' | 'deleted' | 'delayed' | 'awaitingReminder' | 'dayClosed';
 
 export interface InboxEvent {
   id: string;
@@ -15,6 +16,9 @@ export interface InboxEvent {
   kind: InboxEventKind;
   /** ⭐ 'dayClosed' (01.10.2026): итог кассы дня владельцу — day-close-notice.ts */
   dayClose?: { closedByName: string; revenue: number; cash: number; discrepancy: number };
+  /** 'awaitingReminder' (06.10.2026, F-00-067): начало визита и срок ответа на заявку — местное 'YYYY-MM-DDTHH:mm' */
+  start?: string;
+  deadline?: string;
 }
 
 /** Кто смотрит ленту: «День закрыт» — личные строки владельцев */
@@ -48,7 +52,9 @@ export class NotifyInboxService {
     const popup = (popupRow?.data as { bookingOps?: boolean; dayClose?: boolean } | null) ?? {};
     const dayClosed: InboxEvent[] = viewer && popup.dayClose !== false ? await dayCloseInboxEvents(this.prisma, businessId, viewer) : [];
     const bookingEvents = popup.bookingOps === false ? [] : await this.bookingEvents(businessId);
-    return [...dayClosed, ...bookingEvents].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 30);
+    // ⭐ «Заявка ждёт ответа» — напоминания воркера (jobs/notify-staff-request-reminders.ts), пока заявка ждёт
+    const reminders = popup.bookingOps === false ? [] : await requestReminderInboxEvents(this.prisma, businessId);
+    return [...dayClosed, ...bookingEvents, ...reminders].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 30);
   }
 
   private async bookingEvents(businessId: string): Promise<InboxEvent[]> {

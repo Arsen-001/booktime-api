@@ -95,6 +95,8 @@ export const ERROR_STATUS = {
   staff_hidden: HttpStatus.UNPROCESSABLE_ENTITY,
   client_required: HttpStatus.UNPROCESSABLE_ENTITY,
   outside_hours: HttpStatus.CONFLICT,
+  /** F-00-047: домашняя запись мастера попадает на его смену в салоне, где владелец запретил это галочкой */
+  home_during_shift: HttpStatus.CONFLICT,
   group_full: HttpStatus.CONFLICT,
   resource_unavailable: HttpStatus.CONFLICT,
   /** ⭐ Допродажа: сопутствующей услуги/товара нет в списке услуги или товар закончился */
@@ -178,6 +180,8 @@ export const ERROR_STATUS = {
   // подписка, монеты, промокоды, настройки (этап 18) — docs/backend/06 §2–4, коды мока (src/api/settings.ts)
   promo_not_found: HttpStatus.NOT_FOUND,
   payment_failed: HttpStatus.PAYMENT_REQUIRED,
+  // оплата картой / Idram / Telcell не подключена (06.10.2026): покупка монет, оплата подписки, сохранение карты
+  payments_unavailable: HttpStatus.SERVICE_UNAVAILABLE,
   bad_tax_id: HttpStatus.UNPROCESSABLE_ENTITY,
   bad_telegram_url: HttpStatus.UNPROCESSABLE_ENTITY,
   read_only: HttpStatus.LOCKED,

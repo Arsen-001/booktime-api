@@ -25,6 +25,16 @@ const en = {
   'staff.clientCancelled': '{client} cancelled the visit at {time}.',
   'staff.clientRescheduled': '{client} moved the visit to {time}.',
   'staff.emptyWeek': "Next week has no open slots yet — open some for clients to book.",
+  // 06.10.2026 — мастеру о действиях администратора (типы 56/57/42/13/76) и задачи воркера (staff-notices.ts)
+  'staff.colleagueBooked': 'Booking created: {clientName}, {service}, {date} {time}, specialist: {staff}.',
+  'staff.assigned': 'You have been assigned a booking: {clientName}, {service}, {date} {time}.',
+  'staff.bookingMoved': 'Your booking was rescheduled. Client: {clientName}. New time: {date} {time}.',
+  'staff.bookingReassigned': 'Your booking on {date} at {time} was handed to another specialist. Client: {clientName}.',
+  'staff.bookingCancelled': 'Your booking was cancelled. Client: {clientName}. Time: {date} {time}.',
+  'staff.clientNoShow': 'Client no-show: {clientName}, {date} {time}. The slot is free.',
+  'staff.requestReminder': 'A booking request is waiting for your answer: {clientName}, {service}, {date} {time}. Answer by {deadline}.',
+  'staff.requestReminderLate': 'A booking request is still waiting for your answer: {clientName}, {service}, {date} {time}.',
+  'staff.visitMark': 'The visit at {time} is over ({clientName}, {service}). Did the client come? Mark “came · amount” or “no-show”.',
   // этап 18 — подписка владельцу (06 §3.3, F-00-023)
   'billing.endingSoon': 'Your BookTime subscription ends in {days} day(s). Renew it to stay visible to clients.',
   'billing.paymentFailed': "We couldn't charge your card for BookTime. We'll retry tomorrow — or pay now in Billing.",
@@ -68,6 +78,11 @@ const en = {
   'order.pickupReminderPickup': 'Reminder: your order No. {number} at «{business}» is ready and waiting for you. Choose when to pick it up: {url}',
   'order.estimate': 'Estimate for your order No. {number} at «{business}»: {total}. Approve or decline here: {url}',
   'order.estimateReminder': '«{business}» is waiting for your reply on the estimate for order No. {number} ({total}). Reply here: {url}',
+  'client.noShow': '{companyName}: you missed your booking {date} at {time}. We would love to see you another time: {bookingLink}',
+  'client.noShowInvite': '{companyName}: we noticed you could not make it. Book a time that suits you: {bookingLink}',
+  'client.reviewRequest': '{companyName}: thanks for visiting! Did you like it? Rate it ★: {reviewLink}',
+  'client.birthday': 'Happy birthday, {clientName}! Come see us: {bookingLink}. {companyName}',
+  'client.repeatInvite': '{companyName}: it is time for “{service}” again. Book a convenient time: {bookingLink}',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -91,6 +106,15 @@ const ru: Record<MessageKey, string> = {
   'staff.clientCancelled': '{client} отменил(а) визит на {time}.',
   'staff.clientRescheduled': '{client} перенёс(ла) визит на {time}.',
   'staff.emptyWeek': 'На следующей неделе нет открытых окон — откройте время для записи.',
+  'staff.colleagueBooked': 'Создана запись: {clientName}, {service}, {date} {time}, мастер: {staff}.',
+  'staff.assigned': 'Вам назначена запись: {clientName}, {service}, {date} {time}.',
+  'staff.bookingMoved': 'Ваша запись перенесена. Клиент: {clientName}. Новое время: {date} {time}.',
+  'staff.bookingReassigned': 'Ваша запись {date} в {time} передана другому мастеру. Клиент: {clientName}.',
+  'staff.bookingCancelled': 'Ваша запись отменена. Клиент: {clientName}. Время: {date} {time}.',
+  'staff.clientNoShow': 'Клиент не пришёл: {clientName}, {date} {time}. Время свободно.',
+  'staff.requestReminder': 'Заявка ждёт ответа: {clientName}, {service}, {date} {time}. Ответьте до {deadline}.',
+  'staff.requestReminderLate': 'Заявка всё ещё ждёт ответа: {clientName}, {service}, {date} {time}.',
+  'staff.visitMark': 'Визит в {time} закончился ({clientName}, {service}). Клиент пришёл? Отметьте «пришёл · сумма» или «не пришёл».',
   'billing.endingSoon': 'Подписка BookTime закончится через {days} дн. Продлите, чтобы клиенты вас видели.',
   'billing.paymentFailed': 'Не удалось списать оплату BookTime. Повторим завтра — или оплатите сейчас в разделе «Подписка».',
   'billing.frozen': 'Страница скрыта от клиентов: подписка не оплачена. Оплатите — все данные на месте.',
@@ -132,6 +156,11 @@ const ru: Record<MessageKey, string> = {
   'order.pickupReminderPickup': 'Напоминаем: заказ №{number} в «{business}» готов и ждёт вас. Выберите, когда удобно забрать: {url}',
   'order.estimate': 'Смета по заказу №{number} в «{business}»: {total}. Согласуйте или откажитесь по ссылке: {url}',
   'order.estimateReminder': '«{business}» ждёт вашего ответа по смете заказа №{number} ({total}). Ответить: {url}',
+  'client.noShow': '{companyName}: вы не пришли на запись {date} в {time}. Будем рады видеть в другой раз: {bookingLink}',
+  'client.noShowInvite': '{companyName}: заметили, что вы не смогли прийти. Запишитесь на удобное время: {bookingLink}',
+  'client.reviewRequest': '{companyName}: спасибо за визит! Понравилось? Оцените ★: {reviewLink}',
+  'client.birthday': 'С днём рождения, {clientName}! Ждём в гости: {bookingLink}. {companyName}',
+  'client.repeatInvite': '{companyName}: пора снова на «{service}». Запишитесь на удобное время: {bookingLink}',
 };
 
 const hy: Record<MessageKey, string> = {
@@ -153,6 +182,15 @@ const hy: Record<MessageKey, string> = {
   'staff.clientCancelled': '{client}-ը չեղարկեց այցը՝ {time}։',
   'staff.clientRescheduled': '{client}-ը տեղափոխեց այցը՝ {time}։',
   'staff.emptyWeek': 'Հաջորդ շաբաթ դեռ բաց ժամեր չկան՝ բացեք ժամանակ գրանցման համար։',
+  'staff.colleagueBooked': 'Ստեղծվել է գրանցում՝ {clientName}, {service}, {date} {time}, վարպետ՝ {staff}։',
+  'staff.assigned': 'Ձեզ նշանակվել է գրանցում՝ {clientName}, {service}, {date} {time}։',
+  'staff.bookingMoved': 'Ձեր գրանցումը տեղափոխվել է։ Հաճախորդ՝ {clientName}։ Նոր ժամ՝ {date} {time}։',
+  'staff.bookingReassigned': 'Ձեր գրանցումը՝ {date}, {time}, փոխանցվել է այլ վարպետի։ Հաճախորդ՝ {clientName}։',
+  'staff.bookingCancelled': 'Ձեր գրանցումը չեղարկվել է։ Հաճախորդ՝ {clientName}։ Ժամ՝ {date} {time}։',
+  'staff.clientNoShow': 'Հաճախորդը չի եկել՝ {clientName}, {date} {time}։ Ժամն ազատ է։',
+  'staff.requestReminder': 'Հայտը սպասում է ձեր պատասխանին՝ {clientName}, {service}, {date} {time}։ Պատասխանեք մինչև {deadline}։',
+  'staff.requestReminderLate': 'Հայտը դեռ սպասում է ձեր պատասխանին՝ {clientName}, {service}, {date} {time}։',
+  'staff.visitMark': '{time}-ի այցն ավարտվեց ({clientName}, {service})։ Հաճախորդը եկե՞լ է։ Նշեք «եկավ · գումար» կամ «չեկավ»։',
   'billing.endingSoon': 'BookTime-ի բաժանորդագրությունը կավարտվի {days} օրից։ Երկարացրեք, որպեսզի հաճախորդները ձեզ տեսնեն։',
   'billing.paymentFailed': 'Չհաջողվեց գանձել BookTime-ի վճարը։ Կփորձենք վաղը, կամ վճարեք հիմա «Բաժանորդագրություն» բաժնում։',
   'billing.frozen': 'Էջը թաքցված է հաճախորդներից՝ բաժանորդագրությունը վճարված չէ։ Վճարեք՝ բոլոր տվյալները պահպանված են։',
@@ -194,6 +232,11 @@ const hy: Record<MessageKey, string> = {
   'order.pickupReminderPickup': 'Հիշեցնում ենք՝ ձեր №{number} պատվերը «{business}»-ում պատրաստ է և սպասում է ձեզ։ Ընտրեք, երբ է հարմար գալ վերցնելու՝ {url}',
   'order.estimate': '«{business}»-ում ձեր №{number} պատվերի նախահաշիվը՝ {total}։ Համաձայնեք կամ հրաժարվեք հղումով՝ {url}',
   'order.estimateReminder': '«{business}»-ը սպասում է ձեր պատասխանին №{number} պատվերի նախահաշվի վերաբերյալ ({total})։ Պատասխանել՝ {url}',
+  'client.noShow': '{companyName}․ դուք չեկաք գրանցմանը՝ {date}, ժամը {time}։ Սիրով կսպասենք ձեզ մեկ այլ անգամ՝ {bookingLink}',
+  'client.noShowInvite': '{companyName}․ նկատեցինք, որ չկարողացաք գալ։ Գրանցվեք ձեզ հարմար ժամի՝ {bookingLink}',
+  'client.reviewRequest': '{companyName}․ շնորհակալություն այցի համար։ Դուր եկա՞վ։ Գնահատեք ★՝ {reviewLink}',
+  'client.birthday': '{clientName}, շնորհավորում ենք ձեր ծննդյան օրվա առթիվ։ Սպասում ենք ձեզ՝ {bookingLink}։ {companyName}',
+  'client.repeatInvite': '{companyName}․ ժամանակն է կրկին «{service}»-ի։ Գրանցվեք ձեզ հարմար ժամի՝ {bookingLink}',
 };
 
 export const messages: Record<'ru' | 'hy' | 'en', Record<MessageKey, string>> = { en, ru, hy };

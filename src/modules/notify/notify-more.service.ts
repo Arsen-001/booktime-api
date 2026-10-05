@@ -479,7 +479,7 @@ export class NotifyMoreService {
   // area VARCHAR(40), staffId уже ULID ~29-32 симв.) — своей таблицы не заводим.
 
   private staffPrefsArea(staffId: string): string {
-    return `nsp:${staffId}`.slice(0, 40);
+    return staffPrefsRichArea(staffId);
   }
 
   async getStaffPrefsRich(businessId: string, staffId: string): Promise<StaffNotifyPrefsRichOut> {
@@ -542,10 +542,26 @@ export interface StaffNotifyPrefsRichOut {
   sendClientContacts: boolean;
 }
 
+/** Область BusinessSetting с настройкой сотрудника — её же читает отправка пушей персоналу (staff-notices.ts) */
+export function staffPrefsRichArea(staffId: string): string {
+  return `nsp:${staffId}`.slice(0, 40);
+}
+
+/**
+ * 06.10.2026: пуш о записях мастера по умолчанию включён (SMS и Email — платные, по умолчанию нет). У Altegio все галочки
+ * выключены (F-05-056), и мастер салона не узнаёт, что ему записали клиента, пока владелец не пройдёт четыре шага
+ * F-05-059; у нас мастер получает пуши о своих записях сразу, как и о записях клиентов (staff_new_booking). Лицензия и
+ * платёжные документы — не мастеру, по умолчанию выключены. Тот же список — domain/notify.ts фронта.
+ */
+const STAFF_PUSH_DEFAULT_ON: ReadonlySet<StaffNotifyEventRich> = new Set(['createdByClient', 'createdByAdmin', 'deleted', 'moved', 'cancelledByAdmin']);
+
+export function defaultStaffPushOn(event: StaffNotifyEventRich): boolean {
+  return STAFF_PUSH_DEFAULT_ON.has(event);
+}
+
 function emptyStaffMatrix(): StaffNotifyMatrixRich {
-  const row = { sms: false, email: false, push: false };
   return STAFF_NOTIFY_EVENTS_RICH.reduce((acc, code) => {
-    acc[code] = { ...row };
+    acc[code] = { sms: false, email: false, push: defaultStaffPushOn(code) };
     return acc;
   }, {} as StaffNotifyMatrixRich);
 }

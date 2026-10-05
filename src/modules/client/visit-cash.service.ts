@@ -11,8 +11,8 @@ import { waLink } from '../notify/wa-link.js';
 /**
  * «Визит-микрокасса» (F-14-092…098), стадия 21 (лейн client+online, попытка 4): `src/api/client.ts::
  * listVisitCandidates/getVisitDetail/addVisitSaleLine/removeVisitSaleLine/addVisitPayment/removeVisitPayment/
- * refundVisitPayment/listNoAppRemindersTomorrow/sendVisitReceipt/isVisitReceiptSent`. Своя лёгкая демо-касса
- * приложения (см. докстринг схемы у `VisitCashRecord`) — не витрина над разделом «Финансы».
+ * refundVisitPayment/listNoAppRemindersTomorrow/sendVisitReceipt/isVisitReceiptSent/listCashDesks`. Своя лёгкая касса
+ * приложения (см. докстринг схемы у `VisitCashRecord`); кассы для наличных — настоящие из «Финансов» (listCashDesks).
  */
 const ACTIVE_STATUSES = ['awaiting_confirmation', 'awaiting_prepayment', 'scheduled', 'client_confirmed'];
 const VISIT_STATUSES = ['arrived', 'scheduled', 'client_confirmed', 'awaiting_confirmation'];
@@ -26,6 +26,21 @@ export interface AddVisitSaleLineInput {
   discount?: number;
   sellerStaffId?: string;
   code?: string;
+}
+
+export interface VisitCashDesk {
+  id: string;
+  name: string;
+}
+
+/**
+ * Кассы визита (F-14-094/097, 06.10.2026) — настоящие кассы «Финансов» (cash_registers) с видом «наличные»: по порядку
+ * раздела, кассы филиала визита; у филиала своих нет — все кассы бизнеса. Раньше были демо «Касса 1–3».
+ */
+export function visitCashDesks(rows: readonly { id: string; name: string; kind: string; locationId: string }[], locationId?: string | null): VisitCashDesk[] {
+  const cash = rows.filter((r) => r.kind === 'cash');
+  const here = locationId ? cash.filter((r) => r.locationId === locationId) : [];
+  return (here.length ? here : cash).map((r) => ({ id: r.id, name: r.name }));
 }
 
 export interface AddVisitPaymentInput {
@@ -106,6 +121,15 @@ export class VisitCashService {
     };
   }
 
+  /** Кассы для оплаты наличными в визите; с bookingId — кассы его филиала (visitCashDesks) */
+  async listCashDesks(businessId: string, bookingId?: string): Promise<VisitCashDesk[]> {
+    const [rows, booking] = await Promise.all([
+      this.prisma.cashRegister.findMany({ where: { businessId }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }], select: { id: true, name: true, kind: true, locationId: true } }),
+      bookingId ? this.prisma.booking.findFirst({ where: { id: bookingId, businessId }, select: { locationId: true } }) : Promise.resolve(null),
+    ]);
+    return visitCashDesks(rows, booking?.locationId);
+  }
+
   /** «Завтра N клиентов без приложения» + готовый текст в WhatsApp мастера (F-00-121) */
   async listNoAppRemindersTomorrow(businessId: string, locale: Locale) {
     const tz = await this.bookings.tzOfBusiness(this.prisma, businessId);
@@ -156,6 +180,11 @@ export class VisitCashService {
   async addVisitPayment(businessId: string, bookingId: string, input: AddVisitPaymentInput) {
     if (input.amount <= 0) throw new ApiError('validation', 'Amount must be positive');
     await this.bookings.find(this.prisma, [businessId], bookingId);
+    // Наличные — только в настоящую кассу этого бизнеса (не чужую и не карточный счёт); без кассы — «все кассы», как раньше
+    if (input.method === 'cash' && input.cashDeskId) {
+      const desk = await this.prisma.cashRegister.findFirst({ where: { id: input.cashDeskId, businessId, kind: 'cash' }, select: { id: true } });
+      if (!desk) throw new ApiError('validation', 'Unknown cash desk', { cashDeskId: 'unknown' });
+    }
     const commissionPercent = input.method === 'card' && input.cardBrand ? CARD_COMMISSION_PERCENT[input.cardBrand] : undefined;
     const data = {
       method: input.method,

@@ -16,6 +16,7 @@ import { NotifyRichTypesService } from './notify-rich-types.service.js';
 import { NotifyStaffPrefsService } from './notify-staff-prefs.service.js';
 import { NotifyTypesService } from './notify-types.service.js';
 import { NotifyController } from './notify.controller.js';
+import { StaffNoticesController } from './staff-notices.controller.js';
 
 /**
  * Этап 10: уведомления — очередь/пуш, новости, колокольчик, настройки (docs/backend/05, PLAN.md §6 №10).
@@ -32,7 +33,7 @@ import { NotifyController } from './notify.controller.js';
 @Module({
   // этап 21 лейн notify-log+mailings: журнал отправок/рассылки (NotifyLog*/NotifyMailings*), ShortLinks — ссылки в SMS
   imports: [BusinessesModule, ScheduleModule, ShortLinksModule],
-  controllers: [NotifyController, NotifyLogController],
+  controllers: [NotifyController, NotifyLogController, StaffNoticesController],
   providers: [
     NotifyTypesService,
     NotifyNewsService,

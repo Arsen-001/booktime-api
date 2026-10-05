@@ -17,6 +17,9 @@ import { businessRetentionTick } from './jobs/business-retention.js';
 import { dbBackup, hasBackupToday } from './jobs/db-backup.js';
 import { ordersPickupReminders } from './jobs/orders-pickup-reminders.js';
 import { ordersEstimateReminders } from './jobs/orders-estimate-reminders.js';
+import { staffRequestReminders } from './jobs/notify-staff-request-reminders.js';
+import { staffVisitMarkPrompts } from './jobs/notify-staff-visit-mark.js';
+import { clientAutoWorth, notifyClientDaily, notifyClientEvents } from './jobs/notify-client-auto.js';
 import { uploadsCleanup } from './jobs/uploads-cleanup.js';
 import { createAppleTokenClient, type StoredAppleToken } from './modules/auth/apple-tokens.js';
 import { createPrivateUploadStorage, createUploadStorage } from './adapters/storage/storage.js';
@@ -52,6 +55,14 @@ await queue.upsertJobScheduler('notify-mailings', { every: 60_000 }, { name: 'no
 await queue.upsertJobScheduler('orders-pickup-reminders', { every: 900_000 }, { name: 'orders.pickup-reminders', data: {} });
 // 05.10.2026: ⭐ «Ждём ответа по смете» — клиент сутки не ответил на смету; раз в 15 мин, тихие часы — пропуск
 await queue.upsertJobScheduler('orders-estimate-reminders', { every: 900_000 }, { name: 'orders.estimate-reminders', data: {} });
+// 06.10.2026: ⭐ уведомления клиенту из каталога типов — «не пришёл» (75), «зовём вернуться» (72), «впечатление» (6/20) —
+// каждые 5 мин; «с днём рождения» (3), «пора снова» (55) — раз в 30 мин; тихие часы — пропуск (jobs/notify-client-auto.ts)
+await queue.upsertJobScheduler('notify-client-events', { every: 300_000 }, { name: 'notify.client-events', data: {} });
+await queue.upsertJobScheduler('notify-client-daily', { every: 1_800_000 }, { name: 'notify.client-daily', data: {} });
+// 06.10.2026: пуши персоналу — «заявка ждёт ответа» (F-00-067, через 30 мин, до 3 раз) и «пришёл · сумма / не пришёл»
+// после конца визита (F-00-127); раз в 5 мин, тихие часы — пропуск
+await queue.upsertJobScheduler('notify-staff-request-reminders', { every: 300_000 }, { name: 'notify.staff-request-reminders', data: {} });
+await queue.upsertJobScheduler('notify-staff-visit-mark', { every: 300_000 }, { name: 'notify.staff-visit-mark', data: {} });
 // Этап 16: выгрузка отчёта — CSV должен быть готов быстро, не в час по расписанию
 await queue.upsertJobScheduler('reports-export', { every: 15_000 }, { name: 'reports.export', data: {} });
 // Этап 18: подписка — 03:00 по Еревану предупреждения/списания/заморозка, каждые 5 мин повтор списаний (06 §3.3)
@@ -150,9 +161,29 @@ const worker = new Worker(
       if (res.sent || res.undelivered) logger.info(res, 'orders.pickup-reminders');
       return;
     }
+    if (job.name === 'notify.client-events') {
+      const res = await notifyClientEvents(prisma, businessMessenger);
+      if (clientAutoWorth(res.noShow, res.noShowInvite, res.review)) logger.info(res, 'notify.client-events');
+      return;
+    }
+    if (job.name === 'notify.client-daily') {
+      const res = await notifyClientDaily(prisma, businessMessenger);
+      if (clientAutoWorth(res.birthday, res.repeat)) logger.info(res, 'notify.client-daily');
+      return;
+    }
     if (job.name === 'orders.estimate-reminders') {
       const res = await ordersEstimateReminders(prisma, businessMessenger);
       if (res.sent || res.undelivered) logger.info(res, 'orders.estimate-reminders');
+      return;
+    }
+    if (job.name === 'notify.staff-request-reminders') {
+      const res = await staffRequestReminders(prisma);
+      if (res.sent) logger.info(res, 'notify.staff-request-reminders');
+      return;
+    }
+    if (job.name === 'notify.staff-visit-mark') {
+      const res = await staffVisitMarkPrompts(prisma);
+      if (res.sent) logger.info(res, 'notify.staff-visit-mark');
       return;
     }
     if (job.name === 'billing.tick') {
