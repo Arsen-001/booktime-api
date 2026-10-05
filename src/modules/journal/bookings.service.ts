@@ -586,6 +586,9 @@ export class BookingsService {
           title: businessName,
           body,
           dedupeKey: `client:${p.kind}:${p.eventId}`,
+          // Журнал отправок (запись, клиент) и выключатели каталога у отправителя очереди (catalog-gate.ts): 8, 74, 4;
+          // «Запись подтверждена» (9) уходит и при выключенном типе (F-05-026 п. 2) — без typeCode
+          meta: { bookingId: next.id, clientId: next.clientId ?? undefined, typeCode: CLIENT_KIND_TYPE[p.kind] },
         });
       }
     }
@@ -642,6 +645,9 @@ export class BookingsService {
         title: 'BookTime',
         body: t(locale, def.messageKey, params),
         dedupeKey: `staff:${def.kind}:${eventId}:${userId}`,
+        // Тип каталога: «Клиент записался онлайн» администратору (10) / «Клиент записался к вам» мастеру (11), отмена (12)
+        // и перенос (41) онлайн-записи — выключатель и канал adminApp проверяет отправитель очереди (catalog-gate.ts)
+        meta: { bookingId: next.id, staffId, typeCode: staffKindType(eventKey, staffId === next.staffId) },
       });
     }
   }
@@ -1932,4 +1938,14 @@ export function coreClient(c: { id: string; businessId: string; phone: string; n
     noShowCount: c.noShowCount,
     createdAt: utcToLocal(c.createdAt),
   };
+}
+
+/** Вид пуша клиенту → тип каталога, чьи выключатели действуют (catalog-gate.ts); нет — тип не выключается */
+const CLIENT_KIND_TYPE: Record<string, number | undefined> = { booking_created: 8, salon_moved: 74, salon_deleted: 4, cancelled_by_master: 4 };
+
+/** Пуш сотруднику о действии клиента → тип каталога: 10/11 — новая онлайн-запись, 12 — отмена, 41 — перенос */
+function staffKindType(eventKey: 'new_booking' | 'client_cancelled' | 'client_rescheduled', isOwnMaster: boolean): number | undefined {
+  if (eventKey === 'new_booking') return isOwnMaster ? 11 : 10;
+  // 12 и 41 — типы «Администратору»; мастеру о своей записи — только его матрица (F-05-056)
+  return isOwnMaster ? undefined : eventKey === 'client_cancelled' ? 12 : 41;
 }

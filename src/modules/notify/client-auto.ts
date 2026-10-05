@@ -19,7 +19,7 @@ import { enqueueClientNotification, enqueueOutbox } from './outbox.js';
  *  · настройки клиента (ClientNotifyPref): выключил этот тип — ничего; выключил пуши / SMS — этот канал пропускаем;
  *  · канал по порядку: пуш (наше приложение, живой токен) → Telegram-бот на номере → SMS/WhatsApp провайдера бизнеса
  *    (сценарий SMS включён в типе и провайдер подключён, В-08) → «Не доставлено» в журнале отправок;
- *  · один раз: строка журнала отправок с ключом `auto:<событие>` ставится ДО отправки — второй проход задачи (или второй
+ *  · один раз: строка журнала отправок с ключом `auto:<событие>` («Отправляется»; итог — из очереди, notify-log-outbox.ts) ставится ДО отправки — второй проход задачи (или второй
  *    воркер) получает конфликт ключа и ничего не шлёт ни в какой канал. Очередь (notify_outbox) — свои ключи дубля.
  */
 
@@ -159,7 +159,8 @@ export async function sendClientAuto(db: PrismaService, messenger: BusinessMesse
       const user = await db.user.findUnique({ where: { id: input.appUserId }, select: { locale: true } });
       const lang: Locale = isLocale(user?.locale) ? user.locale : clientLocale;
       const texts = textsFor(type, 'push', input.vars);
-      if (!(await claim('push', 'sent', texts, lang))) return 'duplicate';
+      // «Отправляется» — итог («Отправлено» / «Не доставлено») журнал возьмёт из очереди по тому же ключу (notify-log-outbox.ts)
+      if (!(await claim('push', 'sending', texts, lang))) return 'duplicate';
       await enqueueClientNotification(db, {
         businessId: input.businessId,
         kind: input.kind,
@@ -180,7 +181,7 @@ export async function sendClientAuto(db: PrismaService, messenger: BusinessMesse
     const links = await db.telegramLink.findMany({ where: { phone, blockedAt: null } });
     if (links.length) {
       const texts = textsFor(type, 'push', input.vars);
-      if (!(await claim('telegram', 'sent', texts, tgLocale(links[0]!.languageCode)))) return 'duplicate';
+      if (!(await claim('telegram', 'sending', texts, tgLocale(links[0]!.languageCode)))) return 'duplicate';
       for (const link of links) {
         await enqueueOutbox(db, {
           businessId: input.businessId,

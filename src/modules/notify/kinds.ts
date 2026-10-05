@@ -48,6 +48,8 @@ export const NOTIFY_KINDS: readonly NotifyKindDef[] = [
   { code: 17, kind: 'review_request', recipient: 'client', messageKey: 'client.reviewRequest' },
   { code: 18, kind: 'birthday', recipient: 'client', messageKey: 'client.birthday' },
   { code: 19, kind: 'repeat_invite', recipient: 'client', messageKey: 'client.repeatInvite' },
+  // ⭐ 06.10.2026 (вечер): тип 2 каталога «Клиент записался онлайн» — тоже jobs/notify-client-auto.ts
+  { code: 20, kind: 'online_booked', recipient: 'client', messageKey: 'client.onlineBooked' },
   // бизнесу (05 §3.2)
   { code: 50, kind: 'staff_new_booking', recipient: 'staff', messageKey: 'staff.newBooking' },
   { code: 51, kind: 'staff_client_cancelled', recipient: 'staff', messageKey: 'staff.clientCancelled' },

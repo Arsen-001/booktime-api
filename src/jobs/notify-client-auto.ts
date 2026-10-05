@@ -20,7 +20,7 @@ import { inQuietHours } from '../modules/notify/quiet-hours.js';
  * ⭐ Автоматические уведомления клиенту из каталога типов (06.10.2026) — то, что экран «Уведомления» давно настраивал, а
  * сервер не слал (охват ТЗ 06.10, п. 3.2). Две задачи воркера, обе пропускают тихие часы 21:00–10:00 по Еревану (проход
  * утром подхватывает всё наступившее за ночь — окна поиска больше ночи):
- *  · notify.client-events (каждые 5 мин) — от событий записей: «Клиент не пришёл» (75), «Зовём вернуться» (72),
+ *  · notify.client-events (каждые 5 мин) — от событий записей: «Клиент записался онлайн» (2, и в тихие часы), «Клиент не пришёл» (75), «Зовём вернуться» (72),
  *    «Спрашиваем впечатление» (6 — онлайн-запись, 20 — запись из журнала);
  *  · notify.client-daily (каждые 30 мин) — по календарю: «С днём рождения» (3), «Пора снова» (55).
  * Как слать (каналы, настройки клиента, журнал, «один раз») — modules/notify/client-auto.ts.
@@ -39,6 +39,7 @@ export type ClientAutoTally = Partial<Record<ClientAutoOutcome, number>>;
 
 export interface ClientAutoResult {
   quiet: boolean;
+  booked: ClientAutoTally;
   noShow: ClientAutoTally;
   noShowInvite: ClientAutoTally;
   review: ClientAutoTally;
@@ -162,6 +163,53 @@ function liveBusiness(refs: Refs, businessId: string) {
 function liveClient(refs: Refs, clientId: string | null) {
   const c = clientId ? refs.client.get(clientId) : undefined;
   return c && !c.deletedAt && !c.purgedAt && c.phone ? c : undefined;
+}
+
+// ─────────── «Клиент записался онлайн» (тип 2, F-05-024) ───────────
+
+/** Сколько назад искать новые онлайн-записи: простой воркера; дальше подтверждать запись поздно */
+const BOOKED_LOOKBACK_MS = 6 * H;
+
+/**
+ * Клиент сам записался (приложение, ссылка, виджет) — «Вы записаны: услуга, дата, время» по каталогу (тип 2): пуш в
+ * приложение, без приложения — Telegram-бот на номере, иначе SMS провайдера бизнеса (сценарий SMS в типе). Это
+ * подтверждение действия клиента, а не реклама: тихие часы не ждёт (как подтверждение и отмена записи). Запись уже
+ * отменена, удалена или визит начался — не шлём. Запись из журнала — тип 8 (bookings.service.ts, booking_created).
+ */
+async function onlineBookedNotices(ctx: Ctx): Promise<ClientAutoTally> {
+  const res: ClientAutoTally = {};
+  const events = await ctx.db.bookingEvent.findMany({ where: { kind: 'created', at: { gte: new Date(ctx.now.getTime() - BOOKED_LOOKBACK_MS), lte: ctx.now } } });
+  if (!events.length) return res;
+  const bookings = (await ctx.db.booking.findMany({ where: { id: { in: [...new Set(events.map((e) => e.bookingId))] } } })) as BookingRow[];
+  const fresh = bookings.filter((b) => VIA_WIDGET.has(b.source) && !b.deletedAt && ACTIVE.includes(b.status) && b.startAt.getTime() > ctx.now.getTime());
+  if (!fresh.length) return res;
+  const refs = await loadRefs(ctx.db, fresh);
+  for (const b of fresh) {
+    const biz = liveBusiness(refs, b.businessId);
+    const client = liveClient(refs, b.clientId);
+    if (!biz || !client) continue;
+    const type = await ctx.configs.get(b.businessId, 2);
+    tally(
+      res,
+      await sendClientAuto(ctx.db, ctx.messenger, {
+        businessId: b.businessId,
+        businessName: biz.brandName || biz.name,
+        type,
+        kind: 'online_booked',
+        client,
+        appUserId: refs.appUserOf(b.clientId, b.appUserId),
+        prefs: refs.prefs.get(client.id),
+        vars: varsFor(refs, b.businessId, () => ({}), b, b.clientId),
+        dedupe: `2:${b.id}`,
+        url: `/bookings/${b.id}`,
+        staffId: b.staffId,
+        bookingId: b.id,
+        bookingOverride: b.notifyOverride as ClientAutoInputOverride,
+        now: ctx.now,
+      }),
+    );
+  }
+  return res;
 }
 
 // ─────────── «Клиент не пришёл» (тип 75, F-05-031) ───────────
@@ -366,7 +414,6 @@ async function reviewRequests(ctx: Ctx): Promise<ClientAutoTally> {
 }
 
 export async function notifyClientEvents(db: PrismaService, messenger: BusinessMessenger, now: Date = new Date()): Promise<ClientAutoResult> {
-  if (inQuietHours(now)) return { quiet: true, noShow: {}, noShowInvite: {}, review: {} };
   const ctx: Ctx = { db, messenger, now, configs: new ClientTypeConfigs(db) };
   const run = async (name: string, fn: (c: Ctx) => Promise<ClientAutoTally>) => {
     try {
@@ -376,7 +423,10 @@ export async function notifyClientEvents(db: PrismaService, messenger: BusinessM
       return {};
     }
   };
-  return { quiet: false, noShow: await run('75', noShowNotices), noShowInvite: await run('72', noShowInvites), review: await run('6/20', reviewRequests) };
+  // «Вы записаны» (2) — ответ на действие клиента, уходит и в тихие часы; остальное — нет
+  const booked = await run('2', onlineBookedNotices);
+  if (inQuietHours(now)) return { quiet: true, booked, noShow: {}, noShowInvite: {}, review: {} };
+  return { quiet: false, booked, noShow: await run('75', noShowNotices), noShowInvite: await run('72', noShowInvites), review: await run('6/20', reviewRequests) };
 }
 
 // ─────────── «С днём рождения» (тип 3, F-05-034) ───────────

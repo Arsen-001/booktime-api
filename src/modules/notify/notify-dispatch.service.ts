@@ -6,6 +6,7 @@ import { logger } from '../../common/logging/logger.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { isKindEnabled } from './notify-types.service.js';
 import { QUIET_HOURS_KINDS } from './kinds.js';
+import { CatalogGate } from './catalog-gate.js';
 import { inQuietHours, nextQuietHoursEnd } from './quiet-hours.js';
 
 const MAX_ATTEMPTS = 5;
@@ -30,9 +31,11 @@ export class NotifyDispatchService {
     const now = new Date();
     const rows = await this.prisma.notifyOutbox.findMany({ where: { status: 'queued', sendAt: { lte: now } }, orderBy: { sendAt: 'asc' }, take: limit });
     const res: Record<Outcome, number> = { sent: 0, skipped: 0, failed: 0, deferred: 0 };
+    // Настройки типа каталога и клиента (meta.typeCode) — один кэш на проход
+    const gate = new CatalogGate(this.prisma);
     for (const row of rows) {
       try {
-        res[await this.processOne(row, now)]++;
+        res[await this.processOne(row, now, gate)]++;
       } catch (err) {
         logger.error({ err, outboxId: row.id }, 'notify.dispatch: строка упала целиком');
         res.deferred++;
@@ -41,13 +44,22 @@ export class NotifyDispatchService {
     return res;
   }
 
-  private async processOne(row: { id: string; businessId: string | null; app: string; kind: string; recipientUserId: string; title: string; body: string; url: string | null; attempts: number; meta: unknown }, now: Date): Promise<Outcome> {
+  private async processOne(
+    row: { id: string; businessId: string | null; app: string; kind: string; recipientUserId: string; title: string; body: string; url: string | null; attempts: number; meta: unknown },
+    now: Date,
+    gate: CatalogGate,
+  ): Promise<Outcome> {
     if (QUIET_HOURS_KINDS.has(row.kind) && inQuietHours(now)) {
       await this.prisma.notifyOutbox.update({ where: { id: row.id }, data: { sendAt: nextQuietHoursEnd(now) } });
       return 'deferred';
     }
     if (row.businessId && !(await isKindEnabled(this.prisma, row.businessId, row.kind))) {
       await this.prisma.notifyOutbox.update({ where: { id: row.id }, data: { status: 'skipped', sentAt: now, lastError: 'type_disabled' } });
+      return 'skipped';
+    }
+    const off = await gate.check(row);
+    if (off) {
+      await this.prisma.notifyOutbox.update({ where: { id: row.id }, data: { status: 'skipped', sentAt: now, lastError: off } });
       return 'skipped';
     }
     if (row.app === 'telegram') return this.sendTelegram(row, now);

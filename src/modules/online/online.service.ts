@@ -564,7 +564,10 @@ export class OnlineService {
     const before = await this.prisma.bookingLink.findFirst({ where: { id, businessId } });
     if (!before) throw new ApiError('not_found', 'Link not found');
     const { locationId, name, description, defaultLocale, staffId, ...configPatch } = body;
-    const data: Record<string, unknown> = { updatedBy: ctx.member!.staffId, config: { ...(before.config as Record<string, unknown>), ...configPatch } };
+    const config: Record<string, unknown> = { ...(before.config as Record<string, unknown>), ...configPatch };
+    // Пустой ID счётчика салона — ключ убираем совсем (иначе страница салона попыталась бы его подключить)
+    for (const key of ['metaPixelId', 'ga4StreamId'] as const) if (key in configPatch && !configPatch[key]) delete config[key];
+    const data: Record<string, unknown> = { updatedBy: ctx.member!.staffId, config };
     if (locationId !== undefined) data.locationId = locationId;
     if (name !== undefined) data.name = name;
     if (description !== undefined) data.description = description;

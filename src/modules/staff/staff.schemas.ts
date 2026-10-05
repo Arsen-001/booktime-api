@@ -91,6 +91,8 @@ export const accessOut = z.object({
   access: z.object({ enabled: z.boolean(), info: z.string().optional(), roleTemplateId: z.string(), ipRestriction: ipBody.optional() }),
   invite: inviteOut.optional(),
   staff: staffOut,
+  /** Вход по логину администратора (F-00-034/038): пароль не отдаётся; mustChangePassword — выданный ещё не сменён */
+  passwordLogin: z.object({ login: z.string(), mustChangePassword: z.boolean(), changedAt: z.string().optional(), issuedAt: z.string() }).optional(),
 });
 export const addStaffOut = z.object({ staff: staffOut, inviteLink: z.string().nullable() });
 export const reissueOut = z.object({ invite: inviteOut, link: z.string() });

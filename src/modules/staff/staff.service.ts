@@ -404,8 +404,19 @@ export class StaffService {
 
   async access(businessId: string, staffId: string) {
     const s = await this.find(businessId, staffId);
-    const invite = await this.prisma.staffInvite.findFirst({ where: { staffId, status: { notIn: ['revoked', 'declined', 'expired'] } }, orderBy: { sentAt: 'desc' } });
-    return { access: accessView(s), invite: invite ? inviteView(invite) : undefined, staff: staffViewWithLogin(s) };
+    const [invite, login] = await Promise.all([
+      this.prisma.staffInvite.findFirst({ where: { staffId, status: { notIn: ['revoked', 'declined', 'expired'] } }, orderBy: { sentAt: 'desc' } }),
+      this.prisma.staffLogin.findFirst({ where: { staffId, disabledAt: null }, select: { login: true, mustChangePassword: true, passwordChangedAt: true, updatedAt: true } }),
+    ]);
+    return {
+      access: accessView(s),
+      invite: invite ? inviteView(invite) : undefined,
+      staff: staffViewWithLogin(s),
+      // Вход по логину (F-00-034/038): ждёт ли выданный владельцем пароль смены при первом входе. Сам пароль — никогда
+      passwordLogin: login
+        ? { login: login.login, mustChangePassword: login.mustChangePassword, changedAt: login.passwordChangedAt ? utcToLocal(login.passwordChangedAt) : undefined, issuedAt: utcToLocal(login.updatedAt) }
+        : undefined,
+    };
   }
 
   /** Тумблер «Предоставить доступ»: выключение закрывает вход сразу (F-00-040), карточка остаётся */
@@ -485,6 +496,7 @@ export class StaffService {
       await this.audit.record(tx, ctx, { action: 'loginIssued', entityType: 'staff', entityId: staffId, businessId, after: { login } });
     });
     for (const id of revoked) await this.sessions.revokeAllOfStaffLogin(id, 'password_changed');
+    await this.publish(businessId, staffId);
     return this.access(businessId, staffId);
   }
 

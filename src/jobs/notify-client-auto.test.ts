@@ -155,7 +155,7 @@ test('75: «Не пришёл» до начала визита — пуш кли
   assert.equal(log.length, 1);
   assert.equal(log[0]!.typeCode, 75);
   assert.equal(log[0]!.channel, 'push');
-  assert.equal(log[0]!.status, 'sent');
+  assert.equal(log[0]!.status, 'sending');
   assert.equal(log[0]!.bookingId, 'bk_1');
   const again = await notifyClientEvents(prisma, messenger, NOW);
   assert.equal(again.noShow.push, undefined);
@@ -242,6 +242,37 @@ test('тихие часы 21:00–10:00 по Еревану — проход п�
   const daily = await notifyClientDaily(prisma, fakeMessenger().messenger, night);
   assert.equal(daily.quiet, true);
   assert.equal(tables.notifyLogEntry!.length, 0);
+});
+
+// ─────────── 2 «Клиент записался онлайн» ───────────
+
+test('2: клиент записался сам (виджет) — «Вы записаны» пушем, и в тихие часы; из журнала, отменённая, повтор — нет', async () => {
+  const night = new Date('2026-10-05T19:30:00.000Z'); // 23:30 Ереван
+  const online = (extra: Row = {}) => booking({ status: 'scheduled', source: 'widget', startAt: new Date(night.getTime() + DAY), endAt: new Date(night.getTime() + DAY + H), ...extra });
+  const created = ev({ kind: 'created', toStatus: 'scheduled', byRef: 'client', at: new Date(night.getTime() - 5 * 60_000) });
+  const { prisma, tables } = world({ withApp: true, bookings: [online()], events: [created] });
+  const res = await notifyClientEvents(prisma, fakeMessenger().messenger, night);
+  assert.equal(res.quiet, true);
+  assert.equal(res.booked.push, 1);
+  const push = tables.notifyOutbox!.find((r) => r.kind === 'online_booked')!;
+  assert.equal(push.recipientUserId, 'us_1');
+  assert.match(String(push.body), /вы записаны — Маникюр, 06\.10 в 23:30/);
+  assert.equal(tables.notifyLogEntry![0]!.typeCode, 2);
+  assert.equal(tables.notifyLogEntry![0]!.status, 'sending');
+  const again = await notifyClientEvents(prisma, fakeMessenger().messenger, night);
+  assert.equal(again.booked.duplicate, 1);
+  assert.equal(tables.notifyOutbox!.length, 1);
+
+  for (const b of [online({ source: 'journal' }), online({ status: 'cancelled_by_client' }), online({ deletedAt: night })]) {
+    const w = world({ withApp: true, bookings: [b], events: [created] });
+    await notifyClientEvents(w.prisma, fakeMessenger().messenger, night);
+    assert.equal(w.tables.notifyLogEntry!.length, 0);
+  }
+  // клиент выключил тип 2 у себя — ничего
+  const off = world({ withApp: true, bookings: [online()], events: [created], prefs: { disabledTypeCodes: [2] } });
+  const r = await notifyClientEvents(off.prisma, fakeMessenger().messenger, night);
+  assert.equal(r.booked.off, 1);
+  assert.equal(off.tables.notifyOutbox!.length, 0);
 });
 
 // ─────────── 72 ───────────

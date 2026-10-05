@@ -250,6 +250,8 @@ export const ID_PREFIX = {
   order: 'ord',
   // файлы и фото (04.10.2026)
   upload: 'upl',
+  // «Найти окно → предложить» на сервере (06.10.2026), как мок newId('so')
+  slotOffer: 'so',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

@@ -24,6 +24,7 @@ import {
   type WeekTemplate,
 } from './engine.js';
 import { personKeyOf } from './occupy.js';
+import { dropHomeShiftSlots } from './home-shift.js';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -247,7 +248,7 @@ export class AvailabilityService {
       serviceWindow = svc?.onlineWindow ? ({ ...(svc.onlineWindow as object), serviceId: svc.id } as ServiceSlotWindow) : null;
       resourcesFor = await this.resourceNeeds(db, businessId, q.serviceId, q.date, tz, settings.allowOnlineOverNoShow);
     }
-    return computeFreeSlots({
+    const slots = computeFreeSlots({
       staff: this.toStaffLike(staff),
       schedules,
       marks,
@@ -266,6 +267,8 @@ export class AvailabilityService {
       resourcesFor,
       overNoShow: settings.allowOnlineOverNoShow,
     });
+    // F-00-047: домашние окна на смене в салоне с галочкой не предлагаем (сохранение отклонило бы их — home_during_shift)
+    return dropHomeShiftSlots(db, staff.id, slots, tz);
   }
 
   /** Ресурсы услуги по местам и их занятость в день (F-02-064, F-02-070) */
@@ -336,7 +339,7 @@ export class AvailabilityService {
       this.marks(this.prisma, [staff.id], q.date, q.date),
       this.busyMinutes(this.prisma, personKeyOf(staff), q.date, tz),
     ]);
-    return computeQuickSlots({
+    const slots = computeQuickSlots({
       staff: this.toStaffLike(staff),
       schedules,
       marks,
@@ -347,6 +350,7 @@ export class AvailabilityService {
       bufferAfterMin: svc?.bufferAfterMin ?? 0,
       locationId: q.locationId,
     });
+    return dropHomeShiftSlots(this.prisma, staff.id, slots, tz);
   }
 
   // ─────────── кеш и события ───────────

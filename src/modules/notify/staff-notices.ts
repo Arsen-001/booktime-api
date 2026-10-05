@@ -187,7 +187,8 @@ export async function enqueueStaffNotice(
     url: input.url,
     dedupeKey: input.dedupeKey,
     sendAt: input.sendAt,
-    meta: input.meta,
+    // Журнал отправок: тип каталога и сотрудник-адресат (notify-log-outbox.ts); выключатель типа отправитель проверит ещё раз
+    meta: { ...input.meta, staffId: to.id, ...(def.typeCode ? { typeCode: def.typeCode } : {}) },
   });
 }
 

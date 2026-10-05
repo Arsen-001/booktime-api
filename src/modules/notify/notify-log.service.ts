@@ -13,6 +13,7 @@ import { NotifyMoreService } from './notify-more.service.js';
 import { NotifyRichTypesService } from './notify-rich-types.service.js';
 import { enqueueClientNotification } from './outbox.js';
 import { costOf, deriveLogRows, statusFor } from './notify-log-derive.js';
+import { materializeOutbox, refreshSendingRows } from './notify-log-outbox.js';
 import type { DBooking, DClient, DClientPrefs, DeriveContext, DEvent, DStaff, LogRow, LText } from './notify-log-derive.js';
 
 const J = (v: unknown) => v as Prisma.InputJsonValue;
@@ -24,7 +25,9 @@ const FIRST_SYNC_DAYS = 45;
 /** Чаще не пересчитываем: экраны журнала/окна записи/карточки клиента зовут журнал одновременно */
 const SYNC_THROTTLE_MS = 30_000;
 /** Отступ окна событий: тихие часы переносят до суток, приглашение уходит через N часов после отмены */
-const EVENT_MARGIN_MS = 4 * DAY;
+const OUTBOX_MARGIN_MS = 10 * 60_000;
+/** «Запланировано»: типы, которые шлют задачи воркера по расписанию (notify-reminders, telegram-reminders, notify-confirm-requests) */
+const SCHEDULED_TYPES = new Set([1, 73]);
 
 /** Строка журнала для экрана — LogMessage фронта (src/domain/notify.ts) */
 export interface LogMessageOut {
@@ -116,12 +119,12 @@ export async function resolveAppUsers<T extends { phone: string; appUserId: stri
 }
 
 /**
- * Журнал отправок (F-05-107/108/130, Ув11/Ув12/Ув16) — этап 21, лейн notify-log+mailings. Строки выводятся из
- * booking_events/bookings/clients по каталогу типов «под экран» (NotifyRichTypesService, 29+2) — порт liveLog.ts
- * фронта (`notify-log-derive.ts`) — и материализуются в notify_log_entries окном от `notify_log_sync.synced_until`,
- * с ключом дубля: чтение журнала — одна выборка страницы по индексу (business_id, sent_at), а не пересчёт всей
- * истории. «Запланировано» (напоминания/подтверждения на неделю вперёд, отложенное тихими часами) не хранится —
- * выводится на лету из будущих записей, это будущее и оно меняется с каждой правкой записи.
+ * Журнал отправок (F-05-107/108/130, Ув11/Ув12/Ув16) — этап 21, лейн notify-log+mailings. С 06.10.2026 строки — только то,
+ * что реально ушло: очередь отправки (notify_outbox) материализуется в notify_log_entries окном от
+ * `notify_log_sync.synced_until` (notify-log-outbox.ts), рассылки, разовые сообщения и автоуведомления клиенту пишут
+ * свои строки сами; статус — из очереди. Чтение — одна выборка страницы по индексу (business_id, sent_at).
+ * «Запланировано» (напоминания и запросы подтверждения на неделю вперёд) не хранится — выводится на лету из будущих
+ * записей (notify-log-derive.ts), это будущее и оно меняется с каждой правкой записи.
  */
 @Injectable()
 export class NotifyLogService {
@@ -138,7 +141,8 @@ export class NotifyLogService {
 
   async list(businessId: string, q: LogQuery): Promise<{ items: LogMessageOut[]; nextCursor: string | null }> {
     await this.sync(businessId);
-    const where: Prisma.NotifyLogEntryWhereInput = { businessId };
+    // Строки, выведенные из записей со статусом из хэша (до 06.10.2026), — не показываем: это не было отправкой
+    const where: Prisma.NotifyLogEntryWhereInput = { businessId, source: { not: 'live' } };
     if (q.channel) where.channel = q.channel;
     if (q.status) where.status = q.status;
     if (q.typeCode !== undefined) where.typeCode = q.typeCode;
@@ -170,61 +174,26 @@ export class NotifyLogService {
       bookingsTo: new Date(now.getTime() + 10 * DAY),
       winback: false,
     });
-    const rows = await this.materializeLinks(businessId, derived.rows.filter((r) => r.scheduled), derived.paths);
+    // Только то, что сервер и правда отправит по расписанию: напоминание (1) и «Просим подтвердить» (73)
+    const rows = await this.materializeLinks(businessId, derived.rows.filter((r) => r.scheduled && SCHEDULED_TYPES.has(r.typeCode ?? -1)), derived.paths);
     return rows.map((r) => this.rowOut(businessId, r, true)).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
   }
 
   // ─────────── синхронизация окна ───────────
 
+  /**
+   * ⭐ 06.10.2026 — честный журнал (notify-log-outbox.ts): в журнал идут строки очереди отправки (что реально поставлено
+   * в пуш / Telegram) со статусом очереди, а «Отправляется» обновляется до настоящего итога. Выведенные из записей строки
+   * со статусом из хэша (source 'live', notify-log-derive.ts) больше не пишутся и не показываются.
+   */
   async sync(businessId: string, force = false): Promise<number> {
     const now = new Date();
     const state = await this.prisma.notifyLogSync.findUnique({ where: { businessId } });
     if (!force && state && now.getTime() - state.syncedUntil.getTime() < SYNC_THROTTLE_MS) return 0;
-    const from = state?.syncedUntil ?? new Date(now.getTime() - FIRST_SYNC_DAYS * DAY);
-    const derived = await this.derive(businessId, {
-      eventsFrom: new Date(from.getTime() - EVENT_MARGIN_MS),
-      eventsTo: now,
-      bookingsFrom: new Date(from.getTime() - 2 * HOUR),
-      bookingsTo: new Date(now.getTime() + 49 * HOUR),
-      winback: true,
-      winbackFrom: new Date(from.getTime() - DAY),
-    });
-    const nowL = utcToLocal(now);
-    const due = derived.rows.filter((r) => !r.scheduled && r.createdAt <= nowL);
-    let created = 0;
-    if (due.length) {
-      // ключи, что уже есть, не трогаем: короткие ссылки заводим только новым строкам
-      const known = new Set(
-        (await this.prisma.notifyLogEntry.findMany({ where: { dedupeKey: { in: due.map((r) => r.key) } }, select: { dedupeKey: true } })).map((r) => r.dedupeKey),
-      );
-      const fresh = await this.materializeLinks(businessId, due.filter((r) => !known.has(r.key)), derived.paths);
-      if (fresh.length) {
-        const res = await this.prisma.notifyLogEntry.createMany({
-          skipDuplicates: true,
-          data: fresh.map((r) => ({
-            id: newId('notifyLogEntry'),
-            businessId,
-            dedupeKey: r.key,
-            sentAt: localToUtc(r.createdAt),
-            typeCode: r.typeCode ?? null,
-            typeLabel: J(r.typeLabel),
-            channel: r.channel,
-            status: r.status,
-            contact: r.contact.slice(0, 160),
-            text: J(r.text),
-            clientId: r.clientId ?? null,
-            staffId: r.staffId ?? null,
-            bookingId: r.bookingId ?? null,
-            sentLanguage: r.sentLanguage,
-            costAmd: r.costAmd,
-            smsParts: r.smsParts ?? null,
-            deferredFrom: r.deferredFrom ? localToUtc(r.deferredFrom) : null,
-            source: 'live',
-          })),
-        });
-        created = res.count;
-      }
-    }
+    // Запас на гонку: строка очереди могла встать чуть раньше прошлого прохода, но закоммититься позже
+    const from = state ? new Date(state.syncedUntil.getTime() - OUTBOX_MARGIN_MS) : new Date(now.getTime() - FIRST_SYNC_DAYS * DAY);
+    const created = await materializeOutbox(this.prisma, businessId, from, now);
+    await refreshSendingRows(this.prisma, businessId, now);
     await this.prisma.notifyLogSync.upsert({ where: { businessId }, create: { businessId, syncedUntil: now }, update: { syncedUntil: now } });
     return created;
   }
@@ -287,14 +256,17 @@ export class NotifyLogService {
         : { ru: 'Сообщение из карточки клиента', en: 'Message from the client card', hy: 'Հաղորդագրություն հաճախորդի քարտից' };
     for (const channel of allowed) {
       let delivered = false;
+      let queued = false;
+      const key = `oneOff:${newId('notifyLogEntry')}`;
       if ((channel === 'push' || channel === 'brandedApp') && client.appUserId) {
-        delivered = await enqueueClientNotification(this.prisma, {
+        delivered = queued = await enqueueClientNotification(this.prisma, {
           appUserId: client.appUserId,
           businessId,
           kind: 'oneOff',
           title: 'BookTime',
           body: text,
-          dedupeKey: `oneOff:${newId('notifyLogEntry')}`,
+          dedupeKey: key,
+          meta: { clientId: client.id, bookingId: input.bookingId },
         });
       } else if ((channel === 'sms' || channel === 'whatsapp') && smsConn?.connected) {
         delivered = (await this.messenger.send({ businessId, to: client.phone, text, channel: channel === 'whatsapp' ? 'whatsapp' : 'sms' })).delivered;
@@ -304,12 +276,14 @@ export class NotifyLogService {
       }
       const cost = costOf(channel, text);
       await this.write(businessId, {
+        dedupeKey: key,
         sentAt: now,
         typeCode: ONE_OFF_TYPE_CODE,
         typeLabel: label,
         channel,
-        // Нет приложения / не подключён провайдер бизнеса (В-08) — сообщение не ушло, так и пишем
-        status: delivered ? 'sent' : 'notDelivered',
+        // Нет приложения / не подключён провайдер бизнеса (В-08) — сообщение не ушло, так и пишем. Пуш — «Отправляется»,
+        // пока отправитель очереди не разберёт строку с тем же ключом (notify-log-outbox.ts::refreshSendingRows)
+        status: !delivered ? 'notDelivered' : queued ? 'sending' : 'sent',
         contact: channel === 'email' ? client.email || client.phone : client.phone,
         text: { ru: text },
         clientId: client.id,

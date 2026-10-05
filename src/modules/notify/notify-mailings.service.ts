@@ -276,7 +276,7 @@ export class NotifyMailingsService {
         if (res.delivered) sentTo.push(r);
       } else {
         if (!r.appUserId) continue;
-        await enqueueClientNotification(this.prisma, { appUserId: r.appUserId, businessId: r.businessId, kind: 'mailing', title: base.companyName || 'BookTime', body, dedupeKey: `mailing:${m.id}:${r.id}` });
+        await enqueueClientNotification(this.prisma, { appUserId: r.appUserId, businessId: r.businessId, kind: 'mailing', title: base.companyName || 'BookTime', body, dedupeKey: `ml:${m.id}:${r.id}` });
         sentTo.push(r);
       }
     }
@@ -293,7 +293,8 @@ export class NotifyMailingsService {
         typeCode: m.network ? NETWORK_MAILING_TYPE : undefined,
         typeLabel: m.network ? NETWORK_MAILING_LABEL : MAILING_LABEL,
         channel: channel === 'sms' ? 'sms' : 'push',
-        status: 'sent',
+        // Пуши — «Отправляется», пока отправитель очереди не разберёт строки `ml:<id>:…` (notify-log-outbox.ts::refreshSendingRows)
+        status: channel === 'sms' ? 'sent' : 'sending',
         contact: String(sentTo.length),
         text: { ru: m.text },
         costAmd: cost,
@@ -346,18 +347,21 @@ export class NotifyMailingsService {
     const base = await this.businessVars(businessId);
     const body = this.recipientText(text, { ...base }, { name: (owner?.name ?? '').split(/\s+/)[0] ?? '' });
     let delivered = false;
+    const testKey = `mailingTest:${newId('notifyLogEntry')}`;
     if (channel === 'sms') {
       const sms = await this.smsConnected(businessId);
       if (sms.connected) delivered = (await this.messenger.send({ businessId, to: phone, text: body, channel: sms.channel })).delivered;
     } else if (owner?.userId) {
-      delivered = await enqueueOutbox(this.prisma, { businessId, app: 'business', kind: 'mailingTest', recipientUserId: owner.userId, title: base.companyName || 'BookTime', body, dedupeKey: `mailingTest:${newId('notifyLogEntry')}` });
+      delivered = await enqueueOutbox(this.prisma, { businessId, app: 'business', kind: 'mailingTest', recipientUserId: owner.userId, title: base.companyName || 'BookTime', body, dedupeKey: testKey });
     }
     const parts = channel === 'sms' ? Math.max(1, smsParts(body)) : undefined;
     await this.log.write(businessId, {
+      dedupeKey: testKey,
       sentAt: new Date(),
       typeLabel: TEST_LABEL,
       channel: channel === 'sms' ? 'sms' : 'push',
-      status: delivered ? 'sent' : 'notDelivered',
+      // Пуш ушёл в очередь — «Отправляется», итог подтянет журнал из очереди по тому же ключу
+      status: !delivered ? 'notDelivered' : channel === 'sms' ? 'sent' : 'sending',
       contact: phone,
       text: { ru: body },
       costAmd: parts && delivered ? parts * SMS_PART_PRICE_AMD : 0,

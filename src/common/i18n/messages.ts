@@ -20,6 +20,9 @@ const en = {
   'booking.prepaymentExpired': "The prepayment didn't arrive in time — the slot for {time} was released.",
   'waitlist.slotAvailable': 'A slot with {staff} opened up — you can book it now.',
   'waitlist.slotAvailableAt': 'A slot with {staff} opened up: {when}, {service}. Open the app to book it.',
+  'slotOffer.telegram': '{place}: a slot with {staff} opened up: {when}, {service}. Book it: {link}',
+  'slotOffer.hot': '{place}: hot slot today — {slots}{discount}. Book: {link}',
+  'slotOffer.hotDiscount': ', {percent}% off',
   // этап 10 — бизнесу (05 §3.2)
   'staff.newBooking': '{client} booked {service} for {time}.',
   'staff.clientCancelled': '{client} cancelled the visit at {time}.',
@@ -82,6 +85,7 @@ const en = {
   'client.noShowInvite': '{companyName}: we noticed you could not make it. Book a time that suits you: {bookingLink}',
   'client.reviewRequest': '{companyName}: thanks for visiting! Did you like it? Rate it ★: {reviewLink}',
   'client.birthday': 'Happy birthday, {clientName}! Come see us: {bookingLink}. {companyName}',
+  'client.onlineBooked': '{companyName}: you are booked for {service} on {date} at {time}. Details: {link}',
   'client.repeatInvite': '{companyName}: it is time for “{service}” again. Book a convenient time: {bookingLink}',
 } as const;
 
@@ -102,6 +106,9 @@ const ru: Record<MessageKey, string> = {
   'booking.prepaymentExpired': 'Предоплата не пришла вовремя — окно на {time} освобождено.',
   'waitlist.slotAvailable': 'Освободилось окно у {staff} — можно записаться прямо сейчас.',
   'waitlist.slotAvailableAt': 'Освободилось окно у {staff}: {when}, {service}. Записаться можно в приложении.',
+  'slotOffer.telegram': '{place}: освободилось окно у {staff}: {when}, {service}. Записаться: {link}',
+  'slotOffer.hot': '{place}: горящее окно сегодня — {slots}{discount}. Записаться: {link}',
+  'slotOffer.hotDiscount': ', скидка {percent}%',
   'staff.newBooking': '{client} записался(-лась) на {service}, {time}.',
   'staff.clientCancelled': '{client} отменил(а) визит на {time}.',
   'staff.clientRescheduled': '{client} перенёс(ла) визит на {time}.',
@@ -160,6 +167,7 @@ const ru: Record<MessageKey, string> = {
   'client.noShowInvite': '{companyName}: заметили, что вы не смогли прийти. Запишитесь на удобное время: {bookingLink}',
   'client.reviewRequest': '{companyName}: спасибо за визит! Понравилось? Оцените ★: {reviewLink}',
   'client.birthday': 'С днём рождения, {clientName}! Ждём в гости: {bookingLink}. {companyName}',
+  'client.onlineBooked': '{companyName}: вы записаны на {service} {date} в {time}. Подробности: {link}',
   'client.repeatInvite': '{companyName}: пора снова на «{service}». Запишитесь на удобное время: {bookingLink}',
 };
 
@@ -178,6 +186,9 @@ const hy: Record<MessageKey, string> = {
   'booking.prepaymentExpired': 'Կանխավճարը ժամանակին չստացվեց՝ {time} պատուհանն ազատվել է։',
   'waitlist.slotAvailable': '{staff}-ի մոտ ազատվել է ժամ՝ կարող եք գրանցվել հիմա։',
   'waitlist.slotAvailableAt': '{staff}-ի մոտ ազատվել է ժամ՝ {when}, {service}։ Գրանցվեք հավելվածում։',
+  'slotOffer.telegram': '{place}․ {staff}-ի մոտ ազատվել է ժամ՝ {when}, {service}։ Գրանցվել՝ {link}',
+  'slotOffer.hot': '{place}․ այսօրվա ազատ ժամ՝ {slots}{discount}։ Գրանցվել՝ {link}',
+  'slotOffer.hotDiscount': ', զեղչ {percent}%',
   'staff.newBooking': '{client}-ը գրանցվեց՝ {service}, {time}։',
   'staff.clientCancelled': '{client}-ը չեղարկեց այցը՝ {time}։',
   'staff.clientRescheduled': '{client}-ը տեղափոխեց այցը՝ {time}։',
@@ -236,6 +247,7 @@ const hy: Record<MessageKey, string> = {
   'client.noShowInvite': '{companyName}․ նկատեցինք, որ չկարողացաք գալ։ Գրանցվեք ձեզ հարմար ժամի՝ {bookingLink}',
   'client.reviewRequest': '{companyName}․ շնորհակալություն այցի համար։ Դուր եկա՞վ։ Գնահատեք ★՝ {reviewLink}',
   'client.birthday': '{clientName}, շնորհավորում ենք ձեր ծննդյան օրվա առթիվ։ Սպասում ենք ձեզ՝ {bookingLink}։ {companyName}',
+  'client.onlineBooked': '{companyName}․ դուք գրանցված եք {service}-ի՝ {date}, ժամը {time}։ Մանրամասներ՝ {link}',
   'client.repeatInvite': '{companyName}․ ժամանակն է կրկին «{service}»-ի։ Գրանցվեք ձեզ հարմար ժամի՝ {bookingLink}',
 };
 

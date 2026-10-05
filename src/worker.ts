@@ -163,7 +163,7 @@ const worker = new Worker(
     }
     if (job.name === 'notify.client-events') {
       const res = await notifyClientEvents(prisma, businessMessenger);
-      if (clientAutoWorth(res.noShow, res.noShowInvite, res.review)) logger.info(res, 'notify.client-events');
+      if (clientAutoWorth(res.booked, res.noShow, res.noShowInvite, res.review)) logger.info(res, 'notify.client-events');
       return;
     }
     if (job.name === 'notify.client-daily') {

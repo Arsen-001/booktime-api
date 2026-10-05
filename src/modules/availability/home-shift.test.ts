@@ -1,7 +1,7 @@
 /** F-00-047: домашняя запись в часы смены салона с галочкой владельца. Запуск: npm test */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { findHomeShiftConflict, isHomeWorkplace, shiftOverlap, type ShiftSchedule } from './home-shift.js';
+import { dropHomeShiftSlots, findHomeShiftConflict, isHomeWorkplace, shiftOverlap, type ShiftSchedule } from './home-shift.js';
 import { localToUtc } from '../../common/time/time.js';
 
 const day = (from: string, to: string) => [{ from, to }];
@@ -96,4 +96,14 @@ test('уволенная карточка в салоне смены не даё
   });
   assert.ok(await findHomeShiftConflict(same, { staffIds: ['st_nuri_ani'], workplace: 'home', startAt: at('2026-10-07T11:00'), endAt: at('2026-10-07T12:00') }));
   assert.equal(await findHomeShiftConflict(same, { staffIds: ['st_nuri_ani'], workplace: 'home', startAt: at('2026-10-07T16:00'), endAt: at('2026-10-07T17:00') }), null);
+});
+
+test('окна онлайн-записи: домашние на смене в салоне с галочкой убраны, после смены и в салоне — остаются', async () => {
+  const slot = (workplace: string, start: string, end: string) => ({ workplace, start: `2026-10-07T${start}`, end: `2026-10-07T${end}` });
+  const slots = [slot('home', '09:00', '10:00'), slot('home', '13:30', '14:30'), slot('visit', '11:00', '12:00'), slot('home', '14:00', '15:00'), slot('salon', '11:00', '12:00')];
+  const tx = fakeTx({ staff: people, strict: ['biz_salon'], schedules });
+  const kept = await dropHomeShiftSlots(tx, 'st_own_ani', slots, 'Asia/Yerevan');
+  assert.deepEqual(kept.map((x) => `${x.workplace} ${x.start.slice(11)}`), ['home 09:00', 'home 14:00', 'salon 11:00']);
+  // без галочки — все окна на месте
+  assert.equal((await dropHomeShiftSlots(fakeTx({ staff: people, strict: [], schedules }), 'st_own_ani', slots, 'Asia/Yerevan')).length, 5);
 });

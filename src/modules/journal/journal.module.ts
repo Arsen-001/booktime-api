@@ -1,3 +1,4 @@
+import { SlotOffersController } from './slot-offers.controller.js';
 import { Module } from '@nestjs/common';
 import { LoyaltyModule } from '../loyalty/loyalty.module.js';
 import { ScheduleModule } from '../schedule/schedule.module.js';
@@ -21,7 +22,7 @@ import { UpsellService } from './upsell.service.js';
  * `StockModule` — этап 13: тот же статус-переход списывает/возвращает расходники по техкарте (F-08-041/042). */
 @Module({
   imports: [ScheduleModule, LoyaltyModule, StockModule],
-  controllers: [BookingsController, JournalController, DayFeedController, ClaimsController, MeBookingsController, PublicClaimsController, UpsellController],
+  controllers: [BookingsController, JournalController, DayFeedController, SlotOffersController, ClaimsController, MeBookingsController, PublicClaimsController, UpsellController],
   providers: [BookingsService, DayFeedService, JournalService, GroupEventsService, SeriesService, JournalSettingsService, JournalAccess, UpsellService],
   // GroupEventsService, BookingsService — stage 21 lane «resources» использует их для участников/повтора/
   // серий группового события (src/modules/resources/*), не переопределяя логику журнала своей копией.

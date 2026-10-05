@@ -140,6 +140,8 @@ export const checkBody = z.object({
   locationId: id.optional(),
   /** Есть ли у этого клиента другая запись в это время (у любого мастера бизнеса) — журнал предупреждает */
   clientId: id.optional(),
+  /** F-00-047: место записи — «дома» / «выезд» на смене в салоне с галочкой владельца журнал показывает до сохранения */
+  workplace: z.string().max(16).optional(),
 });
 
 export const visitIdBody = z.object({ clientId: id.optional(), start: localDateTime, durationMin: z.number().int().min(0), excludeBookingId: id.optional() });

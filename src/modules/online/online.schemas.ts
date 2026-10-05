@@ -123,6 +123,11 @@ export const createLinkBody = z.object({
 });
 export type CreateLinkBody = z.infer<typeof createLinkBody>;
 
+/** ID пикселя Meta — только цифры (Events Manager даёт 15–16; берём с запасом) */
+export const META_PIXEL_ID_RE = /^\d{8,20}$/;
+/** ID потока GA4 — G- и 6–12 латинских букв/цифр (как вводят из «Сведений о потоке») */
+export const GA4_STREAM_ID_RE = /^G-[A-Z0-9]{6,12}$/;
+
 /** Остальные поля BookingLink фронта — правятся все вместе, как config (docs/backend PLAN §4.1: JSON на строке) */
 export const updateLinkBody = z
   .object({
@@ -131,6 +136,10 @@ export const updateLinkBody = z
     description: z.string().max(2000).nullable(),
     defaultLocale: z.enum(['ru', 'hy', 'en']),
     staffId: id32.nullable(),
+    // Счётчики салона на его публичной странице (F-03-118/119): пусто или null — убрать. Скрипты грузит браузер
+    // посетителя только после его согласия, поэтому мусор здесь недопустим — он попал бы в адрес скрипта
+    metaPixelId: z.union([z.literal(''), z.string().trim().regex(META_PIXEL_ID_RE, 'invalid')]).nullable(),
+    ga4StreamId: z.union([z.literal(''), z.string().trim().toUpperCase().regex(GA4_STREAM_ID_RE, 'invalid')]).nullable(),
   })
   .catchall(z.unknown())
   .partial();

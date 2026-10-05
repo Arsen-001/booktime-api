@@ -1,3 +1,4 @@
+import { findHomeShiftConflict } from '../availability/home-shift.js';
 import { Injectable } from '@nestjs/common';
 import { Prisma, type Booking as BookingRow } from '../../generated/prisma/client.js';
 import { ApiError } from '../../common/errors/api-error.js';
@@ -95,7 +96,7 @@ export class JournalService {
    * Занято ли время человека (во ВСЕХ его бизнесах, F-00-045) и экземпляров ресурсов; внутри ли рабочих часов.
    * Та же таблица busy_blocks, что проверяет «замок на мастера» при записи, — экран и запись не разойдутся.
    */
-  async check(businessId: string, input: { staffId?: string; start: string; durationMin: number; excludeBookingId?: string; resourceId?: string; instanceId?: string; locationId?: string; clientId?: string }) {
+  async check(businessId: string, input: { staffId?: string; start: string; durationMin: number; excludeBookingId?: string; resourceId?: string; instanceId?: string; locationId?: string; clientId?: string; workplace?: string }) {
     const tz = await this.bookings.tzOfBusiness(this.prisma, businessId);
     const startAt = localToUtc(input.start, tz);
     const endAt = addMin(startAt, input.durationMin);
@@ -180,7 +181,16 @@ export class JournalService {
         clientOverlap = { start: utcToLocal(hit.startAt, tz), staffId: hit.staffId, ...(first ? { serviceId: first } : {}) };
       }
     }
-    return { overlap, withinHours, resourceFree, occupiedInstanceIds, ...(clientOverlap ? { clientOverlap } : {}) };
+    // F-00-047: домашняя / выездная запись на смене в салоне с галочкой — та же проверка, что при сохранении (home_during_shift)
+    const clash = input.staffId && input.durationMin > 0 ? await findHomeShiftConflict(this.prisma, { staffIds: [input.staffId], workplace: input.workplace, startAt, endAt }) : null;
+    return {
+      overlap,
+      withinHours,
+      resourceFree,
+      occupiedInstanceIds,
+      ...(clientOverlap ? { clientOverlap } : {}),
+      ...(clash ? { homeShift: { businessId: clash.businessId, date: clash.date, from: clash.from, to: clash.to } } : {}),
+    };
   }
 
   // ─────────── визит (F-01-041) ───────────
