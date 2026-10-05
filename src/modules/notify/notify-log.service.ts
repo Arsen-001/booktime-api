@@ -464,7 +464,7 @@ export class NotifyLogService {
     ]);
     const clients = new Map<string, DClient>();
     for (const c of await resolveAppUsers(this.prisma, [...clientRows, ...birthdayRows])) clients.set(c.id, c);
-    // Тип 73 без приложения уходит в Telegram-бот (jobs/notify-confirm-requests.ts) — журналу нужно, кто его подключил
+    // Типы 1 и 73 без приложения уходят в Telegram-бот (telegram-reminders.ts, jobs/notify-confirm-requests.ts) — журналу нужно, кто его подключил
     const phoneOf = new Map([...clients.values()].map((c) => [c.id, c.phone ? normalizePhone(c.phone) : undefined]));
     const phones = [...new Set([...phoneOf.values()].filter((p): p is string => !!p))];
     const linked = phones.length ? new Set((await this.prisma.telegramLink.findMany({ where: { phone: { in: phones }, blockedAt: null }, select: { phone: true } })).map((l) => l.phone)) : new Set<string>();

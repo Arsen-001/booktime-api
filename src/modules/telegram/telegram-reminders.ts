@@ -10,11 +10,29 @@ const ACTIVE_FOR_REMINDER = ['scheduled', 'client_confirmed'];
 const REMINDER_TYPE_CODE = 1;
 
 /**
+ * Клиенты, сами выключившие тип уведомления (ClientNotifyPref.disabledTypeCodes, F-05-090) — им в Telegram этот тип не
+ * шлём. То же правило, что скрывает строку в журнале отправок (notify-log-derive.ts::deriveLogRows).
+ */
+export async function clientsWithTypeOff(prisma: PrismaService, clientIds: string[], typeCode: number): Promise<Set<string>> {
+  if (!clientIds.length) return new Set();
+  const rows = await prisma.clientNotifyPref.findMany({ where: { clientId: { in: clientIds } }, select: { clientId: true, disabledTypeCodes: true } });
+  return new Set(rows.filter((r) => Array.isArray(r.disabledTypeCodes) && (r.disabledTypeCodes as unknown[]).includes(typeCode)).map((r) => r.clientId));
+}
+
+/** Клиенты, сами выключившие пуши (ClientNotifyPref.channels.push === false) — как журнал отправок (deriveLogRows) */
+export async function clientsWithPushOff(prisma: PrismaService, clientIds: string[]): Promise<Set<string>> {
+  if (!clientIds.length) return new Set();
+  const rows = await prisma.clientNotifyPref.findMany({ where: { clientId: { in: clientIds } }, select: { clientId: true, channels: true } });
+  return new Set(rows.filter((r) => (r.channels as { push?: boolean } | null)?.push === false).map((r) => r.clientId));
+}
+
+/**
  * Напоминания 24ч/2ч в Telegram (30.09.2026) — клиентам БЕЗ нашего приложения (нет живого push-токена app='client'),
  * чей номер привязан к боту. Та же очередь notify_outbox (app='telegram', recipientUserId = chat id), тот же ключ
  * дубля `telegram:<kind>:<booking>:<chat>` — повторный проход задачи ничего не дублирует. Выключенный бизнесом тип
  * (reminder24h/reminder2h) отсекает отправитель очереди (`isKindEnabled`), как и для пушей. Выключатель Telegram у самой
  * записи (Booking.notifyOverride.telegramEnabled === false, окно записи → «Уведомления о визите») — запись пропускается.
+ * Клиент сам выключил «Напоминание о визите» (тип 1) в своих настройках уведомлений — тоже (clientsWithTypeOff).
  */
 export async function enqueueTelegramReminders(prisma: PrismaService, kind: 'reminder24h' | 'reminder2h', from: Date, to: Date): Promise<{ sent: number; candidates: number }> {
   const bookings = await prisma.booking.findMany({ where: { status: { in: ACTIVE_FOR_REMINDER }, deletedAt: null, startAt: { gte: from, lt: to } } });
@@ -22,6 +40,7 @@ export async function enqueueTelegramReminders(prisma: PrismaService, kind: 'rem
   const clientIds = [...new Set(bookings.map((b) => b.clientId).filter((v): v is string => Boolean(v)))];
   const clients = clientIds.length ? await prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, phone: true, appUserId: true } }) : [];
   const clientById = new Map(clients.map((c) => [c.id, c]));
+  const optedOut = await clientsWithTypeOff(prisma, clientIds, REMINDER_TYPE_CODE);
   const userIds = [...new Set(bookings.map((b) => b.appUserId ?? (b.clientId ? clientById.get(b.clientId)?.appUserId : null)).filter((v): v is string => Boolean(v)))];
   const [users, tokens] = userIds.length
     ? await Promise.all([
@@ -46,6 +65,7 @@ export async function enqueueTelegramReminders(prisma: PrismaService, kind: 'rem
   let candidates = 0;
   for (const b of bookings) {
     if (telegramOff.has(b.businessId)) continue;
+    if (b.clientId && optedOut.has(b.clientId)) continue; // клиент выключил напоминания у себя
     const client = b.clientId ? clientById.get(b.clientId) : undefined;
     const userId = b.appUserId ?? client?.appUserId ?? null;
     if (userId && withApp.has(userId)) continue; // у человека есть приложение — ему уходит пуш

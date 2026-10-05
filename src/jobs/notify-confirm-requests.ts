@@ -10,6 +10,7 @@ import { TYPE_REGISTRY, type NotifyScenario } from '../modules/notify/notify-typ
 import { enqueueClientNotification, enqueueOutbox } from '../modules/notify/outbox.js';
 import { tgLocale } from '../modules/telegram/telegram-links.js';
 import { bookingCard, bookingKeyboard, cardText } from '../modules/telegram/telegram-texts.js';
+import { clientsWithPushOff, clientsWithTypeOff } from '../modules/telegram/telegram-reminders.js';
 
 /** Вид в очереди (kinds.ts, код 10) — по нему отправитель проверяет isKindEnabled, журнал показывает строку */
 export const CONFIRM_KIND = 'confirm_request';
@@ -116,7 +117,8 @@ function horizonHours(c: ConfirmConditions): number {
  *    telegram-bot.service → тот же переход «Клиент подтвердил»), «Отменить», «Перенести». Запрос в Telegram заменяет
  *    напоминание за сутки (replaceReminder24h): одно сообщение в день, а не два подряд с той же кнопкой;
  *  · уважает: тип 73 выключен / сценарий канала «Не отправлять» (NotifyTypeOverride), выключатели записи
- *    (Booking.notifyOverride.pushEnabled / telegramEnabled), вид confirm_request выключен (isKindEnabled — отправитель).
+ *    (Booking.notifyOverride.pushEnabled / telegramEnabled), вид confirm_request выключен (isKindEnabled — отправитель),
+ *    клиент выключил тип 73 у себя (ClientNotifyPref.disabledTypeCodes) — не шлём ни пуш, ни Telegram.
  *  · текст (04.10.2026) — шаблон бизнеса этого типа для канала (NotifyTypeOverride.templates.push / .telegram) с
  *    переменными {companyName} {date} {time} {service} {staff} {link}; не правили — наш текст по умолчанию.
  * Ключ дубля — запись + её время: повторный проход ничего не дублирует, перенесённая запись спрашивается заново.
@@ -153,6 +155,7 @@ export async function enqueueConfirmRequests(prisma: PrismaService, now = new Da
   const clientIds = [...new Set(due.map(({ b }) => b.clientId!))];
   const clients = await prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, phone: true, appUserId: true } });
   const clientById = new Map(clients.map((c) => [c.id, c]));
+  const [optedOut, pushOff] = await Promise.all([clientsWithTypeOff(prisma, clientIds, TYPE_CODE), clientsWithPushOff(prisma, clientIds)]);
   const userIds = [...new Set(due.map(({ b }) => b.appUserId ?? clientById.get(b.clientId!)?.appUserId).filter((v): v is string => Boolean(v)))];
   const [users, tokens] = userIds.length
     ? await Promise.all([
@@ -171,10 +174,13 @@ export async function enqueueConfirmRequests(prisma: PrismaService, now = new Da
     const client = clientById.get(b.clientId!);
     const userId = b.appUserId ?? client?.appUserId ?? null;
     const local = utcToLocal(b.startAt, tz);
+    // Клиент сам выключил «Просим подтвердить визит» в своих настройках уведомлений — ни пуша, ни Telegram (как журнал)
+    if (optedOut.has(b.clientId!)) continue;
 
     if (userId && withApp.has(userId)) {
       // С приложением — только пуш (в Telegram не дублируем, как напоминания); пуш выключен — запроса нет
-      if (!cfg.push || ov?.pushEnabled === false) continue;
+      // Клиент выключил пуши в своих настройках (channels.push = false) — тоже не шлём, как журнал; в Telegram не уходим
+      if (!cfg.push || ov?.pushEnabled === false || pushOff.has(b.clientId!)) continue;
       candidates++;
       const user = userById.get(userId);
       const locale: Locale = isLocale(user?.locale) ? user.locale : 'ru';

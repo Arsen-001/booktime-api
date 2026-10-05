@@ -1,4 +1,7 @@
-/** Тип 73 «Просим подтвердить визит»: кому, когда, каким каналом, выключатели и ключ дубля (база — в памяти). Запуск: npm test */
+/**
+ * Тип 73 «Просим подтвердить визит»: кому, когда, каким каналом, выключатели и ключ дубля; Telegram-напоминания типа 1
+ * (telegram-reminders.ts) и пуш-напоминания (notify-reminders.ts) — настройки клиента. База — в памяти. Запуск: npm test
+ */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -8,6 +11,8 @@ process.env.DATABASE_URL ??= 'mysql://test:test@localhost:3306/test';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
 
 const { enqueueConfirmRequests, confirmRequestAt, confirmConfigOf, confirmTemplateOf } = await import('./notify-confirm-requests.js');
+const { enqueueTelegramReminders } = await import('../modules/telegram/telegram-reminders.js');
+const { pushReminders } = await import('./notify-reminders.js');
 type Prisma = Parameters<typeof enqueueConfirmRequests>[0];
 
 type Row = Record<string, unknown>;
@@ -48,14 +53,14 @@ function memoryPrisma(seed: Record<string, Row[]>) {
       return row;
     },
   });
-  const names = ['notifyTypeOverride', 'booking', 'location', 'client', 'user', 'pushToken', 'telegramLink', 'notifyOutbox', 'inboxItem', 'business', 'staff', 'service', 'businessSetting'];
+  const names = ['notifyTypeOverride', 'booking', 'location', 'client', 'user', 'pushToken', 'telegramLink', 'notifyOutbox', 'inboxItem', 'business', 'staff', 'service', 'businessSetting', 'clientNotifyPref'];
   return { tables, prisma: Object.fromEntries(names.map((n) => [n, table(n)])) as unknown as Prisma };
 }
 
 const NOW = new Date('2026-10-03T10:00:00.000Z'); // 14:00 по Еревану
 const H = 3_600_000;
 
-function world(extra: { booking?: Row; override?: Row | null; withApp?: boolean; telegram?: boolean } = {}) {
+function world(extra: { booking?: Row; override?: Row | null; withApp?: boolean; telegram?: boolean; disabledTypeCodes?: number[]; pushOff?: boolean } = {}) {
   const booking: Row = {
     id: 'bk_1',
     businessId: 'biz_1',
@@ -83,6 +88,7 @@ function world(extra: { booking?: Row; override?: Row | null; withApp?: boolean;
     business: [{ id: 'biz_1', name: 'Nuri Nail', brandName: null, slug: 'nuri', phone: null }],
     staff: [{ id: 'st_1', name: 'Анна', phone: null }],
     service: [{ id: 'sv_1', name: { ru: 'Маникюр', en: 'Manicure' } }],
+    clientNotifyPref: extra.disabledTypeCodes || extra.pushOff ? [{ clientId: 'cl_1', channels: extra.pushOff ? { push: false } : {}, disabledTypeCodes: extra.disabledTypeCodes ?? [] }] : [],
   });
 }
 
@@ -229,4 +235,65 @@ test('Telegram: фраза из шаблона бизнеса (канал telegr
   const pushOnly = world({ override: { templates: { push: { ru: 'Только пуш' } } } });
   await enqueueConfirmRequests(pushOnly.prisma, NOW);
   assert.match(String(pushOnly.tables.notifyOutbox!.find((r) => r.kind === 'confirm_request')!.body), /Подтвердите, пожалуйста/);
+});
+
+test('тип 73: клиент выключил «Просим подтвердить» у себя — в Telegram не шлём, напоминание за сутки не заменяем', async () => {
+  const { prisma, tables } = world({ disabledTypeCodes: [73] });
+  assert.equal((await enqueueConfirmRequests(prisma, NOW)).sent, 0);
+  assert.equal(tables.notifyOutbox!.length, 0);
+  // Выключен другой тип — запрос уходит
+  assert.equal((await enqueueConfirmRequests(world({ disabledTypeCodes: [1] }).prisma, NOW)).sent, 1);
+});
+
+test('тип 1 в Telegram: за 24 ч и за 2 ч клиенту без приложения с ботом; выключил напоминания у себя — ничего', async () => {
+  const windowOf = (hours: number) => [new Date(NOW.getTime() + hours * H), new Date(NOW.getTime() + hours * H + 10 * 60_000)] as const;
+  for (const [kind, hours] of [['reminder24h', 24], ['reminder2h', 2]] as const) {
+    const [from, to] = windowOf(hours);
+    const on = world({ booking: { startAt: from } });
+    assert.equal((await enqueueTelegramReminders(on.prisma, kind, from, to)).sent, 1, kind);
+    assert.equal(on.tables.notifyOutbox![0]!.dedupeKey, `telegram:${kind}:bk_1:777`);
+
+    const off = world({ booking: { startAt: from }, disabledTypeCodes: [1] });
+    assert.deepEqual(await enqueueTelegramReminders(off.prisma, kind, from, to), { sent: 0, candidates: 0 }, kind);
+    assert.equal(off.tables.notifyOutbox!.length, 0);
+
+    // Выключен только запрос подтверждения (73) — напоминание уходит
+    const other = world({ booking: { startAt: from }, disabledTypeCodes: [73] });
+    assert.equal((await enqueueTelegramReminders(other.prisma, kind, from, to)).sent, 1, kind);
+  }
+});
+
+test('тип 73: клиент с приложением выключил «Просим подтвердить» у себя — пуша нет', async () => {
+  const { prisma, tables } = world({ withApp: true, disabledTypeCodes: [73] });
+  assert.equal((await enqueueConfirmRequests(prisma, NOW)).sent, 0);
+  assert.equal(tables.notifyOutbox!.length, 0);
+  assert.equal(tables.inboxItem!.length, 0);
+});
+
+test('тип 1 пушем: уходит за время типа (1 ч); клиент выключил напоминания у себя — пуша нет', async () => {
+  const booking = { appUserId: 'us_1', startAt: new Date(NOW.getTime() + 30 * 60_000) };
+  const on = world({ withApp: true, booking });
+  assert.equal((await pushReminders(on.prisma, NOW)).sent, 1);
+  assert.equal(on.tables.notifyOutbox![0]!.app, 'client');
+
+  const off = world({ withApp: true, booking, disabledTypeCodes: [1] });
+  assert.deepEqual(await pushReminders(off.prisma, NOW), { sent: 0, candidates: 0 });
+  assert.equal(off.tables.notifyOutbox!.length, 0);
+
+  // Выключен только запрос подтверждения (73) — напоминание уходит
+  assert.equal((await pushReminders(world({ withApp: true, booking, disabledTypeCodes: [73] }).prisma, NOW)).sent, 1);
+});
+
+test('клиент выключил пуши у себя (channels.push = false) — ни напоминания, ни запроса пушем; Telegram без приложения уходит', async () => {
+  const booking = { appUserId: 'us_1', startAt: new Date(NOW.getTime() + 30 * 60_000) };
+  const r = world({ withApp: true, booking, pushOff: true });
+  assert.deepEqual(await pushReminders(r.prisma, NOW), { sent: 0, candidates: 0 });
+  assert.equal(r.tables.notifyOutbox!.length, 0);
+
+  const c = world({ withApp: true, pushOff: true });
+  assert.equal((await enqueueConfirmRequests(c.prisma, NOW)).sent, 0);
+  assert.equal(c.tables.notifyOutbox!.length, 0);
+
+  // Настройка пушей Telegram не касается (у журнала то же правило)
+  assert.equal((await enqueueConfirmRequests(world({ pushOff: true }).prisma, NOW)).sent, 1);
 });

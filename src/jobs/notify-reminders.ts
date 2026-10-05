@@ -5,7 +5,7 @@ import { customTemplateOf } from '../modules/notify/notify-types.service.js';
 import { notifyKindOf } from '../modules/notify/kinds.js';
 import { TYPE_REGISTRY } from '../modules/notify/notify-type-registry.js';
 import { enqueueClientNotification } from '../modules/notify/outbox.js';
-import { enqueueTelegramReminders } from '../modules/telegram/telegram-reminders.js';
+import { clientsWithPushOff, clientsWithTypeOff, enqueueTelegramReminders } from '../modules/telegram/telegram-reminders.js';
 import { enqueueConfirmRequests } from './notify-confirm-requests.js';
 
 const WINDOWS: { kind: 'reminder24h' | 'reminder2h'; hoursBefore: number }[] = [
@@ -48,7 +48,7 @@ export async function notifyBookingReminders(prisma: PrismaService): Promise<{ s
   return { sent: sent + push.sent, candidates: candidates + push.candidates };
 }
 
-async function pushReminders(prisma: PrismaService, now: Date): Promise<{ sent: number; candidates: number }> {
+export async function pushReminders(prisma: PrismaService, now: Date): Promise<{ sent: number; candidates: number }> {
   const t1Def = TYPE_REGISTRY.find((d) => d.code === 1)!;
   const [overrides, serviceHourRows] = await Promise.all([
     prisma.notifyTypeOverride.findMany({ where: { code: 1 } }),
@@ -74,11 +74,16 @@ async function pushReminders(prisma: PrismaService, now: Date): Promise<{ sent: 
 
   const rows = await prisma.booking.findMany({
     where: { status: { in: ACTIVE_FOR_REMINDER }, deletedAt: null, appUserId: { not: null }, startAt: { gt: now, lte: new Date(now.getTime() + horizon * 3_600_000) } },
-    select: { id: true, businessId: true, staffId: true, locationId: true, startAt: true, services: true, appUserId: true, notifyOverride: true },
+    select: { id: true, businessId: true, clientId: true, staffId: true, locationId: true, startAt: true, services: true, appUserId: true, notifyOverride: true },
   });
+  // Клиент сам выключил «Напоминание о визите» (тип 1) в своих настройках уведомлений — пуша нет (как журнал отправок)
+  // и пуши вообще (channels.push = false)
+  const rowClientIds = [...new Set(rows.map((b) => b.clientId).filter((v): v is string => Boolean(v)))];
+  const [typeOff, pushOff] = await Promise.all([clientsWithTypeOff(prisma, rowClientIds, t1Def.code), clientsWithPushOff(prisma, rowClientIds)]);
   // Пора: start − часы ≤ сейчас. Опоздавшие (запись сделана позже момента напоминания) получают его сразу; повтор — нет (dedupeKey)
   const bookings = rows.filter((b) => {
     if (!pushOn(b.businessId)) return false;
+    if (b.clientId && (typeOff.has(b.clientId) || pushOff.has(b.clientId))) return false;
     const ov = (b.notifyOverride as { pushEnabled?: boolean; pushTimingHours?: number } | null) ?? null;
     if (ov?.pushEnabled === false) return false;
     const firstService = (b.services as { serviceId?: string }[] | null)?.[0]?.serviceId;

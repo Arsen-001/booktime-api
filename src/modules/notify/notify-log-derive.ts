@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import '../../common/time/time.js';
+import { t } from '../../common/i18n/i18n.js';
 import type { NotificationTypeOut, RichLocalizedText } from './notify-rich-types.service.js';
 import type { NotifyChannel } from './notify-type-registry.js';
 
@@ -60,7 +61,7 @@ export interface DClient {
   email: string | null;
   appUserId: string | null;
   birthday: string | null;
-  /** Номер клиента подключён к Telegram-боту (TelegramLink, не заблокирован) — только тогда тип 73 уходит в Telegram */
+  /** Номер клиента подключён к Telegram-боту (TelegramLink, не заблокирован) — только тогда типы 1 и 73 уходят в Telegram */
   telegramLinked?: boolean;
 }
 
@@ -468,6 +469,33 @@ function eventDriven(ctx: DeriveContext, events: DEvent[]): LogRow[] {
 // ─────────── напоминание (тип 1) и запрос подтверждения (тип 73) ───────────
 
 const SCHEDULED_HORIZON_DAYS = 7;
+/** Telegram-напоминания типа 1 — всегда за 24 ч и за 2 ч (modules/telegram/telegram-reminders.ts) */
+const TELEGRAM_REMINDER_HOURS = [24, 2] as const;
+/** Статусы, которым telegram-reminders.ts шлёт напоминание (у́же ACTIVE журнала: «Ждёт подтверждения/предоплаты» — нет) */
+const TELEGRAM_REMINDER_STATUSES = new Set(['scheduled', 'client_confirmed']);
+
+/** Момент запроса подтверждения (тип 73) — как confirmRequestAt (jobs/notify-confirm-requests.ts), без тихих часов */
+function confirmPlannedAt(start: dayjs.Dayjs, c: NotificationTypeOut['conditions']): dayjs.Dayjs {
+  return c?.useSpecificTime && c.specificTime
+    ? start.subtract(1, 'day').hour(Number(c.specificTime.slice(0, 2))).minute(Number(c.specificTime.slice(3, 5)))
+    : start.subtract(c?.timingHours ?? 24, 'hour');
+}
+
+/**
+ * Текст Telegram-напоминания — как отправка (telegram-reminders.ts): наша фраза «завтра у вас запись» / «через 2 часа» и
+ * карточка записи (cardText); шаблон типа 1 бизнеса бот не берёт, поэтому и журнал его не подставляет.
+ */
+function telegramReminderText(ctx: DeriveContext, hours: 24 | 2, vars: VarsByLang): LText {
+  const one = (lang: Lang) => {
+    const v = vars[lang];
+    const head = t(lang, hours === 24 ? 'tg.reminder24h' : 'tg.reminder2h');
+    return [head, '', ctx.business.name, `📅 ${v.date} ${v.time}`, v.service ? `💅 ${v.service}` : '', v.staff ? `👤 ${v.staff}` : ''].filter((x, i) => i === 1 || x).join('\n');
+  };
+  return { ru: one('ru'), hy: one('hy'), en: one('en') };
+}
+
+const scenarioOf = (type: NotificationTypeOut, channel: NotifyChannel) =>
+  type.availableChannels.includes(channel) ? (type.channels.find((c) => c.channel === channel)?.scenario ?? 'off') : 'off';
 
 function timeBased(ctx: DeriveContext, serviceHours: Record<string, number>): LogRow[] {
   const out: LogRow[] = [];
@@ -483,7 +511,42 @@ function timeBased(ctx: DeriveContext, serviceHours: Record<string, number>): Lo
     const firstService = booking.serviceIds[0];
     const svcHours = firstService !== undefined ? (serviceHours[firstService] ?? t1?.conditions?.serviceTimingHours?.[firstService]) : undefined;
     const start = d(booking.start);
-    if (t1?.enabled) {
+    // Номер подключён к боту и Telegram у записи не выключен (окно записи → «Уведомления о визите») — общее для 1 и 73
+    const telegramOk = !!client.telegramLinked && ov?.telegramEnabled !== false;
+    // ⭐ Тип 1 в Telegram (telegram-reminders.ts, 30.09.2026): клиенту БЕЗ приложения с подключённым ботом — за 24 ч и
+    // за 2 ч, пока тип включён и сценарий Telegram не «Не отправлять»; с приложением ему уходит пуш, Telegram не дублирует.
+    // Отправка заменяет обычные каналы этого клиента — как мок (liveLog.ts), поэтому ниже — либо Telegram, либо порядок каналов.
+    const viaTelegram = !!t1?.enabled && !hasApp && telegramOk && scenarioOf(t1, 'telegram') !== 'off';
+    if (t1?.enabled && viaTelegram) {
+      if (TELEGRAM_REMINDER_STATUSES.has(booking.status)) {
+        // Запрос подтверждения (73) в Telegram не позже напоминания за сутки его заменяет (replaceReminder24h в
+        // notify-confirm-requests.ts): правила запроса — как там (тип включён, «Записан», сценарий Telegram, запись
+        // существовала к моменту запроса)
+        const askAt = t73?.enabled && booking.status === 'scheduled' && scenarioOf(t73, 'telegram') !== 'off' ? confirmPlannedAt(start, t73.conditions) : undefined;
+        const asked = askAt && !d(booking.createdAt).isAfter(askAt) && askAt.isBefore(start) ? askAt : undefined;
+        for (const hours of TELEGRAM_REMINDER_HOURS) {
+          const planned = start.subtract(hours, 'hour');
+          if (hours === 24 && asked && !asked.isAfter(planned)) continue;
+          // Задача берёт записи, чей момент наступает сейчас: созданная позже момента запись этого напоминания не получает.
+          // Тихие часы отправка Telegram-напоминаний не учитывает — журнал тоже (время = ровно за 24 ч / 2 ч)
+          if (d(booking.createdAt).isAfter(planned)) continue;
+          const scheduled = planned.isAfter(now);
+          if (scheduled && !planned.isBefore(now.add(SCHEDULED_HORIZON_DAYS, 'day'))) continue;
+          const vars = bookingVars(ctx, booking, client, planned.format(FMT));
+          pushEntry(out, ctx, {
+            key: `rm_tg${hours}_${booking.id}`,
+            createdAt: planned.format(FMT),
+            type: t1,
+            channel: 'telegram',
+            client,
+            booking,
+            scheduled,
+            text: telegramReminderText(ctx, hours, vars),
+            fallbackLabel: { ru: 'Напоминание', en: 'Reminder' },
+          });
+        }
+      }
+    } else if (t1?.enabled) {
       const channel = pickChannel(t1, hasApp);
       if (channel) {
         const typeHours = svcHours ?? t1.conditions?.timingHours ?? 1;
@@ -524,14 +587,10 @@ function timeBased(ctx: DeriveContext, serviceHours: Record<string, number>): Lo
     // (jobs/notify-confirm-requests.ts) и мок; «Ждёт подтверждения» ждёт мастера, клиенту подтверждать нечего.
     // Без приложения — Telegram-бот, если номер клиента подключён и Telegram у записи не выключен (как отправка)
     if (t73?.enabled && booking.status === 'scheduled') {
-      const channel = pickChannel(t73, hasApp, !!client.telegramLinked && ov?.telegramEnabled !== false);
+      const channel = pickChannel(t73, hasApp, telegramOk);
       if (!channel) continue;
       if ((channel === 'push' || channel === 'brandedApp') && ov?.pushEnabled === false) continue;
-      const c = t73.conditions;
-      const planned =
-        c?.useSpecificTime && c.specificTime
-          ? start.subtract(1, 'day').hour(Number(c.specificTime.slice(0, 2))).minute(Number(c.specificTime.slice(3, 5)))
-          : start.subtract(c?.timingHours ?? 24, 'hour');
+      const planned = confirmPlannedAt(start, t73.conditions);
       const sendAt = d(quietShift(ctx.settings.quietHours, planned.format(FMT)));
       const scheduled = sendAt.isAfter(now);
       if (
