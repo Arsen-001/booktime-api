@@ -39,6 +39,9 @@ export const NOTIFY_KINDS: readonly NotifyKindDef[] = [
   { code: 11, kind: 'order_ready', recipient: 'client', messageKey: 'order.ready' },
   // 04.10.2026: «Заказ ждёт вас» — клиент не забрал готовый заказ (через 3 и 7 дней) — jobs/orders-pickup-reminders.ts
   { code: 12, kind: 'order_pickup_reminder', recipient: 'client', messageKey: 'order.pickupReminder' },
+  // ⭐ 05.10.2026: «Смета по заказу» — согласовать цену после диагностики, и напоминание, если не ответил за сутки
+  { code: 13, kind: 'order_estimate', recipient: 'client', messageKey: 'order.estimate' },
+  { code: 14, kind: 'order_estimate_reminder', recipient: 'client', messageKey: 'order.estimateReminder' },
   // бизнесу (05 §3.2)
   { code: 50, kind: 'staff_new_booking', recipient: 'staff', messageKey: 'staff.newBooking' },
   { code: 51, kind: 'staff_client_cancelled', recipient: 'staff', messageKey: 'staff.clientCancelled' },
@@ -53,4 +56,4 @@ export function notifyKindOf(kind: string): NotifyKindDef | undefined {
 }
 
 /** Отправлять вне тихих часов 21:00–10:00 по Еревану (§5, зафиксировано PLAN.md §6 №10 «E6») — только эти виды */
-export const QUIET_HOURS_KINDS = new Set(['news', 'order_pickup_reminder']);
+export const QUIET_HOURS_KINDS = new Set(['news', 'order_pickup_reminder', 'order_estimate_reminder']);

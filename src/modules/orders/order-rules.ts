@@ -29,7 +29,12 @@ export const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   cancelled: [],
 };
 
-export function canTransition(from: string, to: string): boolean {
+/**
+ * Можно ли перевести заказ. Клиент отказался от сметы (estimateStatus = 'declined') — вещь отдают без ремонта:
+ * из «Принят» / «В работе» сразу в «Выдан».
+ */
+export function canTransition(from: string, to: string, estimateStatus?: string | null): boolean {
+  if (to === 'issued' && estimateStatus === 'declined' && (ESTIMATE_ORDER_STATUSES as readonly string[]).includes(from)) return true;
   return (ORDER_TRANSITIONS[from as OrderStatus] ?? []).includes(to as OrderStatus);
 }
 
@@ -48,11 +53,25 @@ export interface OrderItem {
   qty: number;
   note?: string;
 }
+/** События сметы в истории заказа (status у такой строки — статус заказа в тот момент) */
+export const ORDER_HISTORY_EVENTS = ['estimate_sent', 'estimate_approved', 'estimate_declined'] as const;
+export type OrderHistoryEvent = (typeof ORDER_HISTORY_EVENTS)[number];
+
 export interface OrderHistoryEntry {
   at: string;
   status: OrderStatus;
+  /** Сотрудник; null — система или клиент (ответ по ссылке) */
   by: string | null;
+  /** Нет — смена статуса; есть — событие сметы */
+  event?: OrderHistoryEvent;
+  /** Сумма сметы (estimate_sent) */
+  amount?: number;
+  /** Комментарий клиента к ответу по смете */
+  note?: string;
 }
+
+/** Строка истории — смена статуса (а не событие сметы) */
+export const isStatusEntry = (h: OrderHistoryEntry) => !h.event;
 
 /** Строка таблицы orders в том виде, в каком её отдаёт Prisma (только нужные поля — тестам проще) */
 export interface OrderRow {
@@ -78,6 +97,11 @@ export interface OrderRow {
   /** Сколько авто-напоминаний «заказ ждёт вас» ушло за этот «Готов» (сбрасывается при новом переходе в ready) */
   pickupReminderCount?: number;
   pickupRemindedAt?: Date | null;
+  /** Смета (05.10.2026) — см. OrderEstimateData; null — сметы нет */
+  estimate?: unknown;
+  estimateStatus?: string | null;
+  estimateSentAt?: Date | null;
+  estimateRemindedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -108,6 +132,7 @@ export function orderView(r: OrderRow) {
     issuedAt: r.issuedAt?.toISOString() ?? null,
     pickupReminderCount: r.pickupReminderCount ?? 0,
     pickupRemindedAt: r.pickupRemindedAt?.toISOString() ?? null,
+    estimate: estimateView(r),
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
@@ -117,7 +142,7 @@ export type OrderView = ReturnType<typeof orderView>;
 /** Когда заказ стал готов: отметка уведомления, иначе последний переход в ready из истории */
 export function readyAtOf(r: Pick<OrderRow, 'readyNotifiedAt' | 'history'>): string | null {
   if (r.readyNotifiedAt) return r.readyNotifiedAt.toISOString();
-  const last = arr<OrderHistoryEntry>(r.history).filter((h) => h.status === 'ready').pop();
+  const last = arr<OrderHistoryEntry>(r.history).filter((h) => isStatusEntry(h) && h.status === 'ready').pop();
   return last?.at ?? null;
 }
 
@@ -133,6 +158,7 @@ export interface PublicBusinessInfo {
  * сотрудников, фото (могут содержать личное) и id самого заказа.
  */
 export function publicOrderView(r: OrderRow, business: PublicBusinessInfo) {
+  const est = estimateView(r);
   return {
     number: r.number,
     status: r.status as OrderStatus,
@@ -141,6 +167,11 @@ export function publicOrderView(r: OrderRow, business: PublicBusinessInfo) {
     readyAt: readyAtOf(r),
     price: r.price,
     prepaid: r.prepaid,
+    // Смета — то, что мастерская отправила клиенту (без того, кто из сотрудников её составил и когда напоминали)
+    estimate:
+      est && r.status !== 'cancelled'
+        ? { status: est.status, version: est.version, lines: est.lines, total: est.total, comment: est.comment, sentAt: est.sentAt, decidedAt: est.decidedAt, clientComment: est.clientComment }
+        : null,
     business: { name: business.name, phone: business.phone, address: business.address, slug: business.slug },
   };
 }
@@ -188,7 +219,7 @@ const MANUAL_RESEND_GAP_MS = DAY_MS;
 
 /** Когда заказ последний раз стал «Готов» — по истории (ручное «Отправить ещё раз» срок не сдвигает) */
 export function lastReadyAt(r: Pick<OrderRow, 'readyNotifiedAt' | 'history'>): Date | null {
-  const last = arr<OrderHistoryEntry>(r.history).filter((h) => h.status === 'ready').pop();
+  const last = arr<OrderHistoryEntry>(r.history).filter((h) => isStatusEntry(h) && h.status === 'ready').pop();
   if (last?.at) {
     const d = new Date(last.at);
     if (!Number.isNaN(d.getTime())) return d;
@@ -223,4 +254,96 @@ export function pickupReminderDue(
   let nextCount = done + 1;
   while (nextCount < days.length && elapsed >= days[nextCount]! * DAY_MS) nextCount++;
   return { nextCount };
+}
+
+// ─────────── ⭐ смета и согласование цены (05.10.2026) ───────────
+
+/**
+ * Мастерская приняла вещь, посмотрела (диагностика) и отправляет смету: работы и запчасти с ценами или одна сумма с
+ * комментарием. Клиент по ссылке /o/<code> отвечает «Согласен» (заказ идёт в работу, цена = смета) или «Отказаться»
+ * (вещь выдают без ремонта). Сотрудник может отметить ответ, полученный по телефону. Новая смета — новая версия:
+ * ответ на старую не принимается (клиент мог смотреть устаревшую страницу).
+ */
+export const ESTIMATE_STATUSES = ['pending', 'approved', 'declined'] as const;
+export type EstimateStatus = (typeof ESTIMATE_STATUSES)[number];
+export type EstimateDecision = 'approve' | 'decline';
+
+/** Смету отправляют, пока вещь у мастера и не готова: после приёма (диагностика) или по ходу работы («нашли ещё») */
+export const ESTIMATE_ORDER_STATUSES: readonly OrderStatus[] = ['received', 'in_progress'];
+
+export function canSendEstimate(status: string): boolean {
+  return (ESTIMATE_ORDER_STATUSES as readonly string[]).includes(status);
+}
+
+export interface EstimateLine {
+  title: string;
+  price: number;
+}
+
+/** Что лежит в orders.estimate (JSON); статус, время отправки и напоминания — отдельными столбцами */
+export interface OrderEstimateData {
+  version: number;
+  lines: EstimateLine[];
+  total: number;
+  comment: string | null;
+  decidedAt: string | null;
+  /** client — по ссылке, staff — сотрудник отметил ответ по телефону */
+  decidedBy: 'client' | 'staff' | null;
+  clientComment: string | null;
+}
+
+/** Итог сметы: сумма строк; без строк — одна сумма, которую ввёл мастер */
+export function estimateTotalOf(lines: readonly EstimateLine[], total: number | null | undefined): number {
+  return lines.length ? lines.reduce((s, l) => s + l.price, 0) : Math.max(0, Math.round(total ?? 0));
+}
+
+export function estimateView(r: Pick<OrderRow, 'estimate' | 'estimateStatus' | 'estimateSentAt' | 'estimateRemindedAt'>) {
+  const d = r.estimate as OrderEstimateData | null | undefined;
+  if (!d || !r.estimateStatus || !(ESTIMATE_STATUSES as readonly string[]).includes(r.estimateStatus)) return null;
+  return {
+    status: r.estimateStatus as EstimateStatus,
+    version: d.version ?? 1,
+    lines: arr<EstimateLine>(d.lines).map((l) => ({ title: l.title, price: l.price })),
+    total: d.total ?? 0,
+    comment: d.comment ?? null,
+    sentAt: r.estimateSentAt?.toISOString() ?? null,
+    remindedAt: r.estimateRemindedAt?.toISOString() ?? null,
+    decidedAt: d.decidedAt ?? null,
+    decidedBy: d.decidedBy ?? null,
+    clientComment: d.clientComment ?? null,
+  };
+}
+export type EstimateView = NonNullable<ReturnType<typeof estimateView>>;
+
+export type EstimateDecisionPlan =
+  /** Записать ответ */
+  | { kind: 'apply'; status: Exclude<EstimateStatus, 'pending'>; orderStatus: OrderStatus }
+  /** Тот же ответ на ту же смету уже записан — повтор нажатия, ничего не меняем */
+  | { kind: 'same' }
+  | { kind: 'error'; code: 'estimate_not_pending' | 'estimate_changed' | 'estimate_already_decided' };
+
+/**
+ * Ответ на смету. version — версия, которую видел клиент (сотрудник отвечает на текущую). Согласие на смету
+ * «Принятого» заказа сразу переводит его в работу; в работе — остаётся в работе.
+ */
+export function planEstimateDecision(
+  r: Pick<OrderRow, 'status' | 'estimate' | 'estimateStatus'>,
+  decision: EstimateDecision,
+  version: number | null,
+): EstimateDecisionPlan {
+  const d = r.estimate as OrderEstimateData | null | undefined;
+  if (!d || !r.estimateStatus) return { kind: 'error', code: 'estimate_not_pending' };
+  if (version !== null && version !== (d.version ?? 1)) return { kind: 'error', code: 'estimate_changed' };
+  const wanted = decision === 'approve' ? 'approved' : 'declined';
+  if (r.estimateStatus !== 'pending') return r.estimateStatus === wanted ? { kind: 'same' } : { kind: 'error', code: 'estimate_already_decided' };
+  if (!canSendEstimate(r.status)) return { kind: 'error', code: 'estimate_not_pending' };
+  return { kind: 'apply', status: wanted, orderStatus: decision === 'approve' && r.status === 'received' ? 'in_progress' : (r.status as OrderStatus) };
+}
+
+/** Клиент не ответил на смету за сутки — одно напоминание на версию сметы */
+export const ESTIMATE_REMINDER_AFTER_MS = DAY_MS;
+
+export function estimateReminderDue(r: Pick<OrderRow, 'status' | 'estimateStatus' | 'estimateSentAt' | 'estimateRemindedAt'>, now: Date): boolean {
+  if (r.estimateStatus !== 'pending' || !canSendEstimate(r.status) || r.estimateRemindedAt || !r.estimateSentAt) return false;
+  return now.getTime() - r.estimateSentAt.getTime() >= ESTIMATE_REMINDER_AFTER_MS;
 }

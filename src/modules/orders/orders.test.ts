@@ -11,6 +11,7 @@ const rules = await import('./order-rules.js');
 const { OrdersService, nextOrderNumber, insertOrderWithCode } = await import('./orders.service.js');
 const { notifyOrderReady } = await import('./order-notify.js');
 const { ordersPickupReminders } = await import('../../jobs/orders-pickup-reminders.js');
+const { ordersEstimateReminders } = await import('../../jobs/orders-estimate-reminders.js');
 const { ApiError } = await import('../../common/errors/api-error.js');
 type Svc = InstanceType<typeof OrdersService>;
 type Prisma = ConstructorParameters<typeof OrdersService>[0];
@@ -30,6 +31,7 @@ function matches(r: Row, where: Row = {}): boolean {
       if ('not' in o && (o.not === null ? cur === null || cur === undefined : cur === o.not)) return false;
       if ('lt' in o && !((cur as number) < (o.lt as number))) return false;
       if ('gte' in o && !((cur as number) >= (o.gte as number))) return false;
+      if ('lte' in o && !(cur !== null && cur !== undefined && (cur as number) <= (o.lte as number))) return false;
       return true;
     }
     return cur === v;
@@ -55,7 +57,7 @@ function memoryPrisma(seed: Record<string, Row[]> = {}) {
     count: async ({ where }: { where?: Row } = {}) => t(name).filter((r) => matches(r, where)).length,
     create: async ({ data }: { data: Row }) => {
       for (const k of uniq[name] ?? []) if (t(name).some((r) => r[k] === data[k])) throw dup();
-      const row = name === 'notifyOutbox' ? { status: 'queued', ...data } : name === 'order' ? { readyNotifiedAt: null, issuedAt: null, pickupReminderCount: 0, pickupRemindedAt: null, createdAt: new Date(), updatedAt: new Date(), ...data } : { ...data };
+      const row = name === 'notifyOutbox' ? { status: 'queued', ...data } : name === 'order' ? { readyNotifiedAt: null, issuedAt: null, pickupReminderCount: 0, pickupRemindedAt: null, estimate: null, estimateStatus: null, estimateSentAt: null, estimateRemindedAt: null, createdAt: new Date(), updatedAt: new Date(), ...data } : { ...data };
       t(name).push(row);
       return row;
     },
@@ -247,7 +249,8 @@ test('публичный вид: ни телефона клиента, ни ко
   const { svc } = world();
   const o = await svc.create(ctx, 'biz_1', BODY);
   const pub = await svc.publicByCode(o.code);
-  assert.deepEqual(Object.keys(pub).sort(), ['business', 'dueDate', 'items', 'number', 'prepaid', 'price', 'readyAt', 'status']);
+  assert.deepEqual(Object.keys(pub).sort(), ['business', 'dueDate', 'estimate', 'items', 'number', 'prepaid', 'price', 'readyAt', 'status']);
+  assert.equal(pub.estimate, null);
   assert.deepEqual(pub.items, [{ title: 'Платье', qty: 1 }], 'заметка к вещи — внутренняя');
   assert.deepEqual(pub.business, { name: 'Ателье Нарине', phone: '+37410111111', address: 'Ереван, Абовяна 1', slug: 'narine' });
   const json = JSON.stringify(pub);
@@ -514,4 +517,172 @@ test('напоминание: новый переход в «Готов» обн
   const again = await svc.setStatus(ctx, 'biz_1', o.id, 'ready');
   assert.equal(again.pickupReminderCount, 0);
   assert.equal(again.pickupRemindedAt, null);
+});
+
+// ─────────── ⭐ смета и согласование цены (05.10.2026) ───────────
+
+const DIAG = { ...BODY, items: [{ title: 'iPhone 13 — не включается', qty: 1 }], price: 3000, prepaid: 0, comment: 'диагностика' };
+const LINES = [
+  { title: 'Замена контроллера питания', price: 18000 },
+  { title: 'Работа', price: 7000 },
+];
+
+test('смета: отправка — ждём ответа, версия 1, сообщение клиенту со ссылкой и суммой, событие в истории', async () => {
+  const { svc, tables } = world(TG);
+  const o = await svc.create(ctx, 'biz_1', DIAG);
+  const v = await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: LINES, comment: 'Запчасть 2 дня' });
+  assert.equal(v.status, 'received', 'статус заказа не меняется, пока клиент не ответил');
+  assert.equal(v.price, 3000, 'цена — прежняя до согласия');
+  assert.ok(v.estimate);
+  assert.equal(v.estimate.status, 'pending');
+  assert.equal(v.estimate.version, 1);
+  assert.equal(v.estimate.total, 25000);
+  assert.equal(v.estimate.comment, 'Запчасть 2 дня');
+  const last = v.history.at(-1)!;
+  assert.equal(last.event, 'estimate_sent');
+  assert.equal(last.amount, 25000);
+  const out = tables.notifyOutbox!;
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.kind, 'order_estimate');
+  assert.equal(out[0]!.body, `Смета по заказу №1001 в «Ателье Нарине»: 25 000 ֏. Согласуйте или откажитесь по ссылке: https://booktime.am/o/${o.code}`);
+  assert.equal((tables.notifyLogEntry!.at(-1)!.typeLabel as { ru: string }).ru, 'Смета по заказу');
+  // Одна сумма без строк; новая смета — версия 2, снова «ждём»
+  const v2 = await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: [], total: 20000, comment: null });
+  assert.equal(v2.estimate!.version, 2);
+  assert.equal(v2.estimate!.total, 20000);
+  assert.deepEqual(v2.estimate!.lines, []);
+  assert.equal(out.length, 2);
+});
+
+test('смета: нельзя у готового/выданного/отменённого и меньше предоплаты', async () => {
+  const { svc } = world();
+  const o = await svc.create(ctx, 'biz_1', { ...DIAG, prepaid: 3000 });
+  await assert.rejects(svc.sendEstimate(ctx, 'biz_1', o.id, { lines: [], total: 2000 }), (e: unknown) => e instanceof ApiError && e.code === 'validation');
+  await svc.setStatus(ctx, 'biz_1', o.id, 'ready');
+  await assert.rejects(svc.sendEstimate(ctx, 'biz_1', o.id, { lines: LINES }), (e: unknown) => e instanceof ApiError && e.code === 'order_estimate_not_allowed' && e.status === 422);
+});
+
+test('смета: клиент согласен по ссылке — в работу, цена = смета, без утечек, повтор нажатия — без изменений', async () => {
+  const { svc, tables } = world();
+  const o = await svc.create(ctx, 'biz_1', DIAG);
+  await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: LINES, comment: 'Запчасть 2 дня' });
+  const pub = await svc.publicByCode(o.code);
+  assert.ok(pub.estimate);
+  assert.deepEqual(Object.keys(pub.estimate).sort(), ['clientComment', 'comment', 'decidedAt', 'lines', 'sentAt', 'status', 'total', 'version']);
+  const res = await svc.decideEstimatePublic(o.code, 'approve', 1, 'Делайте, спасибо');
+  assert.equal(res.status, 'in_progress');
+  assert.equal(res.price, 25000);
+  assert.equal(res.estimate!.status, 'approved');
+  assert.equal(res.estimate!.clientComment, 'Делайте, спасибо');
+  const json = JSON.stringify(res);
+  for (const secret of ['160001', 'диагностика', 'st_1', 'cl_1', o.id]) assert.ok(!json.includes(secret), `не утекает: ${secret}`);
+  const order = await svc.get(ctx, 'biz_1', o.id);
+  assert.equal(order.estimate!.decidedBy, 'client');
+  const tail = order.history.slice(-2);
+  assert.deepEqual(tail.map((h) => [h.event ?? null, h.status, h.by]), [['estimate_approved', 'received', null], [null, 'in_progress', null]]);
+  assert.equal(tail[0]!.note, 'Делайте, спасибо');
+  // Второе нажатие (двойной тап, второе устройство) — успех, ничего не меняется
+  const historyLen = order.history.length;
+  const again = await svc.decideEstimatePublic(o.code, 'approve', 1);
+  assert.equal(again.estimate!.status, 'approved');
+  assert.equal((await svc.get(ctx, 'biz_1', o.id)).history.length, historyLen);
+  // А передумать по ссылке уже нельзя
+  await assert.rejects(svc.decideEstimatePublic(o.code, 'decline', 1), (e: unknown) => e instanceof ApiError && e.code === 'estimate_already_decided' && e.status === 409);
+  assert.equal(tables.order!.length, 1);
+});
+
+test('смета: отказ — заказ не в работе, «Выдать без ремонта» из «Принят» разрешено', async () => {
+  const { svc } = world();
+  const o = await svc.create(ctx, 'biz_1', DIAG);
+  await assert.rejects(svc.setStatus(ctx, 'biz_1', o.id, 'issued'), (e: unknown) => e instanceof ApiError && e.code === 'invalid_order_transition');
+  await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: LINES });
+  const res = await svc.decideEstimatePublic(o.code, 'decline', 1, 'Дорого');
+  assert.equal(res.status, 'received');
+  assert.equal(res.price, 3000, 'цена не меняется — только диагностика');
+  assert.equal(res.estimate!.status, 'declined');
+  const issued = await svc.setStatus(ctx, 'biz_1', o.id, 'issued');
+  assert.equal(issued.status, 'issued');
+  assert.ok(rules.canTransition('in_progress', 'issued', 'declined'));
+  assert.ok(!rules.canTransition('in_progress', 'issued', 'pending'));
+  assert.ok(!rules.canTransition('ready', 'cancelled', 'declined'));
+});
+
+test('смета: устаревшая версия — 409 estimate_changed; нет сметы — 409; неверный код — 404', async () => {
+  const { svc } = world();
+  const o = await svc.create(ctx, 'biz_1', DIAG);
+  await assert.rejects(svc.decideEstimatePublic(o.code, 'approve', 1), (e: unknown) => e instanceof ApiError && e.code === 'estimate_not_pending' && e.status === 409);
+  await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: LINES });
+  await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: [], total: 30000 });
+  await assert.rejects(svc.decideEstimatePublic(o.code, 'approve', 1), (e: unknown) => e instanceof ApiError && e.code === 'estimate_changed');
+  assert.equal((await svc.get(ctx, 'biz_1', o.id)).estimate!.status, 'pending');
+  await assert.rejects(svc.decideEstimatePublic('short', 'approve', 1), (e: unknown) => e instanceof ApiError && e.code === 'not_found');
+  await assert.rejects(svc.decideEstimatePublic('AAAAAAAAAA', 'approve', 1), (e: unknown) => e instanceof ApiError && e.code === 'not_found');
+  // Отменённый заказ — ответ не принимается, на публичной странице сметы нет
+  await svc.setStatus(ctx, 'biz_1', o.id, 'cancelled');
+  await assert.rejects(svc.decideEstimatePublic(o.code, 'approve', 2), (e: unknown) => e instanceof ApiError && e.code === 'estimate_not_pending');
+  assert.equal((await svc.publicByCode(o.code)).estimate, null);
+});
+
+test('смета: сотрудник отмечает ответ по телефону; «Отправить ещё раз» — только пока ждём', async () => {
+  const { svc, tables } = world(TG);
+  const o = await svc.create(ctx, 'biz_1', DIAG);
+  await assert.rejects(svc.resendEstimate(ctx, 'biz_1', o.id), (e: unknown) => e instanceof ApiError && e.code === 'estimate_not_pending');
+  await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: LINES });
+  await svc.resendEstimate(ctx, 'biz_1', o.id);
+  assert.equal(tables.notifyOutbox!.length, 2);
+  const v = await svc.decideEstimateByStaff(ctx, 'biz_1', o.id, 'approve', null);
+  assert.equal(v.status, 'in_progress');
+  assert.equal(v.estimate!.decidedBy, 'staff');
+  assert.equal(v.history.at(-2)!.by, 'st_1');
+  await assert.rejects(svc.resendEstimate(ctx, 'biz_1', o.id), (e: unknown) => e instanceof ApiError && e.code === 'estimate_not_pending');
+});
+
+test('смета: два ответа одновременно — записан ровно один', async () => {
+  const { svc } = world();
+  const o = await svc.create(ctx, 'biz_1', DIAG);
+  await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: LINES });
+  const results = await Promise.allSettled([svc.decideEstimatePublic(o.code, 'approve', 1), svc.decideEstimatePublic(o.code, 'decline', 1)]);
+  const ok = results.filter((r) => r.status === 'fulfilled');
+  assert.equal(ok.length, 1);
+  const order = await svc.get(ctx, 'biz_1', o.id);
+  assert.equal(order.history.filter((h) => h.event === 'estimate_approved' || h.event === 'estimate_declined').length, 1);
+});
+
+test('смета: напоминание через сутки — одно на версию, тихие часы, только пока ждём', async () => {
+  const { svc, tables, messenger, prisma } = world(TG);
+  const o = await svc.create(ctx, 'biz_1', DIAG);
+  await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: LINES });
+  const row = tables.order!.find((r) => r.id === o.id)!;
+  const sentAt = new Date('2026-10-05T08:00:00.000Z'); // 12:00 по Еревану
+  row.estimateSentAt = sentAt;
+  const at = (ms: number) => new Date(sentAt.getTime() + ms);
+  const out = tables.notifyOutbox!;
+  const before = out.length;
+  assert.deepEqual(await ordersEstimateReminders(prisma, messenger, at(DAY - 60_000)), { sent: 0, undelivered: 0, quiet: false });
+  const r1 = await ordersEstimateReminders(prisma, messenger, at(DAY + 60_000));
+  assert.equal(r1.sent, 1);
+  assert.equal(out.length, before + 1);
+  assert.equal(out.at(-1)!.kind, 'order_estimate_reminder');
+  assert.equal(out.at(-1)!.body, `«Ателье Нарине» ждёт вашего ответа по смете заказа №1001 (25 000 ֏). Ответить: https://booktime.am/o/${o.code}`);
+  await ordersEstimateReminders(prisma, messenger, at(DAY + 3_600_000));
+  await ordersEstimateReminders(prisma, messenger, at(3 * DAY));
+  assert.equal(out.length, before + 1, 'одно напоминание на версию');
+  // Новая версия — новый отсчёт; ночью — пропуск
+  await svc.sendEstimate(ctx, 'biz_1', o.id, { lines: [], total: 20000 });
+  row.estimateSentAt = sentAt;
+  const n = out.length;
+  assert.equal((await ordersEstimateReminders(prisma, messenger, new Date('2026-10-06T18:30:00.000Z'))).quiet, true); // 22:30
+  assert.equal(out.length, n);
+  await ordersEstimateReminders(prisma, messenger, new Date('2026-10-07T06:30:00.000Z')); // 10:30
+  assert.equal(out.length, n + 1);
+  // Клиент ответил — больше не напоминаем
+  const w = world(TG);
+  const o2 = await w.svc.create(ctx, 'biz_1', DIAG);
+  await w.svc.sendEstimate(ctx, 'biz_1', o2.id, { lines: LINES });
+  await w.svc.decideEstimatePublic(o2.code, 'decline', 1);
+  w.tables.order![0]!.estimateSentAt = sentAt;
+  const m = w.tables.notifyOutbox!.length;
+  await ordersEstimateReminders(w.prisma, w.messenger, at(2 * DAY));
+  assert.equal(w.tables.notifyOutbox!.length, m);
+  assert.ok(!rules.estimateReminderDue({ status: 'ready', estimateStatus: 'pending', estimateSentAt: sentAt, estimateRemindedAt: null }, at(2 * DAY)), 'заказ уже готов — не напоминаем');
 });

@@ -4728,11 +4728,20 @@ model Order {
   /// Авто-напоминания «заказ готов и ждёт вас» за текущий «Готов» (04.10.2026; сбрасываются при новом переходе в ready)
   pickupReminderCount Int       @default(0) @map("pickup_reminder_count")
   pickupRemindedAt    DateTime? @map("pickup_reminded_at") @db.DateTime(3)
+  /// ⭐ Смета (05.10.2026): { version, lines: { title, price }[], total, comment, decidedAt, decidedBy, clientComment }
+  estimate            Json?
+  /// pending | approved | declined; null — сметы нет
+  estimateStatus      String?   @map("estimate_status") @db.VarChar(10)
+  /// Когда смету (текущую версию) отправили клиенту — от неё считаем 24 часа до напоминания
+  estimateSentAt      DateTime? @map("estimate_sent_at") @db.DateTime(3)
+  /// Напоминание «ждём ответа по смете» ушло (одно на версию сметы)
+  estimateRemindedAt  DateTime? @map("estimate_reminded_at") @db.DateTime(3)
   createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
 
   @@unique([businessId, number])
   @@index([status, pickupReminderCount])
+  @@index([estimateStatus, estimateRemindedAt])
   @@index([businessId, status, createdAt])
   @@index([businessId, createdAt])
   @@index([clientId])

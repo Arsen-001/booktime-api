@@ -10,23 +10,28 @@ import { newId } from '../../common/ids/ids.js';
 import { logger } from '../../common/logging/logger.js';
 import { maskPhone, normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { notifyOrderReady } from './order-notify.js';
+import { notifyOrderEstimate, notifyOrderReady } from './order-notify.js';
 import {
   ACTIVE_ORDER_STATUSES,
+  canSendEstimate,
   canTransition,
+  estimateTotalOf,
   FIRST_ORDER_NUMBER,
   newOrderCode,
   ORDER_CODE_RE,
   orderMatches,
   orderView,
+  planEstimateDecision,
   publicOrderView,
+  type EstimateDecision,
+  type OrderEstimateData,
   type OrderHistoryEntry,
   type OrderRow,
   type OrderStatus,
   type OrderView,
   type PublicOrderView,
 } from './order-rules.js';
-import type { CreateOrderBody, ListOrdersQuery, PatchOrderBody } from './orders.schemas.js';
+import type { CreateOrderBody, ListOrdersQuery, PatchOrderBody, SendEstimateBody } from './orders.schemas.js';
 
 type Tx = Prisma.TransactionClient;
 const J = (v: unknown) => v as Prisma.InputJsonValue;
@@ -230,7 +235,7 @@ export class OrdersService {
 
   async setStatus(ctx: RequestContext, businessId: string, orderId: string, to: OrderStatus): Promise<OrderView> {
     const before = await this.find(businessId, orderId);
-    if (!canTransition(before.status, to)) throw new ApiError('invalid_order_transition', `Cannot move order from ${before.status} to ${to}`);
+    if (!canTransition(before.status, to, before.estimateStatus)) throw new ApiError('invalid_order_transition', `Cannot move order from ${before.status} to ${to}`);
     const now = new Date();
     const history = [...((before.history as OrderHistoryEntry[] | null) ?? []), { at: now.toISOString(), status: to, by: ctx.member?.staffId ?? null }];
     const data: Prisma.OrderUncheckedUpdateManyInput = { status: to, history: J(history) };
@@ -273,6 +278,137 @@ export class OrdersService {
     }
   }
 
+  // ─────────── ⭐ смета и согласование цены (05.10.2026) ───────────
+
+  /**
+   * Отправить клиенту смету (новая версия, ответ — заново «ждём»). Итог сметы при согласии станет ценой заказа,
+   * поэтому он не может быть меньше уже внесённой предоплаты. Клиенту — сообщение со ссылкой /o/<code>.
+   */
+  async sendEstimate(ctx: RequestContext, businessId: string, orderId: string, body: SendEstimateBody): Promise<OrderView> {
+    const before = await this.find(businessId, orderId);
+    if (!canSendEstimate(before.status)) throw new ApiError('order_estimate_not_allowed', `Cannot send an estimate for a ${before.status} order`);
+    const lines = body.lines.map((l) => ({ title: l.title.trim(), price: l.price }));
+    const total = estimateTotalOf(lines, body.total);
+    if (before.prepaid > total) throw new ApiError('validation', 'Prepaid exceeds estimate', { total: 'Estimate must not be less than prepaid' });
+    const prev = before.estimate as OrderEstimateData | null | undefined;
+    const now = new Date();
+    const by = ctx.member?.staffId ?? null;
+    const estimate: OrderEstimateData = {
+      version: (prev?.version ?? 0) + 1,
+      lines,
+      total,
+      comment: body.comment?.trim() || null,
+      decidedAt: null,
+      decidedBy: null,
+      clientComment: null,
+    };
+    const history = [...this.historyOf(before), { at: now.toISOString(), status: before.status as OrderStatus, by, event: 'estimate_sent' as const, amount: total }];
+    const row = await this.prisma.$transaction(async (tx) => {
+      // Статус мог смениться параллельно (выдали, отменили) — смету только тому заказу, который проверили
+      const res = await tx.order.updateMany({
+        where: { id: before.id, businessId, status: before.status },
+        data: { estimate: J(estimate), estimateStatus: 'pending', estimateSentAt: now, estimateRemindedAt: null, history: J(history) },
+      });
+      if (res.count !== 1) throw new ApiError('order_estimate_not_allowed', 'Order status changed concurrently');
+      const after = (await tx.order.findUniqueOrThrow({ where: { id: before.id } })) as OrderRow;
+      await this.audit.record(tx, ctx, { action: 'update', entityType: 'order', entityId: before.id, businessId, before: { estimate: prev ?? null }, after: { estimate } });
+      return after;
+    });
+    await this.notifyEstimate(row, total, now);
+    return this.out(ctx, row);
+  }
+
+  /** «Отправить ещё раз» — смета ждёт ответа */
+  async resendEstimate(ctx: RequestContext, businessId: string, orderId: string): Promise<OrderView> {
+    const order = await this.find(businessId, orderId);
+    if (order.estimateStatus !== 'pending' || !canSendEstimate(order.status)) throw new ApiError('estimate_not_pending', 'Estimate is not awaiting reply');
+    await this.notifyEstimate(order, (order.estimate as OrderEstimateData).total, new Date());
+    return this.out(ctx, order);
+  }
+
+  /** Сотрудник отмечает ответ клиента, полученный по телефону или в мастерской */
+  async decideEstimateByStaff(ctx: RequestContext, businessId: string, orderId: string, decision: EstimateDecision, comment?: string | null): Promise<OrderView> {
+    const before = await this.find(businessId, orderId);
+    const row = await this.applyEstimateDecision(before, decision, null, comment ?? null, { by: ctx.member?.staffId ?? null, decidedBy: 'staff', ctx });
+    return this.out(ctx, row);
+  }
+
+  /**
+   * Клиент по ссылке /o/<code>: «Согласен» / «Отказаться». Защита — неугадываемый код ссылки (10 знаков base62) и
+   * ограничение частоты в контроллере; ответ — тот же публичный вид, что GET (никаких внутренних полей). Повтор того же
+   * ответа — успех без изменений; ответ на устаревшую смету — 409 estimate_changed (страница перечитает новую).
+   */
+  async decideEstimatePublic(code: string, decision: EstimateDecision, version: number, comment?: string | null): Promise<PublicOrderView> {
+    const row = ORDER_CODE_RE.test(code) ? ((await this.prisma.order.findUnique({ where: { code } })) as OrderRow | null) : null;
+    if (!row) throw new ApiError('not_found', 'Order not found');
+    await this.applyEstimateDecision(row, decision, version, comment ?? null, { by: null, decidedBy: 'client', ctx: null });
+    return this.publicByCode(code);
+  }
+
+  private historyOf(r: OrderRow): OrderHistoryEntry[] {
+    return (r.history as OrderHistoryEntry[] | null) ?? [];
+  }
+
+  private async applyEstimateDecision(
+    before: OrderRow,
+    decision: EstimateDecision,
+    version: number | null,
+    comment: string | null,
+    who: { by: string | null; decidedBy: 'client' | 'staff'; ctx: RequestContext | null },
+  ): Promise<OrderRow> {
+    const plan = planEstimateDecision(before, decision, version);
+    if (plan.kind === 'same') return before;
+    if (plan.kind === 'error') throw new ApiError(plan.code, `Estimate decision rejected: ${plan.code}`);
+    const now = new Date();
+    const at = now.toISOString();
+    const note = comment?.trim() || undefined;
+    const prev = before.estimate as OrderEstimateData;
+    const estimate: OrderEstimateData = { ...prev, decidedAt: at, decidedBy: who.decidedBy, clientComment: note ?? null };
+    const history: OrderHistoryEntry[] = [
+      ...this.historyOf(before),
+      { at, status: before.status as OrderStatus, by: who.by, event: plan.status === 'approved' ? 'estimate_approved' : 'estimate_declined', ...(note ? { note } : {}) },
+    ];
+    if (plan.orderStatus !== before.status) history.push({ at, status: plan.orderStatus, by: who.by });
+    const data: Prisma.OrderUncheckedUpdateManyInput = { estimate: J(estimate), estimateStatus: plan.status, history: J(history) };
+    if (plan.status === 'approved') {
+      data.price = prev.total;
+      data.status = plan.orderStatus;
+    }
+    return this.prisma.$transaction(async (tx) => {
+      // Ровно один ответ на версию: два нажатия / два устройства — второе увидит уже записанный ответ
+      const res = await tx.order.updateMany({
+        where: { id: before.id, status: before.status, estimateStatus: 'pending', estimateSentAt: before.estimateSentAt ?? null },
+        data,
+      });
+      if (res.count !== 1) {
+        const fresh = (await tx.order.findUniqueOrThrow({ where: { id: before.id } })) as OrderRow;
+        const again = planEstimateDecision(fresh, decision, version ?? (fresh.estimate as OrderEstimateData | null)?.version ?? null);
+        if (again.kind === 'same') return fresh;
+        throw new ApiError(again.kind === 'error' ? again.code : 'estimate_changed', 'Estimate changed concurrently');
+      }
+      const after = (await tx.order.findUniqueOrThrow({ where: { id: before.id } })) as OrderRow;
+      await this.audit.record(tx, who.ctx, {
+        action: 'update',
+        entityType: 'order',
+        entityId: before.id,
+        businessId: before.businessId,
+        before: { estimateStatus: 'pending', status: before.status, price: before.price },
+        after: { estimateStatus: plan.status, status: after.status, price: after.price },
+      });
+      return after;
+    });
+  }
+
+  /** Уведомление — по возможности: сбой отправки не отменяет смету */
+  private async notifyEstimate(order: OrderRow, total: number, now: Date): Promise<void> {
+    try {
+      const biz = await this.prisma.business.findUnique({ where: { id: order.businessId }, select: { name: true, brandName: true } });
+      await notifyOrderEstimate(this.prisma, this.messenger, { order, businessName: biz?.brandName || biz?.name || 'BookTime', siteUrl: env.PUBLIC_SITE_URL, now, total });
+    } catch (err) {
+      logger.error({ err, orderId: order.id }, 'orders: уведомление «смета» упало');
+    }
+  }
+
   // ─────────── публичная страница /o/<code> ───────────
 
   async publicByCode(code: string): Promise<PublicOrderView> {
@@ -303,5 +439,6 @@ function auditOf(r: OrderRow): Record<string, unknown> {
     price: r.price,
     prepaid: r.prepaid,
     comment: r.comment,
+    estimateStatus: r.estimateStatus ?? null,
   };
 }

@@ -110,6 +110,12 @@ export const ERROR_STATUS = {
   // заказы (03.10.2026): недопустимый переход статуса заказа / «готов» повторно, когда заказ не готов
   invalid_order_transition: HttpStatus.UNPROCESSABLE_ENTITY,
   order_not_ready: HttpStatus.UNPROCESSABLE_ENTITY,
+  // ⭐ смета (05.10.2026): смету нельзя отправить (заказ готов/выдан/отменён) / ответа уже не ждут / клиент смотрел
+  // устаревшую смету (мастерская прислала новую) / на эту смету уже ответили иначе
+  order_estimate_not_allowed: HttpStatus.UNPROCESSABLE_ENTITY,
+  estimate_not_pending: HttpStatus.CONFLICT,
+  estimate_changed: HttpStatus.CONFLICT,
+  estimate_already_decided: HttpStatus.CONFLICT,
   restore_expired: HttpStatus.GONE,
   restore_slot_taken: HttpStatus.CONFLICT,
   not_active: HttpStatus.CONFLICT,

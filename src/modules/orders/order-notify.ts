@@ -14,10 +14,15 @@ export const ORDER_READY_KIND = 'order_ready';
 /** «Заказ ждёт вас» — авто-напоминание, если клиент не забрал готовый заказ (notify/kinds.ts, код 12; 04.10.2026) */
 export const ORDER_PICKUP_REMINDER_KIND = 'order_pickup_reminder';
 
-/** Чем различаются «Заказ готов» и «Заказ ждёт вас»: вид (включатель бизнеса), текст, подпись в журнале, ключ дубля */
+/** ⭐ «Смета по заказу» — мастерская просит согласовать цену (notify/kinds.ts, код 13; 05.10.2026) */
+export const ORDER_ESTIMATE_KIND = 'order_estimate';
+/** «Ждём ответа по смете» — клиент не ответил за сутки (notify/kinds.ts, код 14; 05.10.2026) */
+export const ORDER_ESTIMATE_REMINDER_KIND = 'order_estimate_reminder';
+
+/** Чем различаются сообщения о заказе: вид (включатель бизнеса), текст, подпись в журнале, ключ дубля */
 interface OrderMessageSpec {
   kind: string;
-  messageKey: 'order.ready' | 'order.pickupReminder';
+  messageKey: 'order.ready' | 'order.pickupReminder' | 'order.estimate' | 'order.estimateReminder';
   typeLabel: { ru: string; en: string; hy: string };
   /** Часть ключа дубля: order:<dedupe>:<orderId>:<stamp>:<канал> */
   dedupe: string;
@@ -37,6 +42,20 @@ const PICKUP_SPEC: OrderMessageSpec = {
   dedupe: 'pickup',
 };
 
+const ESTIMATE_SPEC: OrderMessageSpec = {
+  kind: ORDER_ESTIMATE_KIND,
+  messageKey: 'order.estimate',
+  typeLabel: { ru: 'Смета по заказу', en: 'Order estimate', hy: 'Պատվերի նախահաշիվ' },
+  dedupe: 'estimate',
+};
+
+const ESTIMATE_REMINDER_SPEC: OrderMessageSpec = {
+  kind: ORDER_ESTIMATE_REMINDER_KIND,
+  messageKey: 'order.estimateReminder',
+  typeLabel: { ru: 'Ждём ответа по смете', en: 'Estimate awaiting reply', hy: 'Սպասում ենք նախահաշվի պատասխանին' },
+  dedupe: 'estimate-reminder',
+};
+
 export type OrderNotifyChannel = 'push' | 'telegram' | 'sms' | 'whatsapp';
 
 export interface OrderReadyInput {
@@ -44,6 +63,8 @@ export interface OrderReadyInput {
   businessName: string;
   siteUrl: string;
   now?: Date;
+  /** Сумма сметы, ֏ — для «Смета по заказу» */
+  total?: number;
 }
 
 export interface OrderReadyResult {
@@ -51,8 +72,18 @@ export interface OrderReadyResult {
   channels: OrderNotifyChannel[];
 }
 
+/** «52 000 ֏» — неразрывный пробел между тысячами и перед знаком */
+export function amdText(amount: number): string {
+  return `${Math.round(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0')}\u00a0֏`;
+}
+
 function textOf(locale: Locale, input: OrderReadyInput, spec: OrderMessageSpec): string {
-  return t(locale, spec.messageKey, { number: input.order.number, business: input.businessName, url: orderStatusUrl(input.siteUrl, input.order.code) });
+  return t(locale, spec.messageKey, {
+    number: input.order.number,
+    business: input.businessName,
+    url: orderStatusUrl(input.siteUrl, input.order.code),
+    total: amdText(input.total ?? 0),
+  });
 }
 
 function allTexts(input: OrderReadyInput, spec: OrderMessageSpec): Record<Locale, string> {
@@ -80,6 +111,20 @@ export function notifyOrderReady(db: PrismaService, messenger: BusinessMessenger
  */
 export function notifyOrderPickupReminder(db: PrismaService, messenger: BusinessMessenger, input: OrderReadyInput): Promise<OrderReadyResult> {
   return sendOrderMessage(db, messenger, input, PICKUP_SPEC);
+}
+
+/**
+ * ⭐ «Смета по заказу №N в «Салон»: 52 000 ֏. Согласуйте или откажитесь: https://booktime.am/o/<code>» (05.10.2026) —
+ * мастерская после диагностики просит согласовать цену; тот же путь, что «Заказ готов». Каждая отправка (в том числе
+ * «Отправить ещё раз» и новая версия сметы) — новое сообщение.
+ */
+export function notifyOrderEstimate(db: PrismaService, messenger: BusinessMessenger, input: OrderReadyInput): Promise<OrderReadyResult> {
+  return sendOrderMessage(db, messenger, input, ESTIMATE_SPEC);
+}
+
+/** «Ждём вашего ответа по смете…» — клиент не ответил за сутки (задача воркера jobs/orders-estimate-reminders.ts) */
+export function notifyOrderEstimateReminder(db: PrismaService, messenger: BusinessMessenger, input: OrderReadyInput): Promise<OrderReadyResult> {
+  return sendOrderMessage(db, messenger, input, ESTIMATE_REMINDER_SPEC);
 }
 
 async function sendOrderMessage(db: PrismaService, messenger: BusinessMessenger, input: OrderReadyInput, spec: OrderMessageSpec): Promise<OrderReadyResult> {

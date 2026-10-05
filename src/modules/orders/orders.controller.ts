@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
@@ -6,7 +6,18 @@ import { Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { RateLimit } from '../../common/rate-limit/rate-limit.js';
-import { createOrderBody, listOrdersQuery, orderListOut, orderOut, orderStatusBody, patchOrderBody, publicOrderOut } from './orders.schemas.js';
+import {
+  createOrderBody,
+  listOrdersQuery,
+  orderListOut,
+  orderOut,
+  orderStatusBody,
+  patchOrderBody,
+  publicEstimateDecisionBody,
+  publicOrderOut,
+  sendEstimateBody,
+  staffEstimateDecisionBody,
+} from './orders.schemas.js';
 import { OrdersService } from './orders.service.js';
 
 /**
@@ -68,6 +79,39 @@ export class OrdersController {
   notify(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('orderId') orderId: string) {
     return this.svc.resendReady(ctx, businessId, orderId);
   }
+
+  // ─────────── ⭐ смета (05.10.2026) ───────────
+
+  @Post(':orderId/estimate')
+  @Biz('journal.edit')
+  @ZodBody(sendEstimateBody)
+  @ZodOk(orderOut)
+  @ApiOperation({ summary: 'Отправить клиенту смету (строки или одна сумма + комментарий) — новая версия, ждём ответа; только received/in_progress' })
+  sendEstimate(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('orderId') orderId: string, @Body(new Zod(sendEstimateBody)) body: z.infer<typeof sendEstimateBody>) {
+    return this.svc.sendEstimate(ctx, businessId, orderId, body);
+  }
+
+  @Post(':orderId/estimate/notify')
+  @Biz('journal.edit')
+  @ZodOk(orderOut)
+  @ApiOperation({ summary: 'Ещё раз отправить клиенту смету, которая ждёт ответа (иначе 409 estimate_not_pending)' })
+  resendEstimate(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('orderId') orderId: string) {
+    return this.svc.resendEstimate(ctx, businessId, orderId);
+  }
+
+  @Post(':orderId/estimate/decision')
+  @Biz('journal.edit')
+  @ZodBody(staffEstimateDecisionBody)
+  @ZodOk(orderOut)
+  @ApiOperation({ summary: 'Отметить ответ клиента по смете, полученный по телефону: approve — в работу, цена = смета' })
+  decideEstimate(
+    @Ctx() ctx: RequestContext,
+    @Param('businessId') businessId: string,
+    @Param('orderId') orderId: string,
+    @Body(new Zod(staffEstimateDecisionBody)) body: z.infer<typeof staffEstimateDecisionBody>,
+  ) {
+    return this.svc.decideEstimateByStaff(ctx, businessId, orderId, body.decision, body.comment);
+  }
 }
 
 /** Публичная страница заказа /o/<code> — без входа */
@@ -82,5 +126,15 @@ export class PublicOrdersController {
   @ApiOperation({ summary: 'Статус заказа по публичному коду (без телефона клиента, комментария и сотрудников)' })
   byCode(@Param('code') code: string) {
     return this.svc.publicByCode(code);
+  }
+
+  @Post(':code/estimate')
+  @HttpCode(200)
+  @RateLimit({ bucket: 'public-order-estimate', limit: 10, windowSec: 60, by: 'ip' })
+  @ZodBody(publicEstimateDecisionBody)
+  @ZodOk(publicOrderOut)
+  @ApiOperation({ summary: '⭐ Клиент отвечает на смету по ссылке: approve | decline (+ комментарий); повтор того же — без изменений; устаревшая версия — 409 estimate_changed' })
+  decideEstimate(@Param('code') code: string, @Body(new Zod(publicEstimateDecisionBody)) body: z.infer<typeof publicEstimateDecisionBody>) {
+    return this.svc.decideEstimatePublic(code, body.decision, body.version, body.comment);
   }
 }
