@@ -27,6 +27,9 @@ import {
   type VisitBrief,
 } from './prospects.logic.js';
 
+/** Сколько обновлений мест в одной транзакции импорта */
+const UPDATE_BATCH = 50;
+
 type ProspectRow = Prisma.ProspectGetPayload<object>;
 
 export interface ProspectPatch {
@@ -268,7 +271,8 @@ export class ProspectsService {
         await this.prisma.prospect.createMany({ data: creates, skipDuplicates: true });
         report.added += creates.length;
       }
-      if (updates.length) await this.prisma.$transaction(updates);
+      // Обновления — порциями по 50 и с запасом времени: 500 строк одной транзакцией не укладывались в 5 с (07.10.2026)
+      for (let j = 0; j < updates.length; j += UPDATE_BATCH) await this.prisma.$transaction(updates.slice(j, j + UPDATE_BATCH), { timeout: 30_000, maxWait: 10_000 });
     }
     return report;
   }

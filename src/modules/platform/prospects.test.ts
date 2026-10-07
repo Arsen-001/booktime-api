@@ -66,7 +66,11 @@ function setup(prospects: Row[] = [], visits: Row[] = []) {
   const prisma = {
     prospect: table(prospects),
     salesVisit: table(visits),
-    $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
+    batches: [] as { size: number; timeout?: number }[],
+    $transaction: async (ops: Promise<unknown>[], opts?: { timeout?: number }) => {
+      prisma.batches.push({ size: ops.length, timeout: opts?.timeout });
+      return Promise.all(ops);
+    },
   };
   return { svc: new ProspectsService(prisma as never), prisma };
 }
@@ -252,6 +256,16 @@ test('импорт: добавляет новое, обновляет по кл�
   assert.equal(bp.staffEstimate, 4, 'повтор в том же файле слился с первой строкой');
   const again = await svc.import([{ name: 'Barber Point', district: 'nor_nork' }]);
   assert.deepEqual(again, { added: 0, updated: 0, unchanged: 1, skipped: 0, errors: [] });
+});
+
+test('импорт большого файла: обновления идут порциями по 50 с запасом времени, все строки обновлены', async () => {
+  const existing = Array.from({ length: 120 }, (_, i) => P(`p${i}`, { name: `Salon ${i}`, address: `Комитаса ${i}` }));
+  const { svc, prisma } = setup(existing);
+  const report = await svc.import(existing.map((_, i) => ({ name: `Salon ${i}`, address: `Комитаса ${i}`, staff_estimate: i + 1 })));
+  assert.equal(report.updated, 120);
+  assert.deepEqual(prisma.batches.map((b) => b.size), [50, 50, 20]);
+  assert.ok(prisma.batches.every((b) => (b.timeout ?? 0) >= 30_000), 'транзакции не с лимитом 5 с по умолчанию');
+  assert.equal(prisma.prospect.rows.find((r) => r.id === 'p119')!.staffEstimate, 120);
 });
 
 test('удаление места снимает связь у визитов, визиты остаются', async () => {
