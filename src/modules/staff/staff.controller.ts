@@ -147,7 +147,7 @@ export class StaffController {
   @Post('staff/:staffId/fire')
   @HttpCode(200)
   @Biz('staff.manage')
-  @ApiOperation({ summary: 'Уволить (F-10-040): вход гаснет сразу, портфолио уходит с мастером (C4)' })
+  @ApiOperation({ summary: 'Уволить (F-10-040): дата сегодня или раньше — вход гаснет сразу, портфолио уходит с мастером (C4); дата в будущем — запланировано (С3), в силу вступает в этот день (воркер staff.dismissals)' })
   @ZodBody(dismissBody)
   @ZodOk(staffOut)
   fire(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Param('staffId') s: string, @Body(new Zod(dismissBody)) body: B<typeof dismissBody>) {
@@ -164,7 +164,7 @@ export class StaffController {
   @Post('staff/:staffId/restore')
   @HttpCode(200)
   @Biz('staff.manage')
-  @ApiOperation({ summary: 'Восстановить уволенного: 24 ч — сразу, до 30 дней — нельзя (F-10-044)' })
+  @ApiOperation({ summary: 'Восстановить уволенного: 24 ч — сразу, до 30 дней — нельзя (F-10-044); запланированное увольнение — отменить (С3)' })
   @ZodOk(staffOut)
   restore(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Param('staffId') s: string) {
     return this.staff.restore(ctx, b, s);

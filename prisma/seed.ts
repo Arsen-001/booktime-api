@@ -558,6 +558,7 @@ await prisma.client.createMany({
       shiftWork: typeof t.shiftWork === 'number' ? t.shiftWork : null,
       shiftOff: typeof t.shiftOff === 'number' ? t.shiftOff : null,
       hours: (t.hours ?? []) as Prisma.InputJsonValue,
+      weekdayHours: t.weekdayHours && Object.keys(t.weekdayHours as object).length ? (t.weekdayHours as Prisma.InputJsonValue) : Prisma.DbNull,
       createdBy: 'seed',
     })),
   });

@@ -55,6 +55,15 @@ export interface CellSnapshot {
   date: string;
   hours: DayHours;
   typeId: string;
+  /** Г16: заметка дня (название «Выходного салона», комментарий к отсутствию) */
+  note?: string;
+}
+
+/** Г10: часы шаблона по дням недели; пусто — null (в базе не храним «{}») */
+function cleanWeekdayHours(v: Record<string, DayHours> | null | undefined): Record<string, DayHours> | null {
+  if (!v) return null;
+  const out = Object.fromEntries(Object.entries(v).filter(([k, h]) => /^[0-6]$/.test(k) && Array.isArray(h)));
+  return Object.keys(out).length ? out : null;
 }
 
 export interface AffectedBookingRef {
@@ -118,10 +127,16 @@ export class ScheduleService {
     return new Map(rows.map((r) => [r.id, { ...r, locationIds: r.locations.map((l) => l.locationId) }]));
   }
 
-  async dayTypes(db: Db, staffIds: readonly string[], from: string, to: string): Promise<Map<string, { typeId: string; vacationUntil: string | null }>> {
+  async dayTypes(db: Db, staffIds: readonly string[], from: string, to: string): Promise<Map<string, { typeId: string; vacationUntil: string | null; note: string | null }>> {
     if (!staffIds.length) return new Map();
     const rows = await db.staffDayType.findMany({ where: { staffId: { in: [...staffIds] }, date: { gte: from, lte: to } } });
-    return new Map(rows.map((r) => [`${r.staffId}|${r.date}`, { typeId: r.typeId, vacationUntil: r.vacationUntil }]));
+    return new Map(rows.map((r) => [`${r.staffId}|${r.date}`, { typeId: r.typeId, vacationUntil: r.vacationUntil, note: r.note ?? null }]));
+  }
+
+  /** Г16: заметка дня сотрудника, если есть */
+  noteOf(types: Map<string, { note?: string | null }>, staffId: string, date: string): { note?: string } {
+    const note = types.get(`${staffId}|${date}`)?.note;
+    return note ? { note } : {};
   }
 
   effectiveTypeId(types: Map<string, { typeId: string }>, staffId: string, date: string, hours: DayHours): string | null {
@@ -133,18 +148,17 @@ export class ScheduleService {
   // === stage 21 (лейн services+rest): для журнала (Г3, Г16) ===
 
   /**
-   * Тип и заметка дня у сотрудников на дату (F-01-013 соседняя часть, colонка журнала «Отпуск · N записей»).
-   * `note` сервер пока не хранит нигде (writeDayTypes/txSetCells не принимают текстовое поле дня — тот же
-   * пробел есть и у записи, не только у этого чтения) — честно undefined, а не выдумка.
+   * Тип и заметка дня у сотрудников на дату (F-01-013 соседняя часть, колонка журнала «Отпуск · N записей»):
+   * заметка — название «Выходного салона» или комментарий к отсутствию (Г16, staff_day_types.note).
    */
   async getStaffDayInfo(businessId: string, staffIds: string[], date: string): Promise<Record<string, { typeId: string | null; note?: string }>> {
     await this.staffMap(this.prisma, businessId, staffIds);
     const schedules = await this.availability.schedules(this.prisma, staffIds, date, date);
     const types = await this.dayTypes(this.prisma, staffIds, date, date);
-    const out: Record<string, { typeId: string | null }> = {};
+    const out: Record<string, { typeId: string | null; note?: string }> = {};
     for (const staffId of staffIds) {
       const hours = staffDayHours(schedules, staffId, date);
-      out[staffId] = { typeId: this.effectiveTypeId(types, staffId, date, hours) };
+      out[staffId] = { typeId: this.effectiveTypeId(types, staffId, date, hours), ...this.noteOf(types, staffId, date) };
     }
     return out;
   }
@@ -233,15 +247,30 @@ export class ScheduleService {
     }
   }
 
-  async writeDayTypes(tx: Tx, businessId: string, records: { staffId: string; date: string; typeId: string; vacationUntil?: string | null }[]): Promise<void> {
+  /**
+   * Тип дня по датам. `note` (Г16): undefined — оставить прежнюю заметку дня, '' или null — стереть, строка — записать
+   * (как txSetCells мока: «undefined — оставить прежнюю, '' — стереть»).
+   */
+  async writeDayTypes(tx: Tx, businessId: string, records: { staffId: string; date: string; typeId: string; vacationUntil?: string | null; note?: string | null }[]): Promise<void> {
     const byStaff = new Map<string, typeof records>();
     for (const r of records) byStaff.set(r.staffId, [...(byStaff.get(r.staffId) ?? []), r]);
     for (const [staffId, list] of byStaff) {
       for (let i = 0; i < list.length; i += 500) {
         const part = list.slice(i, i + 500);
-        await tx.staffDayType.deleteMany({ where: { staffId, date: { in: part.map((r) => r.date) } } });
+        const dates = part.map((r) => r.date);
+        const keep = part.some((r) => r.note === undefined)
+          ? new Map((await tx.staffDayType.findMany({ where: { staffId, date: { in: dates }, note: { not: null } }, select: { date: true, note: true } })).map((r) => [r.date, r.note]))
+          : new Map<string, string | null>();
+        await tx.staffDayType.deleteMany({ where: { staffId, date: { in: dates } } });
         await tx.staffDayType.createMany({
-          data: part.map((r) => ({ staffId, date: r.date, businessId, typeId: r.typeId, vacationUntil: r.vacationUntil ?? null })),
+          data: part.map((r) => ({
+            staffId,
+            date: r.date,
+            businessId,
+            typeId: r.typeId,
+            vacationUntil: r.vacationUntil ?? null,
+            note: r.note === undefined ? (keep.get(r.date) ?? null) : r.note || null,
+          })),
         });
       }
     }
@@ -294,7 +323,7 @@ export class ScheduleService {
     await this.writeDayTypes(
       tx,
       businessId,
-      input.staffIds.flatMap((staffId) => dates.map((date) => ({ staffId, date, typeId: input.typeId, vacationUntil: input.vacationUntil ?? null }))),
+      input.staffIds.flatMap((staffId) => dates.map((date) => ({ staffId, date, typeId: input.typeId, vacationUntil: input.vacationUntil ?? null, note: input.note }))),
     );
     await this.pushHistory(tx, businessId, {
       action: input.historyAction ?? (input.typeId === 'not_working' ? 'delete_days' : 'set_hours'),
@@ -323,7 +352,7 @@ export class ScheduleService {
       const schedule = loc ? this.editableSchedule(schedules, staffId, loc) : undefined;
       for (const date of datesIn) {
         const hours = schedule ? scheduleHours(schedule, date) : [];
-        out.push({ staffId, date, hours, typeId: this.effectiveTypeId(types, staffId, date, hours) ?? 'not_working' });
+        out.push({ staffId, date, hours, typeId: this.effectiveTypeId(types, staffId, date, hours) ?? 'not_working', ...this.noteOf(types, staffId, date) });
       }
     }
     return out;
@@ -340,7 +369,7 @@ export class ScheduleService {
       for (const c of snapshot.filter((x) => x.staffId === staffId)) patch[c.date] = c.hours;
       await this.writeOverrides(tx, businessId, staffId, loc, patch, ctx.member!.staffId);
     }
-    await this.writeDayTypes(tx, businessId, snapshot.map((c) => ({ staffId: c.staffId, date: c.date, typeId: c.typeId })));
+    await this.writeDayTypes(tx, businessId, snapshot.map((c) => ({ staffId: c.staffId, date: c.date, typeId: c.typeId, note: c.note ?? null })));
   }
 
   // ─────────── записи, задетые правкой (F-02-106) ───────────
@@ -472,7 +501,7 @@ export class ScheduleService {
           totalDays += 1;
           totalMinutes += minutesOf(mainWorks ? union : elsewhere.flatMap((x) => x.hours));
         }
-        return { date, hours, typeId, hasBookings: bookingDays.has(`${staff.id}|${date}`), ...(elsewhere.length ? { elsewhere } : {}) };
+        return { date, hours, typeId, ...this.noteOf(types, staff.id, date), hasBookings: bookingDays.has(`${staff.id}|${date}`), ...(elsewhere.length ? { elsewhere } : {}) };
       });
       return { staff: staffViewWithLogin(staff), cells, totalDays, totalMinutes };
     });
@@ -701,7 +730,8 @@ export class ScheduleService {
 
   // ─────────── шаблоны (F-02-006…009) ───────────
 
-  templateView(t: { id: string; businessId: string; name: string; kind: string; weekdays: unknown; shiftWork: number | null; shiftOff: number | null; hours: unknown; createdAt: Date }) {
+  templateView(t: { id: string; businessId: string; name: string; kind: string; weekdays: unknown; shiftWork: number | null; shiftOff: number | null; hours: unknown; weekdayHours?: unknown; createdAt: Date }) {
+    const weekdayHours = cleanWeekdayHours(t.weekdayHours as Record<string, DayHours> | null | undefined);
     return {
       id: t.id,
       businessId: t.businessId,
@@ -711,6 +741,7 @@ export class ScheduleService {
       ...(t.shiftWork !== null ? { shiftWork: t.shiftWork } : {}),
       ...(t.shiftOff !== null ? { shiftOff: t.shiftOff } : {}),
       hours: t.hours as DayHours,
+      ...(weekdayHours ? { weekdayHours } : {}),
       createdAt: utcToLocal(t.createdAt),
     };
   }
@@ -720,7 +751,12 @@ export class ScheduleService {
     return rows.map((t) => this.templateView(t));
   }
 
-  async createTemplate(ctx: RequestContext, businessId: string, input: { id?: string; name: string; kind: string; weekdays?: number[]; shiftWork?: number; shiftOff?: number; hours: DayHours }) {
+  async createTemplate(
+    ctx: RequestContext,
+    businessId: string,
+    input: { id?: string; name: string; kind: string; weekdays?: number[]; shiftWork?: number; shiftOff?: number; hours: DayHours; weekdayHours?: Record<string, DayHours> },
+  ) {
+    const weekdayHours = input.kind === 'weekdays' ? cleanWeekdayHours(input.weekdayHours) : null;
     const id = input.id && input.id.startsWith('sctpl_') && !(await this.prisma.scheduleTemplate.findUnique({ where: { id: input.id } })) ? input.id : newId('scheduleTemplate');
     const t = await this.prisma.scheduleTemplate.create({
       data: {
@@ -732,15 +768,23 @@ export class ScheduleService {
         shiftWork: input.shiftWork ?? null,
         shiftOff: input.shiftOff ?? null,
         hours: input.hours as unknown as Prisma.InputJsonValue,
+        weekdayHours: weekdayHours ? (weekdayHours as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
         createdBy: ctx.member!.staffId,
       },
     });
     return this.templateView(t);
   }
 
-  async updateTemplate(businessId: string, id: string, patch: { name?: string; kind?: string; weekdays?: number[]; shiftWork?: number; shiftOff?: number; hours?: DayHours }) {
+  async updateTemplate(
+    businessId: string,
+    id: string,
+    patch: { name?: string; kind?: string; weekdays?: number[]; shiftWork?: number; shiftOff?: number; hours?: DayHours; weekdayHours?: Record<string, DayHours> },
+  ) {
     const found = await this.prisma.scheduleTemplate.findFirst({ where: { id, businessId } });
     if (!found) throw new ApiError('not_found', 'Template not found');
+    // Г10: часы по дням недели только у шаблона «по дням недели»; сменили на «смены» — снимаются
+    const kind = patch.kind ?? found.kind;
+    const weekdayHours = kind !== 'weekdays' ? null : patch.weekdayHours !== undefined ? cleanWeekdayHours(patch.weekdayHours) : undefined;
     await this.prisma.scheduleTemplate.update({
       where: { id },
       data: {
@@ -750,6 +794,7 @@ export class ScheduleService {
         ...(patch.shiftWork !== undefined ? { shiftWork: patch.shiftWork } : {}),
         ...(patch.shiftOff !== undefined ? { shiftOff: patch.shiftOff } : {}),
         ...(patch.hours !== undefined ? { hours: patch.hours as unknown as Prisma.InputJsonValue } : {}),
+        ...(weekdayHours !== undefined ? { weekdayHours: weekdayHours ? (weekdayHours as unknown as Prisma.InputJsonValue) : Prisma.DbNull } : {}),
         version: { increment: 1 },
       },
     });

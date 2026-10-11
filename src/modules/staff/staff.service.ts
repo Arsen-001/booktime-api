@@ -16,6 +16,7 @@ import { utcToLocal, utcToLocalDate } from '../../common/time/time.js';
 import { hashPassword, isWeakPassword } from '../auth/passwords.js';
 import { accessView, defaultRoleTemplate, inviteView, positionView, staffViewWithLogin } from '../businesses/views.js';
 import type { AddStaffBody, PatchStaffBody } from './staff.schemas.js';
+import { assertNotLastOwner, fireNowTx, isScheduledDismissal, keepPortfolio, revokeLogins, todayLocal } from './dismissal.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -297,46 +298,39 @@ export class StaffService {
 
   // ─────────── увольнение, восстановление, удаление (F-10-040…045) ───────────
 
-  private async assertNotLastOwner(tx: Tx, s: Staff) {
-    if (s.role !== 'owner') return;
-    const owners = await tx.staff.count({ where: { businessId: s.businessId, role: 'owner', status: { not: 'fired' }, deletedAt: null } });
-    if (owners <= 1) throw new ApiError('last_owner', 'The last owner cannot leave');
+  private assertNotLastOwner(tx: Tx, s: Staff) {
+    return assertNotLastOwner(tx, s);
   }
 
   /** Всё, что даёт вход этому сотруднику, гаснет сразу (F-00-040): логины администратора и их сессии */
-  private async revokeAccess(tx: Tx, staffId: string) {
-    const logins = await tx.staffLogin.findMany({ where: { staffId, disabledAt: null }, select: { id: true } });
-    if (logins.length) await tx.staffLogin.updateMany({ where: { id: { in: logins.map((l) => l.id) } }, data: { disabledAt: new Date() } });
-    return logins.map((l) => l.id);
+  private revokeAccess(tx: Tx, staffId: string) {
+    return revokeLogins(tx, staffId);
   }
 
   /** C4: портфолио, дипломы, материалы уходят с мастером — копия в master_profiles человека */
-  private async keepPortfolio(tx: Tx, s: Staff) {
-    if (!s.userId) return;
-    const photos = Array.isArray(s.photos) ? s.photos : [];
-    const materials = Array.isArray(s.materials) ? s.materials : [];
-    if (!photos.length && !materials.length) return;
-    await tx.masterProfile.upsert({
-      where: { userId: s.userId },
-      create: { userId: s.userId, photos, materials, diplomas: [] },
-      update: { photos, materials, version: { increment: 1 } },
-    });
+  private keepPortfolio(tx: Tx, s: Staff) {
+    return keepPortfolio(tx, s);
   }
 
+  /**
+   * Уволить (F-10-040, С3): дата сегодня или раньше — сразу; дата в будущем — запланировано (до неё сотрудник
+   * работает и остаётся в графике), в силу вступает задачей воркера `staff.dismissals` (dismissal.ts).
+   */
   async dismiss(ctx: RequestContext, businessId: string, staffId: string, input: { date: string; reason: string }) {
     let revoked: string[] = [];
     await this.prisma.$transaction(async (tx) => {
       const s = await tx.staff.findFirst({ where: { id: staffId, businessId, deletedAt: null } });
       if (!s) throw new ApiError('not_found', 'Staff not found');
-      await this.assertNotLastOwner(tx, s);
-      await tx.staff.update({
-        where: { id: staffId },
-        data: { status: 'fired', firedOn: input.date, fireReason: input.reason || null, firedAt: new Date(), updatedBy: ctx.member!.staffId, version: { increment: 1 } },
-      });
-      revoked = await this.revokeAccess(tx, staffId);
-      await this.keepPortfolio(tx, s);
-      await tx.staffInvite.updateMany({ where: { staffId, status: 'pending' }, data: { status: 'revoked' } });
-      await this.audit.record(tx, ctx, { action: 'fired', entityType: 'staff', entityId: staffId, businessId, before: { status: s.status }, after: { status: 'fired', date: input.date, reason: input.reason } });
+      if (input.date > todayLocal() && s.status !== 'fired') {
+        await this.assertNotLastOwner(tx, s);
+        await tx.staff.update({
+          where: { id: staffId },
+          data: { firedOn: input.date, fireReason: input.reason || null, firedAt: null, updatedBy: ctx.member!.staffId, version: { increment: 1 } },
+        });
+        await this.audit.record(tx, ctx, { action: 'dismissalScheduled', entityType: 'staff', entityId: staffId, businessId, before: { firedOn: s.firedOn }, after: { date: input.date, reason: input.reason } });
+        return;
+      }
+      revoked = await fireNowTx(tx, this.audit, ctx, s, input);
     });
     for (const id of revoked) await this.sessions.revokeAllOfStaffLogin(id, 'disabled');
     await this.publish(businessId, staffId);
@@ -345,12 +339,23 @@ export class StaffService {
 
   async dismissal(businessId: string, staffId: string) {
     const s = await this.find(businessId, staffId);
+    // С3: запланировано — дата и причина, «вернуть» (отменить увольнение) можно сразу
+    if (isScheduledDismissal(s)) return { staffId, date: s.firedOn!, reason: s.fireReason ?? '', scheduled: true, restore: 'immediate' as const };
     if (s.status !== 'fired' || !s.firedAt) return null;
     return { staffId, date: s.firedOn ?? utcToLocalDate(s.firedAt), reason: s.fireReason ?? '', firedAt: utcToLocal(s.firedAt), restore: restoreWindow(s.firedAt) };
   }
 
   async restore(ctx: RequestContext, businessId: string, staffId: string) {
     const s = await this.find(businessId, staffId);
+    if (isScheduledDismissal(s)) {
+      // С3: «Отменить увольнение» до его даты
+      await this.prisma.$transaction(async (tx) => {
+        await tx.staff.update({ where: { id: staffId }, data: { firedOn: null, fireReason: null, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
+        await this.audit.record(tx, ctx, { action: 'dismissalCancelled', entityType: 'staff', entityId: staffId, businessId, before: { firedOn: s.firedOn } });
+      });
+      await this.publish(businessId, staffId);
+      return this.get(businessId, staffId);
+    }
     if (s.status !== 'fired') return this.get(businessId, staffId);
     if (s.firedAt && restoreWindow(s.firedAt) === 'blocked') throw new ApiError('restore_blocked', 'Restore blocked until 30 days after dismissal');
     await this.prisma.$transaction(async (tx) => {

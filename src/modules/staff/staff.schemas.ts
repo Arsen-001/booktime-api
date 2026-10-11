@@ -97,7 +97,16 @@ export const accessOut = z.object({
 export const addStaffOut = z.object({ staff: staffOut, inviteLink: z.string().nullable() });
 export const reissueOut = z.object({ invite: inviteOut, link: z.string() });
 export const dismissalOut = z
-  .object({ staffId: z.string(), date: z.string(), reason: z.string(), firedAt: z.string(), restore: z.enum(['immediate', 'blocked', 'available']) })
+  .object({
+    staffId: z.string(),
+    date: z.string(),
+    reason: z.string(),
+    /** Когда вступило в силу; нет — ещё запланировано на `date` (С3) */
+    firedAt: z.string().optional(),
+    /** Запланировано: до `date` сотрудник работает и остаётся в графике; restore отменяет */
+    scheduled: z.boolean().optional(),
+    restore: z.enum(['immediate', 'blocked', 'available']),
+  })
   .nullable();
 export const deletedOut = z.object({ id: z.string(), businessId: z.string(), snapshot: staffOut, access: z.unknown(), deletedAt: z.string() });
 export const rightsOut = z.object({ fine: z.array(z.string()).nullable(), coarse: z.array(z.string()).nullable(), scopes: z.record(z.string(), z.unknown()) });

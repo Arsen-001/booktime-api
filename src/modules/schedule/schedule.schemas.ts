@@ -9,6 +9,8 @@ export const hm = z.string().regex(/^([01]\d|2[0-4]):[0-5]\d$/, 'HH:mm');
 export const timeRange = z.object({ from: hm, to: hm });
 export const dayHours = z.array(timeRange).max(12);
 export const dayTypeId = z.string().regex(/^(work|sick|vacation|unpaid_leave|absence|paid_day_off|not_working|custom:[\w-]{1,30})$/);
+/** Г16: заметка дня (сайт: название выходного до 60, комментарий до 80 символов) */
+export const dayNote = z.string().trim().max(120);
 export const workplace = z.enum(['salon', 'home', 'visit', 'hall', 'online']);
 export const historyAction = z.enum(['set_hours', 'apply_template', 'delete_days', 'copy_schedule', 'set_mode', 'toggle_mark', 'set_column_config', 'slot_rules']);
 export const scopeKind = z.enum(['location', 'staff']);
@@ -62,6 +64,8 @@ export const setCellsBody = z.object({
   hours: dayHours.default([]),
   locationId: id32.optional(),
   vacationUntil: isoDate.optional(),
+  /** Г16: заметка дней — название «Выходного салона» / комментарий к отсутствию; нет — оставить прежнюю, '' — стереть */
+  note: dayNote.optional(),
   historyAction: historyAction.optional(),
   force: z.boolean().optional(),
 });
@@ -69,7 +73,7 @@ export type SetCellsBody = z.infer<typeof setCellsBody>;
 
 export const deleteCellsBody = z.object({ staffIds, dates, force: z.boolean().optional() });
 export const snapshotBody = z.object({ staffIds, dates });
-export const cellSnapshot = z.object({ staffId: id32, date: isoDate, hours: dayHours, typeId: dayTypeId });
+export const cellSnapshot = z.object({ staffId: id32, date: isoDate, hours: dayHours, typeId: dayTypeId, note: dayNote.optional() });
 export const restoreCellsBody = z.object({ snapshot: z.array(cellSnapshot).max(20000) });
 export const affectedBody = z.object({ staffIds, dates, newHours: dayHours.optional() });
 export const hasSavedBody = z.object({ staffIds: z.array(id32).max(200) });
@@ -89,6 +93,10 @@ export const copyBody = z.object({
 });
 export const copyLastWeekBody = z.object({ staffId: id32, weekAnchor: isoDate });
 
+export const weekdayHours = z
+  .record(z.string().regex(/^[0-6]$/, '0..6'), dayHours)
+  .refine((v) => Object.keys(v).length <= 7, 'max 7 weekdays');
+
 export const templateBody = z.object({
   id: id32.optional(),
   name: z.string().max(120).default(''),
@@ -97,6 +105,8 @@ export const templateBody = z.object({
   shiftWork: z.number().int().min(1).max(30).optional(),
   shiftOff: z.number().int().min(0).max(30).optional(),
   hours: dayHours,
+  /** Г10: kind=weekdays — свои часы на дни недели (ключ '0'…'6', 0 = пн); нет ключа — день берёт hours */
+  weekdayHours: weekdayHours.optional(),
 });
 export const templatePatch = templateBody.omit({ id: true }).partial();
 

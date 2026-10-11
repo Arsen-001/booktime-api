@@ -29,6 +29,10 @@ export const publicBusinessOut = z.object({
   packages: z.array(z.unknown()),
   hourCycle: z.enum(['24', '12']),
   addressHidden: z.boolean(),
+  /** «Разрешить запись к любому специалисту» для всех ссылок (по умолчанию да) */
+  anyStaffAllowed: z.boolean(),
+  /** О1 «Не дальше чем на»: календарь клиента открыт на столько дней вперёд; окна и запись дальше сервер не даёт */
+  maxDaysAhead: z.number(),
   /** Раздел «Заказы» включён (мастерская: принимает вещи без записи по времени) */
   ordersEnabled: z.boolean(),
 });
@@ -214,6 +218,10 @@ export const businessOnlineRulesBody = z
     allowAnyStaffForAllLinks: z.boolean(),
     hourCycle: z.enum(['24', '12']),
     reviewMode: z.enum(['star', 'text']),
+    /** О1 «Не дальше чем на»: на сколько дней вперёд открыт календарь клиента (сайт: 7/14/30/60/90; по умолчанию 60) */
+    maxDaysAhead: z.number().int().min(1).max(365),
+    /** О1/О25 «Сотрудник для всех онлайн-записей» — общий для бизнеса; своя настройка ссылки главнее. null — снять */
+    staffForAllBookings: id32.nullable(),
   })
   .partial();
 export type BusinessOnlineRulesBody = z.infer<typeof businessOnlineRulesBody>;
@@ -225,6 +233,8 @@ export const businessOnlineRulesOut = z.object({
   allowAnyStaffForAllLinks: z.boolean().optional(),
   hourCycle: z.enum(['24', '12']).optional(),
   reviewMode: z.enum(['star', 'text']).optional(),
+  maxDaysAhead: z.number(),
+  staffForAllBookings: z.string().optional(),
 });
 
 // ─────────────────────────── источник записи для кабинета (F-03-123) ───────────────────────────

@@ -8,7 +8,7 @@ import { newId } from '../../common/ids/ids.js';
 import type { Locale } from '../../common/i18n/i18n.js';
 import { normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { DEFAULT_TZ, localDayRangeUtc, localToUtc, utcToLocal } from '../../common/time/time.js';
+import { DEFAULT_TZ, localDayRangeUtc, localToUtc, nowLocal, utcToLocal } from '../../common/time/time.js';
 import type { Business, BookingLink } from '../../generated/prisma/client.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { AvailabilityService } from '../availability/availability.service.js';
@@ -41,6 +41,14 @@ function pruneUndefined<T extends Record<string, unknown>>(obj: T): T {
  * в `staff.bookingRules` они лежат в минутах под ключами журнала (`cancelWindowMin`/`rescheduleWindowMin`, В-04,
  * `rules.ts` этапа 7) — единственный источник правды; сюда/обратно в часы для F-00-066 переводит `hoursOf()`.
  */
+/** О1: горизонт записи по умолчанию — 60 дней вперёд (DEFAULT_MAX_DAYS_AHEAD сайта, domain/online.ts) */
+export const DEFAULT_MAX_DAYS_AHEAD = 60;
+
+/** Последний день, на который клиент может записаться онлайн: сегодня (Ереван) + «не дальше чем на» */
+export function lastBookableDate(maxDaysAhead: number | undefined, today: string = nowLocal().slice(0, 10)): string {
+  return addDaysLocal(today, maxDaysAhead ?? DEFAULT_MAX_DAYS_AHEAD);
+}
+
 const DEFAULT_CLIENT_RULES = {
   allowReschedule: true,
   allowCancel: true,
@@ -181,7 +189,13 @@ export class OnlineService {
       networkBranches = await Promise.all(branches.map((b) => this.businessOut(b)));
     }
     const onlineArea = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId: business.id, area: 'online' } } });
-    const hourCycle = ((onlineArea?.data as Record<string, unknown> | undefined)?.hourCycle as '24' | '12' | undefined) ?? '24';
+    const onlineData = (onlineArea?.data as Record<string, unknown> | undefined) ?? {};
+    const hourCycle = (onlineData.hourCycle as '24' | '12' | undefined) ?? '24';
+    // О25: «Сотрудник для всех онлайн-записей» из «Правил записи» бизнеса — если у ссылки своего нет и мастер виден
+    const bizStaffForAll = onlineData.staffForAllBookings as string | undefined;
+    if (linkOut && !linkOut.staffForAllBookings && bizStaffForAll && visibleStaff.some((s) => s.id === bizStaffForAll)) {
+      linkOut = { ...linkOut, staffForAllBookings: bizStaffForAll };
+    }
 
     // F-00-168 (этап 21, лейн rest): один пакетный запрос вместо N+1 — бизнес + весь видимый персонал сразу.
     const allPhotoRefIds = [...arr<string>(business.photos), ...visibleStaff.flatMap((s) => arr<string>(s.photos))].map(photoModerationRefId);
@@ -211,6 +225,8 @@ export class OnlineService {
       packages: await this.publicPackages(business.id),
       hourCycle,
       addressHidden,
+      anyStaffAllowed: (onlineData.allowAnyStaffForAllLinks as boolean | undefined) ?? true,
+      maxDaysAhead: maxDaysAheadOf(onlineData),
       // Мастерская «заказов» (ателье, ремонт, химчистка, детейлинг): без онлайн-услуг страница показывает не пустую
       // запись, а «принесите в часы работы, о готовности сообщат» и контакты (05.10.2026)
       ordersEnabled: ordersOn,
@@ -250,13 +266,16 @@ export class OnlineService {
 
   async widgetSlots(slug: string, q: { staffId: string; date: string; durationMin: number; durationMax?: number; serviceId?: string; locationId?: string; workplace?: string }): Promise<FreeSlot[]> {
     const business = await this.businessBySlug(slug);
+    // О1 «Не дальше чем на»: дальше горизонта окон нет — ни в виджете, ни в «ближайшей дате», ни в месяце
+    if (q.date > (await this.lastBookableDate(business.id))) return [];
     const slots = await this.availability.freeSlots(business.id, { staffId: q.staffId, date: q.date, durationMin: q.durationMin, durationMax: q.durationMax, locationId: q.locationId, serviceId: q.serviceId });
     return filterByWorkplace(await this.filterByTravelBuffer(slots, q.staffId, q.date), q.workplace);
   }
 
   async nearestDate(slug: string, q: { staffId: string; durationMin: number; durationMax?: number; serviceId?: string; from: string; locationId?: string; workplace?: string; maxDays?: number }): Promise<string | undefined> {
+    const last = await this.lastBookableDate((await this.businessBySlug(slug)).id);
     let cursor = q.from;
-    for (let i = 0; i < (q.maxDays ?? 60); i++) {
+    for (let i = 0; i < (q.maxDays ?? 60) && cursor <= last; i++) {
       const slots = await this.widgetSlots(slug, { ...q, date: cursor });
       if (slots.length > 0) return cursor;
       cursor = nextDay(cursor);
@@ -265,6 +284,7 @@ export class OnlineService {
   }
 
   async monthAvailability(slug: string, q: { staffId: string; durationMin: number; durationMax?: number; serviceId?: string; month: string; locationId?: string; workplace?: string }): Promise<Record<string, boolean>> {
+    const last = await this.lastBookableDate((await this.businessBySlug(slug)).id);
     const parts = q.month.split('-').map(Number);
     const y = parts[0];
     const m = parts[1];
@@ -273,6 +293,10 @@ export class OnlineService {
     const out: Record<string, boolean> = {};
     for (let d = 1; d <= daysInMonth; d++) {
       const date = `${q.month}-${String(d).padStart(2, '0')}`;
+      if (date > last) {
+        out[date] = false;
+        continue;
+      }
       const slots = await this.widgetSlots(slug, { ...q, date });
       out[date] = slots.length > 0;
     }
@@ -322,6 +346,8 @@ export class OnlineService {
     const business = await this.businessBySlug(slug);
     const phone = normalizePhone(body.clientPhone);
     if (!phone) throw new ApiError('invalid_phone', 'Проверьте номер телефона');
+    // О1: запись дальше «не дальше чем на» — окна такого нет (виджет его и не показывает)
+    if (body.start.slice(0, 10) > (await this.lastBookableDate(business.id))) throw new ApiError('slot_taken', 'Beyond the online booking horizon');
     // B2: подтверждаем номер кодом СЕРВЕРОМ перед созданием записи — не доверяем самоотчёту клиента.
     await this.otp.verify({ phone, purpose: 'booking' }, body.code);
 
@@ -625,16 +651,37 @@ export class OnlineService {
   async businessOnlineRules(businessId: string) {
     const row = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'online' } } });
     const data = (row?.data as Record<string, unknown> | undefined) ?? {};
-    return { businessId, consentText: data.consentText ?? DEFAULT_CONSENT_TEXT, pauseUntil: opt(data.pauseUntil as string | undefined), allowAnyStaffForAllLinks: opt(data.allowAnyStaffForAllLinks as boolean | undefined), hourCycle: (data.hourCycle as '24' | '12' | undefined) ?? '24', reviewMode: (data.reviewMode as 'star' | 'text' | undefined) ?? 'star' };
+    return {
+      businessId,
+      consentText: data.consentText ?? DEFAULT_CONSENT_TEXT,
+      pauseUntil: opt(data.pauseUntil as string | undefined),
+      allowAnyStaffForAllLinks: opt(data.allowAnyStaffForAllLinks as boolean | undefined),
+      hourCycle: (data.hourCycle as '24' | '12' | undefined) ?? '24',
+      reviewMode: (data.reviewMode as 'star' | 'text' | undefined) ?? 'star',
+      maxDaysAhead: maxDaysAheadOf(data),
+      staffForAllBookings: opt(data.staffForAllBookings as string | undefined),
+    };
   }
 
   async updateBusinessOnlineRules(businessId: string, patch: BusinessOnlineRulesBody) {
+    if (patch.staffForAllBookings) {
+      const staff = await this.prisma.staff.findFirst({ where: { id: patch.staffForAllBookings, businessId, deletedAt: null }, select: { id: true } });
+      if (!staff) throw new ApiError('staff_not_found', 'Staff not found');
+    }
+    const next: Record<string, unknown> = { ...(await this.rawOnlineArea(businessId)), ...patch };
+    // null — «снять» (сотрудник для всех записей): ключ убирается, а не хранится как null
+    if (next.staffForAllBookings === null) delete next.staffForAllBookings;
     await this.prisma.businessSetting.upsert({
       where: { businessId_area: { businessId, area: 'online' } },
-      create: { businessId, area: 'online', data: patch as Prisma.InputJsonValue },
-      update: { data: { ...(await this.rawOnlineArea(businessId)), ...patch } as Prisma.InputJsonValue, version: { increment: 1 } },
+      create: { businessId, area: 'online', data: next as Prisma.InputJsonValue },
+      update: { data: next as Prisma.InputJsonValue, version: { increment: 1 } },
     });
     return this.businessOnlineRules(businessId);
+  }
+
+  /** О1: последний день, открытый для онлайн-записи (сегодня + «не дальше чем на») */
+  private async lastBookableDate(businessId: string): Promise<string> {
+    return lastBookableDate(maxDaysAheadOf(await this.rawOnlineArea(businessId)));
   }
 
   private async rawOnlineArea(businessId: string): Promise<Record<string, unknown>> {
@@ -1464,6 +1511,12 @@ export class OnlineService {
 }
 
 /** Минуты (ключ журнала, В-04, единственный источник правды) побеждают, если заданы; часовой ключ — только запасной */
+/** «Не дальше чем на» из настроек online; нет или мусор — 60 дней */
+function maxDaysAheadOf(data: Record<string, unknown>): number {
+  const v = data.maxDaysAhead;
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : DEFAULT_MAX_DAYS_AHEAD;
+}
+
 function hoursOf(rules: Record<string, unknown>, minKey: string, hourKey: string): number {
   if (typeof rules[minKey] === 'number') return Math.round((rules[minKey] as number) / 60);
   if (typeof rules[hourKey] === 'number') return rules[hourKey] as number;

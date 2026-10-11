@@ -284,7 +284,7 @@ export class RulesService {
         ...(m.workplace ? { workplace: m.workplace } : {}),
         ...(m.note ? { note: m.note } : {}),
       })),
-      days: types.map((t) => ({ staffId: t.staffId, date: t.date, typeId: t.typeId, ...(t.vacationUntil ? { vacationUntil: t.vacationUntil } : {}) })),
+      days: types.map((t) => ({ staffId: t.staffId, date: t.date, typeId: t.typeId, ...(t.vacationUntil ? { vacationUntil: t.vacationUntil } : {}), ...(t.note ? { note: t.note } : {}) })),
       slotRules: Object.fromEntries(ruleRows.filter((r) => r.rules).map((r) => [key(r), r.rules as unknown as SlotRule[]])),
       slotMode: Object.fromEntries(ruleRows.filter((r) => r.scope === 'staff' && r.ownRules).map((r) => [r.scopeId, 'own'])),
       unavailableDays: Object.fromEntries(ruleRows.filter((r) => r.unavailable).map((r) => [key(r), r.unavailable as unknown as UnavailableRange[]])),

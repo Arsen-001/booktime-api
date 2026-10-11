@@ -21,6 +21,8 @@ import { staffRequestReminders } from './jobs/notify-staff-request-reminders.js'
 import { staffVisitMarkPrompts } from './jobs/notify-staff-visit-mark.js';
 import { clientAutoWorth, notifyClientDaily, notifyClientEvents } from './jobs/notify-client-auto.js';
 import { uploadsCleanup } from './jobs/uploads-cleanup.js';
+import { applyDueDismissals } from './modules/staff/dismissal.js';
+import { AuditService } from './common/audit/audit.service.js';
 import { createAppleTokenClient, type StoredAppleToken } from './modules/auth/apple-tokens.js';
 import { createPrivateUploadStorage, createUploadStorage } from './adapters/storage/storage.js';
 import { FakeBusinessMessenger } from './adapters/business-sms/business-sms.js';
@@ -45,6 +47,8 @@ await queue.upsertJobScheduler('auth-housekeeping', { every: 3_600_000 }, { name
 await queue.upsertJobScheduler('schedule-empty-week', { pattern: '0 18 * * 0', tz: 'Asia/Yerevan' }, { name: 'schedule.empty-week', data: {} });
 // Этап 7: снятие заявок по сроку и раздача окна — каждую минуту; продление серий — ночью
 await queue.upsertJobScheduler('journal-holds', { every: 60_000 }, { name: 'journal.holds', data: {} });
+// 11.10.2026: увольнение будущей датой (С3) вступает в силу в свой день — раз в час, в :05 (после полуночи — в 00:05)
+await queue.upsertJobScheduler('staff-dismissals', { pattern: '5 * * * *', tz: 'Asia/Yerevan' }, { name: 'staff.dismissals', data: {} });
 await queue.upsertJobScheduler('journal-series', { pattern: '0 3 * * *', tz: 'Asia/Yerevan' }, { name: 'journal.series', data: {} });
 // Этап 10: отправитель очереди пушей — часто (сообщение должно уйти за секунды, не минуты); напоминания — раз в 5 мин
 await queue.upsertJobScheduler('notify-dispatch', { every: 20_000 }, { name: 'notify.dispatch', data: {} });
@@ -135,6 +139,11 @@ const worker = new Worker(
       const res = await journalHolds(journal);
       if (res.released.prepayment.length || res.released.confirmation.length || res.freed.subscribers || res.freed.hot || res.freed.taken)
         logger.info(res, 'journal: сняты заявки по сроку / раздача окон');
+      return;
+    }
+    if (job.name === 'staff.dismissals') {
+      const res = await applyDueDismissals(prisma, new AuditService());
+      if (res.fired.length || res.skipped.length) logger.info(res, 'staff: запланированные увольнения вступили в силу (skipped — последний владелец)');
       return;
     }
     if (job.name === 'journal.series') {

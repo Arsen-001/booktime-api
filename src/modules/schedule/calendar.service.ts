@@ -307,6 +307,7 @@ export class CalendarService {
         date,
         hours,
         typeId: this.schedule.effectiveTypeId(types, staffId, date, hours),
+        ...this.schedule.noteOf(types, staffId, date),
         ...(elsewhere.length ? { elsewhere } : {}),
         marks: marks.filter((m) => m.date === date),
         bookings: bookings.get(`${staffId}|${date}`) ?? 0,

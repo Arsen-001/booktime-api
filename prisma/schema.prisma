@@ -1046,6 +1046,8 @@ model StaffDayType {
   typeId        String   @map("type_id") @db.VarChar(40)
   /// «В отпуске до…» (F-00-054)
   vacationUntil String?  @map("vacation_until") @db.VarChar(10)
+  /// Г16: заметка дня — название «Выходного салона» или комментарий к отсутствию (11.10.2026)
+  note          String?  @db.VarChar(120)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   @@id([staffId, date])
@@ -1087,6 +1089,8 @@ model ScheduleTemplate {
   shiftWork  Int?     @map("shift_work")
   shiftOff   Int?     @map("shift_off")
   hours      Json
+  /// Г10: kind=weekdays — свои часы на дни недели { "0": DayHours, … }, 0 = пн; нет ключа — день берёт hours
+  weekdayHours Json?   @map("weekday_hours")
   createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
   createdBy  String?  @map("created_by") @db.VarChar(32)
