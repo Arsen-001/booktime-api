@@ -20,7 +20,7 @@ import {
 import { personKeyOf } from '../availability/occupy.js';
 import { FinanceCatalogService, SYSTEM_ITEMS } from '../finance/finance-catalog.service.js';
 import { FinOpsService } from '../finance/fin-ops.service.js';
-import { extrasOf, type ServiceLine } from '../journal/rules.js';
+import { extrasOf, isCancelled, type ServiceLine } from '../journal/rules.js';
 import { LoyaltyInstancesService } from '../loyalty/loyalty-instances.service.js';
 import { ownerOf } from '../loyalty/loyalty.owner.js';
 import { StockCatalogService } from '../stock/stock-catalog.service.js';
@@ -245,7 +245,8 @@ export class JournalMoreService {
     let loyaltyTotal = 0;
     for (const b of rows) {
       const total = Number(b.total);
-      bookedTotal += total;
+      // «Записей на сумму» — без отменённых (удалённые отсеяны запросом), QA 15.10.2026
+      if (!isCancelled(b.status)) bookedTotal += total;
       if (b.clientId) clientIds.add(b.clientId);
       const extras = extrasOf(b);
       const lineGoods = extras.goodsLines.reduce((s, g) => s + Math.round(g.price * g.qty * (1 - g.discountPct / 100)), 0);

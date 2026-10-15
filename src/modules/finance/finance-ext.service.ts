@@ -10,6 +10,7 @@ import { localDayRangeUtc, utcToLocal } from '../../common/time/time.js';
 import { BookingPaymentsService } from './booking-payments.service.js';
 import { isPrepaymentRegister } from './prepayment-ops.js';
 import { FinanceCatalogService } from './finance-catalog.service.js';
+import { isCancelled } from '../journal/rules.js';
 
 /**
  * Этап 21, лейн «finance+stock»: остаток раздела «Финансы», который фасад `src/api/finance.ts` в режиме api ещё
@@ -341,7 +342,8 @@ export class FinanceExtService {
     const goodsItem = await this.prisma.paymentItem.findFirst({ where: { businessId, systemKey: 'goodsSale' }, select: { id: true } });
     const goodsTotal = goodsItem ? sum(ops.filter((o) => o.kind === 'income' && o.itemId === goodsItem.id)) : 0;
     const bookings = await this.prisma.booking.findMany({ where: { businessId, locationId: { in: locs }, deletedAt: null, startAt: { gte: range.from, lt: range.to } }, select: { id: true, total: true, status: true, clientId: true } });
-    const recordsTotal = moneyToJson(bookings.reduce((s, b) => s + b.total, 0n));
+    // «Записей на сумму» — без отменённых (удалённые уже отсеяны запросом): отмена не приносит денег (QA 15.10.2026)
+    const recordsTotal = moneyToJson(bookings.filter((b) => !isCancelled(b.status)).reduce((s, b) => s + b.total, 0n));
     const doneTotal = moneyToJson(bookings.filter((b) => b.status === 'arrived').reduce((s, b) => s + b.total, 0n));
     const loyalty = bookings.length ? await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: { in: bookings.map((b) => b.id) }, cancelled: false, kind: { in: ['account', 'discount'] } }, select: { amount: true } }) : [];
     const clientsCount = new Set(bookings.map((b) => b.clientId).filter(Boolean)).size;
