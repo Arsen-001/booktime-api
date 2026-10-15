@@ -77,6 +77,16 @@ export interface SlotQueryInput {
   locationId?: string;
   stepMin?: number;
   serviceId?: string;
+  /**
+   * Перенос записи (QA 15.10.2026): её собственное время не занято — иначе окна, пересекающие переносимую запись
+   * (сдвиг на 30 мин), не предлагались. Только для поиска окон; сохранение переноса и так исключает саму запись.
+   */
+  excludeBookingId?: string;
+}
+
+/** Занятость без блоков одной записи (её переносят) */
+export function withoutBooking<T extends { source: string; sourceId: string }>(busy: T[], bookingId: string | undefined): T[] {
+  return bookingId ? busy.filter((b) => !(b.source === 'booking' && b.sourceId === bookingId)) : busy;
 }
 
 const STAFF_SELECT = {
@@ -233,7 +243,7 @@ export class AvailabilityService {
     const [schedules, marks, busy] = await Promise.all([
       this.schedules(db, [staff.id], q.date, q.date),
       this.marks(db, [staff.id], q.date, q.date),
-      this.busyMinutes(db, personKeyOf(staff), q.date, tz),
+      this.busyMinutes(db, personKeyOf(staff), q.date, tz).then((b) => withoutBooking(b, q.excludeBookingId)),
     ]);
     const settings = preloaded?.settings ?? (await this.settings(db, businessId));
     const rules = preloaded?.rules ?? (await this.ruleSets(db, businessId));
@@ -246,7 +256,7 @@ export class AvailabilityService {
     if (q.serviceId) {
       const svc = await db.service.findFirst({ where: { id: q.serviceId, businessId }, select: { id: true, onlineWindow: true } });
       serviceWindow = svc?.onlineWindow ? ({ ...(svc.onlineWindow as object), serviceId: svc.id } as ServiceSlotWindow) : null;
-      resourcesFor = await this.resourceNeeds(db, businessId, q.serviceId, q.date, tz, settings.allowOnlineOverNoShow);
+      resourcesFor = await this.resourceNeeds(db, businessId, q.serviceId, q.date, tz, settings.allowOnlineOverNoShow, q.excludeBookingId);
     }
     const slots = computeFreeSlots({
       staff: this.toStaffLike(staff),
@@ -272,7 +282,7 @@ export class AvailabilityService {
   }
 
   /** Ресурсы услуги по местам и их занятость в день (F-02-064, F-02-070) */
-  private async resourceNeeds(db: Db, businessId: string, serviceId: string, date: string, tz: string, overNoShow: boolean) {
+  private async resourceNeeds(db: Db, businessId: string, serviceId: string, date: string, tz: string, overNoShow: boolean, excludeBookingId?: string) {
     const resources = (await db.resource.findMany({ where: { businessId, active: true } })).filter((r) =>
       ((r.serviceIds as string[] | null) ?? []).includes(serviceId),
     );
@@ -287,6 +297,7 @@ export class AvailabilityService {
         endAt: { gt: from },
         OR: [{ holdUntil: null }, { holdUntil: { gt: now } }],
         ...(overNoShow ? { noShow: false } : {}),
+        ...(excludeBookingId ? { NOT: { source: 'booking', sourceId: excludeBookingId } } : {}),
       },
     });
     return (locationId: string): ResourceNeed[] =>
@@ -329,7 +340,7 @@ export class AvailabilityService {
   }
 
   /** Окна быстрой записи мастера (F-00-060): база без правил онлайн-записи, шаг 15 */
-  async quickSlots(businessId: string, q: { staffId: string; date: string; serviceId?: string; locationId?: string }): Promise<FreeSlot[]> {
+  async quickSlots(businessId: string, q: { staffId: string; date: string; serviceId?: string; locationId?: string; excludeBookingId?: string }): Promise<FreeSlot[]> {
     const [staff] = await this.staffRows(this.prisma, { id: q.staffId, businessId });
     if (!staff) return [];
     const svc = q.serviceId ? await this.prisma.service.findFirst({ where: { id: q.serviceId, businessId } }) : null;
@@ -337,7 +348,7 @@ export class AvailabilityService {
     const [schedules, marks, busy] = await Promise.all([
       this.schedules(this.prisma, [staff.id], q.date, q.date),
       this.marks(this.prisma, [staff.id], q.date, q.date),
-      this.busyMinutes(this.prisma, personKeyOf(staff), q.date, tz),
+      this.busyMinutes(this.prisma, personKeyOf(staff), q.date, tz).then((b) => withoutBooking(b, q.excludeBookingId)),
     ]);
     const slots = computeQuickSlots({
       staff: this.toStaffLike(staff),

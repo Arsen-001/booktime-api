@@ -92,15 +92,27 @@ export class PublicCatalogController {
   @Get('masters/:staffId/days')
   @RateLimit({ bucket: 'public-slots', limit: 300, windowSec: 60, by: 'ip' })
   @ApiOperation({ summary: 'Окна мастера на N дней по услуге (F-00-092)' })
-  days(@Param('staffId') staffId: string, @Query('serviceId') serviceId: string, @Query('workplace') workplace: string | undefined, @Query('days', new Zod(intOpt)) days: number | undefined) {
-    return this.svc.bookingDays(staffId, serviceId, workplace, days);
+  days(
+    @Param('staffId') staffId: string,
+    @Query('serviceId') serviceId: string,
+    @Query('workplace') workplace: string | undefined,
+    @Query('days', new Zod(intOpt)) days: number | undefined,
+    @Query('excludeBookingId') excludeBookingId: string | undefined,
+  ) {
+    return this.svc.bookingDays(staffId, serviceId, workplace, days, excludeBookingId);
   }
 
   @Get('masters/:staffId/slots')
   @RateLimit({ bucket: 'public-slots', limit: 300, windowSec: 60, by: 'ip' })
   @ApiOperation({ summary: 'Окна мастера на дату (клиентский режим, 04 §5)' })
-  slots(@Param('staffId') staffId: string, @Query('date') date: string, @Query('serviceId') serviceId: string | undefined, @Query('workplace') workplace: string | undefined) {
-    return this.svc.slotsFor(staffId, date, serviceId, workplace);
+  slots(
+    @Param('staffId') staffId: string,
+    @Query('date') date: string,
+    @Query('serviceId') serviceId: string | undefined,
+    @Query('workplace') workplace: string | undefined,
+    @Query('excludeBookingId') excludeBookingId: string | undefined,
+  ) {
+    return this.svc.slotsFor(staffId, date, serviceId, workplace, excludeBookingId);
   }
 
   @Get('services/:serviceId/shades')

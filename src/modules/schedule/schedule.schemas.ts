@@ -169,9 +169,11 @@ export const slotsQuery = z.object({
   locationId: id32.optional(),
   stepMin: intish.min(5).max(420).optional(),
   serviceId: id32.optional(),
+  /** Перенос записи: её время не считать занятым */
+  excludeBookingId: id32.optional(),
 });
 export const nearestQuery = slotsQuery.omit({ date: true }).extend({ days: intish.min(1).max(60).optional(), limit: intish.min(1).max(50).optional() });
-export const quickSlotsQuery = z.object({ date: isoDate, serviceId: id32.optional(), locationId: id32.optional() });
+export const quickSlotsQuery = z.object({ date: isoDate, serviceId: id32.optional(), locationId: id32.optional(), excludeBookingId: id32.optional() });
 export const anySpecialistQuery = slotsQuery.extend({ locationId: id32 });
 export const utilizationQuery = z.object({ staffIds: z.string().max(4000), from: isoDate, to: isoDate, locationId: id32.optional() });
 

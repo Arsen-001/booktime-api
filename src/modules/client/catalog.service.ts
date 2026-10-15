@@ -398,15 +398,26 @@ export class CatalogService {
 
   // ─────────────────────────── дни/окна для потока записи (F-00-092, F-14-012) ───────────────────────────
 
-  async bookingDays(staffId: string, serviceId: string, workplace?: string, days = 14): Promise<{ date: string; slots: FreeSlot[] }[]> {
+  /**
+   * Перенос записи (`excludeBookingId`, QA 15.10.2026): окна считаются без занятости самой переносимой записи — сдвиг
+   * на полчаса внутри её же времени. Принимаем только запись этого мастера, ещё не удалённую; чужой id — как без него.
+   */
+  private async movedBookingId(staffId: string, excludeBookingId: string | undefined): Promise<string | undefined> {
+    if (!excludeBookingId || excludeBookingId.length > 40) return undefined;
+    const b = await this.prisma.booking.findFirst({ where: { id: excludeBookingId, staffId, deletedAt: null }, select: { id: true } });
+    return b?.id;
+  }
+
+  async bookingDays(staffId: string, serviceId: string, workplace?: string, days = 14, excludeBookingId?: string): Promise<{ date: string; slots: FreeSlot[] }[]> {
     const staff = await this.prisma.staff.findUnique({ where: { id: staffId } });
     if (!staff) throw new ApiError('not_found', 'Staff not found');
     const service = await this.prisma.service.findUnique({ where: { id: serviceId } });
     if (!service) throw new ApiError('not_found', 'Service not found');
+    const moved = await this.movedBookingId(staffId, excludeBookingId);
     const out: { date: string; slots: FreeSlot[] }[] = [];
     let cursor = nowLocal().slice(0, 10);
     for (let i = 0; i < Math.min(60, days); i++) {
-      const slots = dedupeSlots(await this.availability.freeSlots(staff.businessId, { staffId, date: cursor, durationMin: service.durationMin, durationMax: service.durationMax ?? undefined, bufferAfterMin: service.bufferAfterMin ?? undefined, serviceId })).filter((s) => !workplace || workplace === 'visit' || s.workplace === workplace);
+      const slots = dedupeSlots(await this.availability.freeSlots(staff.businessId, { staffId, date: cursor, durationMin: service.durationMin, durationMax: service.durationMax ?? undefined, bufferAfterMin: service.bufferAfterMin ?? undefined, serviceId, ...(moved ? { excludeBookingId: moved } : {}) })).filter((s) => !workplace || workplace === 'visit' || s.workplace === workplace);
       if (slots.length) out.push({ date: cursor, slots });
       const d = new Date(`${cursor}T00:00:00.000Z`);
       d.setUTCDate(d.getUTCDate() + 1);
@@ -415,11 +426,12 @@ export class CatalogService {
     return out;
   }
 
-  async slotsFor(staffId: string, date: string, serviceId?: string, workplace?: string): Promise<FreeSlot[]> {
+  async slotsFor(staffId: string, date: string, serviceId?: string, workplace?: string, excludeBookingId?: string): Promise<FreeSlot[]> {
     const staff = await this.prisma.staff.findUnique({ where: { id: staffId } });
     if (!staff) throw new ApiError('not_found', 'Staff not found');
     const service = serviceId ? await this.prisma.service.findUnique({ where: { id: serviceId } }) : null;
-    const slots = dedupeSlots(await this.availability.freeSlots(staff.businessId, { staffId, date, durationMin: service?.durationMin ?? CATALOG_DEFAULT_DURATION, durationMax: service?.durationMax ?? undefined, bufferAfterMin: service?.bufferAfterMin ?? undefined, serviceId }));
+    const moved = await this.movedBookingId(staffId, excludeBookingId);
+    const slots = dedupeSlots(await this.availability.freeSlots(staff.businessId, { staffId, date, durationMin: service?.durationMin ?? CATALOG_DEFAULT_DURATION, durationMax: service?.durationMax ?? undefined, bufferAfterMin: service?.bufferAfterMin ?? undefined, serviceId, ...(moved ? { excludeBookingId: moved } : {}) }));
     return workplace && workplace !== 'visit' ? slots.filter((s) => s.workplace === workplace) : slots;
   }
 
