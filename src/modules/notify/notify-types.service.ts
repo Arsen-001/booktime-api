@@ -5,6 +5,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { isLocale, t, type Locale } from '../../common/i18n/i18n.js';
+import { whenPhrase } from '../../common/i18n/when.js';
 import { NOTIFY_KINDS, notifyKindOf } from './kinds.js';
 
 const AREA = 'notify-types';
@@ -140,7 +141,8 @@ export class NotifyTypesService {
     if (!def) throw new ApiError('not_found', `Unknown notify kind: ${kind}`);
     const locale: Locale = isLocale(localeRaw) ? localeRaw : 'ru';
     const templates = await this.getTemplates(businessId, kind);
-    const sample = { service: 'Haircut', time: '18:00', place: 'Kaytsak Barbershop', client: 'Ани', staff: 'Ани' };
+    // {when} — «завтра в 18:00» в тексте по умолчанию (запись не на сегодня — с днём, whenPhrase)
+    const sample = { service: 'Haircut', time: '18:00', when: whenPhrase(locale, '2026-01-02T18:00', '2026-01-01'), date: '02.01', place: 'Kaytsak Barbershop', client: 'Ани', staff: 'Ани' };
     const custom = templates.push?.[locale] ?? templates.push?.ru;
     return { text: custom ? renderTemplate(custom, sample) : t(locale, def.messageKey, sample) };
   }

@@ -56,7 +56,7 @@ function memoryPrisma(seed: Record<string, Row[]>) {
       return row;
     },
   });
-  const names = ['notifyOutbox', 'businessSetting', 'notifyTypeOverride', 'staff', 'client', 'service', 'user', 'booking', 'location'];
+  const names = ['notifyOutbox', 'businessSetting', 'notifyTypeOverride', 'staff', 'client', 'service', 'user', 'booking', 'location', 'business'];
   return { tables, prisma: Object.fromEntries(names.map((n) => [n, table(n)])) as unknown as Prisma };
 }
 
@@ -82,6 +82,7 @@ function world(extra: { staff?: Row[]; settings?: Row[]; overrides?: Row[]; book
       { id: 'us_other', locale: 'ru' },
     ],
     location: [{ id: 'loc_1', tz: TZ }],
+    business: [{ id: 'biz_1', name: 'Салон Лилит' }],
     businessSetting: extra.settings ?? [],
     notifyTypeOverride: extra.overrides ?? [],
     booking: extra.bookings ?? [],
@@ -123,6 +124,8 @@ test('администратор записал клиента к мастеру
   assert.equal(m!.kind, 'staff_assigned');
   assert.equal(m!.app, 'business');
   assert.equal(m!.url, '/biz/journal?date=2026-10-07&booking=bk_1');
+  // Заголовок — название салона, а не «BookTime» (QA приложений 15.10.2026)
+  assert.equal(m!.title, 'Салон Лилит');
   // «Отправлять имя клиента» по умолчанию снята (F-05-057) — без имени, услуга и время есть
   assert.equal(m!.body, 'Вам назначена запись: Маникюр, 07.10 16:00.');
   const [o] = to(tables, 'us_owner');

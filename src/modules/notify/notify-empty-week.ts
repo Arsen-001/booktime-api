@@ -12,6 +12,9 @@ export async function notifyEmptyWeek(prisma: PrismaService, staffIds: string[])
   if (!staff.length) return 0;
   const users = await prisma.user.findMany({ where: { id: { in: staff.map((s) => s.userId!) } }, select: { id: true, locale: true } });
   const localeByUser = new Map(users.map((u) => [u.id, isLocale(u.locale) ? u.locale : ('ru' as Locale)]));
+  // Заголовок — название салона (у мастера их может быть несколько), а не «BookTime»
+  const businesses = await prisma.business.findMany({ where: { id: { in: [...new Set(staff.map((s) => s.businessId))] } }, select: { id: true, name: true } });
+  const nameOf = new Map(businesses.map((b) => [b.id, b.name]));
   const today = new Date().toISOString().slice(0, 10);
   let sent = 0;
   for (const s of staff) {
@@ -22,7 +25,7 @@ export async function notifyEmptyWeek(prisma: PrismaService, staffIds: string[])
       app: 'business',
       kind: def.kind,
       recipientUserId: s.userId,
-      title: 'BookTime',
+      title: nameOf.get(s.businessId) || 'BookTime',
       body: t(localeByUser.get(s.userId) ?? 'ru', def.messageKey, {}),
       dedupeKey: `staff:empty_week:${s.id}:${today}`,
     });

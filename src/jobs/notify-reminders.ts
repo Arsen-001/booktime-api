@@ -132,6 +132,7 @@ export async function pushReminders(prisma: PrismaService, now: Date): Promise<{
       appUserId: b.appUserId!,
       title: businessName,
       body,
+      url: `/bookings/${b.id}`,
       dedupeKey: `client:reminder:${b.id}:${local}`,
       inbox: { kind: 'booking_reminder', businessId: b.businessId, staffId: b.staffId, bookingId: b.id, params: { start: local } },
     });

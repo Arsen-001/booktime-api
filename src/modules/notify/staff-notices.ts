@@ -85,6 +85,7 @@ export class StaffNoticeContext {
   private readonly prefs = new Map<string, Promise<RichPrefs>>();
   private readonly types = new Map<string, Promise<TypeConfig>>();
   private readonly users = new Map<string, Promise<Locale>>();
+  private readonly businesses = new Map<string, Promise<string>>();
 
   constructor(readonly db: Db) {}
 
@@ -105,6 +106,16 @@ export class StaffNoticeContext {
     if (!p) {
       p = this.db.notifyTypeOverride.findUnique({ where: { businessId_code: { businessId, code } } }).then((row) => typeConfigOf(code, row));
       this.types.set(key, p);
+    }
+    return p;
+  }
+
+  /** Заголовок пуша — название бизнеса (у сотрудника может быть несколько салонов; «BookTime» не говорил, откуда пуш) */
+  businessNameOf(businessId: string): Promise<string> {
+    let p = this.businesses.get(businessId);
+    if (!p) {
+      p = this.db.business.findUnique({ where: { id: businessId }, select: { name: true } }).then((b) => b?.name || 'BookTime');
+      this.businesses.set(businessId, p);
     }
     return p;
   }
@@ -182,7 +193,7 @@ export async function enqueueStaffNotice(
     app: 'business',
     kind: def.kind,
     recipientUserId: to.userId,
-    title: 'BookTime',
+    title: await ctx.businessNameOf(to.businessId),
     body,
     url: input.url,
     dedupeKey: input.dedupeKey,

@@ -250,6 +250,7 @@ export class NotifyLogService {
     const sms = await this.prisma.businessSetting.findUnique({ where: { businessId_area: { businessId, area: 'notify-sms' } } });
     const smsConn = sms?.data as { connected?: boolean; channel?: 'sms' | 'whatsapp' } | undefined;
     const now = new Date();
+    const businessName = (await this.prisma.business.findUnique({ where: { id: businessId }, select: { name: true } }))?.name || 'BookTime';
     const label: LText =
       input.source === 'bookingWindow'
         ? { ru: 'Сообщение из окна записи', en: 'Message from the booking window', hy: 'Հաղորդագրություն գրանցման պատուհանից' }
@@ -263,8 +264,10 @@ export class NotifyLogService {
           appUserId: client.appUserId,
           businessId,
           kind: 'oneOff',
-          title: 'BookTime',
+          title: businessName,
           body: text,
+          // Сообщение из окна записи — нажатие открывает эту запись
+          url: input.bookingId ? `/bookings/${input.bookingId}` : undefined,
           dedupeKey: key,
           meta: { clientId: client.id, bookingId: input.bookingId },
         });
