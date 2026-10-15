@@ -71,7 +71,7 @@ export class NotifyDispatchService {
     let anyOk = false;
     for (const token of tokens) {
       const sender = token.platform === 'web' ? this.senders.web : this.senders.fcm;
-      const ok = await sender.send({ token: token.token, subscription: token.subscription ?? undefined }, { title: row.title, body: row.body, url: row.url ?? undefined });
+      const ok = await sender.send({ token: token.token, subscription: token.subscription ?? undefined }, { title: row.title, body: row.body, url: row.url ?? undefined, kind: row.kind });
       if (ok) anyOk = true;
       else await this.prisma.pushToken.update({ where: { id: token.id }, data: { invalidAt: now } });
     }

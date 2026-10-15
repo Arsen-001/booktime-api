@@ -9,6 +9,29 @@ export interface PushMessage {
   body: string;
   /** Куда ведёт тап: путь сайта */
   url?: string;
+  /** Вид уведомления (notify_outbox.kind) — по нему канал Android и data.kind для приложений */
+  kind?: string;
+}
+
+const MARKETING_KINDS = new Set([
+  'repeat_invite',
+  'noshow_invite',
+  'review_request',
+  'birthday',
+  'birthday_greeting',
+  'news',
+  'new_staff',
+  'new_service',
+  'mailing',
+  'free',
+]);
+
+/** Канал уведомлений Android в нативных приложениях BookTime (booktime-android, core/push): bookings, reminders, marketing */
+export function androidChannel(kind: string | undefined): 'bookings' | 'reminders' | 'marketing' {
+  if (!kind) return 'bookings';
+  if (MARKETING_KINDS.has(kind)) return 'marketing';
+  if (kind.includes('reminder') || kind === 'confirm_request') return 'reminders';
+  return 'bookings';
 }
 
 /** Что нужно, чтобы доставить конкретному токену: web — вся подписка (endpoint+keys), fcm — сам токен */
@@ -117,10 +140,13 @@ export class FcmSender implements PushSender {
             token: target.token,
             notification: { title: message.title, body: message.body },
             // Приложения BookTime (booktime-mobile): со звуком; на Android — без задержки в режиме экономии
-            android: { priority: 'HIGH', notification: { sound: 'default' } },
+            android: { priority: 'HIGH', notification: { sound: 'default', channel_id: androidChannel(message.kind) } },
             apns: { payload: { aps: { sound: 'default' } } },
-            // url — приложение открывает эту страницу по нажатию (src/lib/native/NativeAppBridge.tsx сайта)
-            ...(message.url ? { webpush: { fcm_options: { link: message.url } }, data: { url: message.url } } : {}),
+            // url — приложение открывает эту страницу по нажатию (src/lib/native/NativeAppBridge.tsx сайта); kind — вид для приложений
+            ...(message.url ? { webpush: { fcm_options: { link: message.url } } } : {}),
+            ...(message.url || message.kind
+              ? { data: { ...(message.url ? { url: message.url } : {}), ...(message.kind ? { kind: message.kind } : {}) } }
+              : {}),
           },
         }),
       });
