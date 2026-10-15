@@ -180,7 +180,8 @@ export async function loadState(db: Db, businessIds: Id[]): Promise<{ state: Loy
       locationIds: [],
       createdAt: local(r.createdAt),
     };
-    state.certificateTypes.push({ ...base, name: r.name });
+    // Архив типа — колонка (её ставит и маршрут этапа 11 PUT certificate-types/:id/archive), как у типов карт
+    state.certificateTypes.push({ ...base, name: r.name, archived: r.archived || undefined } as CertificateType);
   }
   for (const r of certs) {
     const d = dataOf<Certificate>(r.data);
@@ -464,7 +465,8 @@ function writers(db: Db, owners: Map<Id, Id>, actor: string): Record<Coll, Write
     certificateTypes: {
       upsert: (e: CertificateType) => {
         const validDays = e.expiryMode === 'fixedPeriod' ? periodDays(e.expiryPeriodValue, e.expiryPeriodUnit) : 0;
-        const cols = { ownerId: ownerOf(e.businessId), businessId: e.businessId, name: e.name.slice(0, 160), faceValue: BigInt(Math.round(e.nominal ?? 0)), validDays, data: json(e), ...audit };
+        const archived = Boolean((e as CertificateType & { archived?: boolean }).archived);
+        const cols = { ownerId: ownerOf(e.businessId), businessId: e.businessId, name: e.name.slice(0, 160), faceValue: BigInt(Math.round(e.nominal ?? 0)), validDays, archived, data: json(e), ...audit };
         return db.certificateType.upsert({ where: { id: e.id }, create: { id: e.id, ...cols, createdAt: toUtc(e.createdAt), createdBy: actor }, update: { ...cols, version: { increment: 1 } } });
       },
       remove: (ids: Id[]) => db.certificateType.deleteMany({ where: { id: { in: ids } } }),

@@ -638,6 +638,11 @@ export const REQUIRED_ARGS: Record<string, readonly ('string' | 'number' | 'bool
     "string",
     "string"
   ],
+  "setCertificateTypeArchived": [
+    "string",
+    "string",
+    "boolean"
+  ],
   "myClientIds": [
     "object",
     "string"

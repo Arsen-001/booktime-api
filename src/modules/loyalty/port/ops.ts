@@ -50,6 +50,7 @@ export const BIZ_OPS: Record<string, Permission[]> = {
   createCertificateType: MANAGE,
   updateCertificateType: MANAGE,
   deleteCertificateType: MANAGE,
+  setCertificateTypeArchived: MANAGE,
   listCertificates: ANY,
   getCertificate: ANY,
   adjustCertificate: MANAGE,
