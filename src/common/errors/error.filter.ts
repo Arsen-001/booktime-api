@@ -3,6 +3,8 @@ import type { Response } from 'express';
 import { logger } from '../logging/logger.js';
 import { captureError } from '../monitoring/sentry.js';
 import { ZodError } from 'zod';
+import { errorMessage, localeFromAcceptLanguage, type Locale } from '../i18n/i18n.js';
+import type { RequestWithContext } from '../http/context.js';
 import { InvalidLocalTime } from '../time/time.js';
 import { ApiError, type ErrorBody, type ErrorCode } from './api-error.js';
 
@@ -26,7 +28,7 @@ export class ErrorFilter implements ExceptionFilter {
     let body: ErrorBody;
     if (exception instanceof ApiError) {
       status = exception.status;
-      body = { code: exception.code, message: exception.message, ...(exception.fields ? { fields: exception.fields } : {}) };
+      body = { code: exception.code, message: localizedMessage(exception, host) ?? exception.message, ...(exception.fields ? { fields: exception.fields } : {}) };
       if (exception.retryAfter !== undefined) {
         body.retryAfter = exception.retryAfter;
         res.setHeader('Retry-After', String(exception.retryAfter));
@@ -53,4 +55,14 @@ export class ErrorFilter implements ExceptionFilter {
     }
     res.status(status).json(body);
   }
+}
+
+/**
+ * Текст ошибки на языке запроса для кодов со словарным ключом error.<код> (i18n errorMessage): язык — из
+ * Accept-Language, иначе язык сессии; ни того ни другого — английский текст из исключения.
+ */
+function localizedMessage(e: ApiError, host: ArgumentsHost): string | undefined {
+  const req = host.switchToHttp().getRequest<Partial<RequestWithContext> | undefined>();
+  const locale: Locale | undefined = localeFromAcceptLanguage(req?.headers?.['accept-language']) ?? req?.ctx?.session?.locale;
+  return locale ? errorMessage(e.code, locale) : undefined;
 }

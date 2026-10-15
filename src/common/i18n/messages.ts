@@ -42,6 +42,8 @@ const en = {
   'billing.endingSoon': 'Your BookTime subscription ends in {days} day(s). Renew it to stay visible to clients.',
   'billing.paymentFailed': "We couldn't charge your card for BookTime. We'll retry tomorrow — or pay now in Billing.",
   'billing.frozen': 'Your page is hidden from clients: the subscription was not paid. Pay to restore it — all data is kept.',
+  // ошибки API с текстом на языке запроса (common/errors/error.filter.ts): ключ error.<код>
+  'error.frozen': 'Subscription is frozen: the account is read-only until paid.',
   // Telegram-бот напоминаний (30.09.2026) — src/modules/telegram
   'tg.linked': "Done — booking reminders will arrive here.",
   'tg.nextBooking': 'Your next booking:',
@@ -125,6 +127,7 @@ const ru: Record<MessageKey, string> = {
   'billing.endingSoon': 'Подписка BookTime закончится через {days} дн. Продлите, чтобы клиенты вас видели.',
   'billing.paymentFailed': 'Не удалось списать оплату BookTime. Повторим завтра — или оплатите сейчас в разделе «Подписка».',
   'billing.frozen': 'Страница скрыта от клиентов: подписка не оплачена. Оплатите — все данные на месте.',
+  'error.frozen': 'Подписка заморожена: кабинет только для просмотра, пока она не оплачена.',
   'tg.linked': 'Готово — напоминания о записях будут приходить сюда.',
   'tg.nextBooking': 'Ближайшая запись:',
   'tg.reminder24h': '🔔 Напоминаем: завтра у вас запись',
@@ -205,6 +208,7 @@ const hy: Record<MessageKey, string> = {
   'billing.endingSoon': 'BookTime-ի բաժանորդագրությունը կավարտվի {days} օրից։ Երկարացրեք, որպեսզի հաճախորդները ձեզ տեսնեն։',
   'billing.paymentFailed': 'Չհաջողվեց գանձել BookTime-ի վճարը։ Կփորձենք վաղը, կամ վճարեք հիմա «Բաժանորդագրություն» բաժնում։',
   'billing.frozen': 'Էջը թաքցված է հաճախորդներից՝ բաժանորդագրությունը վճարված չէ։ Վճարեք՝ բոլոր տվյալները պահպանված են։',
+  'error.frozen': 'Բաժանորդագրությունը սառեցված է՝ մինչև վճարումը հաշիվը հասանելի է միայն դիտման համար։',
   'tg.linked': 'Պատրաստ է․ գրանցումների հիշեցումները կգան այստեղ։',
   'tg.nextBooking': 'Մոտակա գրանցումը՝',
   'tg.reminder24h': '🔔 Հիշեցում՝ վաղը գրանցում ունեք',
