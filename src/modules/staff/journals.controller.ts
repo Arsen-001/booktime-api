@@ -11,6 +11,7 @@ import { utcToLocal } from '../../common/time/time.js';
 import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import { auditOut, exportLogBody, exportOut, loginRowOut } from './staff.schemas.js';
 import { DATA_OP_ACTION, dataOpBody, dataOpOut, dataOpView, listDataOps, recordDataOp } from './data-ops.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 type Diff = Record<string, [unknown, unknown]>;
 
@@ -94,6 +95,7 @@ export class JournalsController {
   }
 
   @Post('exports-log')
+  @ReadOnly((req) => (req.body as { isImport?: unknown } | undefined)?.isImport !== true)
   @HttpCode(204)
   @Biz()
   @ApiOperation({ summary: 'Отметить выгрузку/загрузку файла (пишут разделы с кнопкой «Выгрузить», F-10-102)' })
@@ -128,6 +130,7 @@ export class JournalsController {
   // ─────────── «Операции с данными» (F-02-063, F-14-114, F-04-126/130): загрузки, выгрузки, массовое удаление ───────────
 
   @Post('data-ops')
+  @ReadOnly((req) => (req.body as { kind?: string } | undefined)?.kind === 'export')
   @HttpCode(200)
   @Biz()
   @RateLimit({ bucket: 'data-ops', limit: 120, windowSec: 600, by: 'session' })

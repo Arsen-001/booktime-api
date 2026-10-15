@@ -21,6 +21,7 @@ import {
   previewBody,
   spendBody,
 } from './billing.schemas.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 /**
  * Подписка и монеты бизнеса — /v1/biz/{b}/billing, /coins, /photo-slots (docs/backend/02 §18).
@@ -52,6 +53,7 @@ export class BillingController {
   }
 
   @Post('billing/preview')
+  @ReadOnly()
   @Biz()
   @ApiOperation({ summary: 'Сумма до/после при добавлении или увольнении (F-15-051)' })
   @ZodBody(previewBody)

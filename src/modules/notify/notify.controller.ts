@@ -51,6 +51,7 @@ import {
   updateTypeBody,
   webPopupBody,
 } from './notify.schemas.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 /** Кто смотрит колокольчик — «День закрыт» приходит лично владельцам (notify/day-close-notice.ts) */
 function inboxViewer(ctx: RequestContext): InboxViewer | null {
@@ -111,6 +112,7 @@ export class NotifyController {
   }
 
   @Post('notify/templates/:kind/preview')
+  @ReadOnly()
   @Biz('notify.manage')
   preview(@Param('businessId') businessId: string, @Param('kind') kind: string, @Query('locale') locale = 'ru') {
     return this.types.preview(businessId, kind, locale);
@@ -583,6 +585,7 @@ export class NotifyController {
   }
 
   @Post('staff/notify-prefs-rich/any-configured')
+  @ReadOnly()
   @Biz()
   async anyStaffPrefsConfigured(@Param('businessId') businessId: string, @Body(new Zod(anyStaffPrefsConfiguredBody)) body: z.infer<typeof anyStaffPrefsConfiguredBody>) {
     return { value: await this.more.anyStaffPrefsConfigured(businessId, body.staffIds) };

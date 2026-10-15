@@ -5,11 +5,12 @@ import { ApiError } from '../../../common/errors/api-error.js';
 import type { RequestContext } from '../../../common/http/context.js';
 import { Authed, Biz, Ctx } from '../../../common/http/guards.js';
 import { ZodBody } from '../../../common/http/openapi.js';
+import { ReadOnly } from '../../../common/http/read-only.js';
 import { Zod } from '../../../common/http/validation.js';
 import { RateLimit } from '../../../common/rate-limit/rate-limit.js';
 import { PrismaService } from '../../../common/prisma.service.js';
 import { requireAny } from '../loyalty.owner.js';
-import { BIZ_OPS, ME_OPS, PUBLIC_OPS } from './ops.js';
+import { BIZ_OPS, BIZ_READ_OPS, ME_OPS, PUBLIC_OPS } from './ops.js';
 import { LoyaltyPortRunner } from './runner.service.js';
 
 const callBody = z.object({ args: z.array(z.unknown()).max(20).default([]) });
@@ -33,6 +34,7 @@ export class LoyaltyPortController {
   @Post(':op')
   @HttpCode(200)
   @Biz()
+  @ReadOnly((req) => BIZ_READ_OPS.has(String(req.params.op)))
   @ApiOperation({ summary: 'Вызов функции раздела «Лояльность» (op — имя функции фасада)', description: OPS_DOC })
   @ZodBody(callBody)
   async call(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('op') op: string, @Body(new Zod(callBody)) body: CallBody) {

@@ -30,6 +30,7 @@ import {
   toggleServiceBody,
 } from './resources.schemas.js';
 import { ResourcesService } from './resources.service.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 /** Ресурсы: кресла, кабинеты, аппараты — /v1/biz (docs/backend/02 §9, PLAN §6 №4). Групповые события и лист
  * ожидания (F-16-036…169) — модуль journal (этап 7): /events, /waitlist, участники — записи с group_event_id. */
@@ -80,6 +81,7 @@ export class ResourcesController {
   // Литеральные сегменты объявлены ДО `:id`/`@Get()` ниже — иначе Nest принял бы их за id ресурса.
 
   @Post('free-instances')
+  @ReadOnly()
   @HttpCode(200)
   @Biz()
   @ApiOperation({ summary: 'По одному свободному экземпляру каждого ресурса услуги (F-16-011/012)' })
@@ -90,6 +92,7 @@ export class ResourcesController {
   }
 
   @Post('check-instances-free')
+  @ReadOnly()
   @HttpCode(200)
   @Biz()
   @ApiOperation({ summary: 'Выбранные вручную экземпляры всё ещё свободны? (F-16-013)' })
@@ -100,6 +103,7 @@ export class ResourcesController {
   }
 
   @Post('options')
+  @ReadOnly()
   @HttpCode(200)
   @Biz()
   @ApiOperation({ summary: 'Все активные ресурсы с отметкой занятых сейчас экземпляров (F-16-013)' })

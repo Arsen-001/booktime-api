@@ -53,6 +53,7 @@ import { ClientsService } from './clients.service.js';
 import { ClientsExtrasService } from './clients-extras.service.js';
 import { ClientsImportExportService } from './clients-import-export.service.js';
 import { ClientsBroadcastService } from './clients-broadcast.service.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 const noteBody = z.object({ note: z.string().max(2000) });
 
@@ -70,6 +71,7 @@ export class ClientsController {
   // ─────────── список / поиск (K8: фильтр и подсчёт — на сервере) ───────────
 
   @Post('clients/search')
+  @ReadOnly()
   @Biz('clients.view')
   @ZodBody(searchBody)
   @ZodOk(clientListPageOut)
@@ -86,6 +88,7 @@ export class ClientsController {
   }
 
   @Post('clients/count-matching')
+  @ReadOnly()
   @Biz('clients.view')
   @ZodBody(countMatchingBody)
   countMatching(@Param('businessId') businessId: string, @Body(new Zod(countMatchingBody)) body: z.infer<typeof countMatchingBody>) {
@@ -423,6 +426,7 @@ export class ClientsController {
   // ─────────── рассылки CRM, журнал сообщений (F-04-038…040, F-04-100) ───────────
 
   @Post('clients/bulk/audience')
+  @ReadOnly()
   @Biz('clients.view')
   @ZodBody(bulkIdsBody)
   @ApiOperation({ summary: 'Кому уйдёт рассылка из выбранных: sms / push (F-04-227)' })
@@ -569,6 +573,7 @@ export class ClientsController {
   // ─────────── выгрузка (F-04-130, P4) ───────────
 
   @Post('clients/export')
+  @ReadOnly()
   @Biz('clients.export')
   @ZodBody(exportClientsBody)
   @ZodOk(z.array(clientRowOut))

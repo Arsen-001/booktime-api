@@ -31,6 +31,7 @@ import {
   templatePatch,
 } from './schedule.schemas.js';
 import { ScheduleService } from './schedule.service.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 const date = (v: string | undefined, name: string) => {
   if (!isLocalDate(v)) throw new ApiError('validation', 'Invalid input', { [name]: 'YYYY-MM-DD' });
@@ -44,6 +45,7 @@ export class ScheduleController {
   constructor(private readonly svc: ScheduleService) {}
 
   @Post('schedule/table')
+  @ReadOnly()
   @HttpCode(200)
   @Biz()
   @ApiOperation({ summary: 'Таблица «Сотрудники × дни» с фильтрами (F-02-002/003); без staff.view — только своя строка' })
@@ -55,6 +57,7 @@ export class ScheduleController {
   }
 
   @Post('schedule/has-saved')
+  @ReadOnly()
   @HttpCode(200)
   @Biz()
   @ZodBody(hasSavedBody)
@@ -63,6 +66,7 @@ export class ScheduleController {
   }
 
   @Post('schedule/affected')
+  @ReadOnly()
   @HttpCode(200)
   @Biz()
   @ApiOperation({ summary: 'Записи, задетые правкой графика (F-02-106)' })
@@ -74,6 +78,7 @@ export class ScheduleController {
   // === stage 21 (лейн services+rest) ===
 
   @Post('schedule/day-info')
+  @ReadOnly()
   @HttpCode(200)
   @Biz('journal.view')
   @ApiOperation({ summary: 'Тип и заметка дня сотрудников на дату — колонка журнала (Г3, Г16)' })
@@ -83,6 +88,7 @@ export class ScheduleController {
   }
 
   @Post('schedule/move-candidates')
+  @ReadOnly()
   @HttpCode(200)
   @Biz('journal.edit')
   @ApiOperation({ summary: 'Кому передать записи закрываемого дня (Г3)' })
@@ -117,6 +123,7 @@ export class ScheduleController {
   }
 
   @Post('schedule/cells/snapshot')
+  @ReadOnly()
   @HttpCode(200)
   @Biz()
   @ZodBody(snapshotBody)

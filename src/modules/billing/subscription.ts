@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import { Prisma } from '../../generated/prisma/client.js';
 import { assertPaymentsAvailable, type PaymentProvider } from '../../adapters/payments/payments.js';
+import { env } from '../../common/config/env.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { newId } from '../../common/ids/ids.js';
 import { money, moneyToJson, percentOf } from '../../common/money/money.js';
@@ -40,7 +41,7 @@ export function daysUntil(at: Date): number {
  */
 export async function ensureSubscription(db: Db, businessId: string): Promise<SubRow> {
   const found = await db.subscription.findUnique({ where: { businessId } });
-  if (found) return found;
+  if (found) return keepReviewAlive(db, found);
   const biz = await db.business.findUnique({ where: { id: businessId }, select: { status: true } });
   if (!biz) throw new ApiError('not_found', 'Business not found');
   const start = startOfLocalDay(todayLocal());
@@ -49,7 +50,56 @@ export async function ensureSubscription(db: Db, businessId: string): Promise<Su
     data: [{ businessId, status: published ? 'active' : biz.status === 'frozen' ? 'frozen' : 'unpaid', paidUntil: published ? addLocal(start, 30, 'day') : start }],
     skipDuplicates: true,
   });
-  return db.subscription.findUniqueOrThrow({ where: { businessId } });
+  return keepReviewAlive(db, await db.subscription.findUniqueOrThrow({ where: { businessId } }));
+}
+
+// ─────────── бизнес проверяющих магазинов (App Store / Google Play) не замерзает ───────────
+
+/** Подписка, срок которой подходит к концу раньше этого числа дней, у бизнеса проверяющих продлевается */
+const REVIEW_HORIZON_DAYS = 8;
+/** На сколько дней вперёд продлевается срок бизнеса проверяющих */
+const REVIEW_EXTEND_DAYS = 30;
+
+/** Бизнесы, владелец которых входит номером из REVIEW_LOGIN_PHONES (вход проверяющих, modules/auth/otp.service.ts) */
+export async function reviewBusinessIds(db: Db, businessIds?: readonly string[]): Promise<Set<string>> {
+  const phones = env.REVIEW_LOGIN_PHONES;
+  if (phones.length === 0) return new Set();
+  const rows = await db.staff.findMany({
+    where: { role: 'owner', deletedAt: null, user: { phone: { in: phones } }, ...(businessIds ? { businessId: { in: [...businessIds] } } : {}) },
+    select: { businessId: true },
+  });
+  return new Set(rows.map((r) => r.businessId));
+}
+
+export async function isReviewBusiness(db: Db, businessId: string): Promise<boolean> {
+  if (env.REVIEW_LOGIN_PHONES.length === 0) return false;
+  return (await reviewBusinessIds(db, [businessId])).has(businessId);
+}
+
+/** Подписке проверяющих нужно вмешательство: отсрочка/заморозка или срок кончается в пределах REVIEW_HORIZON_DAYS */
+function reviewNeedsHeal(sub: SubRow): boolean {
+  if (sub.status === 'grace' || sub.status === 'frozen') return true;
+  if (sub.status === 'active' || sub.status === 'trial' || sub.status === 'trial_free') return sub.paidUntil < addLocal(new Date(), REVIEW_HORIZON_DAYS, 'day');
+  return false; // unpaid — черновик (не заморозка), left — бизнес ушёл сам
+}
+
+/**
+ * Единая точка (QA 15.10.2026): бизнес проверяющих магазинов (владелец — номер из REVIEW_LOGIN_PHONES) никогда не
+ * бывает просроченным или замороженным. Любое чтение подписки (ensureSubscription — экран подписки, полоса
+ * предупреждений, readOnly, заморозка запросов; billingTick — воркер раз в 5 минут) возвращает её живой: отсрочка или
+ * заморозка снимаются, срок продлевается на REVIEW_EXTEND_DAYS, бизнес снова опубликован (каталог и
+ * /v1/public/places/{id} смотрят на business.status). REVIEW_LOGIN_PHONES пуст — ни одного лишнего запроса.
+ */
+async function keepReviewAlive(db: Db, sub: SubRow): Promise<SubRow> {
+  if (env.REVIEW_LOGIN_PHONES.length === 0 || !reviewNeedsHeal(sub)) return sub;
+  if (!(await isReviewBusiness(db, sub.businessId))) return sub;
+  const extended = addLocal(startOfLocalDay(todayLocal()), REVIEW_EXTEND_DAYS, 'day');
+  const updated = await db.subscription.update({
+    where: { businessId: sub.businessId },
+    data: { status: 'active', paidUntil: sub.paidUntil > extended ? sub.paidUntil : extended, graceUntil: null, retryAt: null, warnedDays: null, version: { increment: 1 } },
+  });
+  await publish(db, sub.businessId, true);
+  return updated;
 }
 
 /** Скидка промокода за срок `months`, пока она не потрачена (В-13, F-00-021) */
@@ -120,6 +170,17 @@ export async function subscriptionView(db: Db, businessId: string) {
   };
 }
 
+/**
+ * Кабинет только для чтения (В-02: заморожен или ушёл) — для FrozenInterceptor. Читает подписку через
+ * ensureSubscription только когда она заморожена: так бизнес проверяющих оттаивает тем же путём (keepReviewAlive).
+ */
+export async function isSubscriptionFrozen(db: Db, businessId: string): Promise<boolean> {
+  const row = await db.subscription.findUnique({ where: { businessId }, select: { status: true } });
+  if (!row || (row.status !== 'frozen' && row.status !== 'left')) return false;
+  const sub = await ensureSubscription(db, businessId);
+  return sub.status === 'frozen' || sub.status === 'left';
+}
+
 // ─────────── счета ───────────
 
 export async function nextInvoiceNumber(tx: Tx): Promise<string> {
@@ -155,7 +216,7 @@ export function invoiceView(i: Prisma.BillingInvoiceGetPayload<object>) {
 // ─────────── публикация бизнеса ───────────
 
 /** Бизнес виден клиентам (F-00-024) — только когда подписка жива. Статус «на проверке» не трогаем (этап 19). */
-async function publish(tx: Tx, businessId: string, visible: boolean) {
+async function publish(tx: Db, businessId: string, visible: boolean) {
   const b = await tx.business.findUnique({ where: { id: businessId }, select: { status: true } });
   if (!b || b.status === 'moderation') return;
   const next = visible ? 'active' : 'frozen';
@@ -392,6 +453,8 @@ export interface TickResult {
   failed: number;
   grace: number;
   frozen: number;
+  /** Бизнесы проверяющих магазинов, которым сняли отсрочку/заморозку или продлили срок */
+  review: number;
 }
 
 type Notifier = (businessId: string, key: 'billing.endingSoon' | 'billing.paymentFailed' | 'billing.frozen', params: Record<string, string | number>, dedupe: string) => Promise<void>;
@@ -403,14 +466,25 @@ type Notifier = (businessId: string, key: 'billing.endingSoon' | 'billing.paymen
  * проход в тот же день ничего не удваивает (warnedDays, retryAt, ключи дублей уведомлений).
  */
 export async function billingTick(prisma: PrismaService, payments: PaymentProvider, notify: Notifier): Promise<TickResult> {
-  const res: TickResult = { warned: 0, charged: 0, failed: 0, grace: 0, frozen: 0 };
+  const res: TickResult = { warned: 0, charged: 0, failed: 0, grace: 0, frozen: 0, review: 0 };
   const prices = await loadPrices(prisma);
   const now = new Date();
   const horizon = addLocal(now, 8, 'day');
+  // Бизнесы проверяющих магазинов: не предупреждаем, не списываем, не замораживаем — продлеваем (keepReviewAlive),
+  // в т.ч. уже замороженные раньше (их нет в выборке ниже)
+  const review = await reviewBusinessIds(prisma);
+  for (const businessId of review) {
+    const sub = await prisma.subscription.findUnique({ where: { businessId } });
+    if (sub && reviewNeedsHeal(sub)) {
+      await keepReviewAlive(prisma, sub);
+      res.review++;
+    }
+  }
   const subs = await prisma.subscription.findMany({
     where: { OR: [{ status: { in: ['active', 'trial', 'trial_free'] }, paidUntil: { lt: horizon } }, { status: 'grace' }] },
   });
   for (const sub of subs) {
+    if (review.has(sub.businessId)) continue;
     const paidDate = utcToLocalDate(sub.paidUntil);
     // пробный период регистрации (trial) — как оплаченный срок: предупреждения, потом отсрочка и заморозка
     if (sub.status === 'active' || sub.status === 'trial' || sub.status === 'trial_free') {

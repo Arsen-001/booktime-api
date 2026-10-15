@@ -8,6 +8,7 @@ import { Zod } from '../../common/http/validation.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { isLocalDate } from '../../common/time/time.js';
 import { listSlotOffers, offerSlots, previewSlotOffer } from './slot-offers.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 const target = z.object({
   staffId: z.string().min(1).max(32),
@@ -26,6 +27,7 @@ export class SlotOffersController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Post('preview')
+  @ReadOnly()
   @HttpCode(200)
   @Biz('journal.edit')
   @ZodBody(previewBody)

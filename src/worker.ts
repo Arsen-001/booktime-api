@@ -197,7 +197,7 @@ const worker = new Worker(
     }
     if (job.name === 'billing.tick') {
       const res = await billingDispatch(prisma);
-      if (res.warned || res.charged || res.failed || res.grace || res.frozen) logger.info(res, 'billing.tick');
+      if (res.warned || res.charged || res.failed || res.grace || res.frozen || res.review) logger.info(res, 'billing.tick');
       return;
     }
     if (job.name === 'reports.export') {

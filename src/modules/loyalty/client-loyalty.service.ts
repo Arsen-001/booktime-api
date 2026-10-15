@@ -28,6 +28,9 @@ const SELL: Permission[] = ['loyalty.manage', 'finance.edit'];
  * LoyaltyPortRunner и port/client-ops.ts), заявки — строки этапа 11 (LoyaltyInstancesService), здесь только кто
  * что видит: клиент — только своё (appUserId из сессии), кабинет — только свой бизнес из пути.
  */
+/** Операции кабинета (`POST /v1/biz/:businessId/loyalty/app/{op}`), которые только читают: их пропускает и заморозка (В-02) */
+export const BIZ_APP_READ_OPS: ReadonlySet<string> = new Set(['listPurchaseRequests', 'countPendingPurchaseRequests', 'countVisitLoyaltyOptions', 'findLoyaltyByCode', 'getCashbackVisibleForBusiness']);
+
 @Injectable()
 export class ClientLoyaltyService {
   constructor(

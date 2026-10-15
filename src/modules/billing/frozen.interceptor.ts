@@ -1,8 +1,11 @@
 import { Injectable, type CallHandler, type ExecutionContext, type NestInterceptor } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { from, switchMap, type Observable } from 'rxjs';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestWithContext } from '../../common/http/context.js';
+import { isReadOnlyRequest, READ_ONLY_KEY } from '../../common/http/read-only.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { isSubscriptionFrozen } from './subscription.js';
 
 /** Что можно в заморозке (06 §3.4): оплатить, монеты, настройки/реквизиты, отметить «пришёл/не пришёл» */
 const ALLOWED = [/^\/billing(\/|$)/, /^\/coins(\/|$)/, /^\/settings(\/|$)/, /^\/legal(\/|$)/, /^\/help-requests(\/|$)/, /^\/bookings\/[^/]+\/status$/];
@@ -10,12 +13,17 @@ const BIZ_PATH = /^\/v1\/biz\/([^/]+)(\/[^?]*)?/;
 
 /**
  * В-02: «3 дня отсрочки → только чтение». Кабинет замороженного бизнеса открывается, но любая запись, кроме
- * списка выше, отвечает 423 `frozen` — экран показывает «Оплатите подписку». Черновик (`unpaid`) не ограничен:
- * самостоятельно зарегистрированный настраивает всё бесплатно.
+ * списка выше, отвечает 423 `frozen` — экран показывает «Оплатите подписку». Чтение POST-запросом (поиск клиентов,
+ * таблица графика, операции чтения лояльности…) помечено @ReadOnly() и проходит, как GET. Черновик (`unpaid`) не
+ * ограничен: самостоятельно зарегистрированный настраивает всё бесплатно. Бизнес проверяющих магазинов не
+ * замораживается (isSubscriptionFrozen → keepReviewAlive).
  */
 @Injectable()
 export class FrozenInterceptor implements NestInterceptor {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reflector: Reflector,
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = context.switchToHttp().getRequest<RequestWithContext>();
@@ -24,10 +32,11 @@ export class FrozenInterceptor implements NestInterceptor {
     if (!m) return next.handle();
     const rest = m[2] ?? '/';
     if (ALLOWED.some((re) => re.test(rest))) return next.handle();
+    if (isReadOnlyRequest(this.reflector.get(READ_ONLY_KEY, context.getHandler()), req)) return next.handle();
     const businessId = m[1]!;
-    return from(this.prisma.subscription.findUnique({ where: { businessId }, select: { status: true } })).pipe(
-      switchMap((sub) => {
-        if (sub && (sub.status === 'frozen' || sub.status === 'left')) throw new ApiError('frozen', 'Subscription is frozen: read-only until paid');
+    return from(isSubscriptionFrozen(this.prisma, businessId)).pipe(
+      switchMap((frozen) => {
+        if (frozen) throw new ApiError('frozen', 'Subscription is frozen: read-only until paid');
         return next.handle();
       }),
     );

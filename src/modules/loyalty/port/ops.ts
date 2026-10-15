@@ -124,6 +124,13 @@ export const BIZ_OPS: Record<string, Permission[]> = {
   chargeBookingAutoDebit: VISIT,
 };
 
+/**
+ * Функции, которые только читают (QA 15.10.2026): их зовёт и кабинет замороженного бизнеса (В-02) — FrozenInterceptor
+ * пропускает `POST …/loyalty/x/{op}` для них, как GET. Это ровно функции с правом ANY: любой сотрудник может только
+ * смотреть — всё, что меняет данные, требует MANAGE / SELL / VISIT / SERVICE_FLAG (проверяет loyalty-ops.test.ts).
+ */
+export const BIZ_READ_OPS: ReadonlySet<string> = new Set(Object.entries(BIZ_OPS).filter(([, perms]) => perms === ANY).map(([op]) => op));
+
 /** Клиент приложения (/v1/me): первый аргумент — его userId (listMyLoyalty) или бизнес (реквизиты оплаты) */
 export const ME_OPS = new Set(['listMyLoyalty', 'getOnlineSalePayment']);
 

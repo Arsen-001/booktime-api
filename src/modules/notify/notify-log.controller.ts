@@ -8,6 +8,7 @@ import { Zod } from '../../common/http/validation.js';
 import { isLocalDate, isLocalDateTime, localDayRangeUtc } from '../../common/time/time.js';
 import { NotifyLogService } from './notify-log.service.js';
 import { NotifyMailingsService } from './notify-mailings.service.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 const channel = z.enum(['push', 'adminApp', 'email', 'sms', 'brandedApp', 'whatsapp', 'telegram']);
 const mailingChannel = z.enum(['sms', 'pushOwnApp', 'pushClientApp']);
@@ -149,6 +150,7 @@ export class NotifyLogController {
   }
 
   @Post('notify/mailings/audience-count')
+  @ReadOnly()
   @Biz('notify.mailings')
   async audienceCount(@Param('businessId') businessId: string, @Body(new Zod(audienceCountBody)) body: z.infer<typeof audienceCountBody>) {
     return { value: await this.mailings.countAudience(businessId, body.businessIds, body.filter) };

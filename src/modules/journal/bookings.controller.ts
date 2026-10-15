@@ -36,6 +36,7 @@ import {
   statusBody,
 } from './journal.schemas.js';
 import type { BookingStatus } from './rules.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 type B = { businessId: string };
 
@@ -98,6 +99,7 @@ export class BookingsController {
   }
 
   @Post('extras')
+  @ReadOnly()
   @HttpCode(200)
   @Biz('journal.view')
   @ApiOperation({ summary: 'Доп. данные визитов пачкой (цвет, категории, оплаты) — одним запросом на сетку дня' })

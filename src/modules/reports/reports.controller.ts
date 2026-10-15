@@ -39,6 +39,7 @@ import {
   stockWriteOffQuery,
   workloadIncludedBody,
 } from './reports.schemas.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 /**
  * Отчёты (docs/backend/02 §16): «один маршрут на отчёт» — `GET /v1/biz/{b}/reports/{name}`, диспетчер
@@ -114,6 +115,7 @@ export class ReportsController {
   }
 
   @Post('exports')
+  @ReadOnly((req) => ['emailLink', 'browserDownload'].includes(String((req.body as { operation?: unknown } | undefined)?.operation)))
   @Biz()
   @ApiOperation({ summary: 'Ручной след в журнале выгрузок/загрузок — кнопка «Выгрузить»/«Загрузить» вне REPORT_REGISTRY (F-12-074…080)' })
   @ZodBody(manualExportBody)
@@ -138,6 +140,7 @@ export class ReportsController {
   }
 
   @Post(':name/export')
+  @ReadOnly()
   @Biz('reports.view')
   @ApiOperation({ summary: 'Поставить выгрузку отчёта в очередь воркера (PLAN §6 №16)' })
   requestExport(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('name') name: string, @Query() query: Record<string, string>) {

@@ -9,6 +9,7 @@ import { Zod } from '../../common/http/validation.js';
 import { isLocalDate } from '../../common/time/time.js';
 import { JournalAccess, csv } from '../journal/access.js';
 import { JournalMoreService } from './journal-more.service.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 type B = { businessId: string };
 const date = (v: string | undefined, name: string) => {
@@ -115,6 +116,7 @@ export class JournalMoreController {
   }
 
   @Post('package-slots')
+  @ReadOnly()
   @HttpCode(200)
   @Biz('journal.view')
   @ApiOperation({ summary: 'Окна, где помещается весь пакет услуг (F-01-134, F-02-069)' })

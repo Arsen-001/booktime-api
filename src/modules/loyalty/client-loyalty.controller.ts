@@ -4,9 +4,10 @@ import { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
 import { Authed, Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody } from '../../common/http/openapi.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 import { Zod } from '../../common/http/validation.js';
 import { RateLimit } from '../../common/rate-limit/rate-limit.js';
-import { ClientLoyaltyService } from './client-loyalty.service.js';
+import { BIZ_APP_READ_OPS, ClientLoyaltyService } from './client-loyalty.service.js';
 
 const callBody = z.object({ args: z.array(z.unknown()).max(10).default([]) });
 type CallBody = z.infer<typeof callBody>;
@@ -57,6 +58,7 @@ export class BizClientLoyaltyController {
   @Post(':op')
   @HttpCode(200)
   @Biz()
+  @ReadOnly((req) => BIZ_APP_READ_OPS.has(String(req.params.op)))
   @ApiOperation({ summary: 'Кабинет: заявки приложения (В-17), лояльность визита (F-14-098/102), показ кэшбэка (F-14-053)', description: DOC })
   @ZodBody(callBody)
   call(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('op') op: string, @Body(new Zod(callBody)) body: CallBody) {

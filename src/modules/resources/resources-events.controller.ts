@@ -29,6 +29,7 @@ import {
   updateWaitlistEntryBody,
 } from './resources-events.schemas.js';
 import { ResourcesEventsService } from './resources-events.service.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 /**
  * stage 21 (аудит фасадов, лейн «resources»): участники группового события, лист ожидания СВОЕГО экрана,
@@ -173,6 +174,7 @@ export class ResourcesEventsController {
   }
 
   @Post('series/by-ids')
+  @ReadOnly()
   @HttpCode(200)
   @Biz()
   @ZodBody(seriesIdsBody)

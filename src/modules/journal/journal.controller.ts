@@ -43,6 +43,7 @@ import {
 } from './journal.schemas.js';
 import type { BookingStatus } from './rules.js';
 import { SeriesService } from './series.service.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 
 type B = { businessId: string };
 const date = (v: string | undefined, name: string) => {
@@ -95,6 +96,7 @@ export class JournalController {
   // ─────────── проверки, визит, зеркало, события ───────────
 
   @Post('journal/check')
+  @ReadOnly()
   @HttpCode(200)
   @Biz('journal.view')
   @ApiOperation({ summary: 'Занято ли время человека во всех его бизнесах / экземпляр ресурса; внутри ли часов (F-01-034, F-01-215)' })
@@ -104,6 +106,7 @@ export class JournalController {
   }
 
   @Post('journal/visit-id')
+  @ReadOnly()
   @HttpCode(200)
   @Biz('journal.edit')
   @ZodBody(visitIdBody)
@@ -157,6 +160,7 @@ export class JournalController {
   }
 
   @Post('journal/data-ops')
+  @ReadOnly((req) => (req.body as { kind?: string } | undefined)?.kind === 'export')
   @HttpCode(200)
   @Biz('journal.view')
   @ZodBody(dataOpBody)
@@ -213,6 +217,7 @@ export class JournalController {
   }
 
   @Post('series/preview')
+  @ReadOnly()
   @HttpCode(200)
   @Biz('journal.view')
   @ZodBody(seriesPreviewBody)
@@ -293,6 +298,7 @@ export class JournalController {
   }
 
   @Post('booking-packages/check-linked')
+  @ReadOnly()
   @HttpCode(200)
   @Biz('journal.view')
   @ZodBody(checkLinkedBody)
