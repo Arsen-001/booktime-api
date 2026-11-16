@@ -100,16 +100,20 @@ export class AppStaffService {
   /** Z-отчёт (закрытие смены), F-14-122: визиты «пришёл» дня + разбивка по способу оплаты (кабинет уже пишет
    *  оплату визита в BookingPayment — этап 12; методы группируем через PaymentMethod.kind, custom → cash). */
   async getDayZReport(businessId: string, date: string, staffId?: string) {
-    const from = new Date(`${date}T00:00:00.000Z`);
-    const to = new Date(from.getTime() + 86_400_000);
+    // День — по Еревану, как весь сервер (было от полуночи UTC: визиты 00:00–04:00 уходили во вчерашний отчёт);
+    // удалённая запись не считается и со статусом «Пришёл» (как расчёт зарплаты и мок, проход 17.11)
+    const { from, to } = localDayRangeUtc(date);
     const bookings = await this.prisma.booking.findMany({
-      where: { businessId, status: ARRIVED, startAt: { gte: from, lt: to }, ...(staffId ? { staffId } : {}) },
+      where: { businessId, status: ARRIVED, deletedAt: null, startAt: { gte: from, lt: to }, ...(staffId ? { staffId } : {}) },
+      orderBy: { startAt: 'asc' },
     });
-    const [clients, staffRows, methods, payments] = await Promise.all([
-      this.prisma.client.findMany({ where: { businessId } }),
-      this.prisma.staff.findMany({ where: { businessId } }),
+    const clientIds = [...new Set(bookings.map((b) => b.clientId).filter((x): x is string => Boolean(x)))];
+    const [clients, staffRows, methods, payments, views] = await Promise.all([
+      clientIds.length ? this.prisma.client.findMany({ where: { businessId, id: { in: clientIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
+      this.prisma.staff.findMany({ where: { businessId, id: { in: [...new Set(bookings.map((b) => b.staffId))] } }, select: { id: true, name: true } }),
       this.prisma.paymentMethod.findMany({ where: { businessId } }),
       this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: { in: bookings.map((b) => b.id) }, cancelled: false } }),
+      this.bookings.views(this.prisma, bookings),
     ]);
     const clientById = new Map(clients.map((c) => [c.id, c]));
     const staffById = new Map(staffRows.map((s) => [s.id, s]));
@@ -117,16 +121,14 @@ export class AppStaffService {
     const paymentsByBooking = new Map<string, typeof payments>();
     for (const p of payments) paymentsByBooking.set(p.bookingId, [...(paymentsByBooking.get(p.bookingId) ?? []), p]);
 
-    const rows = await Promise.all(
-      bookings.map(async (booking) => {
-        const client = clientById.get(booking.clientId ?? '');
-        const staff = staffById.get(booking.staffId);
-        const recorded = paymentsByBooking.get(booking.id) ?? [];
-        const paidTotal = recorded.length ? recorded.reduce((s, p) => s + Number(p.amount) - Number(p.refundedAmount), 0) : Number(booking.total);
-        const view = await this.bookings.view(this.prisma, booking);
-        return { booking: view, clientName: client?.name ?? booking.visitorName ?? 'Гость', staffName: staff?.name ?? '—', total: Number(booking.total), paidTotal };
-      }),
-    );
+    const rows = bookings.map((booking, i) => {
+      const client = clientById.get(booking.clientId ?? '');
+      const staff = staffById.get(booking.staffId);
+      const recorded = paymentsByBooking.get(booking.id) ?? [];
+      const paidTotal = recorded.length ? recorded.reduce((s, p) => s + Number(p.amount) - Number(p.refundedAmount), 0) : Number(booking.total);
+      // Имя гостя — подписью экрана на языке человека (как мок: пустое имя → «Гость»)
+      return { booking: views[i]!, clientName: client?.name ?? booking.visitorName ?? '', staffName: staff?.name ?? '—', total: Number(booking.total), paidTotal };
+    });
     const byMethod: Record<'cash' | 'card' | 'loyalty', number> = { cash: 0, card: 0, loyalty: 0 };
     for (const booking of bookings) {
       const recorded = paymentsByBooking.get(booking.id) ?? [];

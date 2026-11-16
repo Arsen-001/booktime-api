@@ -1,4 +1,4 @@
-import { SetMetadata } from '@nestjs/common';
+import { applyDecorators, HttpCode, SetMetadata } from '@nestjs/common';
 import type { RequestWithContext } from './context.js';
 
 export const READ_ONLY_KEY = 'bt:readOnly';
@@ -11,9 +11,12 @@ export type ReadOnlyWhen = (req: RequestWithContext) => boolean;
  * структурное, поэтому не GET. Замороженный бизнес (В-02, 423 `frozen`) такие запросы выполняет — FrozenInterceptor
  * пропускает их, как GET. Без аргумента — весь маршрут; с функцией — только вызовы, для которых она вернула true.
  * Ставить только на обработчики, которые ничего не меняют в данных бизнеса (след в журнале выгрузок допустим).
+ * Без аргумента маршрут ещё и отвечает 200, а не 201 Nest по умолчанию для POST: он ничего не создаёт
+ * (проход 17.11: `POST /clients/search` отвечал 201). С функцией код ответа не меняется — часть вызовов пишет.
  */
 export function ReadOnly(when?: ReadOnlyWhen) {
-  return SetMetadata(READ_ONLY_KEY, when ?? true);
+  if (when) return SetMetadata(READ_ONLY_KEY, when);
+  return applyDecorators(SetMetadata(READ_ONLY_KEY, true), HttpCode(200));
 }
 
 /** Значение метки ReadOnly → пропускать ли этот запрос (для FrozenInterceptor) */

@@ -9,6 +9,7 @@ import { moneyToJson } from '../../common/money/money.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import type { applyLineBody } from './loyalty.schemas.js';
 import { networkBusinessIds, ownerOf } from './loyalty.owner.js';
+import { utcToLocalDate } from '../../common/time/time.js';
 
 type ApplyLine = z.infer<typeof applyLineBody>;
 
@@ -265,8 +266,8 @@ export class LoyaltyInstancesService {
         name: c.type.name,
         total: moneyToJson(c.total),
         balance: moneyToJson(c.balance),
-        soldAt: c.soldAt.toISOString().slice(0, 10),
-        expiresAt: c.expiresAt.toISOString().slice(0, 10),
+        soldAt: utcToLocalDate(c.soldAt),
+        expiresAt: utcToLocalDate(c.expiresAt),
         code: c.code,
       })),
       subscriptions: subs.map((s) => ({
@@ -276,8 +277,8 @@ export class LoyaltyInstancesService {
         name: s.type.name,
         status: (s.expiresAt.getTime() < now ? 'expired' : 'active') as 'active' | 'expired',
         frozen: s.status === 'frozen',
-        soldAt: s.soldAt.toISOString().slice(0, 10),
-        expiresAt: s.expiresAt.toISOString().slice(0, 10),
+        soldAt: utcToLocalDate(s.soldAt),
+        expiresAt: utcToLocalDate(s.expiresAt),
         totalVisits: s.totalVisits ?? 0,
         remainingVisits: s.remainingVisits ?? 0,
         code: s.code,

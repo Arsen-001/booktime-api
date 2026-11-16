@@ -12,6 +12,8 @@
  * PayrollComputeService.productSalesPay (как productSalesPay мока).
  */
 
+import { utcToLocal, utcToLocalDate } from '../../common/time/time.js';
+
 // ─────────────────────────── Ставка (% или сумма) ───────────────────────────
 
 export type PayoutUnit = 'percent' | 'amount';
@@ -72,12 +74,25 @@ export interface GroupEventsBlock {
   threshold: number;
 }
 
+/** F-09-008/015: ставки за личные услуги при ассистировании (AssistRates сайта) */
+export interface AssistRates {
+  withoutAssistant: PayoutValue;
+  withAssistant?: PayoutValue;
+  asAssistant: PayoutValue;
+}
+
+export function defaultAssistRates(): AssistRates {
+  return { withoutAssistant: { ...DEFAULT_PAYOUT }, asAssistant: { ...DEFAULT_PAYOUT } };
+}
+
 export interface PersonalServicesBlock {
   enabled: boolean;
   defaultPayout: PayoutValue;
   overrides: PayoutOverride[];
   demoConsumablesPercent?: number;
   consumables: ConsumablesSettings;
+  /** Схемы до 17.11 — без поля (сервер его отбрасывал); отдаём с ставками по умолчанию (schemeView) */
+  assistRates?: AssistRates;
   loyaltyAdjustment: LoyaltyAdjustmentBlock;
   groupEvents: GroupEventsBlock;
 }
@@ -185,6 +200,7 @@ export function emptySchemeBlocks(): SchemeBlocks {
       overrides: [],
       demoConsumablesPercent: 0,
       consumables: defaultConsumablesSettings(),
+      assistRates: defaultAssistRates(),
       loyaltyAdjustment: defaultLoyaltyAdjustment(),
       groupEvents: defaultGroupEvents(),
     },
@@ -362,12 +378,14 @@ function lineLabel(service: EngineService | undefined, line: EngineServiceLine):
   return service ? service.name : line.serviceId;
 }
 
+// День и время визита — по Еревану, как booking.start мока (было по UTC: в «Расчёте за день» визит 10:00 стоял как
+// 06:00, а визиты 00:00–04:00 уходили во вчерашний день и выпадали из расчёта; проход 17.11)
 function localDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return utcToLocalDate(d);
 }
 
 function localTime(d: Date): string {
-  return d.toISOString().slice(11, 16);
+  return utcToLocal(d).slice(11, 16);
 }
 
 export interface ComputeDayInput {

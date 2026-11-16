@@ -43,6 +43,32 @@ test('«Расчёт» в приложении: визиты 00:00–04:00 пе�
   assert.equal(calc.servicesValue, 2000 + 3000 + 4000);
 });
 
+test('Z-отчёт в приложении: день по Еревану, удалённые «Пришёл» не считаются, разбивка по кассам сходится с «Итого» (проход 17.11)', async () => {
+  const visits = [
+    { id: 'bk_night', startAt: new Date('2026-11-16T22:06:00Z'), total: 7000n, staffId: 'st_1' }, // 17.11 02:06 — этот день
+    { id: 'bk_day', startAt: new Date('2026-11-17T08:00:00Z'), total: 5000n, staffId: 'st_2' }, // 17.11 12:00
+    { id: 'bk_yesterday', startAt: new Date('2026-11-16T19:30:00Z'), total: 1000n, staffId: 'st_1' }, // 16.11 23:30 — вчера
+    { id: 'bk_deleted', startAt: new Date('2026-11-17T09:00:00Z'), total: 6000n, staffId: 'st_1', deletedAt: new Date('2026-11-17T10:00:00Z') },
+  ].map((b) => ({ deletedAt: null as Date | null, ...b, businessId: 'biz_1', status: 'arrived', durationMin: 60, clientId: null, visitorName: null, locationId: 'loc_1' }));
+  const prisma = {
+    booking: {
+      findMany: async ({ where }: { where: { businessId: string; status: string; deletedAt?: null; startAt: Range; staffId?: string } }) =>
+        visits.filter((b) => b.businessId === where.businessId && b.status === where.status && (where.deletedAt !== null || b.deletedAt === null) && inRange(b.startAt, where.startAt) && (!where.staffId || b.staffId === where.staffId)),
+    },
+    client: { findMany: async () => [] },
+    staff: { findMany: async () => [{ id: 'st_1', name: 'Ани' }, { id: 'st_2', name: 'Ева' }] },
+    paymentMethod: { findMany: async () => [{ key: 'card', kind: 'card' }] },
+    bookingPayment: { findMany: async () => [{ bookingId: 'bk_day', amount: 5000n, refundedAmount: 0n, kind: 'money', methodKey: 'card' }] },
+  };
+  const bookings = { views: async (_db: unknown, rows: { id: string }[]) => rows.map((r) => ({ id: r.id })) };
+  const svc = new AppStaffService(prisma as never, bookings as never, {} as never);
+  const z = await svc.getDayZReport('biz_1', '2026-11-17');
+  assert.deepEqual(z.rows.map((r) => r.booking.id), ['bk_night', 'bk_day']);
+  assert.equal(z.total, 12000);
+  assert.deepEqual(z.byMethod, { cash: 7000, card: 5000, loyalty: 0 });
+  assert.equal(z.rows[0]!.clientName, '', 'гость — подписью экрана на языке человека');
+});
+
 /** Бизнес biz_1: карточка клиента au_mine, запись bk_mine, запись bk_app (записался au_app — без карточки), чужая запись bk_other */
 function messageService() {
   const sent: { appUserId: string; businessId: string; bookingId?: string }[] = [];

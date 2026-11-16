@@ -9,6 +9,14 @@ import { FinanceCatalogService } from '../finance/finance-catalog.service.js';
 import { PayrollComputeService } from './payroll-compute.service.js';
 import { canMarkPaid, nextApprovalStatus, roundMoney, settlementBalance, type SettlementEntryKind, type StatementApprovalStatus } from './payroll-engine.js';
 import type { PayoutBody, SettlementEntryBody, SettlementSheetBody } from './payroll.schemas.js';
+import { isLocalDate, isLocalDateTime, localDayRangeUtc, localToUtc } from '../../common/time/time.js';
+
+/** Граница периода из запроса: день → начало/конец дня по Еревану; 'YYYY-MM-DDTHH:mm' → этот момент по Еревану */
+function localBound(v: string, side: 'from' | 'to'): Date {
+  if (isLocalDate(v)) return side === 'from' ? localDayRangeUtc(v).from : new Date(localDayRangeUtc(v).to.getTime() - 1);
+  if (isLocalDateTime(v)) return localToUtc(v);
+  return new Date(v);
+}
 
 function entryView(r: { id: string; businessId: string; locationId: string | null; staffId: string; kind: string; amount: bigint; label: string; comment: string | null; periodFrom: Date | null; periodTo: Date | null; operationId: string | null; status: string | null; createdAt: Date; createdBy: string | null }) {
   return {
@@ -19,8 +27,11 @@ function entryView(r: { id: string; businessId: string; locationId: string | nul
     amount: Number(r.amount),
     label: r.label,
     comment: r.comment ?? undefined,
-    periodFrom: r.periodFrom ? r.periodFrom.toISOString() : undefined,
-    periodTo: r.periodTo ? r.periodTo.toISOString() : undefined,
+    // Период ведомости — дни (в базе полночь UTC дня); отдаём как мок: «с начала первого дня по конец последнего» по
+    // Еревану, без пояса. Было мгновение UTC — «Расчёт за день» не узнавал свою ведомость и предлагал начислить зарплату
+    // за день ещё раз (проход 17.11)
+    periodFrom: r.periodFrom ? `${r.periodFrom.toISOString().slice(0, 10)}T00:00` : undefined,
+    periodTo: r.periodTo ? `${r.periodTo.toISOString().slice(0, 10)}T23:59` : undefined,
     operationId: r.operationId ?? undefined,
     status: (r.status as 'draft' | 'accrued' | null) ?? undefined,
     createdAt: r.createdAt.toISOString(),
@@ -47,7 +58,8 @@ export class PayrollSettlementsService {
     const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
     if (!staff) throw new ApiError('not_found', 'Staff not found');
     const rows = await this.prisma.payrollSettlementEntry.findMany({
-      where: { businessId, staffId, ...(periodFrom && periodTo ? { createdAt: { gte: new Date(periodFrom), lte: new Date(periodTo) } } : {}) },
+      // Границы — местное время Еревана ('YYYY-MM-DDTHH:mm' или день), не пояс машины сервера
+      where: { businessId, staffId, ...(periodFrom && periodTo ? { createdAt: { gte: localBound(periodFrom, 'from'), lte: localBound(periodTo, 'to') } } : {}) },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map(entryView);
@@ -77,7 +89,8 @@ export class PayrollSettlementsService {
     const id = newId('payrollSettlementEntry');
     const from = new Date(`${body.periodFrom}T00:00:00.000Z`);
     const to = new Date(`${body.periodTo}T00:00:00.000Z`);
-    const label = `${body.periodFrom} – ${body.periodTo}`;
+    // Подпись — как у мока: «17.11.2026–17.11.2026»
+    const label = `${body.periodFrom.split('-').reverse().join('.')}–${body.periodTo.split('-').reverse().join('.')}`;
     await this.prisma.$transaction(async (tx) => {
       await tx.payrollSettlementEntry.create({
         data: { id, businessId, locationId: body.locationId, staffId: body.staffId, kind: 'sheet', amount: BigInt(Math.round(statement.total)), label, comment: body.comment, periodFrom: from, periodTo: to, status: body.draft ? 'draft' : 'accrued', createdBy: ctx.member!.staffId },

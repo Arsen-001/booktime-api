@@ -80,6 +80,9 @@ export class OrderIntakeService {
 
     await this.prisma.$transaction(async (tx) => {
       const existing = await findIntakeService(tx, businessId);
+      // Выключено и ни разу не включали — заводить нечего: скрытые «Приём / Выдача заказа» появляются только при
+      // первом включении (проход 17.11: выключенный приём заводил обе услуги без категории)
+      if (!existing && !body.enabled) return;
       const id = existing?.id ?? newId('service');
       if (existing) {
         await tx.service.update({

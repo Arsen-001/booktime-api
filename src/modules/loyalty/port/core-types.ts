@@ -42,12 +42,12 @@ export type SphereId =
   | 'dental'
   | 'fitness'
   | 'carwash'
-  // сферы заказов (03.10.2026): ателье, ремонт телефонов и техники, химчистка, детейлинг
+  | 'general'
+  // ⭐ Сферы «заказов» (владелец, 03.10.2026): клиент сдаёт вещь или технику и забирает, когда готово
   | 'tailor'
   | 'repair'
   | 'drycleaning'
-  | 'detailing'
-  | 'general';
+  | 'detailing';
 
 /** Районы Еревана (административные) */
 export type DistrictId =
@@ -325,7 +325,14 @@ export interface ServiceCategory {
   order: number;
 }
 
-export type ServiceKind = 'individual' | 'group';
+/**
+ * 'intake' — ⭐ «Приём заказа» мастерской (запись на сдачу по времени, 05.10.2026; хозяин — orders): скрытая услуга, которой
+ * клиент записывается принести вещь; в каталоге, поиске, выборе услуг журнала и в услугах кабинета её нет
+ * (isIntakeService). Ведёт себя как индивидуальная: окна, запись, напоминания — общий движок.
+ * 'pickup' — ⭐ «Выдача заказа» (выдача по времени, 06.10.2026; хозяин — orders): вторая скрытая услуга — клиент по ссылке
+ * готового заказа /o/<код> выбирает, когда заберёт; не онлайн (onlineBookable = false), записывает только api заказов.
+ */
+export type ServiceKind = 'individual' | 'group' | 'intake' | 'pickup';
 
 export interface Service {
   id: Id;

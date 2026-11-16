@@ -28,12 +28,16 @@ export const groupEventsBody = z.object({
   threshold: z.number().min(0),
 });
 
+/** F-09-008/015: три ставки за личные услуги при ассистировании (как AssistRates сайта); до 17.11 сервер их отбрасывал */
+export const assistRatesBody = z.object({ withoutAssistant: payoutValueBody, withAssistant: payoutValueBody.optional(), asAssistant: payoutValueBody });
+
 export const personalServicesBlockBody = z.object({
   enabled: z.boolean(),
   defaultPayout: payoutValueBody,
   overrides: z.array(payoutOverrideBody),
   demoConsumablesPercent: z.number().min(0).max(100).optional(),
   consumables: consumablesSettingsBody,
+  assistRates: assistRatesBody.optional(),
   loyaltyAdjustment: loyaltyAdjustmentBody,
   groupEvents: groupEventsBody,
 });

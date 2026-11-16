@@ -6,7 +6,7 @@ import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { DEFAULT_TZ, localDayRangeUtc } from '../../common/time/time.js';
-import { emptySchemeBlocks, evaluateCriterion, pickRuleForChart, resolveActiveChartAssignment, roundMoney, type PayrollChartAssignmentData, type SchemeBlocks } from './payroll-engine.js';
+import { defaultAssistRates, emptySchemeBlocks, evaluateCriterion, pickRuleForChart, resolveActiveChartAssignment, roundMoney, type PayrollChartAssignmentData, type SchemeBlocks } from './payroll-engine.js';
 import type { AssignmentBody, BonusPenaltyTypeBody, ChartBody, CriterionBody, GeneralSettingsBody, PayrollStaffRightsBody, RuleBody, SchemeBlocksBody } from './payroll.schemas.js';
 
 function jsonOf<T>(v: T): Prisma.InputJsonValue {
@@ -31,7 +31,10 @@ function settingsView(r: { locationId: string; businessId: string; accrualDateBa
 }
 
 function schemeView(r: { staffId: string; data: unknown; createdAt: Date; updatedAt: Date; version: number }) {
-  return { staffId: r.staffId, ...(r.data as SchemeBlocks), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), version: r.version };
+  const data = r.data as SchemeBlocks;
+  // Схемы до 17.11 сохранены без ставок ассистента (тело их отбрасывало) — отдаём в полной форме, как у новой схемы
+  const ps = data.personalServices && !data.personalServices.assistRates ? { ...data.personalServices, assistRates: defaultAssistRates() } : data.personalServices;
+  return { staffId: r.staffId, ...data, personalServices: ps, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), version: r.version };
 }
 
 function ruleView(r: { id: string; businessId: string; name: string; data: unknown; createdAt: Date; updatedAt: Date; version: number }) {

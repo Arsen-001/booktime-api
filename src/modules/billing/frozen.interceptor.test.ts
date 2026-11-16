@@ -12,6 +12,7 @@ process.env.DATABASE_URL ??= 'mysql://test:test@localhost:3306/test';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
 
 const { Reflector } = await import('@nestjs/core');
+const { HTTP_CODE_METADATA } = await import('@nestjs/common/constants.js');
 const { lastValueFrom, of } = await import('rxjs');
 const { FrozenInterceptor } = await import('./frozen.interceptor.js');
 const { READ_ONLY_KEY } = await import('../../common/http/read-only.js');
@@ -165,4 +166,12 @@ test('операции чтения лояльности — только чте
     if (/^(create|update|delete|set|issue|sell|adjust|void|refund|open|topup|charge|cancel|commit|reverse|sync|confirm|reject|duplicate)/.test(op)) assert.ok(!BIZ_READ_OPS.has(op), `${op} must not be read-only`);
   }
   for (const op of BIZ_APP_READ_OPS) assert.match(op, /^(list|count|find|get)/);
+});
+
+test('POST-чтение с @ReadOnly() отвечает 200, а не 201 (проход 17.11: clients/search)', () => {
+  const reflector = new Reflector();
+  assert.equal(reflector.get(HTTP_CODE_METADATA, ClientsController.prototype.search), 200);
+  assert.equal(reflector.get(HTTP_CODE_METADATA, ClientsController.prototype.countMatching), 200);
+  // запись остаётся 201
+  assert.equal(reflector.get(HTTP_CODE_METADATA, ClientsController.prototype.createClient), undefined);
 });

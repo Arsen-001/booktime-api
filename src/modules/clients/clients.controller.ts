@@ -8,6 +8,7 @@ import { requestBase } from '../uploads/uploads.controller.js';
 import { z } from 'zod';
 import type { RequestContext, RequestWithContext } from '../../common/http/context.js';
 import { Biz, Ctx } from '../../common/http/guards.js';
+import { ApiError } from '../../common/errors/api-error.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { ifMatch } from '../../common/http/version.js';
@@ -168,8 +169,10 @@ export class ClientsController {
     return this.extras.getSettings(businessId);
   }
 
+  // Журнал загрузок видит тот, кто может загружать (clients.edit, как POST clients/import); было settings.manage —
+  // администратор загружал базу, но не видел, как она загрузилась (проход 17.11)
   @Get('clients/import-runs')
-  @Biz('settings.manage')
+  @Biz('clients.edit')
   @ZodOk(z.array(importRunOut))
   listImportRuns(@Param('businessId') businessId: string) {
     return this.importExport.listImportRuns(businessId);
@@ -541,10 +544,15 @@ export class ClientsController {
 
   // ─────────── тонкие права «Клиентская база» (F-04-194…204) ───────────
 
+  /**
+   * Свои тонкие права читает сам сотрудник (кабинет администратора сужает по ним экраны клиентов), чужие — `staff.manage`
+   * (проход 17.11: администратор получал 403, и сайт молча подставлял права роли по умолчанию вместо заданных владельцем)
+   */
   @Get('staff/:staffId/client-fine-rights')
-  @Biz('staff.manage')
-  getFineRights(@Param('staffId') staffId: string) {
-    return this.extras.getFineRights(staffId);
+  @Biz()
+  getFineRights(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('staffId') staffId: string) {
+    if (staffId !== ctx.member!.staffId && !ctx.member!.permissions.has('staff.manage')) throw new ApiError('forbidden', 'Missing permission: staff.manage');
+    return this.extras.getFineRights(businessId, staffId);
   }
 
   @Put('staff/:staffId/client-fine-rights')
