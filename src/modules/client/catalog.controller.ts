@@ -9,7 +9,9 @@ import { RateLimit } from '../../common/rate-limit/rate-limit.js';
 import { Zod } from '../../common/http/validation.js';
 import { CatalogService } from './catalog.service.js';
 import { SITEMAP_TTL_SEC, SitemapService } from './sitemap.service.js';
-import { callbackBody, demandBody } from './client.schemas.js';
+import { callbackBody, demandBody, masterReportBody } from './client.schemas.js';
+import { newId } from '../../common/ids/ids.js';
+import { ModerationService } from '../platform/moderation.service.js';
 
 const num = z.coerce.number().optional();
 const intOpt = z.coerce.number().int().positive().optional();
@@ -24,6 +26,7 @@ export class PublicCatalogController {
   constructor(
     private readonly svc: CatalogService,
     private readonly sitemaps: SitemapService,
+    private readonly moderation: ModerationService,
   ) {}
 
   @Get('sitemap')
@@ -89,12 +92,37 @@ export class PublicCatalogController {
     return this.svc.listReviews(businessId);
   }
 
+  @Get('masters/:staffId/trust')
+  @RateLimit({ bucket: 'public-master-card', limit: 300, windowSec: 60, by: 'ip' })
+  @ApiOperation({ summary: '«Документы проверены» и «Стерилизация» на карточке мастера (F-00-088, F-00-090) — публично' })
+  masterTrust(@Param('staffId') staffId: string) {
+    return this.svc.masterTrust(staffId);
+  }
+
+  @Post('masters/:staffId/report')
+  @HttpCode(204)
+  @RateLimit({ bucket: 'public-report', limit: 10, windowSec: 3600, by: 'ip' })
+  @ApiOperation({ summary: '«Пожаловаться» на карточку мастера (F-00-091) — в очередь проверки платформы; клиенту и гостю' })
+  @ZodBody(masterReportBody)
+  async report(@Param('staffId') staffId: string, @Body(new Zod(masterReportBody)) body: z.infer<typeof masterReportBody>) {
+    const staff = await this.svc.publicStaffBusiness(staffId);
+    await this.moderation.submit({
+      kind: 'complaint',
+      businessId: staff.businessId,
+      staffId,
+      refId: `complaint:${newId('moderationItem')}`,
+      text: body.reason,
+      targetItemId: staffId,
+    });
+  }
+
   @Get('masters/:staffId/days')
   @RateLimit({ bucket: 'public-slots', limit: 300, windowSec: 60, by: 'ip' })
   @ApiOperation({ summary: 'Окна мастера на N дней по услуге (F-00-092)' })
   days(
     @Param('staffId') staffId: string,
-    @Query('serviceId') serviceId: string,
+    // Без услуги — 400 validation (было 500 internal из Prisma)
+    @Query('serviceId', new Zod(z.string().min(1).max(64))) serviceId: string,
     @Query('workplace') workplace: string | undefined,
     @Query('days', new Zod(intOpt)) days: number | undefined,
     @Query('excludeBookingId') excludeBookingId: string | undefined,

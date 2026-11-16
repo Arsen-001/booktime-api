@@ -82,7 +82,8 @@ function nextDay(date: string): string {
 /** Публичный подвид мастера (F-00-077, F-00-010): без точного домашнего адреса, логина и часов звонков — тот же
  * подвид используют публичный каталог и карточки клиента (этап 9, `client` module) */
 export function sanitizePublicStaff(row: Parameters<typeof staffView>[0]) {
-  const { homeAddress: _h, login: _l, callHours: _c, ...rest } = staffView(row);
+  // 16.11.2026: и личная почта мастера — публичным экранам она не нужна, а ответ видит любой (и сборщики адресов)
+  const { homeAddress: _h, login: _l, callHours: _c, email: _e, ...rest } = staffView(row);
   return rest;
 }
 

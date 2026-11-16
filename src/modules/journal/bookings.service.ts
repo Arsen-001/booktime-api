@@ -822,9 +822,12 @@ export class BookingsService {
           if (staff.status !== 'active') throw new ApiError('staff_unavailable', 'Staff unavailable');
           if (!staff.onlineBookingEnabled) throw new ApiError('online_disabled', 'Online booking disabled');
           if (who.client?.blocked) throw new ApiError('client_blocked', 'Client blocked');
+          // F-00-069: пол сверяем, только когда человек записывает себя. Мама записывает сына к мужскому барберу
+          // («Для кого запись» — «Ребёнок» / «Другой») — её пол тут ни при чём (16.11.2026: отказывали и в этом случае).
+          const forSelf = (input.forWhom ?? 'self') === 'self';
           const gender = who.client?.gender && who.client.gender !== 'unknown' ? who.client.gender : who.appUserGender;
-          if (staff.accepts === 'women' && gender === 'male') throw new ApiError('accepts_mismatch', 'Staff accepts women only');
-          if (staff.accepts === 'men' && gender === 'female') throw new ApiError('accepts_mismatch', 'Staff accepts men only');
+          if (forSelf && staff.accepts === 'women' && gender === 'male') throw new ApiError('accepts_mismatch', 'Staff accepts women only');
+          if (forSelf && staff.accepts === 'men' && gender === 'female') throw new ApiError('accepts_mismatch', 'Staff accepts men only');
         }
 
         const lines = pairs.map(({ svc, line }) =>
@@ -1579,8 +1582,12 @@ export class BookingsService {
       bufferAfterMin: svc?.bufferAfterMin ?? 0,
       locationId: b.locationId,
       serviceId: svc?.id,
+      // 16.11.2026: сама переносимая запись окно не занимает — сдвиг 11:00 → 10:30 отказывал «занято»
+      excludeBookingId: b.id,
     });
-    if (!offered.some((s) => s.start === newStart)) throw new ApiError('slot_taken', 'Slot is not offered');
+    // То же место, что у записи (салон / на дому) — как окна, которые показывает экран переноса (catalog bookingDays)
+    const samePlace = (w: string) => b.workplace === 'visit' || w === b.workplace;
+    if (!offered.some((s) => s.start === newStart && samePlace(s.workplace))) throw new ApiError('slot_taken', 'Slot is not offered');
     const paid = Boolean((b.prepayment as { paid?: boolean } | null)?.paid);
     const status = newBookingStatus({
       source: isOnlineSource(b.source) ? b.source : 'app',

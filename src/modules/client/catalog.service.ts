@@ -352,6 +352,48 @@ export class CatalogService {
 
   // ─────────────────────────── карточка места (F-14-028) ───────────────────────────
 
+  /** Бизнес действующего мастера (для жалобы с карточки); нет мастера — 404 */
+  async publicStaffBusiness(staffId: string): Promise<{ businessId: string }> {
+    const staff = await this.prisma.staff.findFirst({ where: { id: staffId, deletedAt: null }, select: { businessId: true } });
+    if (!staff) throw new ApiError('not_found', 'Staff not found');
+    return staff;
+  }
+
+  /**
+   * «Документы проверены» (F-00-088) и «Стерилизация» (F-00-090) на карточке мастера — для любого посетителя.
+   * 16.11.2026: экран клиента звал кабинетные ручки /v1/biz/… — клиенту и гостю они закрыты, оба блока не появлялись.
+   * Документ «проверен», если его последняя проверка — approved/auto (по moderationId документа, иначе по refId).
+   */
+  async masterTrust(staffId: string): Promise<{ docsVerified: boolean; sterilization: { methods: string[]; note?: string } | null }> {
+    const staff = await this.prisma.staff.findFirst({ where: { id: staffId, deletedAt: null, status: 'active' }, select: { businessId: true } });
+    if (!staff) throw new ApiError('not_found', 'Staff not found');
+    const rows = await this.prisma.businessSetting.findMany({
+      where: { businessId: staff.businessId, area: { in: ['services.documents', 'services.sterilization'] } },
+      select: { area: true, data: true },
+    });
+    const docs = ((rows.find((r) => r.area === 'services.documents')?.data ?? []) as { staffId?: string; imageUrl?: string; moderationId?: string }[]).filter(
+      (d) => d.staffId === staffId,
+    );
+    let docsVerified = false;
+    if (docs.length) {
+      const ids = docs.map((d) => d.moderationId).filter((x): x is string => Boolean(x));
+      const refIds = docs.filter((d) => !d.moderationId && d.imageUrl && d.imageUrl.length <= 64).map((d) => d.imageUrl!);
+      const items = await this.prisma.moderationItem.findMany({
+        where: { OR: [{ id: { in: ids } }, { refId: { in: refIds } }] },
+        orderBy: { submittedAt: 'desc' },
+        select: { id: true, refId: true, status: true },
+      });
+      const latestByRef = new Map<string, string>();
+      for (const it of items) if (!latestByRef.has(it.refId)) latestByRef.set(it.refId, it.status);
+      const ok = (st?: string) => st === 'approved' || st === 'auto';
+      docsVerified = docs.some((d) => (d.moderationId ? ok(items.find((it) => it.id === d.moderationId)?.status) : ok(latestByRef.get(d.imageUrl ?? ''))));
+    }
+    const ster = ((rows.find((r) => r.area === 'services.sterilization')?.data ?? {}) as Record<string, { methods?: unknown; note?: unknown } | undefined>)[staffId];
+    const methods = Array.isArray(ster?.methods) ? ster.methods.filter((m): m is string => typeof m === 'string') : [];
+    const note = typeof ster?.note === 'string' && ster.note.trim() ? ster.note.trim() : undefined;
+    return { docsVerified, sterilization: methods.length || note ? { methods, ...(note ? { note } : {}) } : null };
+  }
+
   /** Значок «первого» — только где (район/сфера); дни и монеты награды — внутреннее дело панели и бизнеса */
   async firstBadge(businessId: string): Promise<{ scope: string; sphereId: string; district?: string } | null> {
     // Район важнее сферы: «первый в районе» — более узкое и заметное отличие
