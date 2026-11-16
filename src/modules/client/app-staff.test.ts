@@ -1,7 +1,8 @@
 /**
- * Раздел «Приложение» кабинета (app-staff.service.ts): «Расчёт» зарплаты в приложении берёт дни периода по Еревану, а не
- * от полуночи UTC; «Отправить сообщение» из окна записи — только клиенту этого бизнеса и по записи этого бизнеса.
- * База — заглушка в памяти. Запуск: npm test
+ * Раздел «Приложение» кабинета (app-staff.service.ts, visit-cash.service.ts): «Расчёт» зарплаты в приложении берёт дни
+ * периода по Еревану, а не от полуночи UTC, и не считает удалённые записи; «Отправить сообщение» из окна записи и чек
+ * визита — только клиенту этого бизнеса и по записи этого бизнеса (app-recipient.ts). База — заглушка в памяти.
+ * Запуск: npm test
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -12,12 +13,13 @@ process.env.DATABASE_URL ??= 'mysql://test:test@localhost:3306/test';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
 
 const { AppStaffService } = await import('./app-staff.service.js');
+const { VisitCashService } = await import('./visit-cash.service.js');
 const { ApiError } = await import('../../common/errors/api-error.js');
 
 type Range = { gte?: Date; lt?: Date; lte?: Date };
 const inRange = (at: Date, r: Range) => (!r.gte || at >= r.gte) && (!r.lt || at < r.lt) && (!r.lte || at <= r.lte);
 
-test('«Расчёт» в приложении: визиты 00:00–04:00 первого дня по Еревану входят в период, ранние визиты дня после — нет', async () => {
+test('«Расчёт» в приложении: визиты 00:00–04:00 первого дня по Еревану входят в период, ранние визиты дня после — нет; удалённые не считаются', async () => {
   // Ереван = UTC+4: «1 ноября 01:00» — это 31 октября 21:00 UTC
   const visits = [
     { id: 'bk_before', startAt: new Date('2026-10-31T19:30:00Z'), total: 1000n }, // 31.10 23:30 — до периода
@@ -25,11 +27,12 @@ test('«Расчёт» в приложении: визиты 00:00–04:00 пе�
     { id: 'bk_first_early', startAt: new Date('2026-10-31T23:30:00Z'), total: 3000n }, // 01.11 03:30 — первый день
     { id: 'bk_last_late', startAt: new Date('2026-11-30T19:00:00Z'), total: 4000n }, // 30.11 23:00 — последний день
     { id: 'bk_after', startAt: new Date('2026-11-30T22:00:00Z'), total: 5000n }, // 01.12 02:00 — после периода
-  ].map((b) => ({ ...b, businessId: 'biz_1', staffId: 'st_1', status: 'arrived', durationMin: 60 }));
+    { id: 'bk_deleted', startAt: new Date('2026-11-10T08:00:00Z'), total: 6000n, deletedAt: new Date('2026-11-11T08:00:00Z') }, // «Пришёл», но удалена
+  ].map((b) => ({ deletedAt: null as Date | null, ...b, businessId: 'biz_1', staffId: 'st_1', status: 'arrived', durationMin: 60 }));
   const prisma = {
     booking: {
-      findMany: async ({ where }: { where: { businessId: string; staffId: string; status: string; startAt: Range } }) =>
-        visits.filter((b) => b.businessId === where.businessId && b.staffId === where.staffId && b.status === where.status && inRange(b.startAt, where.startAt)),
+      findMany: async ({ where }: { where: { businessId: string; staffId: string; status: string; deletedAt?: null; startAt: Range } }) =>
+        visits.filter((b) => b.businessId === where.businessId && b.staffId === where.staffId && b.status === where.status && (where.deletedAt !== null || b.deletedAt === null) && inRange(b.startAt, where.startAt)),
     },
     bookingPayment: { findMany: async () => [] },
   };
@@ -40,7 +43,7 @@ test('«Расчёт» в приложении: визиты 00:00–04:00 пе�
   assert.equal(calc.servicesValue, 2000 + 3000 + 4000);
 });
 
-/** Бизнес biz_1: карточка клиента au_mine, запись bk_mine (записался au_app — без карточки), чужая запись bk_other */
+/** Бизнес biz_1: карточка клиента au_mine, запись bk_mine, запись bk_app (записался au_app — без карточки), чужая запись bk_other */
 function messageService() {
   const sent: { appUserId: string; businessId: string; bookingId?: string }[] = [];
   const bookings = [
@@ -63,7 +66,7 @@ function messageService() {
       },
     },
   };
-  return { svc: new AppStaffService(prisma as never, {} as never, {} as never), sent };
+  return { svc: new AppStaffService(prisma as never, {} as never, {} as never), receipts: new VisitCashService(prisma as never, {} as never), sent };
 }
 
 const notFound = (e: unknown) => e instanceof ApiError && e.code === 'not_found' && e.status === 404;
@@ -86,4 +89,15 @@ test('«Отправить сообщение»: чужой клиент и чу
   await assert.rejects(svc.sendOneOffPush('biz_1', { appUserId: 'au_mine', bookingId: 'bk_other', text: 'Привет' }), notFound); // запись другого бизнеса
   await assert.rejects(svc.sendOneOffPush('biz_1', { appUserId: 'au_stranger', bookingId: 'bk_app', text: 'Привет' }), notFound); // своя запись, но чужой человек
   assert.equal(sent.length, 0);
+});
+
+test('чек визита: своему клиенту по своей записи — уходит; чужому человеку и по чужой записи — 404', async () => {
+  const { receipts, sent } = messageService();
+  const item = await receipts.sendVisitReceipt('biz_1', 'bk_mine', { appUserId: 'au_mine', total: 12000 });
+  assert.equal(item.kind, 'receipt');
+  await receipts.sendVisitReceipt('biz_1', 'bk_app', { appUserId: 'au_app', total: 8000 }); // записался сам, без карточки
+  assert.equal(sent.length, 2);
+  await assert.rejects(receipts.sendVisitReceipt('biz_1', 'bk_mine', { appUserId: 'au_stranger', total: 12000 }), notFound); // клиент другого бизнеса
+  await assert.rejects(receipts.sendVisitReceipt('biz_1', 'bk_other', { appUserId: 'au_mine', total: 12000 }), notFound); // запись другого бизнеса
+  assert.equal(sent.length, 2);
 });

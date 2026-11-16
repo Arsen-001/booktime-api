@@ -9,6 +9,7 @@ import { BookingsService } from '../journal/bookings.service.js';
 import { roundMoney } from '../payroll/payroll-engine.js';
 import { ScheduleService } from '../schedule/schedule.service.js';
 import { serviceView } from '../services/services.views.js';
+import { assertBusinessAppRecipient } from './app-recipient.js';
 
 /**
  * Раздел «Приложение» (F-14-116…129), стадия 21 (лейн client+online, попытка 2): своя таблица сотрудников
@@ -149,10 +150,10 @@ export class AppStaffService {
   /** F-14-127 «Calculation»: отработано, оказанные услуги, товары визита (BookingPayment.goods=true строки) */
   async getPayrollCalculation(businessId: string, staffId: string, from: string, to: string) {
     // Дни периода — по Еревану, как весь сервер (было от полуночи UTC: визиты 00:00–04:00 первого дня выпадали, а ранние
-    // визиты дня после периода попадали в него)
+    // визиты дня после периода попадали в него). Удалённая запись не считается и со статусом «Пришёл» (как payroll-engine)
     const { from: fromAt } = localDayRangeUtc(from);
     const { to: toAt } = localDayRangeUtc(to);
-    const bookings = await this.prisma.booking.findMany({ where: { businessId, staffId, status: ARRIVED, startAt: { gte: fromAt, lt: toAt } }, select: { id: true, startAt: true, durationMin: true, total: true } });
+    const bookings = await this.prisma.booking.findMany({ where: { businessId, staffId, status: ARRIVED, deletedAt: null, startAt: { gte: fromAt, lt: toAt } }, select: { id: true, startAt: true, durationMin: true, total: true } });
     // «Отработано» — то же правило, что «Расчёт» и «Моя зарплата» в вебе: дни и часы графика за период (final-fix 01.10)
     // Только по сегодняшний день включительно; дни графика после сегодня — отдельной подписью (решение 01.10)
     const scheduled = await this.schedule.hours(businessId, staffId, from, to);
@@ -209,15 +210,11 @@ export class AppStaffService {
 
   /** F-14-074: «Отправить сообщение» из окна записи — свободный текст в ленту клиента. client-2-fix: kind 'direct' —
    *  личное сообщение, его не глушит «выключить новости» мастера/салона (в отличие от рассылки 'broadcast').
-   *  Получатель — только клиент этого бизнеса (карточка клиента с этим appUserId или он сам записался на эту запись),
-   *  запись — только этого бизнеса, иначе 404: без этого сотрудник с journal.edit писал бы в ленту любому человеку. */
+   *  Получатель — только клиент этого бизнеса, запись — только этого бизнеса (assertBusinessAppRecipient), иначе 404. */
   async sendOneOffPush(businessId: string, input: { appUserId: string; bookingId?: string; text: string }) {
     const text = input.text.trim();
     if (!text) throw new ApiError('validation', 'Text is required');
-    const booking = input.bookingId ? await this.prisma.booking.findFirst({ where: { id: input.bookingId, businessId }, select: { appUserId: true } }) : null;
-    if (input.bookingId && !booking) throw new ApiError('not_found', 'Booking not found');
-    const isClient = booking?.appUserId === input.appUserId || (await this.prisma.client.count({ where: { businessId, appUserId: input.appUserId, deletedAt: null } })) > 0;
-    if (!isClient) throw new ApiError('not_found', 'Client not found');
+    await assertBusinessAppRecipient(this.prisma, businessId, input.appUserId, input.bookingId);
     const row = await this.prisma.inboxItem.create({
       data: { id: newId('inboxItem'), appUserId: input.appUserId, businessId, bookingId: input.bookingId, kind: 'direct', params: { text } as Prisma.InputJsonValue },
     });
