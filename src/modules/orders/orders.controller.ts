@@ -116,7 +116,9 @@ export class OrdersController {
     return this.svc.patch(ctx, businessId, orderId, body);
   }
 
+  // Смена статуса, «сообщить ещё раз» и смета ничего не создают — 200, а не 201 Nest по умолчанию (проход 17.11)
   @Post(':orderId/status')
+  @HttpCode(200)
   @Biz('journal.edit')
   @ZodBody(orderStatusBody)
   @ZodOk(orderOut)
@@ -129,6 +131,7 @@ export class OrdersController {
   }
 
   @Post(':orderId/notify')
+  @HttpCode(200)
   @Biz('journal.edit')
   @ZodOk(orderOut)
   @ApiOperation({ summary: 'Ещё раз сообщить клиенту, что заказ готов (только status=ready, иначе 422 order_not_ready)' })
@@ -139,6 +142,7 @@ export class OrdersController {
   // ─────────── ⭐ смета (05.10.2026) ───────────
 
   @Post(':orderId/estimate')
+  @HttpCode(200)
   @Biz('journal.edit')
   @ZodBody(sendEstimateBody)
   @ZodOk(orderOut)
@@ -148,6 +152,7 @@ export class OrdersController {
   }
 
   @Post(':orderId/estimate/notify')
+  @HttpCode(200)
   @Biz('journal.edit')
   @ZodOk(orderOut)
   @ApiOperation({ summary: 'Ещё раз отправить клиенту смету, которая ждёт ответа (иначе 409 estimate_not_pending)' })
@@ -156,6 +161,7 @@ export class OrdersController {
   }
 
   @Post(':orderId/estimate/decision')
+  @HttpCode(200)
   @Biz('journal.edit')
   @ZodBody(staffEstimateDecisionBody)
   @ZodOk(orderOut)

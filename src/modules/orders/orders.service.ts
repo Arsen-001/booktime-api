@@ -435,7 +435,10 @@ export class OrdersService {
       : await this.prisma.location.findFirst({ where: { businessId: row.businessId, deletedAt: null }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], select: { address: true, phone: true } });
     const address = (loc?.address as { ru?: string; hy?: string; en?: string } | null) ?? null;
     const pickup = await pickupPublicInfo(this.prisma, row);
-    return publicOrderView(row, { name: biz.name, phone: loc?.phone || biz.phone, address: address?.ru || address?.hy || address?.en || '', slug: biz.slug }, pickup);
+    // Адрес целиком на трёх языках: страница клиента выбирает свой язык (было только ru — на hy/en «ул. Туманяна», проход 17.11)
+    const ru = address?.ru || address?.hy || address?.en || '';
+    const addressText = ru ? { ru, ...(address?.hy ? { hy: address.hy } : {}), ...(address?.en ? { en: address.en } : {}) } : '';
+    return publicOrderView(row, { name: biz.name, phone: loc?.phone || biz.phone, address: addressText, slug: biz.slug }, pickup);
   }
 }
 

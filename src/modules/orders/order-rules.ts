@@ -155,7 +155,8 @@ export function readyAtOf(r: Pick<OrderRow, 'readyNotifiedAt' | 'history'>): str
 export interface PublicBusinessInfo {
   name: string;
   phone: string;
-  address: string;
+  /** Адрес филиала на трёх языках (страница /o/<код> показывает на языке клиента); нет адреса — '' */
+  address: string | { ru: string; hy?: string; en?: string };
   slug: string;
 }
 

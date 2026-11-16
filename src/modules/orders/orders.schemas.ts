@@ -191,7 +191,8 @@ export const publicOrderOut = z.object({
   price: z.number().int(),
   prepaid: z.number().int(),
   estimate: estimateOut.omit({ remindedAt: true, decidedBy: true }).nullable(),
-  business: z.object({ name: z.string(), phone: z.string(), address: z.string(), slug: z.string() }),
+  // Адрес — на трёх языках (сайт выбирает язык страницы), пусто — ''
+  business: z.object({ name: z.string(), phone: z.string(), address: z.union([z.string(), z.object({ ru: z.string(), hy: z.string().optional(), en: z.string().optional() })]), slug: z.string() }),
   /** ⭐ Выдача по времени (06.10.2026): null — выбирать нечего (не готов или мастерская не принимает по времени) */
   pickup: z.object({ enabled: z.boolean(), slotMin: z.number().int(), booking: z.object({ start: z.string(), status: z.string() }).nullable() }).nullable(),
 });
