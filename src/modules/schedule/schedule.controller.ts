@@ -185,10 +185,16 @@ export class ScheduleController {
   }
 
   @Get('schedule/history')
-  @Biz('staff.view')
-  @ApiOperation({ summary: 'История правок графика и правил окон (F-02-102)' })
-  history(@Param('businessId') businessId: string, @Query('staffIds') staffIds?: string) {
-    return this.svc.history(businessId, staffIds ? staffIds.split(',').filter(Boolean) : undefined);
+  @Biz()
+  @ApiOperation({ summary: 'История правок графика и правил окон (F-02-102): staff.view — всех; без него — только свою (мастер, «История правок» в его меню)' })
+  history(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Query('staffIds') staffIds?: string) {
+    const ids = staffIds ? staffIds.split(',').filter(Boolean) : undefined;
+    if (!ctx.member!.permissions.has('staff.view')) {
+      const own = ctx.member!.staffId;
+      if (!own || (ids && ids.some((id) => id !== own))) throw new ApiError('forbidden', 'Missing permission: staff.view');
+      return this.svc.history(businessId, [own]);
+    }
+    return this.svc.history(businessId, ids);
   }
 
   @Get('schedule/view-config')
