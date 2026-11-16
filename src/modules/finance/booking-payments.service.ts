@@ -146,6 +146,38 @@ export class BookingPaymentsService {
     return this.summaryOf(b);
   }
 
+  /**
+   * «Оплачено / к оплате» пачкой — страница «Записи» и список дня журнала (проход кабинета 17.11.2026: сайт спрашивал
+   * итог по каждой записи, 1418 запросов на 709 записей салона, 9–11 с). Те же числа, что `summaryOf`: к оплате =
+   * услуги (booking.total) + товары склада визита, остаток = к оплате − оплачено. Одна выборка записей и одна товаров.
+   */
+  async briefs(businessIds: string[], ids: string[]) {
+    if (!ids.length) return {};
+    const rows = await this.prisma.booking.findMany({
+      where: { id: { in: ids }, businessId: { in: businessIds } },
+      select: { id: true, businessId: true, total: true, paidAmount: true, extras: true },
+    });
+    const goodsLinesOf = (extras: unknown) => (extrasOf(extras) as BookingExtras).goodsLines ?? [];
+    const productIds = [...new Set(rows.flatMap((r) => goodsLinesOf(r.extras).map((l) => l.itemId)))];
+    const products = productIds.length
+      ? await this.prisma.product.findMany({ where: { id: { in: productIds }, businessId: { in: businessIds } }, select: { id: true, businessId: true } })
+      : [];
+    const productKeys = new Set(products.map((p) => `${p.businessId}:${p.id}`));
+    const out: Record<string, { total: number; due: number; paid: number; status: 'unpaid' | 'partial' | 'paid' }> = {};
+    for (const b of rows) {
+      let goodsTotal = 0n;
+      for (const l of goodsLinesOf(b.extras)) {
+        if (!productKeys.has(`${b.businessId}:${l.itemId}`) || !(l.qty > 0)) continue;
+        goodsTotal += BigInt(Math.round(l.price * l.qty * (1 - (l.discountPct ?? 0) / 100)));
+      }
+      const payable = b.total + goodsTotal;
+      const due = payable - b.paidAmount > 0n ? payable - b.paidAmount : 0n;
+      const status = due <= 0n && payable > 0n ? 'paid' : b.paidAmount > 0n ? 'partial' : 'unpaid';
+      out[b.id] = { total: moneyToJson(payable), due: moneyToJson(due), paid: moneyToJson(payable - due), status };
+    }
+    return out;
+  }
+
   /** Método/tile → касса и % комиссии, из payment_methods реального бизнеса (В-33/§12, упрощённо — см. schemas) */
   private async resolveMethod(businessId: string, methodKey: string, accountIdOverride?: string): Promise<PayTile> {
     await this.catalog.ensureDefaults(businessId);

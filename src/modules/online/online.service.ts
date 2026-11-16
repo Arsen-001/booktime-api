@@ -549,8 +549,40 @@ export class OnlineService {
   // ─────────────────────────── ссылки (F-03-003…037) ───────────────────────────
 
   async listLinks(businessId: string) {
-    const rows = await this.prisma.bookingLink.findMany({ where: { businessId }, orderBy: { createdAt: 'asc' } });
+    let rows = await this.prisma.bookingLink.findMany({ where: { businessId }, orderBy: { createdAt: 'asc' } });
+    if (!rows.length) {
+      await this.ensurePrimaryLink(businessId);
+      rows = await this.prisma.bookingLink.findMany({ where: { businessId }, orderBy: { createdAt: 'asc' } });
+    }
     return rows.map(linkView);
+  }
+
+  /**
+   * F-03-004: основная ссылка есть у каждого бизнеса сразу — «Форма компании», обычная, все услуги (как в моке,
+   * src/mock/slices/online.ts). Ни регистрация, ни демо-данные её не заводили: «Виджет для сайта» без основной ссылки
+   * показывал «Не удалось загрузить», список ссылок был пуст. Заводим при первом чтении ссылок; строка бизнеса под
+   * блокировкой — два одновременных запроса не заведут две основные.
+   */
+  private async ensurePrimaryLink(businessId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM businesses WHERE id = ${businessId} FOR UPDATE`;
+      if (await tx.bookingLink.count({ where: { businessId } })) return;
+      const location = await tx.location.findFirst({ where: { businessId, deletedAt: null }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], select: { id: true } });
+      await tx.bookingLink.create({
+        data: {
+          id: newId('bookingLink'),
+          businessId,
+          locationId: location?.id,
+          name: 'Форма компании',
+          kind: 'normal',
+          bookingType: 'mixed',
+          defaultLocale: 'ru',
+          primary: true,
+          formId: String(1_500_000 + Math.floor(Math.random() * 899_999)),
+          config: DEFAULT_LINK_CONFIG,
+        },
+      });
+    });
   }
 
   async getLink(businessId: string, id: string) {
@@ -578,7 +610,7 @@ export class OnlineService {
         defaultLocale: body.defaultLocale,
         staffId: body.staffId,
         formId,
-        config: { bookingFlow: 'menu', stepOrder: ['service', 'staff', 'time'], stepHidden: {}, stepLabels: {}, staffDisplayField: 'specialty', categoryDisplay: 'tags', theme: 'light', widgetButtonColor: '#4f46e5', websiteButton: { show: true, position: 'br', widgetSide: 'right', color: '#4f46e5', animation: true } },
+        config: DEFAULT_LINK_CONFIG,
         createdBy: ctx.member!.staffId,
         updatedBy: ctx.member!.staffId,
       },
@@ -1542,6 +1574,9 @@ function linkView(row: BookingLink) {
     ...((row.config as Record<string, unknown>) ?? {}),
   };
 }
+
+/** Настройки новой ссылки: формат «Меню», шаги услуга → мастер → время, кнопка на сайте справа внизу */
+const DEFAULT_LINK_CONFIG = { bookingFlow: 'menu', stepOrder: ['service', 'staff', 'time'], stepHidden: {}, stepLabels: {}, staffDisplayField: 'specialty', categoryDisplay: 'tags', theme: 'light', widgetButtonColor: '#4f46e5', websiteButton: { show: true, position: 'br', widgetSide: 'right', color: '#4f46e5', animation: true } };
 
 const DEFAULT_CONSENT_TEXT = {
   ru: 'Записываясь, вы соглашаетесь на обработку персональных данных (имя, телефон) для организации записи на услугу.',

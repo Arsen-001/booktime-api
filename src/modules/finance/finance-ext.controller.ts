@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { Biz, BizAny, Ctx } from '../../common/http/guards.js';
+import { ReadOnly } from '../../common/http/read-only.js';
 import { ZodBody } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { PrismaService } from '../../common/prisma.service.js';
@@ -22,6 +23,8 @@ const accountPayBody = z.object({ clientId: id32, amount: money, loyaltyAccountI
 const topUpBody = z.object({ accountId: id32, amount: money, method: z.enum(['cash', 'card', 'other']), clientName: z.string().max(200).optional() });
 const accountRefundBody = z.object({ accountId: id32, amount: money, comment: z.string().max(400).optional() });
 const shiftBody = z.object({ amount: money, comment: z.string().max(400).optional() });
+/** Итоги оплаты пачкой: до 2000 записей за раз (сайт делит длинный список) */
+const briefsBody = z.object({ ids: z.array(id32).max(2000) });
 const linkBody = z.object({ targetKind: z.enum(['booking', 'sale']), bookingId: id32.optional(), saleLabel: z.string().max(200).optional(), amount: money, remainingBefore: money });
 
 /** Ключи, которые можно менять без «Финансы: редактировать» — нет: все настройки раздела под finance.edit (как мок) */
@@ -50,6 +53,16 @@ export class FinanceExtController {
     private readonly prisma: PrismaService,
     private readonly shifts: CashShiftsService,
   ) {}
+
+  /** «Оплачено / к оплате» по многим записям одним запросом (страница «Записи», список дня журнала) */
+  @Post('bookings/payment-briefs')
+  @ReadOnly()
+  @HttpCode(200)
+  @Biz('journal.view')
+  @ZodBody(briefsBody)
+  paymentBriefs(@Param('businessId') businessId: string, @Body(new Zod(briefsBody)) body: z.infer<typeof briefsBody>) {
+    return this.payments.briefs([businessId], body.ids);
+  }
 
   @Get('settings/:key')
   @Biz()
