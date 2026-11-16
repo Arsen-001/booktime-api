@@ -40,47 +40,54 @@ const connection = createRedis('worker');
 const SYSTEM = 'system';
 
 const queue = new Queue(SYSTEM, { connection });
+/**
+ * 16.11.2026: завершённые задачи расписаний раньше не удалялись (BullMQ по умолчанию хранит все) — за месяц локально
+ * набралось 710 тыс. ключей `bull:system:repeat:*` и 830 МБ Redis (на production Redis рос так же). Храним час
+ * завершённых и неделю упавших. Только по возрасту и с limit: каждое завершение убирает не больше 1000 старых, так что
+ * накопленное уходит постепенно короткими скриптами (count убрал бы сотни тысяч одним скриптом и занял бы Redis на минуту).
+ */
+const KEEP_JOBS = { removeOnComplete: { age: 3600, limit: 1000 }, removeOnFail: { age: 7 * 24 * 3600, limit: 1000 } };
 initSentry('worker');
-await queue.upsertJobScheduler('heartbeat', { every: 60_000 }, { name: 'heartbeat', data: {} });
-await queue.upsertJobScheduler('auth-housekeeping', { every: 3_600_000 }, { name: 'auth.housekeeping', data: {} });
+await queue.upsertJobScheduler('heartbeat', { every: 60_000 }, { name: 'heartbeat', data: {}, opts: KEEP_JOBS });
+await queue.upsertJobScheduler('auth-housekeeping', { every: 3_600_000 }, { name: 'auth.housekeeping', data: {}, opts: KEEP_JOBS });
 // F-00-055: воскресенье 18:00 по Еревану — «откройте окна на неделю» (адресаты; пуш — этап 10)
-await queue.upsertJobScheduler('schedule-empty-week', { pattern: '0 18 * * 0', tz: 'Asia/Yerevan' }, { name: 'schedule.empty-week', data: {} });
+await queue.upsertJobScheduler('schedule-empty-week', { pattern: '0 18 * * 0', tz: 'Asia/Yerevan' }, { name: 'schedule.empty-week', data: {}, opts: KEEP_JOBS });
 // Этап 7: снятие заявок по сроку и раздача окна — каждую минуту; продление серий — ночью
-await queue.upsertJobScheduler('journal-holds', { every: 60_000 }, { name: 'journal.holds', data: {} });
+await queue.upsertJobScheduler('journal-holds', { every: 60_000 }, { name: 'journal.holds', data: {}, opts: KEEP_JOBS });
 // 11.10.2026: увольнение будущей датой (С3) вступает в силу в свой день — раз в час, в :05 (после полуночи — в 00:05)
-await queue.upsertJobScheduler('staff-dismissals', { pattern: '5 * * * *', tz: 'Asia/Yerevan' }, { name: 'staff.dismissals', data: {} });
-await queue.upsertJobScheduler('journal-series', { pattern: '0 3 * * *', tz: 'Asia/Yerevan' }, { name: 'journal.series', data: {} });
+await queue.upsertJobScheduler('staff-dismissals', { pattern: '5 * * * *', tz: 'Asia/Yerevan' }, { name: 'staff.dismissals', data: {}, opts: KEEP_JOBS });
+await queue.upsertJobScheduler('journal-series', { pattern: '0 3 * * *', tz: 'Asia/Yerevan' }, { name: 'journal.series', data: {}, opts: KEEP_JOBS });
 // Этап 10: отправитель очереди пушей — часто (сообщение должно уйти за секунды, не минуты); напоминания — раз в 5 мин
-await queue.upsertJobScheduler('notify-dispatch', { every: 20_000 }, { name: 'notify.dispatch', data: {} });
-await queue.upsertJobScheduler('notify-reminders', { every: 300_000 }, { name: 'notify.reminders', data: {} });
+await queue.upsertJobScheduler('notify-dispatch', { every: 20_000 }, { name: 'notify.dispatch', data: {}, opts: KEEP_JOBS });
+await queue.upsertJobScheduler('notify-reminders', { every: 300_000 }, { name: 'notify.reminders', data: {}, opts: KEEP_JOBS });
 // Этап 21 (лейн notify-log+mailings): рассылки по расписанию (Ув13) — раз в минуту
-await queue.upsertJobScheduler('notify-mailings', { every: 60_000 }, { name: 'notify.mailings', data: {} });
+await queue.upsertJobScheduler('notify-mailings', { every: 60_000 }, { name: 'notify.mailings', data: {}, opts: KEEP_JOBS });
 // 04.10.2026: «Заказ ждёт вас» — клиент не забрал готовый заказ (3 и 7 дней после «Готов»); раз в 15 мин, тихие часы — пропуск
-await queue.upsertJobScheduler('orders-pickup-reminders', { every: 900_000 }, { name: 'orders.pickup-reminders', data: {} });
+await queue.upsertJobScheduler('orders-pickup-reminders', { every: 900_000 }, { name: 'orders.pickup-reminders', data: {}, opts: KEEP_JOBS });
 // 05.10.2026: ⭐ «Ждём ответа по смете» — клиент сутки не ответил на смету; раз в 15 мин, тихие часы — пропуск
-await queue.upsertJobScheduler('orders-estimate-reminders', { every: 900_000 }, { name: 'orders.estimate-reminders', data: {} });
+await queue.upsertJobScheduler('orders-estimate-reminders', { every: 900_000 }, { name: 'orders.estimate-reminders', data: {}, opts: KEEP_JOBS });
 // 06.10.2026: ⭐ уведомления клиенту из каталога типов — «не пришёл» (75), «зовём вернуться» (72), «впечатление» (6/20) —
 // каждые 5 мин; «с днём рождения» (3), «пора снова» (55) — раз в 30 мин; тихие часы — пропуск (jobs/notify-client-auto.ts)
-await queue.upsertJobScheduler('notify-client-events', { every: 300_000 }, { name: 'notify.client-events', data: {} });
-await queue.upsertJobScheduler('notify-client-daily', { every: 1_800_000 }, { name: 'notify.client-daily', data: {} });
+await queue.upsertJobScheduler('notify-client-events', { every: 300_000 }, { name: 'notify.client-events', data: {}, opts: KEEP_JOBS });
+await queue.upsertJobScheduler('notify-client-daily', { every: 1_800_000 }, { name: 'notify.client-daily', data: {}, opts: KEEP_JOBS });
 // 06.10.2026: пуши персоналу — «заявка ждёт ответа» (F-00-067, через 30 мин, до 3 раз) и «пришёл · сумма / не пришёл»
 // после конца визита (F-00-127); раз в 5 мин, тихие часы — пропуск
-await queue.upsertJobScheduler('notify-staff-request-reminders', { every: 300_000 }, { name: 'notify.staff-request-reminders', data: {} });
-await queue.upsertJobScheduler('notify-staff-visit-mark', { every: 300_000 }, { name: 'notify.staff-visit-mark', data: {} });
+await queue.upsertJobScheduler('notify-staff-request-reminders', { every: 300_000 }, { name: 'notify.staff-request-reminders', data: {}, opts: KEEP_JOBS });
+await queue.upsertJobScheduler('notify-staff-visit-mark', { every: 300_000 }, { name: 'notify.staff-visit-mark', data: {}, opts: KEEP_JOBS });
 // Этап 16: выгрузка отчёта — CSV должен быть готов быстро, не в час по расписанию
-await queue.upsertJobScheduler('reports-export', { every: 15_000 }, { name: 'reports.export', data: {} });
+await queue.upsertJobScheduler('reports-export', { every: 15_000 }, { name: 'reports.export', data: {}, opts: KEEP_JOBS });
 // Этап 18: подписка — 03:00 по Еревану предупреждения/списания/заморозка, каждые 5 мин повтор списаний (06 §3.3)
-await queue.upsertJobScheduler('billing-daily', { pattern: '0 3 * * *', tz: 'Asia/Yerevan' }, { name: 'billing.tick', data: {} });
-await queue.upsertJobScheduler('billing-retry', { every: 300_000 }, { name: 'billing.tick', data: {} });
+await queue.upsertJobScheduler('billing-daily', { pattern: '0 3 * * *', tz: 'Asia/Yerevan' }, { name: 'billing.tick', data: {}, opts: KEEP_JOBS });
+await queue.upsertJobScheduler('billing-retry', { every: 300_000 }, { name: 'billing.tick', data: {}, opts: KEEP_JOBS });
 // Этап 17: доставка вебхуков — подпись + до 5 попыток с отступом (fan-out кладёт AuditService.record); часто,
 // как notify.dispatch — событие должно уйти за секунды
-await queue.upsertJobScheduler('webhooks-dispatch', { every: 10_000 }, { name: 'webhooks.dispatch', data: {} });
+await queue.upsertJobScheduler('webhooks-dispatch', { every: 10_000 }, { name: 'webhooks.dispatch', data: {}, opts: KEEP_JOBS });
 // 04.10.2026: уборка неиспользуемых загрузок (старше 7 дней, ни на что не ссылаются) — ночью; без UPLOADS_CLEANUP=1 только лог
-await queue.upsertJobScheduler('uploads-cleanup', { pattern: '40 3 * * *', tz: 'Asia/Yerevan' }, { name: 'uploads.cleanup', data: {} });
+await queue.upsertJobScheduler('uploads-cleanup', { pattern: '40 3 * * *', tz: 'Asia/Yerevan' }, { name: 'uploads.cleanup', data: {}, opts: KEEP_JOBS });
 // Этап 20: хранение и обезличивание при уходе бизнеса (B6) — раз в сутки, срок считается в днях, не в минутах
-await queue.upsertJobScheduler('business-retention', { pattern: '0 4 * * *', tz: 'Asia/Yerevan' }, { name: 'business.retention', data: {} });
+await queue.upsertJobScheduler('business-retention', { pattern: '0 4 * * *', tz: 'Asia/Yerevan' }, { name: 'business.retention', data: {}, opts: KEEP_JOBS });
 // 03.10.2026: ежедневная копия базы, пока на Railway нет снимков дисков (тариф Hobby) — только где DB_BACKUP=1
-if (env.DB_BACKUP) await queue.upsertJobScheduler('db-backup', { pattern: '30 4 * * *', tz: 'Asia/Yerevan' }, { name: 'db.backup', data: {} });
+if (env.DB_BACKUP) await queue.upsertJobScheduler('db-backup', { pattern: '30 4 * * *', tz: 'Asia/Yerevan' }, { name: 'db.backup', data: {}, opts: KEEP_JOBS });
 else await queue.removeJobScheduler('db-backup');
 // Копии за сегодня нет (первый запуск, перезапуск в 04:30) — сделать сейчас; jobId не даёт поставить дважды за день
 if (env.DB_BACKUP && !(await hasBackupToday(env.DB_BACKUP_DIR))) {
