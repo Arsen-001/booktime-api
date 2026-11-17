@@ -138,8 +138,9 @@ export class FinanceCatalogService {
     });
     if (!withBalance) return rows.map((r) => cashRegisterView(r));
     const ids = rows.map((r) => r.id);
-    const ops = await this.prisma.finOp.findMany({ where: { accountId: { in: ids }, cancelled: false }, select: { accountId: true, kind: true, amount: true } });
-    const sumOf = (id: string) => ops.filter((o) => o.accountId === id).reduce((s, o) => s + (o.kind === 'income' || o.kind === 'transfer_in' ? o.amount : -o.amount), 0n);
+    // Сумма по кассе и виду — в базе, а не все операции в память (скорость, 17.11.2026)
+    const sums = await this.prisma.finOp.groupBy({ by: ['accountId', 'kind'], where: { accountId: { in: ids }, cancelled: false }, _sum: { amount: true } });
+    const sumOf = (id: string) => sums.filter((g) => g.accountId === id).reduce((s, g) => s + (g.kind === 'income' || g.kind === 'transfer_in' ? 1n : -1n) * (g._sum.amount ?? 0n), 0n);
     return rows.map((r) => cashRegisterView(r, r.openingBalance + sumOf(r.id)));
   }
 

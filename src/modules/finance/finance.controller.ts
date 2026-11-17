@@ -259,6 +259,31 @@ export class FinanceController {
     return this.ops.list(businessId, filter);
   }
 
+  /** Список «Финансы → Операции» страницей: фильтры, итоги и «Остаток в кассе» считает сервер (17.11.2026) */
+  @Get('fin-ops/page')
+  @Biz('finance.view')
+  pageOps(@Param('businessId') businessId: string, @Query() q: Record<string, string | undefined>) {
+    const num = (v: string | undefined, d: number) => (v && /^\d+$/.test(v) ? Number(v) : d);
+    return this.ops.page(businessId, {
+      locationIds: splitCsv(q.locationIds),
+      accountId: q.accountId,
+      accountIds: q.accountIds === undefined ? undefined : splitCsv(q.accountIds) ?? [],
+      itemId: q.itemId,
+      kind: q.kind,
+      transfer: q.transfer === 'true' || q.transfer === '1',
+      method: q.method,
+      partyType: q.partyType,
+      partyId: q.partyId,
+      cancelled: q.cancelled === undefined ? undefined : q.cancelled === 'true',
+      dateFrom: q.dateFrom,
+      dateTo: q.dateTo,
+      search: q.search,
+      page: num(q.page, 1),
+      pageSize: num(q.pageSize, 20),
+      withBalance: q.withBalance === 'true' || q.withBalance === '1',
+    });
+  }
+
   @Get('fin-ops/:id')
   @Biz('finance.view')
   getOp(@Param('businessId') businessId: string, @Param('id') id: string) {
