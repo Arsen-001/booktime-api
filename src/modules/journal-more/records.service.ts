@@ -96,40 +96,60 @@ export class RecordsService {
     else if (q.cancel === 'notCancelled') Object.assign(where, { deletedAt: null, status: { notIn: CANCELLED_BY } });
     if (q.source === 'online') where.source = { in: [...ONLINE_SOURCES] };
     else if (q.source === 'offline') where.source = { notIn: [...ONLINE_SOURCES] };
-    let rows = await this.prisma.booking.findMany({ where, select: RECORD_SELECT });
-
-    if (q.categoryId) rows = rows.filter((b) => extrasOf(b.extras).categoryIds.includes(q.categoryId!));
-    if (q.resourceId) {
-      const resource = await this.prisma.resource.findFirst({ where: { id: q.resourceId, businessId }, select: { instances: true } });
-      const instanceIds = new Set((Array.isArray(resource?.instances) ? (resource.instances as { id: string }[]) : []).map((i) => i.id));
-      rows = rows.filter((b) => (Array.isArray(b.resourceIds) ? (b.resourceIds as string[]) : []).some((id) => instanceIds.has(id)));
-    }
-    if (q.paid !== 'all') {
-      const briefs = await this.payments.briefs([businessId], rows.map((b) => b.id));
-      rows = rows.filter((b) => {
-        const total = Number(b.total);
-        const brief = briefs[b.id];
-        const paid = brief ? Math.max(0, total - brief.due) : 0;
-        const isPaid = paid > 0 && paid >= total;
-        return q.paid === 'paid' ? isPaid : !isPaid;
-      });
-    }
-
-    const total = rows.length;
-    const revenue = rows.reduce((s, b) => (b.deletedAt ? s : s + Number(b.total)), 0);
-    const deleted = rows.filter((b) => b.deletedAt).length;
-    // Порядок: по времени, свежие первыми (одна минута — по id); колонка таблицы — поверх него, как устойчивая сортировка
-    const base = (a: (typeof rows)[number], b: (typeof rows)[number]) => b.startAt.getTime() - a.startAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-    const dir = q.dir === 'asc' ? 1 : -1;
-    rows.sort((a, b) => {
-      if (q.sort === 'when') return (a.startAt.getTime() - b.startAt.getTime()) * dir || base(a, b);
-      if (q.sort === 'total') return (Number(a.total) - Number(b.total)) * dir || base(a, b);
-      return base(a, b);
-    });
     const pageSize = Math.min(100, Math.max(1, q.pageSize));
-    const lastPage = Math.max(1, Math.ceil(total / pageSize));
-    const page = Math.min(Math.max(1, q.page), lastPage);
-    const ids = rows.slice((page - 1) * pageSize, page * pageSize).map((b) => b.id);
+    const dir = q.dir === 'asc' ? 1 : -1;
+    let total: number;
+    let revenue: number;
+    let deleted: number;
+    let page: number;
+    let ids: string[];
+    if (q.paid === 'all' && !q.categoryId && !q.resourceId) {
+      // Отбор целиком в базе: итоги — подсчётом, страница — по индексу (business_id, start_at), без всех строк в памяти
+      const [count, sum, del] = await Promise.all([
+        this.prisma.booking.count({ where }),
+        this.prisma.booking.aggregate({ where: { AND: [where, { deletedAt: null }] }, _sum: { total: true } }),
+        this.prisma.booking.count({ where: { AND: [where, { deletedAt: { not: null } }] } }),
+      ]);
+      total = count;
+      revenue = Number(sum._sum.total ?? 0);
+      deleted = del;
+      page = Math.min(Math.max(1, q.page), Math.max(1, Math.ceil(total / pageSize)));
+      const by = q.dir === 'asc' ? 'asc' : 'desc';
+      const orderBy: Prisma.BookingOrderByWithRelationInput[] =
+        q.sort === 'when' ? [{ startAt: by }, { id: 'asc' }] : q.sort === 'total' ? [{ total: by }, { startAt: 'desc' }, { id: 'asc' }] : [{ startAt: 'desc' }, { id: 'asc' }];
+      ids = (await this.prisma.booking.findMany({ where, select: { id: true }, orderBy, skip: (page - 1) * pageSize, take: pageSize })).map((r) => r.id);
+    } else {
+      // Оплата, категория и ресурс — из оплат и JSON записи: отбор в памяти по строкам без лишних полей
+      let rows = await this.prisma.booking.findMany({ where, select: RECORD_SELECT });
+      if (q.categoryId) rows = rows.filter((b) => extrasOf(b.extras).categoryIds.includes(q.categoryId!));
+      if (q.resourceId) {
+        const resource = await this.prisma.resource.findFirst({ where: { id: q.resourceId, businessId }, select: { instances: true } });
+        const instanceIds = new Set((Array.isArray(resource?.instances) ? (resource.instances as { id: string }[]) : []).map((i) => i.id));
+        rows = rows.filter((b) => (Array.isArray(b.resourceIds) ? (b.resourceIds as string[]) : []).some((id) => instanceIds.has(id)));
+      }
+      if (q.paid !== 'all') {
+        const briefs = await this.payments.briefs([businessId], rows.map((b) => b.id));
+        rows = rows.filter((b) => {
+          const sum = Number(b.total);
+          const brief = briefs[b.id];
+          const paid = brief ? Math.max(0, sum - brief.due) : 0;
+          const isPaid = paid > 0 && paid >= sum;
+          return q.paid === 'paid' ? isPaid : !isPaid;
+        });
+      }
+      total = rows.length;
+      revenue = rows.reduce((s, b) => (b.deletedAt ? s : s + Number(b.total)), 0);
+      deleted = rows.filter((b) => b.deletedAt).length;
+      // Порядок: по времени, свежие первыми (одна минута — по id); колонка таблицы — поверх него
+      const base = (a: (typeof rows)[number], b: (typeof rows)[number]) => b.startAt.getTime() - a.startAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      rows.sort((a, b) => {
+        if (q.sort === 'when') return (a.startAt.getTime() - b.startAt.getTime()) * dir || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+        if (q.sort === 'total') return (Number(a.total) - Number(b.total)) * dir || base(a, b);
+        return base(a, b);
+      });
+      page = Math.min(Math.max(1, q.page), Math.max(1, Math.ceil(total / pageSize)));
+      ids = rows.slice((page - 1) * pageSize, page * pageSize).map((b) => b.id);
+    }
     const full = ids.length ? await this.prisma.booking.findMany({ where: { id: { in: ids } } }) : [];
     const byId = new Map(full.map((b) => [b.id, b]));
     const tz = await this.tzByLocation(businessId);
