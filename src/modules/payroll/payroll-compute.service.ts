@@ -118,11 +118,11 @@ export class PayrollComputeService {
     return location;
   }
 
-  private async staffAtLocation(businessId: string, locationId: string) {
+  private async staffAtLocation(businessId: string, locationId: string, anyStatus = false) {
     const rows = await this.prisma.staffLocation.findMany({ where: { locationId }, select: { staffId: true } });
     const ids = rows.map((r) => r.staffId);
     if (!ids.length) return [] as { id: string; name: string; position: unknown; createdAt: Date }[];
-    return this.prisma.staff.findMany({ where: { id: { in: ids }, businessId, status: { notIn: ['fired', 'disabled'] } }, orderBy: { createdAt: 'asc' } });
+    return this.prisma.staff.findMany({ where: { id: { in: ids }, businessId, ...(anyStatus ? {} : { status: { notIn: ['fired', 'disabled'] } }) }, orderBy: { createdAt: 'asc' } });
   }
 
   private async loadBookings(businessId: string, locationId: string, from: string, to: string): Promise<EngineBooking[]> {
@@ -462,9 +462,14 @@ export class PayrollComputeService {
     return rows.map((e) => ({ bookingId: e.bookingId, kind: e.kind, toStatus: e.toStatus, byRef: e.byRef }));
   }
 
-  async computePeriod(businessId: string, locationId: string, from: string, to: string, positionKey?: string, ownOnlyStaffId?: string) {
+  /**
+   * `anyStatus` — расчёт одного сотрудника (`ownOnlyStaffId`) и уволенного/отключённого: ведомость и выписка
+   * сотрудника считают его всегда (как computeStatement/staffSalaryForSheetSync мока), список «Расчёта» — только
+   * работающих (F-09-064).
+   */
+  async computePeriod(businessId: string, locationId: string, from: string, to: string, positionKey?: string, ownOnlyStaffId?: string, anyStatus = false) {
     await this.requireLocation(businessId, locationId);
-    let staffRows = await this.staffAtLocation(businessId, locationId);
+    let staffRows = await this.staffAtLocation(businessId, locationId, anyStatus && Boolean(ownOnlyStaffId));
     if (positionKey) staffRows = staffRows.filter((s) => (((s.position as { ru?: string; en?: string; hy?: string } | null)?.ru ?? (s.position as { en?: string } | null)?.en ?? '') === positionKey));
     const staffIds = this.filterOwn(staffRows.map((s) => s.id), ownOnlyStaffId);
     const monthStart = monthStartOf(to);
@@ -504,18 +509,24 @@ export class PayrollComputeService {
       let servicesPayoutAmount = 0;
       let recordsAmount = 0;
       let extraAmount = 0;
+      let workdayAmount = 0;
+      let dailyMinTopUp = 0;
       let extraProfitAssumed = false;
       let unpaidVisits = 0;
       let unpaidAmount = 0;
       const unpaidSeen = new Set<string>();
+      // День за днём — как computeStaffPay мока: услуги, «за запись», доп. от оборота, оплата за час/день и минимум
+      // за день (F-09-038) по каждому рабочему дню; оклад и минимум месяца — после, за целый месяц
       for (const date of dates) {
         const opsByStaff = computeServicesForDay({ date, locationId, staffIds: [staffId], bookings, groupEvents, services, schemes, loyaltyPaidForBooking, techCardCost, unpaidForBooking, accrualDateForBooking: accrual.lookup, assistantsForLine });
         const ops = opsByStaff.get(staffId) ?? [];
+        const hours = hoursResult.hoursByDate.get(date) ?? 0;
+        let dayServices = 0;
         servicesCount += ops.reduce((n, op) => n + op.lines.length, 0);
-        servicesRevenue = roundMoney(servicesRevenue + ops.reduce((sum, op) => sum + op.revenue, 0));
-        servicesPayoutAmount = roundMoney(servicesPayoutAmount + ops.reduce((sum, op) => sum + op.amount, 0));
-        // З3: визит «Пришёл», за который в кассу пришло не всё — факт и доля этого мастера (как мок)
         for (const op of ops) {
+          servicesRevenue = roundMoney(servicesRevenue + op.revenue);
+          dayServices = roundMoney(dayServices + op.amount);
+          // З3: визит «Пришёл», за который в кассу пришло не всё — факт и доля этого мастера (как мок)
           const booking = op.bookingId ? bookingById.get(op.bookingId) : undefined;
           if (!booking || unpaidSeen.has(booking.id)) continue;
           const unpaid = unpaidForBooking(booking.id);
@@ -525,31 +536,42 @@ export class PayrollComputeService {
           unpaidVisits += 1;
           unpaidAmount = roundMoney(unpaidAmount + (unpaid * op.revenue) / bookingTotal);
         }
+        servicesPayoutAmount = roundMoney(servicesPayoutAmount + dayServices);
+        let dayRecords = 0;
+        let dayExtra = 0;
+        let dayWorkday = 0;
         if (scheme?.records.enabled) {
-          recordsAmount = roundMoney(recordsAmount + recordsRewardForDay(bookingsWithMeta, staffId, date, scheme.records, services, locationId) + onlineWidgetRewardForDay(bookingsWithMeta, events, staffId, date, scheme.records, services, locationId));
+          dayRecords = roundMoney(recordsRewardForDay(bookingsWithMeta, staffId, date, scheme.records, services, locationId) + onlineWidgetRewardForDay(bookingsWithMeta, events, staffId, date, scheme.records, services, locationId));
         }
         if (scheme?.extraServiceRevenue.enabled) {
           const turnover = locationServicesTurnover(bookings, locationId, date);
           const expenses = await this.expensesForDay(businessId, locationId, date, turnover, expenseCache);
           if (scheme.extraServiceRevenue.base === 'profit' && expenses === undefined) extraProfitAssumed = true;
-          extraAmount = roundMoney(extraAmount + extraRevenueAmount(turnover, scheme.extraServiceRevenue, expenses));
+          dayExtra = extraRevenueAmount(turnover, scheme.extraServiceRevenue, expenses);
         }
         if (scheme?.extraProductRevenue.enabled) {
-          extraAmount = roundMoney(extraAmount + extraRevenueAmount(this.productsTurnover(sales.docs, date), scheme.extraProductRevenue, this.productsCost(sales.docs, date)));
+          dayExtra = roundMoney(dayExtra + extraRevenueAmount(this.productsTurnover(sales.docs, date), scheme.extraProductRevenue, this.productsCost(sales.docs, date)));
+        }
+        if (scheme?.workday.enabled) {
+          if (scheme.workday.basePeriod === 'hour') dayWorkday = roundMoney(scheme.workday.baseAmount * hours);
+          else if (scheme.workday.basePeriod === 'day') dayWorkday = hours > 0 ? scheme.workday.baseAmount : 0;
+        }
+        recordsAmount = roundMoney(recordsAmount + dayRecords);
+        extraAmount = roundMoney(extraAmount + dayExtra);
+        workdayAmount = roundMoney(workdayAmount + dayWorkday);
+        // F-09-038: минимум за день — по каждому рабочему дню (как «Расчёт за день» и мок)
+        if (scheme?.workday.enabled && (hours > 0 || ops.length > 0)) {
+          const dayTotal = roundMoney(dayServices + dayRecords + dayExtra + dayWorkday);
+          dailyMinTopUp = roundMoney(dailyMinTopUp + (applyDailyGuaranteedMinimum(dayTotal, scheme.workday.guaranteedMinimum) - dayTotal));
         }
       }
 
-      let workdayAmount = 0;
-      if (scheme?.workday.enabled) {
-        if (scheme.workday.basePeriod === 'hour') workdayAmount = roundMoney(scheme.workday.baseAmount * hoursResult.totalHours);
-        else if (scheme.workday.basePeriod === 'day') workdayAmount = roundMoney(scheme.workday.baseAmount * hoursResult.workDays);
-        else {
-          for (const month of qualifyingMonths) {
-            if (!monthlySalaryQualifies(month, hoursResult.hoursByMonth.get(month) ?? 0, scheme.createdAt)) continue;
-            // Решение 01.10.2026 (как мок): оклад × часы графика месяца по сегодня / часы графика за весь месяц
-            const mh = await this.monthHours(businessId, staffId, month, locationId);
-            workdayAmount = roundMoney(workdayAmount + Math.round(scheme.workday.baseAmount * monthWorkShare(mh.worked, mh.scheduled)));
-          }
+      if (scheme?.workday.enabled && scheme.workday.basePeriod === 'month') {
+        for (const month of qualifyingMonths) {
+          if (!monthlySalaryQualifies(month, hoursResult.hoursByMonth.get(month) ?? 0, scheme.createdAt)) continue;
+          // Решение 01.10.2026 (как мок): оклад × часы графика месяца по сегодня / часы графика за весь месяц
+          const mh = await this.monthHours(businessId, staffId, month, locationId);
+          workdayAmount = roundMoney(workdayAmount + Math.round(scheme.workday.baseAmount * monthWorkShare(mh.worked, mh.scheduled)));
         }
       }
 
@@ -557,13 +579,13 @@ export class PayrollComputeService {
       const products = this.productSalesPay(sales.docs, sales.categoryOf, staffId, scheme, from, to);
       const productsAmount = products.payout;
       const totalAmount = roundMoney(servicesRevenue + products.revenue);
-      const beforeMin = roundMoney(servicesPayoutAmount + productsAmount + workdayAmount + recordsAmount + extraAmount);
+      const beforeMin = roundMoney(servicesPayoutAmount + productsAmount + workdayAmount + recordsAmount + extraAmount + dailyMinTopUp);
       let salary = beforeMin;
       const min = scheme?.workday.enabled ? scheme.workday.guaranteedMinimum : undefined;
       // Минимум месяца — тоже пропорционально отработанному по графику (решение 01.10.2026, как мок)
       const minMonth = min && min.enabled && min.period === 'month' && wholeMonth ? await this.monthHours(businessId, staffId, from.slice(0, 7), locationId) : undefined;
       const minProrated = min && minMonth ? Math.round(min.amount * monthWorkShare(minMonth.worked, minMonth.scheduled)) : undefined;
-      if (min) salary = applyMonthlyGuaranteedMinimum(salary, minProrated !== undefined ? { ...min, amount: minProrated } : min, from, to);
+      if (min && min.period === 'month') salary = applyMonthlyGuaranteedMinimum(salary, minProrated !== undefined ? { ...min, amount: minProrated } : min, from, to);
       if (hoursResult.workDays === 0 && servicesRevenue === 0 && products.revenue === 0 && salary === 0 && !scheme) continue;
       let bonuses = 0;
       let penalties = 0;
@@ -579,7 +601,7 @@ export class PayrollComputeService {
         workday: workdayAmount,
         records: recordsAmount,
         extra: extraAmount,
-        minimumTopUp: roundMoney(salary - beforeMin),
+        minimumTopUp: roundMoney(salary - beforeMin + dailyMinTopUp),
         salary,
         bonuses,
         penalties,
@@ -592,7 +614,7 @@ export class PayrollComputeService {
             ? {
                 amount: min.amount,
                 period: min.period,
-                applied: min.period === 'month' && wholeMonth && salary > beforeMin,
+                applied: min.period === 'day' ? dailyMinTopUp > 0 : wholeMonth && salary > beforeMin,
                 wholeMonth,
                 ...(minMonth && minProrated !== undefined && minProrated < min.amount ? { proratedAmount: minProrated, workedHours: minMonth.worked, monthHours: minMonth.scheduled } : {}),
               }
@@ -610,7 +632,7 @@ export class PayrollComputeService {
    * журнала/отчётов (`ScheduleService.hours`, этап 6), а не своя копия подсчёта смен.
    * Решение владельца 01.10.2026: «отработано» (и оплата «за рабочий день», оклад месяца) — только по сегодняшний
    * день включительно; дни графика после сегодня — отдельно (`aheadDays/aheadHours`), только для подписи. */
-  private async scheduleHours(businessId: string, staffId: string, from: string, to: string, locationId: string): Promise<{ totalHours: number; workDays: number; hoursByMonth: Map<string, number>; aheadDays: number; aheadHours: number }> {
+  private async scheduleHours(businessId: string, staffId: string, from: string, to: string, locationId: string): Promise<{ totalHours: number; workDays: number; hoursByMonth: Map<string, number>; hoursByDate: Map<string, number>; aheadDays: number; aheadHours: number }> {
     const result = await this.schedule.hours(businessId, staffId, from, to, locationId);
     const today = utcToLocalDate(new Date());
     let workDays = 0;
@@ -618,6 +640,7 @@ export class PayrollComputeService {
     let aheadDays = 0;
     let aheadHours = 0;
     const hoursByMonth = new Map<string, number>();
+    const hoursByDate = new Map<string, number>();
     for (const d of result.days) {
       const minutes = (d.hours as { from: string; to: string }[]).reduce((sum, r) => sum + Math.max(0, toMinutes(r.to) - toMinutes(r.from)), 0);
       const scheduled = roundMoney(minutes / 60);
@@ -628,10 +651,11 @@ export class PayrollComputeService {
       }
       if (scheduled > 0) workDays += 1;
       totalHours = roundMoney(totalHours + scheduled);
+      hoursByDate.set(d.date, roundMoney((hoursByDate.get(d.date) ?? 0) + scheduled));
       const month = d.date.slice(0, 7);
       hoursByMonth.set(month, roundMoney((hoursByMonth.get(month) ?? 0) + scheduled));
     }
-    return { totalHours, workDays, hoursByMonth, aheadDays, aheadHours };
+    return { totalHours, workDays, hoursByMonth, hoursByDate, aheadDays, aheadHours };
   }
 
   /** Часы графика месяца: по сегодня включительно и за весь календарный месяц (доля для оклада и минимума месяца) */
@@ -663,17 +687,35 @@ export class PayrollComputeService {
     const total = roundMoney(operations.reduce((sum, op) => sum + op.amount, 0));
     // «Рабочее время» «Моей зарплаты» — то же правило, что колонка «Расчёта»: дни и часы графика за период (final-fix 01.10)
     const hoursResult = await this.scheduleHours(businessId, staffId, from, to, locationId);
-    // «Зарплата за период» «Моей зарплаты» — та же цифра, что строка «Расчёта» (рабочий день, оклад, минимум), а не
-    // только сумма услуг (final-fix 01.10)
-    const period = await this.computePeriod(businessId, locationId, from, to, undefined, staffId);
+    // «Зарплата за период» «Моей зарплаты» и «К выплате» ведомости — та же строка «Расчёта» (рабочий день, оклад,
+    // минимум) с раскладкой «из чего сложилась» (З2/З7/З10), а не только сумма услуг (final-fix 01.10, проход 17.11)
+    const period = await this.computePeriod(businessId, locationId, from, to, undefined, staffId, true);
     const row = period.rows.find((r) => r.staffId === staffId);
-    return { staffId, from, to, operations, total, salary: row?.salary ?? total, sheetAmount: sheetAmountOf(total), workDays: hoursResult.workDays, workHours: hoursResult.totalHours, scheduledAheadDays: hoursResult.aheadDays, scheduledAheadHours: hoursResult.aheadHours };
+    const sheetAmount = await this.staffSalaryForSheet(businessId, staffId, from, to, { locationId, salary: row?.salary ?? 0 });
+    return { staffId, from, to, operations, total, salary: row?.salary ?? total, breakdown: row?.breakdown, sheetAmount, workDays: hoursResult.workDays, workHours: hoursResult.totalHours, scheduledAheadDays: hoursResult.aheadDays, scheduledAheadHours: hoursResult.aheadHours };
+  }
+
+  /**
+   * З1: сколько начислит ведомость сотрудника за период — зарплата по схеме (строка «Расчёта за период»: услуги,
+   * товары, рабочий день, оклад, «за запись», доп. от оборота, минимум) по всем его филиалам этого бизнеса, в целых
+   * драмах. Одна формула для «Начислить» (createSheet) и жёлтой полосы ведомости — как staffSalaryForSheetSync мока.
+   * `known` — уже посчитанная строка одного филиала (выписка ведомости), чтобы не считать её второй раз.
+   */
+  async staffSalaryForSheet(businessId: string, staffId: string, from: string, to: string, known?: { locationId: string; salary: number }): Promise<number> {
+    const links = await this.prisma.staffLocation.findMany({ where: { staffId, location: { businessId } }, select: { locationId: true }, orderBy: { locationId: 'asc' } });
+    let total = 0;
+    for (const { locationId } of links) {
+      const salary =
+        known && known.locationId === locationId ? known.salary : ((await this.computePeriod(businessId, locationId, from, to, undefined, staffId, true)).rows.find((r) => r.staffId === staffId)?.salary ?? 0);
+      total = roundMoney(total + salary);
+    }
+    return sheetAmountOf(total);
   }
 }
 
 /**
- * Сколько начислит ведомость за период сейчас (createSheet) — одна формула для начисления и для жёлтой полосы
- * «Ставку в схеме поменяли после начисления»: полоса видна, только если эта сумма отличается от начисленной.
+ * Сумма ведомости в целых драмах из зарплаты по схеме (staffSalaryForSheet) — одна формула для начисления и для жёлтой
+ * полосы «Ставку в схеме поменяли после начисления»: полоса видна, только если эта сумма отличается от начисленной.
  */
 export function sheetAmountOf(total: number): number {
   return Math.round(total);

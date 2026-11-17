@@ -43,7 +43,7 @@ function entryView(r: { id: string; businessId: string; locationId: string | nul
  * Взаиморасчёты с сотрудником (F-07-159…162/F-09-066…080) — ведомость/премия/штраф/выплата. Владелец сущности —
  * этот раздел (не finance): finance's SettlementEntry мока была демо-заглушкой на этап 14 (комментарий
  * createSettlementSheet мока: «полные схемы расчёта… не построен»), поэтому сумма ведомости здесь — РЕАЛЬНЫЙ
- * расчёт движка (`computeStatement`), а не наивная сумма `booking.total` визитов (решено по ходу, PLAN §9).
+ * расчёт движка (`staffSalaryForSheet` — зарплата по схеме, как «Расчёт за период»), а не сумма визитов (PLAN §9).
  */
 @Injectable()
 export class PayrollSettlementsService {
@@ -108,7 +108,7 @@ export class PayrollSettlementsService {
 
   /**
    * F-09-069: `draft: true` — «Сохранить как черновик» (не входит в баланс, доступен «Начислить» позже),
-   * иначе — «Сохранить и начислить». Сумма — computeStatement (движок), не сумма визитов.
+   * иначе — «Сохранить и начислить». Сумма — зарплата по схеме (staffSalaryForSheet), не сумма визитов и не только услуги.
    */
   async createSheet(ctx: RequestContext, body: SettlementSheetBody) {
     const businessId = ctx.member!.businessId;
@@ -122,7 +122,9 @@ export class PayrollSettlementsService {
       throw new ApiError('period_overlaps', 'Some days are already in another statement', fresh ? { newFrom: fresh.from, newTo: fresh.to } : {});
     }
     const locationId = await this.sheetLocation(businessId, body.staffId, body.locationId);
-    const statement = await this.compute.computeStatement(businessId, locationId, body.staffId, body.periodFrom, body.periodTo);
+    // З1: зарплата по схеме (оклад, минимум, «за запись»…) по всем филиалам сотрудника — та же функция, что «сколько
+    // начислит сейчас» выписки ведомости и staffSalaryForSheetSync мока; раньше начислялась только сумма за услуги
+    const amount = await this.compute.staffSalaryForSheet(businessId, body.staffId, body.periodFrom, body.periodTo);
     const id = newId('payrollSettlementEntry');
     const from = new Date(`${body.periodFrom}T00:00:00.000Z`);
     const to = new Date(`${body.periodTo}T00:00:00.000Z`);
@@ -130,9 +132,9 @@ export class PayrollSettlementsService {
     const label = `${body.periodFrom.split('-').reverse().join('.')}–${body.periodTo.split('-').reverse().join('.')}`;
     await this.prisma.$transaction(async (tx) => {
       await tx.payrollSettlementEntry.create({
-        data: { id, businessId, locationId, staffId: body.staffId, kind: 'sheet', amount: BigInt(statement.sheetAmount), label, comment: body.comment, periodFrom: from, periodTo: to, status: body.draft ? 'draft' : 'accrued', createdBy: ctx.member!.staffId },
+        data: { id, businessId, locationId, staffId: body.staffId, kind: 'sheet', amount: BigInt(amount), label, comment: body.comment, periodFrom: from, periodTo: to, status: body.draft ? 'draft' : 'accrued', createdBy: ctx.member!.staffId },
       });
-      await this.audit.record(tx, ctx, { action: 'create', entityType: 'payrollSettlementSheet', entityId: id, businessId, after: { staffId: body.staffId, amount: statement.sheetAmount, draft: Boolean(body.draft) } });
+      await this.audit.record(tx, ctx, { action: 'create', entityType: 'payrollSettlementSheet', entityId: id, businessId, after: { staffId: body.staffId, amount, draft: Boolean(body.draft) } });
     });
     return entryView(await this.prisma.payrollSettlementEntry.findUniqueOrThrow({ where: { id } }));
   }
