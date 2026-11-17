@@ -18,6 +18,7 @@ import {
   journalViewBody,
   moveCandidatesBody,
   oneDateBody,
+  openUntilBody,
   removeFromScheduleBody,
   restoreAfterRemoveBody,
   restoreCellsBody,
@@ -293,6 +294,14 @@ export class ScheduleController {
   @ZodBody(removeFromScheduleBody)
   remove(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('staffId') staffId: string, @Body(new Zod(removeFromScheduleBody)) body: z.infer<typeof removeFromScheduleBody>) {
     return this.svc.removeFromSchedule(ctx, businessId, staffId, body.force);
+  }
+
+  @Put('staff/:staffId/open-until')
+  @Biz('schedule.edit')
+  @ApiOperation({ summary: '«Открыть окна до …» (17.11.2026): до какой даты клиенты видят окна мастера; null — без срока' })
+  @ZodBody(openUntilBody)
+  setOpenUntil(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('staffId') staffId: string, @Body(new Zod(openUntilBody)) body: z.infer<typeof openUntilBody>) {
+    return this.svc.setOpenUntil(ctx, businessId, staffId, body.openUntil);
   }
 
   @Post('staff/:staffId/remove-from-schedule/restore')

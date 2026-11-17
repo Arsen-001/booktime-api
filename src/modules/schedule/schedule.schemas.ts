@@ -135,6 +135,8 @@ export const journalViewBody = z
 export const addWorkDaysBody = z.object({ dates, hours: dayHours.optional(), locationId: id32.optional() });
 export const oneDateBody = z.object({ date: isoDate });
 export const removeFromScheduleBody = z.object({ force: z.boolean().default(false) });
+/** «Открыть окна до …» (17.11.2026): дата или null — без срока */
+export const openUntilBody = z.object({ openUntil: isoDate.nullable() });
 export const restoreAfterRemoveBody = z.object({
   snapshot: z.object({ cells: z.array(cellSnapshot).max(20000), openUntil: isoDate.nullable().optional() }),
 });

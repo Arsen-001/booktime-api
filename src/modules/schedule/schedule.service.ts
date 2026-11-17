@@ -501,9 +501,11 @@ export class ScheduleService {
           totalDays += 1;
           totalMinutes += minutesOf(mainWorks ? union : elsewhere.flatMap((x) => x.hours));
         }
-        return { date, hours, typeId, ...this.noteOf(types, staff.id, date), hasBookings: bookingDays.has(`${staff.id}|${date}`), ...(elsewhere.length ? { elsewhere } : {}) };
+        // Владелец 17.11.2026 (DESIGN.md №11): рабочий день после «окна открыты до» — клиенты его не видят (штриховка)
+        const closed = mainWorks && Boolean(main?.openUntil) && date > main!.openUntil!;
+        return { date, hours, typeId, ...this.noteOf(types, staff.id, date), hasBookings: bookingDays.has(`${staff.id}|${date}`), ...(elsewhere.length ? { elsewhere } : {}), ...(closed ? { closedForClients: true } : {}) };
       });
-      return { staff: staffViewWithLogin(staff), cells, totalDays, totalMinutes };
+      return { staff: staffViewWithLogin(staff), cells, totalDays, totalMinutes, ...(main?.openUntil ? { openUntil: main.openUntil } : {}) };
     });
     const filtered = f.hasSchedule === 'with' ? rows.filter((r) => r.totalDays > 0) : f.hasSchedule === 'without' ? rows.filter((r) => r.totalDays === 0) : rows;
     return filtered.sort((a, b) => (a.totalDays > 0 ? 0 : 1) - (b.totalDays > 0 ? 0 : 1) || a.staff.name.localeCompare(b.staff.name));
@@ -684,6 +686,21 @@ export class ScheduleService {
     );
     await this.afterWrite(businessId, [staffId], dates.slice(0, 31));
     return { ok: true as const, snapshot };
+  }
+
+  /**
+   * «Открыть окна до …» (владелец 17.11.2026, DESIGN.md №11): срок, до которого клиенты видят окна мастера
+   * (WorkSchedule.openUntil, F-00-055) — для всех его графиков; null — без срока.
+   */
+  async setOpenUntil(ctx: RequestContext, businessId: string, staffId: string, openUntil: string | null) {
+    this.assertCanEdit(ctx, [staffId]);
+    await this.staffMap(this.prisma, businessId, [staffId]);
+    const before = await this.scheduleEnd(this.prisma, staffId);
+    await this.prisma.workSchedule.updateMany({ where: { staffId, businessId }, data: { openUntil } });
+    const today = nowLocal().slice(0, 10);
+    const from = [before, openUntil, today].filter((d): d is string => Boolean(d)).sort()[0]!;
+    await this.afterWrite(businessId, [staffId], eachDay(from > today ? from : today, dayjs(from > today ? from : today).add(30, 'day').format('YYYY-MM-DD')));
+    return { openUntil };
   }
 
   async restoreAfterRemove(ctx: RequestContext, businessId: string, staffId: string, snapshot: { cells: CellSnapshot[]; openUntil?: string | null }) {

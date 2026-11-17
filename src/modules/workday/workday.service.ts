@@ -8,6 +8,8 @@ import { BookingPaymentsService } from '../finance/booking-payments.service.js';
 import { bookingView } from '../journal/journal.views.js';
 import { extrasOf } from '../journal/rules.js';
 import { dayMoneyOf } from './day-money.js';
+import { locationsOf } from '../reports/reports-common.js';
+import { receivedMoney, sumMoney } from '../reports/reports-money.js';
 
 /**
  * Рабочий день журнала (⭐ 01.10.2026, пункты 5–7 владельца) — то же, что считает мок фронта
@@ -238,6 +240,20 @@ export class WorkdayService {
       debtTotal: { clients: debtBy.size, amount: moneyToJson([...debtBy.values()].reduce((sum, d) => sum + d.amount, 0n)) },
       unclosedCount: unclosedBefore,
     };
+  }
+
+  // ─────────── «Пульс дня»: получено (владелец 17.11.2026, DESIGN.md №18) ───────────
+
+  /**
+   * «Получено 5 000 ֏ из 36 000»: деньги, которые правда получены в этот день, — то же правило, что во всех отчётах
+   * с 01.10 (receivedMoney: оплаты услуг минус возвраты по визиту, оплаченные товары; без абонементов, сертификатов,
+   * пополнений и оплат лояльностью). Мастеру — только своё (его визиты и его продажи).
+   */
+  async received(businessId: string, staffId: string | undefined, date: string, locationIds: string[] | undefined) {
+    const locations = await locationsOf(this.prisma, businessId, locationIds);
+    const money = await receivedMoney(this.prisma, businessId, locations, { from: date, to: date });
+    const mine = staffId ? money.filter((m) => m.staffId === staffId) : money;
+    return { date, received: sumMoney(mine) };
   }
 
   // ─────────── Итоги дня ───────────
