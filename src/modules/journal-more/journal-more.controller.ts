@@ -9,6 +9,7 @@ import { Zod } from '../../common/http/validation.js';
 import { isLocalDate } from '../../common/time/time.js';
 import { JournalAccess, csv } from '../journal/access.js';
 import { JournalMoreService } from './journal-more.service.js';
+import { RecordsService, type RecordsQuery } from './records.service.js';
 import { ReadOnly } from '../../common/http/read-only.js';
 
 type B = { businessId: string };
@@ -68,7 +69,44 @@ export class JournalMoreController {
   constructor(
     private readonly svc: JournalMoreService,
     private readonly access: JournalAccess,
+    private readonly records: RecordsService,
   ) {}
+
+  @Get('records')
+  @Biz('journal.view')
+  @ApiOperation({ summary: '«Записи» (F-01-181) страницей: фильтры, сортировка и итоги «Показано / Выручка / Удалено» — на сервере' })
+  recordsPage(@Ctx() ctx: RequestContext, @Query() q: Record<string, string | undefined>) {
+    const pick = <T extends string>(v: string | undefined, allowed: readonly T[], fallback: T): T => (allowed.includes(v as T) ? (v as T) : fallback);
+    const query: RecordsQuery = {
+      cancel: pick(q['cancel'], ['all', 'notCancelled', 'cancelled', 'deleted'] as const, 'all'),
+      source: pick(q['source'], ['all', 'online', 'offline'] as const, 'all'),
+      paid: pick(q['paid'], ['all', 'paid', 'unpaid'] as const, 'all'),
+      categoryId: q['categoryId'] || undefined,
+      resourceId: q['resourceId'] || undefined,
+      // Без права «чужие записи» — только свои: сервер сам сужает до своего сотрудника, что бы ни прислал браузер
+      staffId: ctx.member!.permissions.has('journal.others') ? q['staffId'] || undefined : (ctx.member!.staffId ?? q['staffId'] ?? undefined),
+      from: q['from'] ? date(q['from'], 'from') : undefined,
+      sort: q['sort'] === 'when' || q['sort'] === 'total' ? q['sort'] : undefined,
+      dir: q['dir'] === 'asc' ? 'asc' : 'desc',
+      page: Math.max(1, Number(q['page']) || 1),
+      pageSize: Math.min(100, Math.max(1, Number(q['pageSize']) || 10)),
+    };
+    return this.records.recordsPage(ctx.member!.businessId, query);
+  }
+
+  @Get('search')
+  @Biz('journal.view')
+  @ApiOperation({ summary: 'Поиск журнала (F-01-163): клиенты по имени/части номера и их записи — будущие, потом прошедшие' })
+  search(@Ctx() ctx: RequestContext, @Query('q') q?: string, @Query('staffId') staffId?: string, @Query('from') from?: string, @Query('clientsLimit') clientsLimit?: string) {
+    const own = ctx.member!.permissions.has('journal.others') ? staffId || undefined : (ctx.member!.staffId ?? staffId ?? undefined);
+    return this.records.search(ctx.member!.businessId, {
+      q: (q ?? '').slice(0, 100),
+      staffId: own,
+      from: from ? date(from, 'from') : undefined,
+      byPhone: ctx.member!.permissions.has('clients.phones'),
+      clientsLimit: Math.min(50, Math.max(1, Number(clientsLimit) || 4)),
+    });
+  }
 
   @Get('staff-hours')
   @Biz('journal.view')

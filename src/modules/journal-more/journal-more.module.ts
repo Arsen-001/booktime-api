@@ -6,6 +6,7 @@ import { ScheduleModule } from '../schedule/schedule.module.js';
 import { StockModule } from '../stock/stock.module.js';
 import { JournalMoreController } from './journal-more.controller.js';
 import { JournalMoreService } from './journal-more.service.js';
+import { RecordsService } from './records.service.js';
 
 /**
  * Этап 21, лейн «journal» — функции src/api/journal.ts фронта, которые до этого считали по моку браузера.
@@ -16,6 +17,6 @@ import { JournalMoreService } from './journal-more.service.js';
 @Module({
   imports: [ScheduleModule, StockModule, FinanceModule, LoyaltyModule],
   controllers: [JournalMoreController],
-  providers: [JournalMoreService, JournalAccess],
+  providers: [JournalMoreService, RecordsService, JournalAccess],
 })
 export class JournalMoreModule {}
