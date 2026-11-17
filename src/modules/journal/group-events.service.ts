@@ -43,13 +43,14 @@ export class GroupEventsService {
     return this.bookings.prisma;
   }
 
-  async list(q: { businessIds: string[]; locationId?: string; staffId?: string; serviceId?: string; from?: string; to?: string; statuses?: string[] }) {
+  async list(q: { businessIds: string[]; locationId?: string; staffId?: string; serviceId?: string; from?: string; to?: string; statuses?: string[]; ids?: string[] }) {
     const tz = await this.bookings.tzOfBusiness(this.prisma, q.businessIds[0] ?? '');
     const where: Prisma.GroupEventWhereInput = { businessId: { in: q.businessIds } };
     if (q.locationId) where.locationId = q.locationId;
     if (q.staffId) where.staffId = q.staffId;
     if (q.serviceId) where.serviceId = q.serviceId;
     if (q.statuses?.length) where.status = { in: q.statuses };
+    if (q.ids) where.id = { in: q.ids };
     const range: Prisma.DateTimeFilter = {};
     if (q.from) range.gte = localDayRangeUtc(q.from, tz).from;
     if (q.to) range.lt = localDayRangeUtc(q.to, tz).to;

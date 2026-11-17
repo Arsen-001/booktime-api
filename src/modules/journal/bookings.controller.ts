@@ -68,6 +68,8 @@ export class BookingsController {
       groupEventId: q['groupEventId'],
       seriesId: q['seriesId'],
       visitId: q['visitId'],
+      // Записи по id (ведомость — подсветка правленых визитов, окно записи по ссылке): не держать в браузере всё
+      ids: q['ids'] === undefined ? undefined : csv(q['ids']),
     });
   }
 

@@ -323,7 +323,7 @@ export class JournalController {
   @Biz('journal.view')
   async listEvents(@Ctx() ctx: RequestContext, @Query() q: Record<string, string | undefined>) {
     const businessIds = await this.access.businessIds(ctx, q['businessIds']);
-    return this.events.list({ businessIds, locationId: q['locationId'], staffId: q['staffId'], serviceId: q['serviceId'], from: q['from'], to: q['to'], statuses: csv(q['statuses']) });
+    return this.events.list({ businessIds, locationId: q['locationId'], staffId: q['staffId'], serviceId: q['serviceId'], from: q['from'], to: q['to'], statuses: csv(q['statuses']), ids: q['ids'] === undefined ? undefined : csv(q['ids']) });
   }
 
   @Post('events')
