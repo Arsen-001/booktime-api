@@ -195,30 +195,65 @@ export class PayrollCatalogService {
   }
 
   /**
-   * З6/З11: сохранить схему версией — applySchemeVersion мока. Без даты или с той же датой — правка текущей версии;
-   * с более поздней — новая версия, прежняя уходит в history и действует до этой даты; дата раньше текущей версии —
-   * scheme_overlap; изменённые ставки с датой в закрытом периоде филиалов сотрудника — scheme_closed.
+   * З6/З11: какой станет схема сотрудника после сохранения `next` — applySchemeVersion мока. Без даты или с той же датой —
+   * правка текущей версии; с более поздней — новая версия, прежняя уходит в history и действует до этой даты; дата раньше
+   * текущей версии — scheme_overlap; изменённые ставки с датой в закрытом периоде филиалов сотрудника — scheme_closed.
+   * Ничего не пишет: запись — writeScheme (так «Применить к…» сначала проверяет всех, потом пишет одной транзакцией).
    */
-  async saveScheme(ctx: RequestContext, staffId: string, body: SchemeSaveBody) {
-    const businessId = ctx.member!.businessId;
-    const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
-    if (!staff) throw new ApiError('not_found', 'Staff not found');
+  private async planSchemeWrite(staffId: string, next: VersionedScheme) {
     const existing = await this.prisma.payrollScheme.findUnique({ where: { staffId } });
-    const next: VersionedScheme = { ...schemeBlocksOf(body), ...(body.effectiveFrom ? { effectiveFrom: body.effectiveFrom } : {}) };
     const versioned = applySchemeVersion(existing ? versionedSchemeOf(existing) : undefined, next, await this.closedThroughForStaff(staffId));
     if ('error' in versioned) throw new ApiError(versioned.error === 'closed' ? 'scheme_closed' : 'scheme_overlap', versioned.error === 'closed' ? 'Effective date is in a closed payroll period' : 'Effective date overlaps the previous version');
     const v = versioned.scheme;
     const history = v.history?.map((h) => ({ ...schemeBlocksOf(h), ...(h.effectiveFrom ? { effectiveFrom: h.effectiveFrom } : {}), ...(h.updatedAt ? { updatedAt: h.updatedAt } : {}) }));
-    const row = { data: jsonOf(schemeBlocksOf(v)), effectiveFrom: v.effectiveFrom ?? null, history: history?.length ? jsonOf(history) : Prisma.DbNull };
-    await this.prisma.$transaction(async (tx) => {
-      if (existing) {
-        await tx.payrollScheme.update({ where: { staffId }, data: { ...row, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
-      } else {
-        await tx.payrollScheme.create({ data: { staffId, businessId, ...row, createdBy: ctx.member!.staffId, updatedBy: ctx.member!.staffId } });
-      }
-      await this.audit.record(tx, ctx, { action: existing ? 'update' : 'create', entityType: 'payrollScheme', entityId: staffId, businessId, after: { staffId, effectiveFrom: v.effectiveFrom ?? null, versions: (history?.length ?? 0) + 1 } });
-    });
+    return {
+      staffId,
+      exists: Boolean(existing),
+      effectiveFrom: v.effectiveFrom ?? null,
+      versions: (history?.length ?? 0) + 1,
+      row: { data: jsonOf(schemeBlocksOf(v)), effectiveFrom: v.effectiveFrom ?? null, history: history?.length ? jsonOf(history) : Prisma.DbNull },
+    };
+  }
+
+  private async writeScheme(tx: Prisma.TransactionClient, ctx: RequestContext, businessId: string, plan: Awaited<ReturnType<PayrollCatalogService['planSchemeWrite']>>) {
+    const { staffId, row } = plan;
+    if (plan.exists) {
+      await tx.payrollScheme.update({ where: { staffId }, data: { ...row, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
+    } else {
+      await tx.payrollScheme.create({ data: { staffId, businessId, ...row, createdBy: ctx.member!.staffId, updatedBy: ctx.member!.staffId } });
+    }
+    await this.audit.record(tx, ctx, { action: plan.exists ? 'update' : 'create', entityType: 'payrollScheme', entityId: staffId, businessId, after: { staffId, effectiveFrom: plan.effectiveFrom, versions: plan.versions } });
+  }
+
+  /** З6/З11: сохранить схему сотрудника версией (planSchemeWrite) */
+  async saveScheme(ctx: RequestContext, staffId: string, body: SchemeSaveBody) {
+    const businessId = ctx.member!.businessId;
+    const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
+    if (!staff) throw new ApiError('not_found', 'Staff not found');
+    const plan = await this.planSchemeWrite(staffId, { ...schemeBlocksOf(body), ...(body.effectiveFrom ? { effectiveFrom: body.effectiveFrom } : {}) });
+    await this.prisma.$transaction((tx) => this.writeScheme(tx, ctx, businessId, plan));
     return schemeView(await this.prisma.payrollScheme.findUniqueOrThrow({ where: { staffId } }));
+  }
+
+  /**
+   * З12 «Применить к…» — applySchemeToStaff мока: текущая версия схемы образца становится новой версией схемы каждого
+   * выбранного сотрудника с даты `effectiveFrom` (прошлое у них — по прежним версиям). Одна операция: отказ на любом
+   * сотруднике (закрытый период, пересечение, чужой сотрудник) — не сохраняется ни у кого. Ответ — сколько применено.
+   */
+  async applySchemeToStaff(ctx: RequestContext, sourceStaffId: string, staffIds: string[], effectiveFrom: string) {
+    const businessId = ctx.member!.businessId;
+    const source = await this.prisma.payrollScheme.findFirst({ where: { staffId: sourceStaffId, businessId } });
+    if (!source) throw new ApiError('not_found', 'Source scheme not found');
+    const targets = [...new Set(staffIds)].filter((id) => id !== sourceStaffId);
+    const found = await this.prisma.staff.count({ where: { id: { in: targets }, businessId } });
+    if (found !== targets.length) throw new ApiError('not_found', 'Staff not found');
+    const blocks = schemeBlocksOf(versionedSchemeOf(source));
+    const plans: Awaited<ReturnType<PayrollCatalogService['planSchemeWrite']>>[] = [];
+    for (const staffId of targets) plans.push(await this.planSchemeWrite(staffId, { ...blocks, effectiveFrom }));
+    await this.prisma.$transaction(async (tx) => {
+      for (const plan of plans) await this.writeScheme(tx, ctx, businessId, plan);
+    });
+    return plans.length;
   }
 
   async copyScheme(ctx: RequestContext, staffId: string, fromStaffId: string) {

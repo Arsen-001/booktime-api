@@ -9,7 +9,7 @@ import { Zod } from '../../common/http/validation.js';
 import { PayrollCatalogService } from './payroll-catalog.service.js';
 import { PayrollComputeService } from './payroll-compute.service.js';
 import { PayrollSettlementsService } from './payroll-settlements.service.js';
-import { assignmentBody, bonusPenaltyTypeBody, bulkApplySchemeBody, chartBody, closePeriodBody, criterionBody, generalSettingsBody, payoutBody, payrollStaffRightsBatchBody, payrollStaffRightsBody, ruleBody, schemeSaveBody, settlementEntryBody, settlementSheetBody, type PayrollStaffRightsBatchBody, type PayrollStaffRightsBody } from './payroll.schemas.js';
+import { applySchemeBody, assignmentBody, bonusPenaltyTypeBody, bulkApplySchemeBody, chartBody, closePeriodBody, criterionBody, generalSettingsBody, payoutBody, payrollStaffRightsBatchBody, payrollStaffRightsBody, ruleBody, schemeSaveBody, settlementEntryBody, settlementSheetBody, type PayrollStaffRightsBatchBody, type PayrollStaffRightsBody } from './payroll.schemas.js';
 
 /**
  * Чьи строки видит сотрудник в расчёте (день/период/ведомость) — как мок (ownOnlyStaffIdForActor, решение владельца
@@ -61,6 +61,15 @@ export class PayrollController {
   @ZodBody(closePeriodBody)
   closePeriod(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Body(new Zod(closePeriodBody)) body: z.infer<typeof closePeriodBody>) {
     return this.catalog.closePeriod(ctx, requireLocationId(locationId), body.through);
+  }
+
+  /** З12 «Применить к…»: схема образца — новой версией выбранным сотрудникам с даты; отказ на одном — ни у кого */
+  @Post('schemes/apply')
+  @Biz('payroll.manage')
+  @HttpCode(200)
+  @ZodBody(applySchemeBody)
+  async applyScheme(@Ctx() ctx: RequestContext, @Body(new Zod(applySchemeBody)) body: z.infer<typeof applySchemeBody>) {
+    return { applied: await this.catalog.applySchemeToStaff(ctx, body.sourceStaffId, body.staffIds, body.effectiveFrom) };
   }
 
   // ─────────────────────────── Расчёт (F-09-058…065) ───────────────────────────

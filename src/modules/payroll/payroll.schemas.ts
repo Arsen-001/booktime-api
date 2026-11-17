@@ -91,6 +91,10 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const schemeSaveBody = schemeBlocksBody.extend({ effectiveFrom: isoDate.nullable().optional() });
 export type SchemeSaveBody = z.infer<typeof schemeSaveBody>;
 
+/** З12 «Применить к…»: схема образца — новой версией выбранным сотрудникам с этой даты, всем или никому */
+export const applySchemeBody = z.object({ sourceStaffId: z.string().min(1), staffIds: z.array(z.string().min(1)).min(1).max(500), effectiveFrom: isoDate });
+export type ApplySchemeBody = z.infer<typeof applySchemeBody>;
+
 /** З11: «Закрыть период» — по этот день включительно версии схем не меняются; дата двигается только вперёд */
 export const closePeriodBody = z.object({ through: isoDate });
 export type ClosePeriodBody = z.infer<typeof closePeriodBody>;
