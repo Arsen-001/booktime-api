@@ -66,3 +66,14 @@ test('порядок ключей JSON (MySQL хранит по-своему) н
   assert.equal(schemeVersions(r).length, 1);
   assert.equal(r.effectiveFrom, '2026-11-15');
 });
+
+test('классика, оклад: правило создано 01.09, Ани назначена 10.10 → октябрь не начисляется, ноябрь — да', async () => {
+  const { classicSchemeStart, monthlySalaryQualifies, ruleAsScheme } = await import('./payroll-engine.js');
+  const rule = { ...emptySchemeBlocks(), createdAt: '2026-09-01T09:00' };
+  const scheme = ruleAsScheme(rule, 'st_nuri_ani', '2026-10-10');
+  assert.equal(scheme.createdAt, '2026-10-10');
+  assert.equal(monthlySalaryQualifies('2026-10', 160, scheme.createdAt), false);
+  assert.equal(monthlySalaryQualifies('2026-11', 160, scheme.createdAt), true);
+  // Правило создали позже назначения — действует с даты создания
+  assert.equal(classicSchemeStart('2026-11-05T12:00', '2026-10-10'), '2026-11-05');
+});

@@ -880,8 +880,12 @@ export function resolveActiveChartAssignment(assignments: readonly PayrollChartA
   return forStaff.reduce((best, a) => (a.startDate > best.startDate ? a : best));
 }
 
-/** F-09-002/054/099: приводит правило классической модели к форме эффективной схемы — тот же движок расчёта */
-export function ruleAsScheme(rule: SchemeBlocks & { createdAt: string }, staffId: string): EffectiveScheme {
+/**
+ * F-09-002/054/099: приводит правило классической модели к форме эффективной схемы — тот же движок расчёта.
+ * `rule.createdAt` — время по Еревану ('YYYY-MM-DDTHH:mm', как у мока); createdAt схемы — день, с которого правило
+ * действует для сотрудника (F-09-037 условие 3, classicSchemeStart).
+ */
+export function ruleAsScheme(rule: SchemeBlocks & { createdAt: string }, staffId: string, assignmentStartDate: string): EffectiveScheme {
   return {
     staffId,
     personalServices: rule.personalServices,
@@ -890,8 +894,18 @@ export function ruleAsScheme(rule: SchemeBlocks & { createdAt: string }, staffId
     records: rule.records,
     extraServiceRevenue: rule.extraServiceRevenue,
     extraProductRevenue: rule.extraProductRevenue,
-    createdAt: rule.createdAt,
+    createdAt: classicSchemeStart(rule.createdAt, assignmentStartDate),
   };
+}
+
+/**
+ * F-09-037 условие 3 в классической модели (решение 17.11.2026) — classicSchemeStart мока: правило действует для
+ * сотрудника с более поздней из двух дат — создание правила и назначение схемы сотруднику. Пример: правило создано
+ * 01.09, Ани назначена 10.10, оклад 200 000 → за октябрь оклад не начисляется, за ноябрь — да.
+ */
+export function classicSchemeStart(ruleCreatedAt: string, assignmentStartDate: string): string {
+  const created = ruleCreatedAt.slice(0, 10);
+  return created > assignmentStartDate ? created : assignmentStartDate;
 }
 
 // ─────────────────────────── Согласование ведомости (F-09-100) ───────────────────────────

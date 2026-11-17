@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ApiError } from '../../common/errors/api-error.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { DEFAULT_TZ, localDayRangeUtc, utcToLocalDate } from '../../common/time/time.js';
+import { DEFAULT_TZ, localDayRangeUtc, utcToLocal, utcToLocalDate } from '../../common/time/time.js';
 import { ScheduleService } from '../schedule/schedule.service.js';
 import { PREPAYMENT_LINE_LABEL } from '../finance/prepayment-ops.js';
 import { PayrollCatalogService, versionedSchemeOf } from './payroll-catalog.service.js';
@@ -365,7 +365,8 @@ export class PayrollComputeService {
       this.prisma.payrollChartAssignment.findMany({ where: { businessId, staffId: { in: staffIds } } }),
     ]);
     const chartsById = new Map(chartRows.map((c) => [c.id, c]));
-    const rulesById = new Map(ruleRows.map((r) => [r.id, { ...(r.data as unknown as SchemeBlocks), createdAt: r.createdAt.toISOString() }]));
+    // Время создания правила — по Еревану, как у мока (день «действует с» не съезжает на вчера по UTC)
+    const rulesById = new Map(ruleRows.map((r) => [r.id, { ...(r.data as unknown as SchemeBlocks), createdAt: utcToLocal(r.createdAt) }]));
     const criteriaById = new Map<string, PayrollCriterionData>(criterionRows.map((c) => [c.id, { id: c.id, metric: c.metric as PayrollCriterionData['metric'], scope: c.scope as PayrollCriterionData['scope'], byServices: c.byServices, byProducts: c.byProducts, threshold: Number(c.threshold) }]));
     const criterionPeriod = new Map(criterionRows.map((c) => [c.id, c.period as 'month' | 'day']));
     const assignments: PayrollChartAssignmentData[] = assignmentRows.map((a) => ({ chartId: a.chartId, staffId: a.staffId, startDate: a.startDate.toISOString().slice(0, 10) }));
@@ -377,7 +378,7 @@ export class PayrollComputeService {
         const assignment = resolveActiveChartAssignment(assignments, staffId, date);
         const chart = assignment ? chartsById.get(assignment.chartId) : undefined;
         let resolved = false;
-        if (chart) {
+        if (assignment && chart) {
           const ruleId = pickRuleForChart({ type: chart.type as 'standard' | 'planned', standardRuleId: chart.standardRuleId, planRows: chart.planRows as { criterionId: string; ruleId: string }[] }, (criterionId) => {
             const criterion = criteriaById.get(criterionId);
             if (!criterion) return false;
@@ -386,7 +387,7 @@ export class PayrollComputeService {
           });
           const rule = ruleId ? rulesById.get(ruleId) : undefined;
           if (rule) {
-            map.set(staffId, ruleAsScheme(rule, staffId));
+            map.set(staffId, ruleAsScheme(rule, staffId, assignment.startDate));
             resolved = true;
           }
         }
