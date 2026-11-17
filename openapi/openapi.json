@@ -37098,6 +37098,34 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/finance/fin-ops/page": {
+      "get": {
+        "operationId": "FinanceController_pageOps",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/finance/fin-ops/{id}": {
       "get": {
         "operationId": "FinanceController_getOp",
@@ -44111,6 +44139,80 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/clients/summary": {
+      "get": {
+        "operationId": "ClientsSummaryController_summary",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Сводка клиентов за период (F-04-123…125/163/185): выручка, визиты, по мастерам, новые / не новые / потерянные",
+        "tags": [
+          "clients"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/clients/pending-marks": {
+      "get": {
+        "operationId": "ClientsSummaryController_pendingMarks",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Прошедшие записи без отметки «пришёл / не пришёл» (F-00-127)",
+        "tags": [
+          "clients"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/clients/search": {
       "post": {
         "operationId": "ClientsController_search",
@@ -49384,6 +49486,79 @@
         "summary": "Файл фото по ключу из url загрузки",
         "tags": [
           "uploads"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/records": {
+      "get": {
+        "operationId": "JournalMoreController_recordsPage",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Записи» (F-01-181) страницей: фильтры, сортировка и итоги «Показано / Выручка / Удалено» — на сервере",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/search": {
+      "get": {
+        "operationId": "JournalMoreController_search",
+        "parameters": [
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "clientsLimit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Поиск журнала (F-01-163): клиенты по имени/части номера и их записи — будущие, потом прошедшие",
+        "tags": [
+          "journal"
         ]
       }
     },
@@ -67334,6 +67509,44 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/payroll/settings/close-period": {
+      "post": {
+        "operationId": "PayrollController_closePeriod",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "through": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "required": [
+                  "through"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payroll"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/payroll/day": {
       "get": {
         "operationId": "PayrollController_day",
@@ -71572,6 +71785,17 @@
                       "enabled",
                       "percent",
                       "base"
+                    ]
+                  },
+                  "effectiveFrom": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      {
+                        "type": "null"
+                      }
                     ]
                   }
                 },
