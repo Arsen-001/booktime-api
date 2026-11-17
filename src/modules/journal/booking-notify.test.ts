@@ -165,6 +165,28 @@ test('клиенту: свой шаблон «Администратор зап�
   assert.equal(tables.notifyOutbox![0]!.body, 'Салон Лилит: вас записали — Маникюр, 16.10 в 12:00. Мастер: Ани Саргсян. Ждём вас!');
 });
 
+test('клиенту: свой шаблон «Запись подтверждена» (тип 9) — уходит он, а typeCode в meta не ставится (уходит и при выключенном типе)', async () => {
+  const { db, tables } = world();
+  tables.notifyTypeOverride!.push({ businessId: 'biz_1', code: 9, templates: { push: { ru: '{companyName}: ждём вас {date} в {time}, мастер {staff}.' } } });
+  const b = booking(TOMORROW_12);
+  const ev = event(b, 'status', { startLocal: '2026-10-16T12:00', fromStatus: 'awaiting_confirmation', toStatus: 'scheduled' });
+  await notifyClientOfBooking(db, db as never, { next: b, events: [ev] as never, appUserId: 'us_client', by: 'st_owner', tz: TZ, now: NOW });
+  const row = tables.notifyOutbox![0]!;
+  assert.equal(row.kind, 'salon_confirmed');
+  assert.equal(row.body, 'Салон Лилит: ждём вас 16.10 в 12:00, мастер Ани Саргсян.');
+  assert.equal((row.meta as { typeCode?: number }).typeCode, undefined);
+});
+
+test('персоналу: свой шаблон «Клиент записался к вам» (тип 11, канал «Приложение администратора») — мастеру; владельцу без правки — наш текст', async () => {
+  const { db, tables } = world();
+  tables.notifyTypeOverride!.push({ businessId: 'biz_1', code: 11, templates: { adminApp: { ru: 'Новый клиент: {clientName}, {service}, {date} {time}.' } } });
+  const b = booking(TOMORROW_12, { source: 'app' });
+  await notifyStaffOfClientAction(db, db as never, { next: b, events: [event(b, 'created')] as never, by: 'client', tz: TZ, now: NOW });
+  const rows = tables.notifyOutbox!;
+  assert.equal(rows.find((r) => r.recipientUserId === 'us_master')!.body, 'Новый клиент: Мариам, Маникюр, 16.10 12:00.');
+  assert.equal(rows.find((r) => r.recipientUserId === 'us_owner')!.body, 'Мариам booked Маникюр tomorrow at 12:00.');
+});
+
 test('клиенту: своё действие клиента (создал/перенёс сам) — без пуша', async () => {
   const { db, tables } = world();
   const b = booking(TOMORROW_12);

@@ -2,6 +2,8 @@ import { isLocale, t, type Locale } from '../common/i18n/i18n.js';
 import type { PrismaService } from '../common/prisma.service.js';
 import { createPaymentProvider } from '../modules/billing/billing-payments.js';
 import { billingTick } from '../modules/billing/subscription.js';
+import { fillTemplate } from '../modules/notify/notify-log-derive.js';
+import { typeTemplateOf } from '../modules/notify/notify-type-text.js';
 import { enqueueOutbox } from '../modules/notify/outbox.js';
 
 /**
@@ -21,13 +23,16 @@ export async function billingDispatch(prisma: PrismaService) {
     for (const o of owners) {
       const user = await prisma.user.findUnique({ where: { id: o.userId! }, select: { locale: true } });
       const locale: Locale = user && isLocale(user.locale) ? user.locale : 'ru';
+      // Текст «Подписка скоро закончится»: шаблон типа 43 салона (канал «Приложение администратора») → наш (хвосты 17.11)
+      const own = key === 'billing.endingSoon' ? await typeTemplateOf(prisma, businessId, ENDING_SOON_TYPE, 'adminApp', locale) : undefined;
+      const body = own ? fillTemplate(own, Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]))) : t(locale, key, params);
       await enqueueOutbox(prisma, {
         businessId: key === 'billing.endingSoon' ? businessId : null,
         app: 'business',
         kind: key === 'billing.endingSoon' ? 'billing_ending' : key === 'billing.paymentFailed' ? 'billing_failed' : 'billing_frozen',
         recipientUserId: o.userId!,
         title: 'BookTime',
-        body: t(locale, key, params),
+        body,
         url: '/biz/billing',
         dedupeKey: `${dedupe}:${o.userId}`,
         meta: key === 'billing.endingSoon' ? { businessId, typeCode: ENDING_SOON_TYPE } : { businessId },

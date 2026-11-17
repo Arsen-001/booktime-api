@@ -8,11 +8,19 @@ import type { Locale } from '../../common/i18n/i18n.js';
  */
 type Db = { notifyTypeOverride: { findUnique: (args: { where: { businessId_code: { businessId: string; code: number } }; select: { templates: true } }) => Promise<{ templates: unknown } | null> } };
 
-export async function typePushTemplateOf(db: Db, businessId: string, code: number, locale: Locale): Promise<string | undefined> {
+/**
+ * Свой текст салона для канала типа: «Пуш» — клиенту, «Приложение администратора» (adminApp) — сотрудникам,
+ * «Telegram» — боту (хвосты 17.11: правка уходила только у 1, 4, 8, 73, 74). Нет правки — undefined.
+ */
+export async function typeTemplateOf(db: Db, businessId: string, code: number, channel: 'push' | 'adminApp' | 'telegram', locale: Locale): Promise<string | undefined> {
   const row = await db.notifyTypeOverride.findUnique({ where: { businessId_code: { businessId, code } }, select: { templates: true } });
-  const push = (row?.templates as { push?: Partial<Record<Locale, string>> } | null | undefined)?.push;
-  const text = push?.[locale]?.trim() || push?.ru?.trim();
+  const tpl = (row?.templates as Record<string, Partial<Record<Locale, string>>> | null | undefined)?.[channel];
+  const text = tpl?.[locale]?.trim() || tpl?.ru?.trim();
   return text || undefined;
+}
+
+export function typePushTemplateOf(db: Db, businessId: string, code: number, locale: Locale): Promise<string | undefined> {
+  return typeTemplateOf(db, businessId, code, 'push', locale);
 }
 
 /** Переменные шаблона записи — те же имена, что в редакторе и журнале отправок ({companyName} {service} {date} {time} {staff} {link}) */

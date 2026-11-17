@@ -32,6 +32,8 @@ export interface BookingCard {
   businessName: string;
   slug?: string;
   when: string;
+  /** Местное время начала 'YYYY-MM-DDTHH:mm' — для своего текста салона ({date} {time}) */
+  local: string;
   service: string;
   master: string;
   /** Кому звонить, если бот не может отменить: мастер → филиал → бизнес */
@@ -47,10 +49,12 @@ export async function bookingCard(prisma: PrismaService, b: BookingRow, locale: 
     serviceId ? prisma.service.findUnique({ where: { id: serviceId }, select: { name: true } }) : Promise.resolve(null),
   ]);
   const tz = location?.tz || DEFAULT_TZ;
+  const local = utcToLocal(b.startAt, tz);
   return {
     businessName: business?.brandName || business?.name || 'BookTime',
     slug: business?.slug || undefined,
-    when: formatWhen(utcToLocal(b.startAt, tz), locale),
+    when: formatWhen(local, locale),
+    local,
     service: pickText(service?.name, locale) ?? '',
     master: staff?.name ?? '',
     phone: staff?.phone || location?.phone || business?.phone || undefined,

@@ -491,7 +491,8 @@ export async function billingTick(prisma: PrismaService, payments: PaymentProvid
       const days = daysUntil(sub.paidUntil);
       if (sub.paidUntil > now) {
         if ([7, 3, 1].includes(days) && sub.warnedDays !== days) {
-          await notify(sub.businessId, 'billing.endingSoon', { days }, `billing:warn:${sub.businessId}:${paidDate}:${days}`);
+          // date — для своего текста салона в «Шаблонах уведомлений» (тип 43: «Подписка заканчивается {date}»)
+          await notify(sub.businessId, 'billing.endingSoon', { days, date: `${paidDate.slice(8, 10)}.${paidDate.slice(5, 7)}.${paidDate.slice(0, 4)}` }, `billing:warn:${sub.businessId}:${paidDate}:${days}`);
           await prisma.subscription.update({ where: { businessId: sub.businessId }, data: { warnedDays: days } });
           res.warned++;
         }
