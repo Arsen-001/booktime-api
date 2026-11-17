@@ -395,6 +395,17 @@ test('3: в день рождения с 10:00 по поясу филиала �
   assert.equal(w.tables.notifyLogEntry!.length, 1);
 });
 
+test('6/20 и 3: свой текст салона из «Шаблонов уведомлений» (канал «Пуш») — уходит он (хвосты 17.11)', async () => {
+  const review = { code: 20, templates: { push: { ru: '{companyName}: как вам визит? {reviewLink}' } } };
+  const w = world({ withApp: true, overrides: [review], bookings: [visited()], events: [arrivedEv(ago(30 * 60_000))] });
+  await notifyClientEvents(w.prisma, fakeMessenger().messenger, NOW);
+  assert.match(String(w.tables.notifyOutbox!.find((x) => x.kind === 'review_request')!.body), /: как вам визит\? https:\/\/booktime\.am\/bookings\/bk_1$/);
+  const bday = { code: 3, templates: { push: { ru: '{clientName}, с праздником! {companyName}' } } };
+  const b = world({ withApp: true, overrides: [bday], client: { birthday: '1990-10-06' } });
+  await notifyClientDaily(b.prisma, fakeMessenger().messenger, NOW);
+  assert.match(String(b.tables.notifyOutbox!.find((x) => x.kind === 'birthday')!.body), /^Анна, с праздником! /);
+});
+
 test('3: время ещё не наступило, «за N дней», 29 февраля, отказ от поздравлений', async () => {
   // 09:30 — по умолчанию шлём с 10:00; тихие часы до 10:00 тоже не дают
   const early = world({ withApp: true, client: { birthday: '1990-10-06' }, overrides: [{ code: 3, conditions: { birthdayMode: 'onDay', birthdayTimeOfDay: '11:00' } }] });
