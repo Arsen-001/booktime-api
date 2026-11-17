@@ -81,6 +81,20 @@ export const schemeBlocksBody = z.object({
 });
 export type SchemeBlocksBody = z.infer<typeof schemeBlocksBody>;
 
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * Сохранение схемы сотрудника (З6): шесть блоков + «Действует с». Нет даты — правка текущей версии (её дата не
+ * меняется), та же дата — тоже правка, более поздняя — новая версия, прежняя действует до неё. Историю версий ведёт
+ * сервер: `history` из тела не принимается (снимается, как любое лишнее поле).
+ */
+export const schemeSaveBody = schemeBlocksBody.extend({ effectiveFrom: isoDate.nullable().optional() });
+export type SchemeSaveBody = z.infer<typeof schemeSaveBody>;
+
+/** З11: «Закрыть период» — по этот день включительно версии схем не меняются; дата двигается только вперёд */
+export const closePeriodBody = z.object({ through: isoDate });
+export type ClosePeriodBody = z.infer<typeof closePeriodBody>;
+
 export const generalSettingsBody = z.object({
   accrualDateBasis: z.enum(['visit', 'received']),
   bankCommissionSplit: z.enum(['staffAssistBusiness', 'staffBusiness', 'staffAssist', 'staffOnly', 'businessOnly']),

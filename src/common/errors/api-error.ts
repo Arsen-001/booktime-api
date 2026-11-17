@@ -175,6 +175,9 @@ export const ERROR_STATUS = {
   // Ответы владельца 17.11 (26, 27): ведомость одобрена — правки закрыты; ведомость на уже начисленные дни
   statement_locked: HttpStatus.CONFLICT,
   period_overlaps: HttpStatus.CONFLICT,
+  // З6/З11 — версии схемы зарплаты (как мок saveScheme): дата раньше текущей версии / дата в закрытом периоде
+  scheme_overlap: HttpStatus.CONFLICT,
+  scheme_closed: HttpStatus.CONFLICT,
   // интеграции (этап 17) — как в моке фронта (src/api/integrations.ts)
   builtin_locked: HttpStatus.CONFLICT,
   // ревью 27.09, этап 21 — И2/И13 (src/api/integrations.ts: sendInstallTest/addWebhookAddress)

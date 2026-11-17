@@ -291,6 +291,91 @@ export function isSchemeBlank(scheme: SchemeBlocks): boolean {
   );
 }
 
+// ─────────────────────────── З6: версии схемы («Действует с») — порт мока ───────────────────────────
+
+/** Одна версия схемы: шесть блоков + «Действует с» ('YYYY-MM-DD'; нет — действует с самого начала) */
+export type SchemeVersion = SchemeBlocks & { effectiveFrom?: string; updatedAt?: string };
+
+/** Схема с историей — текущая версия и прежние от старой к новой (PayrollScheme мока) */
+export type VersionedScheme = SchemeVersion & { history?: SchemeVersion[] };
+
+export type SchemeVersionErrorKey = 'overlap' | 'closed';
+
+/** Только шесть блоков схемы (без дат, истории и служебных полей) — то, что лежит в PayrollScheme.data */
+export function schemeBlocksOf(s: SchemeBlocks): SchemeBlocks {
+  return {
+    personalServices: s.personalServices,
+    productSales: s.productSales,
+    workday: s.workday,
+    records: s.records,
+    extraServiceRevenue: s.extraServiceRevenue,
+    extraProductRevenue: s.extraProductRevenue,
+  };
+}
+
+function stripHistory<T extends VersionedScheme>(scheme: T): Omit<T, 'history'> {
+  const { history: _history, ...rest } = scheme;
+  void _history;
+  return rest;
+}
+
+/** Все версии схемы от старой к новой (последняя — текущая) */
+export function schemeVersions<T extends VersionedScheme>(scheme: T): SchemeVersion[] {
+  return [...(scheme.history ?? []), stripHistory(scheme)];
+}
+
+/**
+ * З6: версия схемы, действующая на дату — с наибольшей «Действует с» ≤ date. Дата раньше всех версий — самая старая
+ * версия (так схемы, сохранённые до появления «Действует с», считают прошлое как раньше). Буквально schemeAtDate мока.
+ */
+export function schemeAtDate<T extends VersionedScheme>(scheme: T, date: string): SchemeVersion {
+  if (!scheme.history?.length) return scheme;
+  const versions = schemeVersions(scheme);
+  let best: SchemeVersion | undefined;
+  for (const v of versions) {
+    const from = v.effectiveFrom ?? '';
+    if (from <= date && (!best || from >= (best.effectiveFrom ?? ''))) best = v;
+  }
+  return best ?? versions[0]!;
+}
+
+/** Ключи объектов по алфавиту: MySQL хранит JSON со своим порядком ключей, а тело запроса — в порядке схемы zod */
+function canonicalJson(v: unknown): string {
+  const norm = (x: unknown): unknown =>
+    Array.isArray(x) ? x.map(norm) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, norm((x as Record<string, unknown>)[k])])) : x;
+  return JSON.stringify(norm(v));
+}
+
+/** Блоки двух версий совпадают (даты и история не в счёт) — schemeBlocksEqual мока, без зависимости от порядка ключей */
+export function schemeBlocksEqual(a: SchemeBlocks, b: SchemeBlocks): boolean {
+  return canonicalJson(schemeBlocksOf(a)) === canonicalJson(schemeBlocksOf(b));
+}
+
+/**
+ * З6/З11: сохранить новую версию — буквально applySchemeVersion мока. Та же дата «Действует с» — правка текущей версии;
+ * более поздняя — прежняя уходит в историю; более ранняя, чем у текущей версии, — пересечение (отказ); дата в закрытом
+ * периоде при изменённых ставках — отказ (правка задним числом идёт корректировкой в следующий период).
+ */
+export function applySchemeVersion<T extends VersionedScheme>(existing: T | undefined, next: T, closedThrough?: string): { scheme: VersionedScheme } | { error: SchemeVersionErrorKey } {
+  const nextVersion: SchemeVersion = stripHistory(next);
+  if (!existing) {
+    if (closedThrough && nextVersion.effectiveFrom && nextVersion.effectiveFrom <= closedThrough) return { error: 'closed' };
+    return { scheme: nextVersion };
+  }
+  const history = existing.history ?? [];
+  const changed = !schemeBlocksEqual(existing, nextVersion);
+  const from = nextVersion.effectiveFrom ?? existing.effectiveFrom;
+  if (changed && closedThrough && (from ?? '') <= closedThrough) return { error: 'closed' };
+  const prevFrom = history.length ? (history[history.length - 1]!.effectiveFrom ?? '') : undefined;
+  if (!changed || from === existing.effectiveFrom) {
+    // Правка текущей версии: дата не может уйти раньше предыдущей версии
+    if (prevFrom !== undefined && (from ?? '') <= prevFrom) return { error: 'overlap' };
+    return { scheme: { ...nextVersion, effectiveFrom: from, history: history.length ? history : undefined } };
+  }
+  if ((from ?? '') < (existing.effectiveFrom ?? '')) return { error: 'overlap' };
+  return { scheme: { ...nextVersion, effectiveFrom: from, history: [...history, stripHistory(existing)] } };
+}
+
 // ─────────────────────────── Движок: расчёт за день ───────────────────────────
 
 export interface PayoutLine {

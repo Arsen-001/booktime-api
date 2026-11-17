@@ -9,7 +9,7 @@ import { Zod } from '../../common/http/validation.js';
 import { PayrollCatalogService } from './payroll-catalog.service.js';
 import { PayrollComputeService } from './payroll-compute.service.js';
 import { PayrollSettlementsService } from './payroll-settlements.service.js';
-import { assignmentBody, bonusPenaltyTypeBody, bulkApplySchemeBody, chartBody, criterionBody, generalSettingsBody, payoutBody, payrollStaffRightsBatchBody, payrollStaffRightsBody, ruleBody, schemeBlocksBody, settlementEntryBody, settlementSheetBody, type PayrollStaffRightsBatchBody, type PayrollStaffRightsBody } from './payroll.schemas.js';
+import { assignmentBody, bonusPenaltyTypeBody, bulkApplySchemeBody, chartBody, closePeriodBody, criterionBody, generalSettingsBody, payoutBody, payrollStaffRightsBatchBody, payrollStaffRightsBody, ruleBody, schemeSaveBody, settlementEntryBody, settlementSheetBody, type PayrollStaffRightsBatchBody, type PayrollStaffRightsBody } from './payroll.schemas.js';
 
 /**
  * Чьи строки видит сотрудник в расчёте (день/период/ведомость) — как мок (ownOnlyStaffIdForActor, решение владельца
@@ -52,6 +52,15 @@ export class PayrollController {
   @ZodBody(generalSettingsBody)
   saveSettings(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Body(new Zod(generalSettingsBody)) body: z.infer<typeof generalSettingsBody>) {
     return this.catalog.saveSettings(ctx, requireLocationId(locationId), body);
+  }
+
+  /** З11: «Закрыть период» по этот день включительно — версии схем с этой датой и раньше больше не меняются */
+  @Post('settings/close-period')
+  @Biz('payroll.manage')
+  @HttpCode(200)
+  @ZodBody(closePeriodBody)
+  closePeriod(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Body(new Zod(closePeriodBody)) body: z.infer<typeof closePeriodBody>) {
+    return this.catalog.closePeriod(ctx, requireLocationId(locationId), body.through);
   }
 
   // ─────────────────────────── Расчёт (F-09-058…065) ───────────────────────────
@@ -399,8 +408,8 @@ export class PayrollStaffController {
 
   @Patch('payroll-scheme')
   @Biz('payroll.manage')
-  @ZodBody(schemeBlocksBody)
-  saveScheme(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Body(new Zod(schemeBlocksBody)) body: z.infer<typeof schemeBlocksBody>) {
+  @ZodBody(schemeSaveBody)
+  saveScheme(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Body(new Zod(schemeSaveBody)) body: z.infer<typeof schemeSaveBody>) {
     return this.catalog.saveScheme(ctx, staffId, body);
   }
 
