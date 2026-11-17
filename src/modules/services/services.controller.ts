@@ -13,6 +13,7 @@ import {
   categoryOut,
   createServiceBody,
   deleteImpactOut,
+  fromTemplatesBody,
   materialsProfileBody,
   orderBody,
   packageCreateBody,
@@ -181,6 +182,14 @@ export class ServicesController {
   @ZodOk(serviceOut)
   createService(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(createServiceBody)) body: z.infer<typeof createServiceBody>) {
     return this.svc.createService(ctx, businessId, body);
+  }
+
+  @Post('services/from-templates')
+  @Biz('services.edit')
+  @ZodBody(fromTemplatesBody)
+  @ZodOk(z.object({ services: z.array(serviceOut), categories: z.array(categoryOut) }))
+  createFromTemplates(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(fromTemplatesBody)) body: z.infer<typeof fromTemplatesBody>) {
+    return this.svc.createFromTemplates(ctx, businessId, body);
   }
 
   @Patch('services/:id')

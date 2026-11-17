@@ -12,6 +12,7 @@ import { staffView } from '../businesses/views.js';
 import type {
   CategoryBody,
   CreateServiceBody,
+  FromTemplatesBody,
   MaterialsProfileBody,
   PackageCreateBody,
   PackageSaveBody,
@@ -197,6 +198,94 @@ export class ServicesService {
       await this.audit.record(tx, ctx, { action: 'create', entityType: 'service', entityId: id, businessId, after: { name: input.name, priceMin: input.priceMin } });
     });
     return this.getService(businessId, id);
+  }
+
+  /**
+   * «Добавить из шаблона» — одна транзакция вместо 5+ запросов сайта (категории, мастера, услуга, назначение по одной,
+   * проход 17.11): категория по id или по русскому имени шаблона (нет — заводится), услуга с общим техперерывом и
+   * онлайн-записью, мастера — выбранные или единственный активный. Как addFromTemplates мока (src/api/services.ts).
+   */
+  async createFromTemplates(ctx: RequestContext, businessId: string, input: FromTemplatesBody) {
+    const ids: string[] = [];
+    const newCategoryIds: string[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      const categories = await tx.serviceCategory.findMany({ where: { businessId } });
+      const activeStaff = await tx.staff.findMany({ where: { businessId, deletedAt: null, status: { not: 'fired' } }, select: { id: true, serviceIds: true } });
+      const staffById = new Map(activeStaff.map((s) => [s.id, new Set(Array.isArray(s.serviceIds) ? (s.serviceIds as string[]) : [])]));
+      const soleStaff = activeStaff.length === 1 ? [activeStaff[0]!.id] : [];
+      let order = await tx.service.count({ where: { businessId, servicePackage: { equals: Prisma.DbNull } } });
+      const touchedStaff = new Set<string>();
+      for (const item of input.items) {
+        if (!item.name.ru?.trim()) throw new ApiError('bad_name', 'Name required');
+        const catName = (item.categoryName as { ru?: string }).ru?.trim();
+        let category = item.categoryId
+          ? categories.find((c) => c.id === item.categoryId)
+          : categories.find((c) => ((c.name as { ru?: string } | null)?.ru ?? '').trim() === catName);
+        if (item.categoryId && !category) throw new ApiError('not_found', 'Category not found');
+        if (!category) {
+          if (!catName) throw new ApiError('bad_name', 'Category name required');
+          const cid = newId('serviceCategory');
+          category = await tx.serviceCategory.create({
+            data: {
+              id: cid,
+              businessId,
+              name: item.categoryName as Prisma.InputJsonValue,
+              onlineNameEnabled: false,
+              onlineName: Prisma.DbNull,
+              sortOrder: categories.length,
+              createdBy: ctx.member!.staffId,
+              updatedBy: ctx.member!.staffId,
+            },
+          });
+          categories.push(category);
+          newCategoryIds.push(cid);
+          await this.audit.record(tx, ctx, { action: 'create', entityType: 'serviceCategory', entityId: cid, businessId, after: { name: item.categoryName } });
+        }
+        const staffIds = (item.staffIds.length ? item.staffIds : soleStaff).filter((sid) => staffById.has(sid));
+        const id = newId('service');
+        await tx.service.create({
+          data: {
+            id,
+            businessId,
+            categoryId: category.id,
+            sphereId: input.sphereId,
+            name: item.name as Prisma.InputJsonValue,
+            description: Prisma.DbNull,
+            kind: item.kind,
+            capacity: null,
+            durationMin: item.durationMin,
+            durationMax: null,
+            priceMin: money(item.priceMin),
+            priceMax: null,
+            bufferAfterMin: techBreakToBuffer('shared'),
+            repeatIntervalDays: null,
+            photos: [],
+            materials: [],
+            staffIds,
+            workplaces: [],
+            onlineBookable: true,
+            active: true,
+            order: order++,
+            shadeChoice: null,
+            createdBy: ctx.member!.staffId,
+            updatedBy: ctx.member!.staffId,
+          },
+        });
+        await this.audit.record(tx, ctx, { action: 'create', entityType: 'service', entityId: id, businessId, after: { name: item.name, priceMin: item.priceMin } });
+        for (const sid of staffIds) {
+          staffById.get(sid)!.add(id);
+          touchedStaff.add(sid);
+          await this.audit.record(tx, ctx, { action: 'staffAssigned', entityType: 'service', entityId: id, businessId, before: null, after: { staffId: sid } });
+        }
+        ids.push(id);
+      }
+      for (const sid of touchedStaff) await tx.staff.update({ where: { id: sid }, data: { serviceIds: [...staffById.get(sid)!] } });
+    });
+    const [rows, cats] = await Promise.all([
+      this.prisma.service.findMany({ where: { id: { in: ids } } }),
+      this.prisma.serviceCategory.findMany({ where: { id: { in: newCategoryIds } } }),
+    ]);
+    return { services: ids.map((id) => serviceView(rows.find((r) => r.id === id)!)), categories: cats.map(categoryView) };
   }
 
   async updateService(ctx: RequestContext, businessId: string, id: string, input: ServiceBody, version: number | undefined) {

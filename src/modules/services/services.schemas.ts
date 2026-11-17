@@ -37,6 +37,29 @@ export type ServiceBody = z.infer<typeof serviceBody>;
 export const createServiceBody = serviceBody.extend({ sphereId: z.string().min(1).max(40) });
 export type CreateServiceBody = z.infer<typeof createServiceBody>;
 
+/**
+ * «Добавить из шаблона» (проход 17.11): все выбранные услуги одним запросом. Категория — по id или по русскому имени
+ * шаблона (нет — заводится); мастера — выбранные, а если не выбраны и активный мастер в бизнесе один — он сам.
+ */
+export const fromTemplatesBody = z.object({
+  sphereId: z.string().min(1).max(40),
+  items: z
+    .array(
+      z.object({
+        categoryId: id32.optional(),
+        categoryName: localized,
+        name: localized,
+        kind: z.enum(['individual', 'group']).default('individual'),
+        durationMin: z.number().int().min(0).max(1440),
+        priceMin: money,
+        staffIds: z.array(id32).max(200).default([]),
+      }),
+    )
+    .min(1)
+    .max(200),
+});
+export type FromTemplatesBody = z.infer<typeof fromTemplatesBody>;
+
 export const activeBody = z.object({ active: z.boolean() });
 export const orderBody = z.object({ ids: z.array(id32).max(2000) });
 export const techBreakBody = z.object({ mode: techBreakMode, min: z.number().int().min(0).max(480).optional() });
