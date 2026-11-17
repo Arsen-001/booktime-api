@@ -810,10 +810,23 @@ export class NetworkCatalogService {
 
   // ───────────────────────── Этап 21 «network+reports»: типы нерабочих дней сети (F-11-108) ─────────────────────────
 
+  /**
+   * Читать типы может и сотрудник филиала без прав сети (администратор, мастер): график его филиала показывает
+   * «Тип» дня по этим названиям (проход 17.11: у администратора и мастера Manana было 403 в консоли графика).
+   * Ему — только типы, отмеченные для его филиалов; править — по-прежнему право сети «staff».
+   */
   async listOffDayTypes(ctx: RequestContext, networkId: string) {
-    await this.access.require(ctx, networkId, 'staff');
+    let ownBranches: string[] | null = null;
+    try {
+      await this.access.require(ctx, networkId, 'staff');
+    } catch (e) {
+      if (!(e instanceof ApiError) || !ctx.session) throw e;
+      ownBranches = await this.access.ownBranches(ctx.session.userId, networkId);
+      if (!ownBranches.length) throw e;
+    }
     const rows = await this.prisma.networkOffDayType.findMany({ where: { networkId }, orderBy: { createdAt: 'asc' } });
-    return rows.map(offDayTypeOut);
+    const visible = ownBranches ? rows.filter((r) => Array.isArray(r.businessIds) && (r.businessIds as string[]).some((b) => ownBranches!.includes(b))) : rows;
+    return visible.map(offDayTypeOut);
   }
 
   async saveOffDayType(ctx: RequestContext, networkId: string, id: string | undefined, input: z.infer<typeof networkOffDayTypeBody>) {

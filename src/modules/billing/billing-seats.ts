@@ -7,7 +7,7 @@ import type { Prices } from './billing-prices.js';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
-export type SeatReason = 'individual' | 'ownerAsMaster' | 'ownerFree' | 'adminFirstFree' | 'adminExtra' | 'master' | 'assistantFree';
+export type SeatReason = 'individual' | 'ownerAsMaster' | 'ownerFree' | 'adminFirstFree' | 'adminExtra' | 'master' | 'assistantFree' | 'invitedPending';
 export type BreakdownKey = 'billing.breakdown.individual' | 'billing.breakdown.masters' | 'billing.breakdown.minimum' | 'billing.breakdown.admins';
 
 export interface SeatLine {
@@ -43,12 +43,24 @@ export interface SeatsResult {
  * - у салона минимум minPaidMasters платных мастеров;
  * - уволенные и отключённые места не занимают (F-00-016).
  */
+/**
+ * Ассистент — галочка в карточке или должность «Ассистент…» на любом языке: то же правило, что у сайта
+ * (`isAssistantStaff`, src/domain/staff.ts). Проход 17.11: «Ассистент мастера» без галочки сайт считал
+ * бесплатным, а подписка — платным (24 000 ֏ на странице лицензии против 32 000 ֏ в подписке).
+ */
+export function isAssistant(s: { assistantOnly: boolean; position: unknown }): boolean {
+  if (s.assistantOnly) return true;
+  const p = (s.position ?? {}) as Record<string, unknown>;
+  const name = ['ru', 'en', 'hy'].map((k) => (typeof p[k] === 'string' ? p[k] : '')).join(' ').toLowerCase();
+  return /ассистент|assistant|օգնական/.test(name);
+}
+
 export async function computeSeats(db: Db, businessId: string, prices: Prices): Promise<SeatsResult> {
   const biz = await db.business.findUnique({ where: { id: businessId }, select: { kind: true } });
   if (!biz) throw new ApiError('not_found', 'Business not found');
   const staff = await db.staff.findMany({
     where: { businessId, deletedAt: null, status: { notIn: ['fired', 'disabled'] } },
-    select: { id: true, name: true, role: true, assistantOnly: true, serviceIds: true, hiredAt: true },
+    select: { id: true, name: true, role: true, status: true, position: true, assistantOnly: true, serviceIds: true, hiredAt: true },
     orderBy: [{ hiredAt: 'asc' }, { id: 'asc' }],
   });
 
@@ -86,8 +98,11 @@ export async function computeSeats(db: Db, businessId: string, prices: Prices): 
     } else if (s.role === 'admin') {
       const first = admins[0]?.id === s.id;
       seats.push({ staffId: s.id, name: s.name, role: 'admin', paid: !first, price: first ? 0 : prices.adminExtraSeat, reasonKey: first ? 'adminFirstFree' : 'adminExtra' });
-    } else if (s.assistantOnly) {
+    } else if (isAssistant(s)) {
       seats.push({ staffId: s.id, name: s.name, role: 'master', paid: false, price: 0, reasonKey: 'assistantFree' });
+    } else if (s.status === 'invited') {
+      // Приглашённый мастер не платный, пока не принял приглашение (как на сайте, src/areas/staff/pricing.ts)
+      seats.push({ staffId: s.id, name: s.name, role: 'master', paid: false, price: 0, reasonKey: 'invitedPending' });
     } else {
       masters++;
       seats.push({ staffId: s.id, name: s.name, role: 'master', paid: true, price: prices.masterSeat, reasonKey: 'master' });
