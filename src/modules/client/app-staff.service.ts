@@ -155,11 +155,44 @@ export class AppStaffService {
       // Имя гостя — подписью экрана на языке человека (как мок: пустое имя → «Гость»)
       return { booking: views[i]!, clientName: client?.name ?? booking.visitorName ?? '', staffName: staff?.name ?? '—', total: Number(booking.total), paidTotal: paid };
     });
+    const orders = await this.orderMoneyOfDay(businessId, from, to, staffId);
+    for (const o of orders) byMethod[o.method] += o.amount;
     return {
       rows,
-      total: rows.reduce((s, r) => s + Number(r.total), 0),
+      orders,
+      // «Итого» = визиты + деньги заказов = сумма по способам
+      total: rows.reduce((s, r) => s + Number(r.total), 0) + orders.reduce((s, o) => s + o.amount, 0),
       byMethod,
     };
+  }
+
+  /**
+   * Деньги заказов дня в Z-отчёте (ответ 12, 17.11.2026): операции кассы «Заказ №1004 · предоплата» (orders.service
+   * orderMoneyTx) — те же, что в смене кассы; без них Z-отчёт дня со сменой не сходился. Пальто 12 000 ֏: в день приёма —
+   * 3 000 наличными, в день выдачи — 9 000 картой. Возврат предоплаты — с минусом; отменённая операция не считается.
+   * Способ — как у визита: карта, перевод, остальное к наличным. Фильтр по мастеру — мастер заказа.
+   */
+  private async orderMoneyOfDay(businessId: string, from: Date, to: Date, staffId?: string) {
+    const ops = await this.prisma.finOp.findMany({
+      where: { businessId, source: 'order', cancelled: false, date: { gte: from, lt: to } },
+      select: { id: true, refId: true, kind: true, amount: true, method: true, lineLabel: true },
+      orderBy: { date: 'asc' },
+    });
+    const orderIds = [...new Set(ops.map((o) => o.refId).filter((x): x is string => Boolean(x)))];
+    const orders = orderIds.length
+      ? await this.prisma.order.findMany({ where: { businessId, id: { in: orderIds } }, select: { id: true, number: true, clientName: true, staffId: true } })
+      : [];
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    return ops.flatMap((op) => {
+      const order = op.refId ? orderById.get(op.refId) : undefined;
+      if (!order || (staffId && order.staffId !== staffId)) return [];
+      const income = op.kind === 'income';
+      const method: 'cash' | 'card' | 'transfer' = op.method === 'card' ? 'card' : op.method === 'transfer' ? 'transfer' : 'cash';
+      // Этап — по подписи операции, которую пишет orderMoneyTx («Заказ №1004 · оплата при выдаче»), как мок
+      const stage = !income ? 'refund' : op.lineLabel?.includes('оплата при выдаче') ? 'issue' : op.lineLabel?.includes('· доплата') ? 'prepaidChange' : 'prepaid';
+      const amount = Number(op.amount);
+      return [{ operationId: op.id, orderId: order.id, number: order.number, clientName: order.clientName, stage, method, amount: income ? amount : -amount }];
+    });
   }
 
   /** F-14-127 «Calculation»: отработано, оказанные услуги, товары визита (BookingPayment.goods=true строки) */

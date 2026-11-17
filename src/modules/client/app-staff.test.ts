@@ -59,6 +59,8 @@ test('Z-отчёт в приложении: день по Еревану, уда
     staff: { findMany: async () => [{ id: 'st_1', name: 'Ани' }, { id: 'st_2', name: 'Ева' }] },
     paymentMethod: { findMany: async () => [{ key: 'card', kind: 'card' }] },
     bookingPayment: { findMany: async () => [{ bookingId: 'bk_day', amount: 5000n, refundedAmount: 0n, kind: 'money', methodKey: 'card' }] },
+    finOp: { findMany: async () => [] },
+    order: { findMany: async () => [] },
   };
   const bookings = { views: async (_db: unknown, rows: { id: string }[]) => rows.map((r) => ({ id: r.id })) };
   const svc = new AppStaffService(prisma as never, bookings as never, {} as never);
@@ -90,6 +92,8 @@ test('Z-отчёт (ответ 14, 17.11): предоплата переводо
         { bookingId: 'bk_owes', amount: 3000n, refundedAmount: 0n, kind: 'account', methodKey: 'account', debt: true },
       ],
     },
+    finOp: { findMany: async () => [] },
+    order: { findMany: async () => [] },
   };
   const bookings = { views: async (_db: unknown, rows: { id: string }[]) => rows.map((r) => ({ id: r.id })) };
   const z = await new AppStaffService(prisma as never, bookings as never, {} as never).getDayZReport('biz_1', '2026-11-17');
@@ -97,6 +101,49 @@ test('Z-отчёт (ответ 14, 17.11): предоплата переводо
   assert.deepEqual(z.byMethod, { cash: 5000, card: 1200, transfer: 1800, loyalty: 0, debt: 8000 });
   assert.equal(Object.values(z.byMethod).reduce((a, b) => a + b, 0), z.total);
   assert.deepEqual(z.rows.map((r) => r.paidTotal), [6000, 2000]);
+});
+
+test('Z-отчёт (ответ 12, 17.11): деньги заказов дня — как в смене кассы; «Итого» = сумма по способам', async () => {
+  // Визит 5 000 картой. Заказ №1004 (пальто 12 000): сегодня при приёме 3 000 наличными; №1005 выдан сегодня — доплата
+  // 9 000 картой; №1006 — предоплату уменьшили, возврат 500 наличными; отменённая операция и чужой день не считаются.
+  // Итого 5 000 + 3 000 + 9 000 − 500 = 16 500 = 2 500 нал. + 14 000 карта.
+  const ops = [
+    { id: 'op1', refId: 'ord_1004', kind: 'income', amount: 3000n, method: 'cash', lineLabel: 'Заказ №1004 · предоплата', source: 'order', cancelled: false, date: new Date('2026-11-17T07:00:00Z') },
+    { id: 'op2', refId: 'ord_1005', kind: 'income', amount: 9000n, method: 'card', lineLabel: 'Заказ №1005 · оплата при выдаче', source: 'order', cancelled: false, date: new Date('2026-11-17T09:00:00Z') },
+    { id: 'op3', refId: 'ord_1006', kind: 'expense', amount: 500n, method: 'cash', lineLabel: 'Заказ №1006 · возврат предоплаты', source: 'order', cancelled: false, date: new Date('2026-11-17T10:00:00Z') },
+    { id: 'op4', refId: 'ord_1004', kind: 'income', amount: 700n, method: 'cash', lineLabel: 'Заказ №1004 · доплата предоплаты', source: 'order', cancelled: true, date: new Date('2026-11-17T11:00:00Z') },
+    { id: 'op5', refId: 'ord_1004', kind: 'income', amount: 400n, method: 'cash', lineLabel: 'Заказ №1004 · доплата предоплаты', source: 'order', cancelled: false, date: new Date('2026-11-16T19:00:00Z') }, // 16.11 23:00 — вчера
+  ];
+  const orders = [
+    { id: 'ord_1004', number: 1004, clientName: 'Ани', staffId: 'st_1' },
+    { id: 'ord_1005', number: 1005, clientName: 'Ева', staffId: 'st_2' },
+    { id: 'ord_1006', number: 1006, clientName: 'Сона', staffId: 'st_1' },
+  ];
+  const prisma = {
+    booking: { findMany: async () => [{ id: 'bk_1', startAt: new Date('2026-11-17T08:00:00Z'), total: 5000n, prepayment: null, deletedAt: null, businessId: 'biz_1', staffId: 'st_2', status: 'arrived', durationMin: 60, clientId: null, visitorName: null, locationId: 'loc_1' }] },
+    client: { findMany: async () => [] },
+    staff: { findMany: async () => [{ id: 'st_2', name: 'Ева' }] },
+    paymentMethod: { findMany: async () => [{ key: 'card', kind: 'card' }] },
+    bookingPayment: { findMany: async () => [{ bookingId: 'bk_1', amount: 5000n, refundedAmount: 0n, kind: 'money', methodKey: 'card', debt: false }] },
+    finOp: {
+      findMany: async ({ where }: { where: { businessId: string; source: string; cancelled: boolean; date: Range } }) =>
+        ops.filter((o) => o.source === where.source && o.cancelled === where.cancelled && inRange(o.date, where.date)),
+    },
+    order: { findMany: async ({ where }: { where: { id: { in: string[] } } }) => orders.filter((o) => where.id.in.includes(o.id)) },
+  };
+  const bookings = { views: async (_db: unknown, rows: { id: string }[]) => rows.map((r) => ({ id: r.id })) };
+  const svc = new AppStaffService(prisma as never, bookings as never, {} as never);
+  const z = await svc.getDayZReport('biz_1', '2026-11-17');
+  assert.deepEqual(
+    z.orders.map((o) => [o.number, o.stage, o.method, o.amount]),
+    [[1004, 'prepaid', 'cash', 3000], [1005, 'issue', 'card', 9000], [1006, 'refund', 'cash', -500]],
+  );
+  assert.equal(z.total, 16500);
+  assert.deepEqual(z.byMethod, { cash: 2500, card: 14000, transfer: 0, loyalty: 0, debt: 0 });
+  assert.equal(Object.values(z.byMethod).reduce((a, b) => a + b, 0), z.total);
+  // Фильтр по мастеру — мастер заказа
+  const mine = await svc.getDayZReport('biz_1', '2026-11-17', 'st_1');
+  assert.deepEqual(mine.orders.map((o) => o.number), [1004, 1006]);
 });
 
 /** Бизнес biz_1: карточка клиента au_mine, запись bk_mine, запись bk_app (записался au_app — без карточки), чужая запись bk_other */
