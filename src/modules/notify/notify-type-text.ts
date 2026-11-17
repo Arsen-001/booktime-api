@@ -1,4 +1,5 @@
 import type { Locale } from '../../common/i18n/i18n.js';
+import { localizedName } from '../../common/i18n/name-translit/translit.js';
 
 /**
  * Свой текст салона для канала «Пуш» — то, что владелец правит во вкладке «Шаблоны уведомлений» (каталог типов,
@@ -25,13 +26,16 @@ export function typePushTemplateOf(db: Db, businessId: string, code: number, loc
 
 /**
  * Имя мастера клиенту — на языке клиента (владелец 17.11.2026, ответ 8 и уточнение «К 8»: сайт, запись, приложение и
- * уведомления клиенту — на языке клиента). staff.name_i18n[locale] → имя, как вписали (в кабинете — всегда оно).
+ * уведомления клиенту — на языке клиента). staff.name_i18n[locale] → иначе перевод букв, как на сайте (localizedName —
+ * копия lib/translit сайта, scripts/sync-name-translit.mjs): «Ани Саргсян» → en «Ani Sargsyan», hy «Անի Սարգսյան».
+ * В кабинете — имя, как вписали (сюда не ходит).
  */
 export function staffNameFor(staff: { name: string; nameI18n?: unknown } | null | undefined, locale: string): string {
   if (!staff) return '';
-  const i18n = staff.nameI18n && typeof staff.nameI18n === 'object' ? (staff.nameI18n as Record<string, unknown>) : {};
-  const v = i18n[locale];
-  return typeof v === 'string' && v.trim() ? v.trim() : staff.name;
+  const raw = staff.nameI18n && typeof staff.nameI18n === 'object' ? (staff.nameI18n as Record<string, unknown>) : {};
+  const i18n: Partial<Record<'ru' | 'hy' | 'en', string>> = {};
+  for (const k of ['ru', 'hy', 'en'] as const) if (typeof raw[k] === 'string') i18n[k] = raw[k] as string;
+  return localizedName(staff.name, i18n, locale);
 }
 
 /** Переменные шаблона записи — те же имена, что в редакторе и журнале отправок ({companyName} {service} {date} {time} {staff} {link}) */

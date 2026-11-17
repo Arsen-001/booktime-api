@@ -15,6 +15,7 @@ import { toMinutes } from '../availability/engine.js';
 import { OccupyService, personKeyOf, visibilityOf, type BlockInput, type ResourceBlockInput } from '../availability/occupy.js';
 import { findHomeShiftConflict } from '../availability/home-shift.js';
 import { isLocale, t, type Locale } from '../../common/i18n/i18n.js';
+import { staffNameFor } from '../notify/notify-type-text.js';
 import { notifyKindOf } from '../notify/kinds.js';
 import { notifyStaffOfStaffAction } from '../notify/staff-notices.js';
 import { enqueueClientNotification } from '../notify/outbox.js';
@@ -588,13 +589,14 @@ export class BookingsService {
     if (!withApp.length) return;
     const def = notifyKindOf('waitlist_available')!;
     const [staff, users] = await Promise.all([
-      tx.staff.findUnique({ where: { id: prev.staffId }, select: { name: true } }),
+      tx.staff.findUnique({ where: { id: prev.staffId }, select: { name: true, nameI18n: true } }),
       tx.user.findMany({ where: { id: { in: withApp.map((m) => m.appUserId!) } }, select: { id: true, locale: true } }),
     ]);
     const localeByUser = new Map(users.map((u) => [u.id, isLocale(u.locale) ? u.locale : ('ru' as Locale)]));
-    const staffName = staff?.name ?? 'BookTime';
     for (const m of withApp) {
       const locale = localeByUser.get(m.appUserId!) ?? 'ru';
+      // Имя мастера — на языке клиента (ответ 8, «К 8»): вписанный перевод или перевод букв
+      const staffName = staffNameFor(staff, locale) || 'BookTime';
       // Время и услуга — в тексте пуша и в ленте (без них клиент видел «Освободилось время» без времени и без кнопки)
       const slot = await this.slotOfferParts(tx, { startAt: prev.startAt, serviceId: m.serviceId }, tz);
       await enqueueClientNotification(tx, {
@@ -1749,17 +1751,17 @@ export class BookingsService {
     const favorites = await this.prisma.favorite.findMany({ where: { targetType: 'staff', targetId: f.staffId, newsMuted: false }, select: { appUserId: true } });
     if (!favorites.length) return;
     const [staff, users] = await Promise.all([
-      this.prisma.staff.findUnique({ where: { id: f.staffId }, select: { name: true } }),
+      this.prisma.staff.findUnique({ where: { id: f.staffId }, select: { name: true, nameI18n: true } }),
       this.prisma.user.findMany({ where: { id: { in: favorites.map((fv) => fv.appUserId) } }, select: { id: true, locale: true } }),
     ]);
     const def = notifyKindOf('waitlist_available')!;
-    const staffName = staff?.name ?? 'BookTime';
     // Подписчикам — освободившаяся услуга (она в окно помещается по определению) и время окна
     const source = await this.prisma.booking.findUnique({ where: { id: f.sourceBookingId }, select: { services: true } });
     const serviceId = arr<ServiceLine>(source?.services)[0]?.serviceId;
     const slot = await this.slotOfferParts(this.prisma, { startAt: f.startAt, serviceId }, await this.tzOfLocation(this.prisma, f.locationId));
     for (const u of users) {
       const locale = isLocale(u.locale) ? u.locale : 'ru';
+      const staffName = staffNameFor(staff, locale) || 'BookTime';
       await enqueueClientNotification(this.prisma, {
         businessId: f.businessId,
         kind: def.kind,
