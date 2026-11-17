@@ -10,7 +10,7 @@ import { localDayRangeUtc, utcToLocal } from '../../common/time/time.js';
 import { BookingPaymentsService } from './booking-payments.service.js';
 import { isPrepaymentRegister } from './prepayment-ops.js';
 import { FinanceCatalogService } from './finance-catalog.service.js';
-import { isCancelled } from '../journal/rules.js';
+import { extrasOf, isCancelled } from '../journal/rules.js';
 
 /**
  * Этап 21, лейн «finance+stock»: остаток раздела «Финансы», который фасад `src/api/finance.ts` в режиме api ещё
@@ -40,6 +40,11 @@ export type FinRecordKind = (typeof FIN_RECORD_KINDS)[number];
 
 type RecordRow = { id: string; kind: string; refId: string | null; clientId: string | null; data: unknown; createdAt: Date };
 const recordView = (r: RecordRow) => ({ ...((r.data as Record<string, unknown>) ?? {}), id: r.id });
+
+/** Скидки по акции визита (строки «discount» его оплаты) — не оплата клиента */
+function discountOf(raw: unknown): bigint {
+  return (extrasOf(raw).payments ?? []).filter((p) => p.method === 'discount').reduce((s, p) => s + BigInt(Math.round(p.amount)), 0n);
+}
 
 @Injectable()
 export class FinanceExtService {
@@ -267,12 +272,22 @@ export class FinanceExtService {
     return new Map(rows.map((r) => [r.id, (r.name as { ru?: string } | null)?.ru ?? '']));
   }
 
+  /**
+   * «Продано / Оплачено / Баланс» клиента. Оплачено — по booking.paidAmount (единый счётчик всех источников, как
+   * «К оплате» визита: деньги, личный счёт, абонемент, сертификат, предоплата), а не по строкам кассы: визит,
+   * оплаченный абонементом, висел «долгом» −5 000 ֏ при «Оплачено полностью» в окне записи (проход 17.11).
+   * Скидка по акции — не оплата: она уменьшает «Продано» (иначе визит со скидкой тоже выглядел бы долгом).
+   */
   async clientMoneyInputs(businessId: string, clientId: string) {
     const bookings = await this.prisma.booking.findMany({ where: { businessId, clientId, status: 'arrived', deletedAt: null } });
     const totals: number[] = [];
-    for (const b of bookings) totals.push(moneyToJson((await this.payments.payableOf(b)).payable));
-    const lines = bookings.length ? await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: { in: bookings.map((b) => b.id) }, cancelled: false, kind: { not: 'discount' } }, select: { amount: true } }) : [];
-    const paidFromBookings = moneyToJson(lines.reduce((s, l) => s + l.amount, 0n));
+    let paid = 0n;
+    for (const b of bookings) {
+      const discount = discountOf(b.extras);
+      totals.push(moneyToJson((await this.payments.payableOf(b)).payable - discount));
+      paid += b.paidAmount - discount;
+    }
+    const paidFromBookings = moneyToJson(paid);
     const manual = await this.prisma.finOp.findMany({ where: { businessId, partyType: 'client', partyId: clientId, source: 'manual', refId: null }, select: { kind: true, amount: true, cancelled: true } });
     return { totals, paidFromBookings, manualOps: manual.map((o) => ({ kind: o.kind, amount: moneyToJson(o.amount), cancelled: o.cancelled })) };
   }
@@ -283,11 +298,13 @@ export class FinanceExtService {
     const rows = [];
     for (const b of bookings) {
       const lines = await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: b.id, cancelled: false }, orderBy: { createdAt: 'asc' } });
-      const paid = lines.reduce((s, p) => s + p.amount, 0n);
+      // Оплачено — единый счётчик визита (абонемент, сертификат, счёт, предоплата — тоже), как «К оплате» окна записи
+      const paid = b.paidAmount > 0n ? b.paidAmount : 0n;
       const total = (await this.payments.payableOf(b)).payable;
       const due = total - paid > 0n ? total - paid : 0n;
+      const firstExtra = (extrasOf(b.extras).payments ?? []).find((p) => p.method !== 'discount');
       const serviceLabel = ((b.services as { serviceId: string }[]) ?? []).map((l) => names.get(l.serviceId)).filter((n): n is string => !!n).join(', ');
-      rows.push({ bookingId: b.id, start: utcToLocal(b.startAt), staffId: b.staffId, serviceLabel: serviceLabel || '—', total: moneyToJson(total), paid: moneyToJson(paid), due: moneyToJson(due), method: lines[0]?.methodLabel ?? '—', debt: lines.some((l) => l.debt) });
+      rows.push({ bookingId: b.id, start: utcToLocal(b.startAt), staffId: b.staffId, serviceLabel: serviceLabel || '—', total: moneyToJson(total), paid: moneyToJson(paid), due: moneyToJson(due), method: lines.find((l) => l.kind !== 'discount')?.methodLabel ?? firstExtra?.label ?? '—', debt: lines.some((l) => l.debt) });
     }
     return rows;
   }
