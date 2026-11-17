@@ -9,6 +9,7 @@ import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { networkOut } from '../businesses/business.schemas.js';
 import { networkView } from '../businesses/views.js';
 
@@ -38,6 +39,24 @@ export class NetworkService {
     return n;
   }
 
+  /**
+   * «Своя» сеть одного салона (хвосты 17.11): кабинет заводит её сам, когда владелец открывает «Сеть и филиалы»
+   * (ensureNetwork на сайте). Новый филиал (зарегистрированный салон) уже в такой сети — и в общую сеть его было не
+   * добавить («Business is already in a network»). Такую сеть — того же владельца и только из этого салона — салон
+   * покидает сам, а пустая сеть уходит в удалённые (мягко, как «Удалить сеть»).
+   */
+  private async soloOwnNetwork(userId: string, networkId: string, businessId: string): Promise<boolean> {
+    const n = await this.prisma.network.findUnique({ where: { id: networkId }, include: { businesses: { select: { id: true }, where: { leftAt: null } } } });
+    return Boolean(n && n.ownerUserId === userId && n.businesses.every((b) => b.id === businessId));
+  }
+
+  private async leaveSoloNetwork(tx: Prisma.TransactionClient, ctx: RequestContext, businessId: string): Promise<void> {
+    const biz = await tx.business.findUnique({ where: { id: businessId }, select: { networkId: true } });
+    if (!biz?.networkId) return;
+    await tx.network.update({ where: { id: biz.networkId }, data: { deletedAt: new Date(), mainBusinessId: null, version: { increment: 1 } } });
+    await this.audit.record(tx, ctx, { action: 'locationRemoved', entityType: 'network', entityId: biz.networkId, networkId: biz.networkId, businessId, before: { businessId } });
+  }
+
   async view(networkId: string) {
     const n = await this.prisma.network.findUniqueOrThrow({ where: { id: networkId }, include: { businesses: { select: { id: true }, where: { leftAt: null }, orderBy: { createdAt: 'asc' } } } });
     return { ...networkView(n, n.businesses.map((b) => b.id)), deleted: Boolean(n.deletedAt) };
@@ -52,11 +71,12 @@ export class NetworkService {
       const row = await this.ownerRow(userId, b);
       if (!row) throw new ApiError('forbidden', 'Only own businesses join a network');
       const biz = await this.prisma.business.findUniqueOrThrow({ where: { id: b } });
-      if (biz.networkId) throw new ApiError('conflict', 'Business is already in a network');
+      if (biz.networkId && !(await this.soloOwnNetwork(userId, biz.networkId, b))) throw new ApiError('conflict', 'Business is already in a network');
       rows.push(row);
     }
     const id = newId('network');
     await this.prisma.$transaction(async (tx) => {
+      for (const b of input.businessIds) await this.leaveSoloNetwork(tx, ctx, b);
       await tx.network.create({
         data: { id, name, ownerUserId: userId, ownerStaffId: rows[0]!.id, mainBusinessId: input.mainBusinessId ?? input.businessIds[0], createdBy: userId, updatedBy: userId },
       });
@@ -85,8 +105,9 @@ export class NetworkService {
     if (n.businesses.some((b) => b.id === businessId)) return this.view(networkId);
     const biz = await this.prisma.business.findUnique({ where: { id: businessId } });
     if (!biz || !(await this.ownerRow(ctx.session!.userId, businessId))) throw new ApiError('forbidden', 'Only own businesses join a network');
-    if (biz.networkId) throw new ApiError('conflict', 'Business is already in a network');
+    if (biz.networkId && !(await this.soloOwnNetwork(ctx.session!.userId, biz.networkId, businessId))) throw new ApiError('conflict', 'Business is already in a network');
     await this.prisma.$transaction(async (tx) => {
+      await this.leaveSoloNetwork(tx, ctx, businessId);
       await tx.business.update({ where: { id: businessId }, data: { networkId, version: { increment: 1 } } });
       await this.audit.record(tx, ctx, { action: 'locationAdded', entityType: 'network', entityId: networkId, networkId, businessId, after: { businessId } });
     });
