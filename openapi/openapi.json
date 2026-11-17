@@ -14627,6 +14627,158 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/services/{id}/online-bookable": {
+      "put": {
+        "operationId": "ServicesController_setOnlineBookable",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "onlineBookable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "onlineBookable"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "categoryId": {
+                      "type": "string"
+                    },
+                    "sphereId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "object",
+                      "properties": {
+                        "ru": {
+                          "type": "string",
+                          "maxLength": 4000
+                        },
+                        "hy": {
+                          "type": "string",
+                          "maxLength": 4000
+                        },
+                        "en": {
+                          "type": "string",
+                          "maxLength": 4000
+                        }
+                      },
+                      "required": [
+                        "ru"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "individual",
+                        "group",
+                        "intake",
+                        "pickup"
+                      ]
+                    },
+                    "durationMin": {
+                      "type": "number"
+                    },
+                    "priceMin": {
+                      "type": "number"
+                    },
+                    "photos": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "staffIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "onlineBookable": {
+                      "type": "boolean"
+                    },
+                    "active": {
+                      "type": "boolean"
+                    },
+                    "order": {
+                      "type": "number"
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "categoryId",
+                    "sphereId",
+                    "name",
+                    "kind",
+                    "durationMin",
+                    "priceMin",
+                    "photos",
+                    "staffIds",
+                    "onlineBookable",
+                    "active",
+                    "order",
+                    "version"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "services"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/services/{id}/tech-break": {
       "put": {
         "operationId": "ServicesController_setTechBreak",
@@ -25095,6 +25247,64 @@
                     "items": {
                       "type": "string",
                       "maxLength": 30
+                    }
+                  },
+                  "staffSets": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "additionalProperties": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "staffIds": {
+                            "maxItems": 500,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "staffIds"
+                        ]
+                      }
+                    }
+                  },
+                  "dayLayouts": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": [
+                        "columns",
+                        "overview",
+                        "timeline",
+                        "list"
+                      ]
                     }
                   }
                 }
@@ -46463,6 +46673,150 @@
         "responses": {
           "200": {
             "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "clients"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/clients/{id}/blocked": {
+      "put": {
+        "operationId": "ClientsController_setBlocked",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "blocked": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "blocked"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "businessId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "gender": {
+                      "type": "string",
+                      "enum": [
+                        "male",
+                        "female",
+                        "unknown"
+                      ]
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "noShowCount": {
+                      "type": "number"
+                    },
+                    "cancelCount": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "discount": {
+                      "type": "number"
+                    },
+                    "sold": {
+                      "type": "number"
+                    },
+                    "paid": {
+                      "type": "number"
+                    },
+                    "balance": {
+                      "type": "number"
+                    },
+                    "visits": {
+                      "type": "number"
+                    },
+                    "broadcastDates": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "businessId",
+                    "name",
+                    "phone",
+                    "gender",
+                    "tags",
+                    "noShowCount",
+                    "cancelCount",
+                    "createdAt",
+                    "discount",
+                    "sold",
+                    "paid",
+                    "balance",
+                    "visits",
+                    "broadcastDates",
+                    "version"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
           }
         },
         "security": [

@@ -165,6 +165,9 @@ export const configPatchBody = z
     zoomMin: z.union([z.literal(5), z.literal(10), z.literal(15)]),
     hiddenStatuses: z.array(z.string().max(30)).max(20),
     // === /stage 21 ===
+    // Личные «Мои наборы» и вид дня (⭐ 29.09.2026): только под своим id сотрудника (проверяет patchConfig)
+    staffSets: z.record(id, z.array(z.object({ id, name: z.string().trim().min(1).max(80), staffIds: z.array(id).max(500) })).max(50)),
+    dayLayouts: z.record(id, z.enum(['columns', 'overview', 'timeline', 'list'])),
   })
   .partial();
 

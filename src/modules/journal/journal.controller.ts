@@ -68,8 +68,8 @@ export class JournalController {
   @Get('journal/config')
   @Biz('journal.view')
   @ApiOperation({ summary: 'Настройки «Цифрового журнала», категории, свои поля, шаблоны повтора, права блоков, разметка' })
-  config(@Param() p: B) {
-    return this.journal.config(p.businessId);
+  config(@Ctx() ctx: RequestContext, @Param() p: B) {
+    return this.journal.config(ctx, p.businessId);
   }
 
   @Patch('journal/config')

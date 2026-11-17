@@ -16,6 +16,12 @@ import { extrasOf, linesDuration, occupiesTime, type BookingStatus, type Service
 import { recordDataOp } from '../staff/data-ops.js';
 
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+
+/** Личные настройки журнала (наборы мастеров, вид дня) — в ответе только свои: чужие наборы сотруднику не нужны */
+export function ownJournalPrefs(area: JournalArea, staffId: string | undefined): JournalArea {
+  const own = <T>(m: Record<string, T> | undefined): Record<string, T> => (staffId && m?.[staffId] !== undefined ? { [staffId]: m[staffId] as T } : {});
+  return { ...area, staffSets: own(area.staffSets), dayLayouts: own(area.dayLayouts) };
+}
 const addMin = (d: Date, m: number) => new Date(d.getTime() + m * 60_000);
 
 /**
@@ -35,28 +41,34 @@ export class JournalService {
 
   // ─────────── настройки журнала (F-01-155, F-01-165…180) ───────────
 
-  config(businessId: string) {
-    return this.bookings.settings.get(businessId);
+  async config(ctx: RequestContext, businessId: string) {
+    return ownJournalPrefs(await this.bookings.settings.get(businessId), ctx.member!.staffId);
   }
 
   async patchConfig(ctx: RequestContext, businessId: string, patch: Partial<JournalArea>) {
     // zoomMin/hiddenStatuses (F-01-014/015, этап 21 «Сдача»): переключатели прямо в сетке журнала, не форма
-    // настроек — доступны любому, у кого есть доступ к журналу, как и staffMarkupMin
-    const personal = Object.keys(patch).every((k) => k === 'staffMarkupMin' || k === 'zoomMin' || k === 'hiddenStatuses');
+    // настроек — доступны любому, у кого есть доступ к журналу, как и staffMarkupMin; «Мои наборы» и вид дня — тоже,
+    // но только свои (17.11: жили лишь в браузере и пропадали на другом устройстве)
+    const personal = Object.keys(patch).every((k) => k === 'staffMarkupMin' || k === 'zoomMin' || k === 'hiddenStatuses' || k === 'staffSets' || k === 'dayLayouts');
     if (!personal && !ctx.member!.permissions.has('settings.manage') && ctx.member!.role !== 'owner') throw new ApiError('forbidden', 'settings.manage required');
-    return this.bookings.settings.update(
+    for (const k of ['staffSets', 'dayLayouts'] as const) {
+      const v = patch[k];
+      if (v && Object.keys(v).some((staffId) => staffId !== ctx.member!.staffId)) throw new ApiError('forbidden', 'Only own journal preferences');
+    }
+    const area = await this.bookings.settings.update(
       businessId,
       (a) => {
         for (const [k, v] of Object.entries(patch)) {
           if (v === undefined) continue;
           if (k === 'settings') a.settings = { ...a.settings, ...(v as object) };
-          else if (k === 'staffMarkupMin' || k === 'staffJournalRights' || k === 'staffWindowRights' || k === 'hotDiscountPct') {
+          else if (k === 'staffMarkupMin' || k === 'staffJournalRights' || k === 'staffWindowRights' || k === 'hotDiscountPct' || k === 'staffSets' || k === 'dayLayouts') {
             (a as unknown as Record<string, Record<string, unknown>>)[k] = { ...(a as unknown as Record<string, Record<string, unknown>>)[k], ...(v as object) };
           } else (a as unknown as Record<string, unknown>)[k] = v;
         }
       },
       ctx.member!.staffId,
     );
+    return ownJournalPrefs(area, ctx.member!.staffId);
   }
 
   async addCategory(ctx: RequestContext, businessId: string, input: { name: string; colorIndex: number }) {
