@@ -67547,6 +67547,59 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/payroll/schemes/apply": {
+      "post": {
+        "operationId": "PayrollController_applyScheme",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sourceStaffId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "staffIds": {
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "effectiveFrom": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "required": [
+                  "sourceStaffId",
+                  "staffIds",
+                  "effectiveFrom"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payroll"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/payroll/day": {
       "get": {
         "operationId": "PayrollController_day",
