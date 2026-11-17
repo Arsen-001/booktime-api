@@ -4,7 +4,7 @@ import { PrismaService } from '../../common/prisma.service.js';
 import { DEFAULT_TZ, localDayRangeUtc, utcToLocalDate } from '../../common/time/time.js';
 import { ScheduleService } from '../schedule/schedule.service.js';
 import { PREPAYMENT_LINE_LABEL } from '../finance/prepayment-ops.js';
-import { PayrollCatalogService } from './payroll-catalog.service.js';
+import { PayrollCatalogService, versionedSchemeOf } from './payroll-catalog.service.js';
 import {
   applyDailyGuaranteedMinimum,
   applyMonthlyGuaranteedMinimum,
@@ -27,6 +27,7 @@ import {
   resolveActiveChartAssignment,
   roundMoney,
   ruleAsScheme,
+  schemeAtDate,
   sumDayResult,
   type EffectiveScheme,
   type EngineBooking,
@@ -38,6 +39,7 @@ import {
   type PayrollCriterionData,
   type SchemeBlocks,
   type StaffDayResult,
+  type VersionedScheme,
 } from './payroll-engine.js';
 
 interface StatementOperationRow {
@@ -216,14 +218,17 @@ export class PayrollComputeService {
     return total;
   }
 
-  /** З9, F-09-031/032: выручка, штуки и выплата «% с продаж» сотрудника за период (productSalesPay мока) */
-  private productSalesPay(docs: ProductSaleDoc[], categoryOf: Map<string, string>, staffId: string, scheme: EffectiveScheme | undefined, from: string, to: string) {
+  /**
+   * З9, F-09-031/032: выручка, штуки и выплата «% с продаж» сотрудника за период (productSalesPay мока); ставка — по
+   * версии схемы на день продажи (З6)
+   */
+  private productSalesPay(docs: ProductSaleDoc[], categoryOf: Map<string, string>, staffId: string, schemeOn: (day: string) => EffectiveScheme | undefined, from: string, to: string) {
     let revenue = 0;
     let count = 0;
     let payout = 0;
-    const block = scheme?.productSales;
     for (const d of docs) {
       if (d.day < from || d.day > to) continue;
+      const block = schemeOn(d.day)?.productSales;
       for (const l of d.lines) {
         // З9 (как мок): продавец строки, нет — продавец документа
         if ((l.sellerId ?? d.staffId) !== staffId) continue;
@@ -321,21 +326,36 @@ export class PayrollComputeService {
   }
 
   /**
-   * F-09-002/099: назначение схемы действующее НА `referenceDate` (для периода — конец периода, «смена
-   * ставки с 01.10 не меняет сентябрь») — вызывается ОДИН раз, не по дням.
+   * Схемы сотрудников на каждый день — как resolveEffectiveSchemes мока, который зовут на дату каждого дня (З6,
+   * F-09-002/054/099): упрощённая схема — версия, действующая в этот день («Действует с», schemeAtDate); классическая
+   * модель — назначение схемы на этот день и правило по её критериям за день или месяц по этот день, без назначения —
+   * упрощённая схема. Данные читаются один раз, ответ на дату запоминается. Было (до 17.11): одна схема на конец
+   * периода, и смена ставки с 15.11 пересчитывала по новой ставке и 01–14.11.
    */
-  private async resolveEffectiveSchemes(businessId: string, locationId: string, staffIds: string[], referenceDate: string, criteriaBookings: EngineBooking[]): Promise<Map<string, EffectiveScheme>> {
+  private async schemeResolver(businessId: string, locationId: string, staffIds: string[], criteriaBookings: EngineBooking[]): Promise<(date: string) => Map<string, EffectiveScheme>> {
     const settings = await this.catalog.ensureSettings(locationId, businessId);
-    const map = new Map<string, EffectiveScheme>();
     const simplifiedRows = await this.prisma.payrollScheme.findMany({ where: { businessId, staffId: { in: staffIds } } });
-    const simplifiedByStaff = new Map(simplifiedRows.map((r) => [r.staffId, { staffId: r.staffId, ...(r.data as unknown as SchemeBlocks), createdAt: r.createdAt.toISOString() } as EffectiveScheme]));
+    const simplifiedByStaff = new Map<string, { scheme: VersionedScheme; createdAt: string }>(simplifiedRows.map((r) => [r.staffId, { scheme: versionedSchemeOf(r), createdAt: r.createdAt.toISOString() }]));
+    const simplifiedOn = (staffId: string, date: string): EffectiveScheme | undefined => {
+      const s = simplifiedByStaff.get(staffId);
+      return s ? { staffId, ...schemeAtDate(s.scheme, date), createdAt: s.createdAt } : undefined;
+    };
+    const cache = new Map<string, Map<string, EffectiveScheme>>();
+    const memo = (resolve: (date: string) => Map<string, EffectiveScheme>) => (date: string) => {
+      let map = cache.get(date);
+      if (!map) cache.set(date, (map = resolve(date)));
+      return map;
+    };
 
     if (settings.payrollModel !== 'classic') {
-      for (const staffId of staffIds) {
-        const s = simplifiedByStaff.get(staffId);
-        if (s) map.set(staffId, s);
-      }
-      return map;
+      return memo((date) => {
+        const map = new Map<string, EffectiveScheme>();
+        for (const staffId of staffIds) {
+          const s = simplifiedOn(staffId, date);
+          if (s) map.set(staffId, s);
+        }
+        return map;
+      });
     }
 
     const [chartRows, ruleRows, criterionRows, assignmentRows] = await Promise.all([
@@ -349,31 +369,34 @@ export class PayrollComputeService {
     const criteriaById = new Map<string, PayrollCriterionData>(criterionRows.map((c) => [c.id, { id: c.id, metric: c.metric as PayrollCriterionData['metric'], scope: c.scope as PayrollCriterionData['scope'], byServices: c.byServices, byProducts: c.byProducts, threshold: Number(c.threshold) }]));
     const criterionPeriod = new Map(criterionRows.map((c) => [c.id, c.period as 'month' | 'day']));
     const assignments: PayrollChartAssignmentData[] = assignmentRows.map((a) => ({ chartId: a.chartId, staffId: a.staffId, startDate: a.startDate.toISOString().slice(0, 10) }));
-    const monthStart = monthStartOf(referenceDate);
 
-    for (const staffId of staffIds) {
-      const assignment = resolveActiveChartAssignment(assignments, staffId, referenceDate);
-      const chart = assignment ? chartsById.get(assignment.chartId) : undefined;
-      let resolved = false;
-      if (chart) {
-        const ruleId = pickRuleForChart({ type: chart.type as 'standard' | 'planned', standardRuleId: chart.standardRuleId, planRows: chart.planRows as { criterionId: string; ruleId: string }[] }, (criterionId) => {
-          const criterion = criteriaById.get(criterionId);
-          if (!criterion) return false;
-          const periodFrom = criterionPeriod.get(criterionId) === 'day' ? referenceDate : monthStart;
-          return evaluateCriterionForStaff(criterion, criteriaBookings, staffId, locationId, periodFrom, referenceDate);
-        });
-        const rule = ruleId ? rulesById.get(ruleId) : undefined;
-        if (rule) {
-          map.set(staffId, ruleAsScheme(rule, staffId));
-          resolved = true;
+    return memo((date) => {
+      const map = new Map<string, EffectiveScheme>();
+      const monthStart = monthStartOf(date);
+      for (const staffId of staffIds) {
+        const assignment = resolveActiveChartAssignment(assignments, staffId, date);
+        const chart = assignment ? chartsById.get(assignment.chartId) : undefined;
+        let resolved = false;
+        if (chart) {
+          const ruleId = pickRuleForChart({ type: chart.type as 'standard' | 'planned', standardRuleId: chart.standardRuleId, planRows: chart.planRows as { criterionId: string; ruleId: string }[] }, (criterionId) => {
+            const criterion = criteriaById.get(criterionId);
+            if (!criterion) return false;
+            const periodFrom = criterionPeriod.get(criterionId) === 'day' ? date : monthStart;
+            return evaluateCriterionForStaff(criterion, criteriaBookings, staffId, locationId, periodFrom, date);
+          });
+          const rule = ruleId ? rulesById.get(ruleId) : undefined;
+          if (rule) {
+            map.set(staffId, ruleAsScheme(rule, staffId));
+            resolved = true;
+          }
+        }
+        if (!resolved) {
+          const s = simplifiedOn(staffId, date);
+          if (s) map.set(staffId, s);
         }
       }
-      if (!resolved) {
-        const s = simplifiedByStaff.get(staffId);
-        if (s) map.set(staffId, s);
-      }
-    }
-    return map;
+      return map;
+    });
   }
 
   /** Мастер без payroll.manage видит только себя (В-10 «мастер видит свою выручку»); staffFilter=undefined — всех */
@@ -388,7 +411,7 @@ export class PayrollComputeService {
     const monthStart = monthStartOf(date);
     const [bookings, groupEvents, services] = await Promise.all([this.loadBookings(businessId, locationId, monthStart, date), this.loadGroupEvents(businessId, locationId, date, date), this.loadServices(businessId)]);
     // Доля ассистента — по схеме мастера строки (F-09-047): в набор схем — и мастера, кому эти сотрудники ассистировали
-    const schemes = await this.resolveEffectiveSchemes(businessId, locationId, withAssistedMasters(staffIds, bookings), date, bookings);
+    const schemes = (await this.schemeResolver(businessId, locationId, withAssistedMasters(staffIds, bookings), bookings))(date);
     const accrual = await this.accrualLookup(businessId, locationId, date, date, bookings);
     bookings.push(...accrual.extra);
     const assistantsForLine = assistantsLookup(bookings);
@@ -419,7 +442,7 @@ export class PayrollComputeService {
         (scheme?.extraServiceRevenue.enabled ? extraRevenueAmount(turnover, scheme.extraServiceRevenue, await this.expensesForDay(businessId, locationId, date, turnover, expenseCache)) : 0) +
           (scheme?.extraProductRevenue.enabled ? extraRevenueAmount(this.productsTurnover(sales.docs, date), scheme.extraProductRevenue, this.productsCost(sales.docs, date)) : 0),
       );
-      const productsAmount = this.productSalesPay(sales.docs, sales.categoryOf, staffId, scheme, date, date).payout;
+      const productsAmount = this.productSalesPay(sales.docs, sales.categoryOf, staffId, () => scheme, date, date).payout;
       // F-09-036/037: за день считается только hour/day оклад — month доказывает себя только за целый период
       let workdayAmount = 0;
       if (scheme?.workday.enabled && scheme.workday.basePeriod !== 'month') {
@@ -472,11 +495,13 @@ export class PayrollComputeService {
     let staffRows = await this.staffAtLocation(businessId, locationId, anyStatus && Boolean(ownOnlyStaffId));
     if (positionKey) staffRows = staffRows.filter((s) => (((s.position as { ru?: string; en?: string; hy?: string } | null)?.ru ?? (s.position as { en?: string } | null)?.en ?? '') === positionKey));
     const staffIds = this.filterOwn(staffRows.map((s) => s.id), ownOnlyStaffId);
-    const monthStart = monthStartOf(to);
-    const loadFrom = from < monthStart ? from : monthStart;
+    // С начала месяца первого дня: критерии классической модели считаются за месяц по каждый день периода (З6)
+    const loadFrom = monthStartOf(from);
     const [bookings, groupEvents, services] = await Promise.all([this.loadBookings(businessId, locationId, loadFrom, to), this.loadGroupEvents(businessId, locationId, from, to), this.loadServices(businessId)]);
-    // Доля ассистента — по схеме мастера строки (F-09-047): в набор схем — и мастера, кому эти сотрудники ассистировали
-    const schemes = await this.resolveEffectiveSchemes(businessId, locationId, withAssistedMasters(staffIds, bookings), to, bookings);
+    // Доля ассистента — по схеме мастера строки (F-09-047): в набор схем — и мастера, кому эти сотрудники ассистировали.
+    // З6: схема — на каждый день (версия «Действует с»), минимум месяца и «нет графика» — по схеме на конец периода
+    const schemesOn = await this.schemeResolver(businessId, locationId, withAssistedMasters(staffIds, bookings), bookings);
+    const schemesAtEnd = schemesOn(to);
     const accrual = await this.accrualLookup(businessId, locationId, from, to, bookings);
     bookings.push(...accrual.extra);
     const assistantsForLine = assistantsLookup(bookings);
@@ -502,7 +527,8 @@ export class PayrollComputeService {
 
     const rows = [];
     for (const staffId of staffIds) {
-      const scheme = schemes.get(staffId);
+      const schemeAtEnd = schemesAtEnd.get(staffId);
+      let configured = false;
       const hoursResult = await this.scheduleHours(businessId, staffId, from, to, locationId);
       let servicesCount = 0;
       let servicesRevenue = 0;
@@ -518,6 +544,9 @@ export class PayrollComputeService {
       // День за днём — как computeStaffPay мока: услуги, «за запись», доп. от оборота, оплата за час/день и минимум
       // за день (F-09-038) по каждому рабочему дню; оклад и минимум месяца — после, за целый месяц
       for (const date of dates) {
+        const schemes = schemesOn(date);
+        const scheme = schemes.get(staffId);
+        if (scheme) configured = true;
         const opsByStaff = computeServicesForDay({ date, locationId, staffIds: [staffId], bookings, groupEvents, services, schemes, loyaltyPaidForBooking, techCardCost, unpaidForBooking, accrualDateForBooking: accrual.lookup, assistantsForLine });
         const ops = opsByStaff.get(staffId) ?? [];
         const hours = hoursResult.hoursByDate.get(date) ?? 0;
@@ -566,27 +595,29 @@ export class PayrollComputeService {
         }
       }
 
-      if (scheme?.workday.enabled && scheme.workday.basePeriod === 'month') {
-        for (const month of qualifyingMonths) {
-          if (!monthlySalaryQualifies(month, hoursResult.hoursByMonth.get(month) ?? 0, scheme.createdAt)) continue;
-          // Решение 01.10.2026 (как мок): оклад × часы графика месяца по сегодня / часы графика за весь месяц
-          const mh = await this.monthHours(businessId, staffId, month, locationId);
-          workdayAmount = roundMoney(workdayAmount + Math.round(scheme.workday.baseAmount * monthWorkShare(mh.worked, mh.scheduled)));
-        }
+      // F-09-037 (как мок): месячный оклад — по версии схемы на последний день месяца (в пределах периода)
+      for (const month of qualifyingMonths) {
+        const monthEnd = `${month}-31` > to ? to : `${month}-31`;
+        const scheme = schemesOn(monthEnd < from ? from : monthEnd).get(staffId);
+        if (!scheme?.workday.enabled || scheme.workday.basePeriod !== 'month') continue;
+        if (!monthlySalaryQualifies(month, hoursResult.hoursByMonth.get(month) ?? 0, scheme.createdAt)) continue;
+        // Решение 01.10.2026 (как мок): оклад × часы графика месяца по сегодня / часы графика за весь месяц
+        const mh = await this.monthHours(businessId, staffId, month, locationId);
+        workdayAmount = roundMoney(workdayAmount + Math.round(scheme.workday.baseAmount * monthWorkShare(mh.worked, mh.scheduled)));
       }
 
       // F-09-031/032, З9 (как мок): % с продаж — по продажам склада филиала за период, продавец документа — сотрудник
-      const products = this.productSalesPay(sales.docs, sales.categoryOf, staffId, scheme, from, to);
+      const products = this.productSalesPay(sales.docs, sales.categoryOf, staffId, (day) => schemesOn(day).get(staffId), from, to);
       const productsAmount = products.payout;
       const totalAmount = roundMoney(servicesRevenue + products.revenue);
       const beforeMin = roundMoney(servicesPayoutAmount + productsAmount + workdayAmount + recordsAmount + extraAmount + dailyMinTopUp);
       let salary = beforeMin;
-      const min = scheme?.workday.enabled ? scheme.workday.guaranteedMinimum : undefined;
+      const min = schemeAtEnd?.workday.enabled ? schemeAtEnd.workday.guaranteedMinimum : undefined;
       // Минимум месяца — тоже пропорционально отработанному по графику (решение 01.10.2026, как мок)
       const minMonth = min && min.enabled && min.period === 'month' && wholeMonth ? await this.monthHours(businessId, staffId, from.slice(0, 7), locationId) : undefined;
       const minProrated = min && minMonth ? Math.round(min.amount * monthWorkShare(minMonth.worked, minMonth.scheduled)) : undefined;
       if (min && min.period === 'month') salary = applyMonthlyGuaranteedMinimum(salary, minProrated !== undefined ? { ...min, amount: minProrated } : min, from, to);
-      if (hoursResult.workDays === 0 && servicesRevenue === 0 && products.revenue === 0 && salary === 0 && !scheme) continue;
+      if (hoursResult.workDays === 0 && servicesRevenue === 0 && products.revenue === 0 && salary === 0 && !configured) continue;
       let bonuses = 0;
       let penalties = 0;
       for (const e of settlementRows) {
@@ -608,7 +639,7 @@ export class PayrollComputeService {
         toPay: roundMoney(salary + bonuses - penalties),
         unpaidVisits,
         unpaidAmount,
-        workdayNoSchedule: Boolean(scheme?.workday.enabled) && hoursResult.totalHours === 0,
+        workdayNoSchedule: Boolean(schemeAtEnd?.workday.enabled) && hoursResult.totalHours === 0,
         minimum:
           min?.enabled && min.amount > 0
             ? {
@@ -625,7 +656,7 @@ export class PayrollComputeService {
       rows.push({ staffId, workDays: hoursResult.workDays, workHours: hoursResult.totalHours, scheduledAheadDays: hoursResult.aheadDays, scheduledAheadHours: hoursResult.aheadHours, servicesCount, servicesAmount: servicesRevenue, productsCount: products.count, productsAmount: products.revenue, totalAmount, paidAmount: roundMoney(Math.max(0, totalAmount - unpaidAmount)), salary, breakdown });
     }
     rows.sort((a, b) => b.salary - a.salary);
-    return { from, to, anyConfigured: staffIds.some((id) => schemes.has(id)), rows };
+    return { from, to, anyConfigured: staffIds.some((id) => schemesAtEnd.has(id)), rows };
   }
 
   /** F-09-036: часы графика в этот день (не часы с клиентами) — тот же источник, что колонка «Рабочее время»
@@ -666,11 +697,11 @@ export class PayrollComputeService {
 
   async computeStatement(businessId: string, locationId: string, staffId: string, from: string, to: string) {
     await this.requireLocation(businessId, locationId);
-    const monthStart = monthStartOf(to);
-    const loadFrom = from < monthStart ? from : monthStart;
+    const loadFrom = monthStartOf(from);
     const [bookings, groupEvents, services] = await Promise.all([this.loadBookings(businessId, locationId, loadFrom, to), this.loadGroupEvents(businessId, locationId, from, to), this.loadServices(businessId)]);
-    // Доля ассистента — по схеме мастера строки (F-09-047): ведомость Ани-ассистента читает и схему Мариам
-    const schemes = await this.resolveEffectiveSchemes(businessId, locationId, withAssistedMasters([staffId], bookings), to, bookings);
+    // Доля ассистента — по схеме мастера строки (F-09-047): ведомость Ани-ассистента читает и схему Мариам.
+    // З6: схема — на день каждой операции (версия «Действует с»), как «Расчёт за период»
+    const schemesOn = await this.schemeResolver(businessId, locationId, withAssistedMasters([staffId], bookings), bookings);
     const accrual = await this.accrualLookup(businessId, locationId, from, to, bookings);
     bookings.push(...accrual.extra);
     const assistantsForLine = assistantsLookup(bookings);
@@ -681,7 +712,7 @@ export class PayrollComputeService {
     const unpaidForBooking = this.unpaidForBookingLookup(bookings, paidAmounts);
     const operations: StatementOperationRow[] = [];
     for (const date of eachDay(from, to)) {
-      const opsByStaff = computeServicesForDay({ date, locationId, staffIds: [staffId], bookings, groupEvents, services, schemes, loyaltyPaidForBooking, techCardCost, unpaidForBooking, accrualDateForBooking: accrual.lookup, assistantsForLine });
+      const opsByStaff = computeServicesForDay({ date, locationId, staffIds: [staffId], bookings, groupEvents, services, schemes: schemesOn(date), loyaltyPaidForBooking, techCardCost, unpaidForBooking, accrualDateForBooking: accrual.lookup, assistantsForLine });
       for (const op of opsByStaff.get(staffId) ?? []) operations.push({ ...op, date });
     }
     const total = roundMoney(operations.reduce((sum, op) => sum + op.amount, 0));
