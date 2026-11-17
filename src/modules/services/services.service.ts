@@ -336,6 +336,19 @@ export class ServicesService {
     return this.getService(businessId, id);
   }
 
+  /** «Онлайн-запись услуги» одним полем (F-03-129) — вкладка «Онлайн-запись» карточки услуги */
+  async setOnlineBookable(ctx: RequestContext, businessId: string, id: string, onlineBookable: boolean) {
+    const row = await this.prisma.service.findFirst({ where: { id, businessId } });
+    if (!row) throw new ApiError('not_found', 'Service not found');
+    if (row.onlineBookable !== onlineBookable) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.service.update({ where: { id }, data: { onlineBookable, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
+        await this.audit.record(tx, ctx, { action: 'updated', entityType: 'service', entityId: id, businessId, before: { onlineBookable: row.onlineBookable }, after: { onlineBookable } });
+      });
+    }
+    return this.getService(businessId, id);
+  }
+
   async reorder(businessId: string, ids: string[]): Promise<void> {
     await this.prisma.$transaction(
       ids.map((id, order) => this.prisma.service.updateMany({ where: { id, businessId }, data: { order } })),

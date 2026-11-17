@@ -61,6 +61,7 @@ export const fromTemplatesBody = z.object({
 export type FromTemplatesBody = z.infer<typeof fromTemplatesBody>;
 
 export const activeBody = z.object({ active: z.boolean() });
+export const onlineBookableBody = z.object({ onlineBookable: z.boolean() });
 export const orderBody = z.object({ ids: z.array(id32).max(2000) });
 export const techBreakBody = z.object({ mode: techBreakMode, min: z.number().int().min(0).max(480).optional() });
 

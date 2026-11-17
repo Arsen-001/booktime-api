@@ -318,6 +318,19 @@ export class ClientsService {
     return this.getRow(ctx, businessId, id);
   }
 
+  /** Запрет онлайн-записи (F-03-135) одним полем; в журнал изменений клиента — как правка поля «Заблокирован» */
+  async setBlocked(ctx: RequestContext, businessId: string, id: string, blocked: boolean) {
+    const before = await this.prisma.client.findFirst({ where: { id, businessId, deletedAt: null } });
+    if (!before) throw new ApiError('not_found', 'Client not found');
+    if (Boolean(before.blocked) !== blocked) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.client.update({ where: { id }, data: { blocked, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
+        await this.audit.record(tx, ctx, { action: 'updated', entityType: 'client', entityId: id, businessId, before: { blocked: before.blocked }, after: { blocked } });
+      });
+    }
+    return this.getRow(ctx, businessId, id);
+  }
+
   async updateNote(businessId: string, id: string, note: string) {
     const client = await this.prisma.client.findFirst({ where: { id, businessId } });
     if (!client) throw new ApiError('not_found', 'Client not found');

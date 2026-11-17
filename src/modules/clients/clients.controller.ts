@@ -7,7 +7,7 @@ import { attachmentDisposition, MAX_DOCUMENT_BYTES } from '../uploads/document.j
 import { requestBase } from '../uploads/uploads.controller.js';
 import { z } from 'zod';
 import type { RequestContext, RequestWithContext } from '../../common/http/context.js';
-import { Biz, Ctx } from '../../common/http/guards.js';
+import { Biz, BizAny, Ctx } from '../../common/http/guards.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
@@ -57,6 +57,7 @@ import { ClientsBroadcastService } from './clients-broadcast.service.js';
 import { ReadOnly } from '../../common/http/read-only.js';
 
 const noteBody = z.object({ note: z.string().max(2000) });
+const blockedBody = z.object({ blocked: z.boolean() });
 
 /** Клиенты / CRM — /v1/biz (docs/backend/01 §5, 02 §6, PLAN §6 №5) */
 @ApiTags('clients')
@@ -220,6 +221,18 @@ export class ClientsController {
     @Body(new Zod(updateClientBody)) body: z.infer<typeof updateClientBody>,
   ) {
     return this.svc.updateClient(ctx, businessId, id, body, ifMatch(req));
+  }
+
+  /**
+   * «Запретить онлайн-запись» во вкладке «Онлайн-запись» карточки клиента (F-03-135): одно поле, без полной формы
+   * карточки. Право — правка клиента или настройка онлайн-записи (17.11: переключатель писал только в браузер)
+   */
+  @Put('clients/:id/blocked')
+  @BizAny('clients.edit', 'online.manage')
+  @ZodBody(blockedBody)
+  @ZodOk(clientRowOut)
+  setBlocked(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(blockedBody)) body: z.infer<typeof blockedBody>) {
+    return this.svc.setBlocked(ctx, businessId, id, body.blocked);
   }
 
   @Patch('clients/:id/note')
