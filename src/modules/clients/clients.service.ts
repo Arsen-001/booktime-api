@@ -152,6 +152,16 @@ export class ClientsService {
     return ctx.member!.permissions.has('clients.phones') ? rows : rows.map(maskClientPhones);
   }
 
+  /**
+   * Строки выгрузки (F-04-196): те же, что в списке, — с визитами, «Продано», балансом и последним визитом, телефоны
+   * скрыты без clients.phones. Выгрузка отдавала голые карточки: у Ани с 6 визитами и 33 500 ֏ — нули (проход 17.11).
+   */
+  async exportRows(ctx: RequestContext, businessId: string, ids: string[], locationIds?: string[]): Promise<ClientRowView[]> {
+    const wanted = new Set(ids);
+    const rows = (await this.rowsFor(await this.businessIdsFor(businessId, locationIds))).filter((r) => wanted.has(r.id));
+    return ctx.member!.permissions.has('clients.phones') ? rows : rows.map(maskClientPhones);
+  }
+
   async countMatching(businessId: string, input: { locationIds?: string[]; filters?: FilterState }): Promise<number> {
     const businessIds = await this.businessIdsFor(businessId, input.locationIds);
     const ctxFilter = emptyContext(await this.lostAfterDays(businessId), this.today());

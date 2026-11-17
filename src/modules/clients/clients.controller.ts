@@ -585,7 +585,8 @@ export class ClientsController {
   @Biz('clients.export')
   @ZodBody(exportClientsBody)
   @ZodOk(z.array(clientRowOut))
-  exportClients(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(exportClientsBody)) body: z.infer<typeof exportClientsBody>) {
-    return this.importExport.exportClients(ctx, businessId, body.ids, body.authorName, body.fileName);
+  async exportClients(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(exportClientsBody)) body: z.infer<typeof exportClientsBody>) {
+    const rows = await this.svc.exportRows(ctx, businessId, body.ids, body.locationIds);
+    return this.importExport.exportClients(ctx, businessId, rows, body.authorName, body.fileName);
   }
 }
