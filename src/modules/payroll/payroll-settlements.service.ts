@@ -130,9 +130,9 @@ export class PayrollSettlementsService {
     const label = `${body.periodFrom.split('-').reverse().join('.')}–${body.periodTo.split('-').reverse().join('.')}`;
     await this.prisma.$transaction(async (tx) => {
       await tx.payrollSettlementEntry.create({
-        data: { id, businessId, locationId, staffId: body.staffId, kind: 'sheet', amount: BigInt(Math.round(statement.total)), label, comment: body.comment, periodFrom: from, periodTo: to, status: body.draft ? 'draft' : 'accrued', createdBy: ctx.member!.staffId },
+        data: { id, businessId, locationId, staffId: body.staffId, kind: 'sheet', amount: BigInt(statement.sheetAmount), label, comment: body.comment, periodFrom: from, periodTo: to, status: body.draft ? 'draft' : 'accrued', createdBy: ctx.member!.staffId },
       });
-      await this.audit.record(tx, ctx, { action: 'create', entityType: 'payrollSettlementSheet', entityId: id, businessId, after: { staffId: body.staffId, amount: statement.total, draft: Boolean(body.draft) } });
+      await this.audit.record(tx, ctx, { action: 'create', entityType: 'payrollSettlementSheet', entityId: id, businessId, after: { staffId: body.staffId, amount: statement.sheetAmount, draft: Boolean(body.draft) } });
     });
     return entryView(await this.prisma.payrollSettlementEntry.findUniqueOrThrow({ where: { id } }));
   }

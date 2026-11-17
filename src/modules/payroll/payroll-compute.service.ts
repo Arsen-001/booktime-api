@@ -667,8 +667,16 @@ export class PayrollComputeService {
     // только сумма услуг (final-fix 01.10)
     const period = await this.computePeriod(businessId, locationId, from, to, undefined, staffId);
     const row = period.rows.find((r) => r.staffId === staffId);
-    return { staffId, from, to, operations, total, salary: row?.salary ?? total, workDays: hoursResult.workDays, workHours: hoursResult.totalHours, scheduledAheadDays: hoursResult.aheadDays, scheduledAheadHours: hoursResult.aheadHours };
+    return { staffId, from, to, operations, total, salary: row?.salary ?? total, sheetAmount: sheetAmountOf(total), workDays: hoursResult.workDays, workHours: hoursResult.totalHours, scheduledAheadDays: hoursResult.aheadDays, scheduledAheadHours: hoursResult.aheadHours };
   }
+}
+
+/**
+ * Сколько начислит ведомость за период сейчас (createSheet) — одна формула для начисления и для жёлтой полосы
+ * «Ставку в схеме поменяли после начисления»: полоса видна, только если эта сумма отличается от начисленной.
+ */
+export function sheetAmountOf(total: number): number {
+  return Math.round(total);
 }
 
 function toMinutes(hhmm: string): number {
