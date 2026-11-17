@@ -7,6 +7,9 @@ import { utcToLocal } from '../../common/time/time.js';
 import { notifyKindOf } from '../notify/kinds.js';
 import { isStaffEventEnabled } from '../notify/notify-staff-prefs.service.js';
 import { customTemplateOf } from '../notify/notify-types.service.js';
+import { fillTemplate } from '../notify/notify-log-derive.js';
+import { bookingTemplateVars, typePushTemplateOf } from '../notify/notify-type-text.js';
+import { env } from '../../common/config/env.js';
 import { enqueueClientNotification, enqueueOutbox } from '../notify/outbox.js';
 import { journalUrl } from '../notify/staff-notices.js';
 import { isCancelled, isOnlineSource, type ServiceLine } from './rules.js';
@@ -93,9 +96,17 @@ export async function notifyClientOfBooking(
     if (!def) continue;
     const time = p.startLocal.slice(11, 16);
     const params = { service: serviceName, time, when: whenPhrase(locale, p.startLocal, today), date: `${p.startLocal.slice(8, 10)}.${p.startLocal.slice(5, 7)}`, place: businessName };
+    // Текст: шаблон типа из «Шаблонов уведомлений» (каталог, канал «Пуш») → старые «Тексты» вида → наш текст.
     // Свой текст салона пишет «{time}» сам (с предлогом) — ему остаётся время; {when} и {date} тоже доступны
-    const custom = await customTemplateOf(prisma, next.businessId, p.kind, locale);
-    const body = custom ? renderTemplate(custom, params) : t(locale, def.messageKey, params);
+    const code = CLIENT_KIND_TYPE[p.kind];
+    const typeText = code ? await typePushTemplateOf(tx, next.businessId, code, locale) : undefined;
+    const custom = typeText ? undefined : await customTemplateOf(prisma, next.businessId, p.kind, locale);
+    const staffName = typeText ? ((await tx.staff.findUnique({ where: { id: next.staffId }, select: { name: true } }))?.name ?? '') : '';
+    const body = typeText
+      ? fillTemplate(typeText, bookingTemplateVars({ businessName, service: serviceName, staff: staffName, local: p.startLocal, link: `${env.PUBLIC_SITE_URL}${clientBookingUrl(next.id)}` }))
+      : custom
+        ? renderTemplate(custom, params)
+        : t(locale, def.messageKey, params);
     await enqueueClientNotification(tx, {
       businessId: next.businessId,
       kind: p.kind,

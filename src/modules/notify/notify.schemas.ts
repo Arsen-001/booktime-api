@@ -41,7 +41,8 @@ export const updateTypeBody = z.object({
   patch: z.object({
     enabled: z.boolean().optional(),
     channels: z.array(z.object({ channel: richChannel, scenario: richScenario })).optional(),
-    templates: z.record(richChannel, richLocalizedTextPartial).optional(),
+    // Правят один канал за раз — остальные каналы не обязательны (z.record с ключом-перечислением в zod 4 требует все)
+    templates: z.partialRecord(richChannel, richLocalizedTextPartial).optional(),
     emailExtra: richEmailExtra.optional(),
     conditions: richConditions.optional(),
   }),
