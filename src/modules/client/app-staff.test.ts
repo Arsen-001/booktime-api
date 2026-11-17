@@ -65,8 +65,38 @@ test('Z-отчёт в приложении: день по Еревану, уда
   const z = await svc.getDayZReport('biz_1', '2026-11-17');
   assert.deepEqual(z.rows.map((r) => r.booking.id), ['bk_night', 'bk_day']);
   assert.equal(z.total, 12000);
-  assert.deepEqual(z.byMethod, { cash: 7000, card: 5000, loyalty: 0 });
+  // Ответ 14: визит без оплат — долг целиком; сумма по способам = «Итого»
+  assert.deepEqual(z.byMethod, { cash: 0, card: 5000, transfer: 0, loyalty: 0, debt: 7000 });
   assert.equal(z.rows[0]!.clientName, '', 'гость — подписью экрана на языке человека');
+});
+
+test('Z-отчёт (ответ 14, 17.11): предоплата переводом и долг — отдельными строками, «Итого» = сумма по способам', async () => {
+  // Визит 6 000: предоплата 1 800 переводом, 3 000 наличными, 1 200 картой — оплачен. Визит 10 000: 2 000 наличными,
+  // 3 000 счётом в долг, 5 000 не оплачено. Итого 16 000 = 5 000 нал. + 1 200 карта + 1 800 перевод + 8 000 долг.
+  const visits = [
+    { id: 'bk_paid', startAt: new Date('2026-11-17T08:00:00Z'), total: 6000n, prepayment: { amount: 1800, paid: true } },
+    { id: 'bk_owes', startAt: new Date('2026-11-17T10:00:00Z'), total: 10000n, prepayment: null },
+  ].map((b) => ({ deletedAt: null as Date | null, ...b, businessId: 'biz_1', staffId: 'st_1', status: 'arrived', durationMin: 60, clientId: null, visitorName: null, locationId: 'loc_1' }));
+  const prisma = {
+    booking: { findMany: async () => visits },
+    client: { findMany: async () => [] },
+    staff: { findMany: async () => [{ id: 'st_1', name: 'Ани' }] },
+    paymentMethod: { findMany: async () => [{ key: 'cash', kind: 'cash' }, { key: 'card', kind: 'card' }] },
+    bookingPayment: {
+      findMany: async () => [
+        { bookingId: 'bk_paid', amount: 3000n, refundedAmount: 0n, kind: 'money', methodKey: 'cash', debt: false },
+        { bookingId: 'bk_paid', amount: 1200n, refundedAmount: 0n, kind: 'money', methodKey: 'card', debt: false },
+        { bookingId: 'bk_owes', amount: 2000n, refundedAmount: 0n, kind: 'money', methodKey: 'cash', debt: false },
+        { bookingId: 'bk_owes', amount: 3000n, refundedAmount: 0n, kind: 'account', methodKey: 'account', debt: true },
+      ],
+    },
+  };
+  const bookings = { views: async (_db: unknown, rows: { id: string }[]) => rows.map((r) => ({ id: r.id })) };
+  const z = await new AppStaffService(prisma as never, bookings as never, {} as never).getDayZReport('biz_1', '2026-11-17');
+  assert.equal(z.total, 16000);
+  assert.deepEqual(z.byMethod, { cash: 5000, card: 1200, transfer: 1800, loyalty: 0, debt: 8000 });
+  assert.equal(Object.values(z.byMethod).reduce((a, b) => a + b, 0), z.total);
+  assert.deepEqual(z.rows.map((r) => r.paidTotal), [6000, 2000]);
 });
 
 /** Бизнес biz_1: карточка клиента au_mine, запись bk_mine, запись bk_app (записался au_app — без карточки), чужая запись bk_other */

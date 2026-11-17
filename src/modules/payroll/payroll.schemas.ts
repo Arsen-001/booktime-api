@@ -153,6 +153,12 @@ export const payoutBody = z.object({
   accountId: z.string().min(1),
   amount: z.number().min(1),
   comment: z.string().max(400).optional(),
+  /** Способ выплаты (ответ 28, 17.11.2026): наличными из кассы или переводом с карты — по умолчанию наличные */
+  method: z.enum(['cash', 'card', 'transfer', 'other']).optional(),
+  /** Момент выплаты 'YYYY-MM-DDTHH:mm' по Еревану (окно «Выплатить»); нет — сейчас */
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional(),
+  /** Ведомость, по которой платим («Отметить выплаченным», ответ 28): подписанная — станет «Выплачено» */
+  sheetId: z.string().min(1).optional(),
 });
 export type PayoutBody = z.infer<typeof payoutBody>;
 

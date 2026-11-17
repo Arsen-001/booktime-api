@@ -496,6 +496,9 @@ export class ClientsService {
         where: { id: keepId },
         data: { importedSold: keep.importedSold + dup.importedSold, paidAmount: keep.paidAmount + dup.paidAmount, noShowCount: keep.noShowCount + dup.noShowCount },
       });
+      // Ответ 13 (владелец 17.11.2026): объединение переносит всё — абонементы, сертификаты, карту лояльности и личный
+      // счёт. Пример: у «Ани М.» абонемент на 5 визитов и 3 000 ֏ — после объединения они у «Ани Мелкумян».
+      await mergeLoyaltyTx(tx, businessId, keepId, duplicateId);
       await tx.client.update({ where: { id: duplicateId }, data: { deletedAt: new Date(), deletedBy: ctx.member!.staffId, version: { increment: 1 } } });
       await this.audit.record(tx, ctx, { action: 'merged', entityType: 'client', entityId: duplicateId, businessId, before: { name: dup.name }, after: { mergedInto: keep.name } });
     });
@@ -512,4 +515,65 @@ export class ClientsService {
     });
   }
 
+}
+
+/** Форма фронта (`data`) хранит clientId — переносим и его, иначе лояльность видела бы вещь у старой карточки */
+function withClient(data: unknown, clientId: string): Prisma.InputJsonValue | undefined {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  return { ...(data as Record<string, unknown>), clientId } as Prisma.InputJsonValue;
+}
+
+/**
+ * Ответ 13: лояльность дубля — на оставшуюся карточку. Абонементы, сертификаты, история бонусов — переезжают как есть.
+ * Карта: у оставшейся уже есть карта того же типа — бонусы дубля прибавляются к ней, карта дубля закрывается (баланс 0,
+ * в архиве); нет — карта переезжает. Личный счёт: счёт того же типа есть — деньги и история операций переходят на него,
+ * пустой счёт дубля удаляется; нет — счёт переезжает. Ничего не теряется: сумма бонусов и денег та же.
+ */
+export async function mergeLoyaltyTx(tx: Prisma.TransactionClient, businessId: string, keepId: string, dupId: string): Promise<void> {
+  for (const m of await tx.membershipSale.findMany({ where: { businessId, clientId: dupId } })) {
+    await tx.membershipSale.update({ where: { id: m.id }, data: { clientId: keepId, ...(withClient(m.data, keepId) ? { data: withClient(m.data, keepId) } : {}) } });
+  }
+  for (const c of await tx.certificate.findMany({ where: { businessId, clientId: dupId } })) {
+    await tx.certificate.update({ where: { id: c.id }, data: { clientId: keepId, ...(withClient(c.data, keepId) ? { data: withClient(c.data, keepId) } : {}) } });
+  }
+  for (const t of await tx.loyaltyTx.findMany({ where: { businessId, clientId: dupId } })) {
+    await tx.loyaltyTx.update({ where: { id: t.id }, data: { clientId: keepId, ...(withClient(t.data, keepId) ? { data: withClient(t.data, keepId) } : {}) } });
+  }
+  const keepCards = await tx.loyaltyCard.findMany({ where: { businessId, clientId: keepId } });
+  for (const card of await tx.loyaltyCard.findMany({ where: { businessId, clientId: dupId } })) {
+    const same = keepCards.find((k) => k.cardTypeId === card.cardTypeId);
+    if (same) {
+      // Бонусы — на карту оставшейся, история бонусов дубля — тоже к ней; пустая карта дубля удаляется
+      await tx.loyaltyCard.update({ where: { id: same.id }, data: { balance: { increment: card.balance } } });
+      for (const t of await tx.loyaltyTx.findMany({ where: { businessId, source: 'card', refId: card.id } })) {
+        const d = withClient(t.data, keepId) as Record<string, unknown> | undefined;
+        await tx.loyaltyTx.update({ where: { id: t.id }, data: { refId: same.id, ...(d ? { data: { ...d, ...(d.cardId ? { cardId: same.id } : {}) } as Prisma.InputJsonValue } : {}) } });
+      }
+      await tx.loyaltyCard.delete({ where: { id: card.id } });
+    } else {
+      await tx.loyaltyCard.update({ where: { id: card.id }, data: { clientId: keepId, ...(withClient(card.data, keepId) ? { data: withClient(card.data, keepId) } : {}) } });
+    }
+  }
+  const keepAccounts = await tx.clientAccount.findMany({ where: { businessId, clientId: keepId } });
+  for (const acc of await tx.clientAccount.findMany({ where: { businessId, clientId: dupId } })) {
+    const same = keepAccounts.find((k) => k.typeId === acc.typeId);
+    if (same) {
+      for (const op of await tx.clientAccountOp.findMany({ where: { accountId: acc.id } })) {
+        const d = op.data && typeof op.data === 'object' && !Array.isArray(op.data) ? ({ ...(op.data as Record<string, unknown>), accountId: same.id } as Prisma.InputJsonValue) : undefined;
+        await tx.clientAccountOp.update({ where: { id: op.id }, data: { accountId: same.id, ...(d ? { data: d } : {}) } });
+      }
+      for (const t of await tx.loyaltyTx.findMany({ where: { businessId, source: 'account', refId: acc.id } })) {
+        const d = withClient(t.data, keepId) as Record<string, unknown> | undefined;
+        await tx.loyaltyTx.update({ where: { id: t.id }, data: { refId: same.id, ...(d ? { data: { ...d, ...(d.accountId ? { accountId: same.id } : {}) } as Prisma.InputJsonValue } : {}) } });
+      }
+      await tx.clientAccount.update({ where: { id: same.id }, data: { balance: { increment: acc.balance }, version: { increment: 1 } } });
+      // Оплаты визитов, списанные этим счётом, теперь числятся за оставшимся
+      await tx.bookingPayment.updateMany({ where: { loyaltyAccountId: acc.id }, data: { loyaltyAccountId: same.id } });
+      await tx.clientAccount.delete({ where: { id: acc.id } });
+    } else {
+      await tx.clientAccount.update({ where: { id: acc.id }, data: { clientId: keepId, ...(withClient(acc.data, keepId) ? { data: withClient(acc.data, keepId) } : {}) } });
+    }
+  }
+  // Деньги в кассе по дублю (пополнения, продажи) — история оставшейся карточки
+  await tx.finOp.updateMany({ where: { businessId, partyType: 'client', partyId: dupId }, data: { partyId: keepId } });
 }

@@ -1,4 +1,4 @@
-import { bookingTemplateVars, typePushTemplateOf } from '../modules/notify/notify-type-text.js';
+import { bookingTemplateVars, staffNameFor, typePushTemplateOf } from '../modules/notify/notify-type-text.js';
 import { fillTemplate } from '../modules/notify/notify-log-derive.js';
 import { env } from '../common/config/env.js';
 import { isLocale, t, type Locale } from '../common/i18n/i18n.js';
@@ -130,7 +130,8 @@ export async function pushReminders(prisma: PrismaService, now: Date): Promise<{
     const typeText = await typePushTemplateOf(prisma, b.businessId, 1, locale);
     const custom = typeText ? undefined : await customTemplateOf(prisma, b.businessId, 'reminder24h', locale);
     const params = { service: serviceName, time, place: businessName, date: `${day.slice(8, 10)}.${day.slice(5, 7)}` };
-    const staffName = typeText ? ((await prisma.staff.findUnique({ where: { id: b.staffId }, select: { name: true } }))?.name ?? '') : '';
+    // Имя мастера — на языке клиента (ответ 8)
+    const staffName = typeText ? staffNameFor(await prisma.staff.findUnique({ where: { id: b.staffId }, select: { name: true, nameI18n: true } }), locale) : '';
     const body = typeText
       ? fillTemplate(typeText, bookingTemplateVars({ businessName, service: serviceName, staff: staffName, local, link: `${env.PUBLIC_SITE_URL}/bookings/${b.id}` }))
       : custom

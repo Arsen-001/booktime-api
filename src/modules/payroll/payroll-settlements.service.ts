@@ -7,9 +7,9 @@ import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { FinanceCatalogService } from '../finance/finance-catalog.service.js';
 import { PayrollComputeService } from './payroll-compute.service.js';
-import { canMarkPaid, nextApprovalStatus, roundMoney, settlementBalance, type SettlementEntryKind, type StatementApprovalStatus } from './payroll-engine.js';
+import { canMarkPaid, isStatementLocked, newDaysRange, nextApprovalStatus, roundMoney, settlementBalance, type SettlementEntryKind, type StatementApprovalStatus } from './payroll-engine.js';
 import type { PayoutBody, SettlementEntryBody, SettlementSheetBody } from './payroll.schemas.js';
-import { isLocalDate, isLocalDateTime, localDayRangeUtc, localToUtc } from '../../common/time/time.js';
+import { isLocalDate, isLocalDateTime, localDayRangeUtc, localToUtc, utcToLocalDate } from '../../common/time/time.js';
 
 /** Граница периода из запроса: день → начало/конец дня по Еревану; 'YYYY-MM-DDTHH:mm' → этот момент по Еревану */
 function localBound(v: string, side: 'from' | 'to'): Date {
@@ -54,6 +54,30 @@ export class PayrollSettlementsService {
     private readonly financeCatalog: FinanceCatalogService,
   ) {}
 
+  /** Дни ведомости 'YYYY-MM-DD' (в базе — полночь UTC дня) */
+  private static sheetDays(r: { periodFrom: Date | null; periodTo: Date | null }) {
+    return r.periodFrom && r.periodTo ? { from: r.periodFrom.toISOString().slice(0, 10), to: r.periodTo.toISOString().slice(0, 10) } : null;
+  }
+
+  /**
+   * Ответ 26: одобренные ведомости сотрудника (approved…paid) — их дни закрыты для премий, штрафов и удаления.
+   * Отдаёт дни каждой закрытой ведомости.
+   */
+  private async lockedSheets(db: Prisma.TransactionClient | PrismaService, businessId: string, staffId: string) {
+    const sheets = await db.payrollSettlementEntry.findMany({ where: { businessId, staffId, kind: 'sheet' }, select: { id: true, periodFrom: true, periodTo: true } });
+    if (!sheets.length) return [];
+    const approvals = await db.payrollStatementApproval.findMany({ where: { sheetId: { in: sheets.map((x) => x.id) } }, select: { sheetId: true, status: true } });
+    const locked = new Set(approvals.filter((a) => isStatementLocked(a.status)).map((a) => a.sheetId));
+    return sheets.filter((x) => locked.has(x.id)).map((x) => ({ id: x.id, days: PayrollSettlementsService.sheetDays(x) }));
+  }
+
+  /** Премия/штраф с датой `at` попадает в закрытую ведомость? (день — по Еревану, как экран ведомости) */
+  private async assertDayOpen(db: Prisma.TransactionClient | PrismaService, businessId: string, staffId: string, at: Date) {
+    const day = utcToLocalDate(at);
+    const hit = (await this.lockedSheets(db, businessId, staffId)).find((x) => x.days && x.days.from <= day && day <= x.days.to);
+    if (hit) throw new ApiError('statement_locked', 'Statement approved — return it for review to edit', { sheetId: hit.id });
+  }
+
   async list(businessId: string, staffId: string, periodFrom?: string, periodTo?: string) {
     const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
     if (!staff) throw new ApiError('not_found', 'Staff not found');
@@ -90,6 +114,13 @@ export class PayrollSettlementsService {
     const businessId = ctx.member!.businessId;
     const staff = await this.prisma.staff.findFirst({ where: { id: body.staffId, businessId } });
     if (!staff) throw new ApiError('not_found', 'Staff not found');
+    // Ответ 27: дни, уже начисленные другой ведомостью, второй раз не начисляем — предлагаем только новые дни
+    const existing = await this.prisma.payrollSettlementEntry.findMany({ where: { businessId, staffId: body.staffId, kind: 'sheet' }, select: { periodFrom: true, periodTo: true } });
+    const taken = existing.map((r) => PayrollSettlementsService.sheetDays(r)).filter((x): x is { from: string; to: string } => Boolean(x));
+    if (taken.some((x) => x.from <= body.periodTo && body.periodFrom <= x.to)) {
+      const fresh = newDaysRange(taken, body.periodFrom, body.periodTo);
+      throw new ApiError('period_overlaps', 'Some days are already in another statement', fresh ? { newFrom: fresh.from, newTo: fresh.to } : {});
+    }
     const locationId = await this.sheetLocation(businessId, body.staffId, body.locationId);
     const statement = await this.compute.computeStatement(businessId, locationId, body.staffId, body.periodFrom, body.periodTo);
     const id = newId('payrollSettlementEntry');
@@ -138,6 +169,7 @@ export class PayrollSettlementsService {
     const businessId = ctx.member!.businessId;
     const staff = await this.prisma.staff.findFirst({ where: { id: body.staffId, businessId } });
     if (!staff) throw new ApiError('not_found', 'Staff not found');
+    await this.assertDayOpen(this.prisma, businessId, body.staffId, new Date());
     const id = newId('payrollSettlementEntry');
     await this.prisma.$transaction(async (tx) => {
       await tx.payrollSettlementEntry.create({ data: { id, businessId, staffId: body.staffId, kind: body.kind, amount: BigInt(Math.round(Math.abs(body.amount))), label: body.label, comment: body.comment, createdBy: ctx.member!.staffId } });
@@ -152,7 +184,15 @@ export class PayrollSettlementsService {
     const row = await this.prisma.payrollSettlementEntry.findFirst({ where: { id, businessId } });
     if (!row) throw new ApiError('not_found', 'Entry not found');
     if (row.kind === 'payout') throw new ApiError('in_use', 'Payout cannot be deleted');
+    // Ответ 26: одобренную ведомость и премии/штрафы в её днях не удаляем — сначала «Вернуть на проверку»
+    if (row.kind === 'sheet') {
+      const approval = await this.prisma.payrollStatementApproval.findUnique({ where: { sheetId: id }, select: { status: true } });
+      if (isStatementLocked(approval?.status)) throw new ApiError('statement_locked', 'Statement approved — return it for review to edit', { sheetId: id });
+    } else {
+      await this.assertDayOpen(this.prisma, businessId, row.staffId, row.createdAt);
+    }
     await this.prisma.$transaction(async (tx) => {
+      await tx.payrollStatementApproval.deleteMany({ where: { sheetId: id } });
       await tx.payrollSettlementEntry.delete({ where: { id } });
       await this.audit.record(tx, ctx, { action: 'delete', entityType: 'payrollSettlementEntry', entityId: id, businessId, before: { staffId: row.staffId, kind: row.kind }, after: null });
     });
@@ -173,7 +213,10 @@ export class PayrollSettlementsService {
     if (!account) throw new ApiError('not_found', 'Account not found');
     let signedSheetId: string | undefined;
     if (settings?.statementApprovalEnabled) {
-      const latestSheet = await this.prisma.payrollSettlementEntry.findFirst({ where: { businessId, staffId: body.staffId, kind: 'sheet' }, orderBy: { createdAt: 'desc' } });
+      // Ответ 28: «Отметить выплаченным» платит по своей ведомости (sheetId), иначе — по самой свежей
+      const latestSheet = body.sheetId
+        ? await this.prisma.payrollSettlementEntry.findFirst({ where: { id: body.sheetId, businessId, staffId: body.staffId, kind: 'sheet' } })
+        : await this.prisma.payrollSettlementEntry.findFirst({ where: { businessId, staffId: body.staffId, kind: 'sheet' }, orderBy: { createdAt: 'desc' } });
       if (latestSheet) {
         const approval = await this.prisma.payrollStatementApproval.findUnique({ where: { sheetId: latestSheet.id } });
         const status = (approval?.status as StatementApprovalStatus) ?? 'pendingReview';
@@ -186,6 +229,14 @@ export class PayrollSettlementsService {
     const entryId = newId('payrollSettlementEntry');
     const amount = BigInt(Math.round(body.amount));
     const now = new Date();
+    // Окно «Выплатить» (ответ 28): способ и момент выплаты — как выбрали; без них — наличные и сейчас
+    const paidAt = body.date ? localToUtc(body.date) : now;
+    // Из наличного ящика нельзя выдать больше, чем в нём лежит (как мок payoutSalary, payroll-review З5)
+    if (account.kind === 'cash') {
+      const ops = await this.prisma.finOp.findMany({ where: { accountId: account.id, cancelled: false }, select: { kind: true, amount: true } });
+      const cash = ops.reduce((sum, o) => sum + (o.kind === 'income' || o.kind === 'transfer_in' ? o.amount : -o.amount), account.openingBalance);
+      if (amount > cash) throw new ApiError('insufficient_funds', String(cash > 0n ? cash : 0n));
+    }
     await this.prisma.$transaction(async (tx) => {
       await tx.finOp.create({
         data: {
@@ -196,8 +247,8 @@ export class PayrollSettlementsService {
           itemId,
           kind: 'expense',
           amount,
-          date: now,
-          method: 'cash',
+          date: paidAt,
+          method: body.method ?? (account.kind === 'cash' ? 'cash' : 'transfer'),
           partyType: 'staff',
           partyId: body.staffId,
           partyName: staff.name,
@@ -238,6 +289,8 @@ export class PayrollSettlementsService {
     const current = (await this.getApproval(businessId, sheetId)) ?? { sheetId, status: 'pendingReview' as StatementApprovalStatus, history: [] };
     const next = nextApprovalStatus(current.status);
     if (!next) throw new ApiError('validation', 'Already at final status');
+    // Ответ 28: «Выплачено» ставит только сама выплата (окно «Выплатить» → касса и сумма), без денег — нельзя
+    if (next === 'paid') throw new ApiError('cannot_pay', 'Mark paid only by a payout');
     const history = [...current.history, { status: next, at: new Date().toISOString(), by: ctx.member!.staffId }];
     await this.prisma.payrollStatementApproval.upsert({
       where: { sheetId },
@@ -245,6 +298,19 @@ export class PayrollSettlementsService {
       update: { status: next, history: history as Prisma.InputJsonValue },
     });
     return { sheetId, status: next, history };
+  }
+
+  /** Ответ 26: «Вернуть на проверку» — одобренная ведомость снова открыта для правок (статус pendingReview) */
+  async reopenApproval(ctx: RequestContext, sheetId: string) {
+    const businessId = ctx.member!.businessId;
+    const current = await this.getApproval(businessId, sheetId);
+    if (!current || !isStatementLocked(current.status)) throw new ApiError('validation', 'Statement is not approved');
+    const history = [...current.history, { status: 'pendingReview' as StatementApprovalStatus, at: new Date().toISOString(), by: ctx.member!.staffId }];
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payrollStatementApproval.update({ where: { sheetId }, data: { status: 'pendingReview', history: history as Prisma.InputJsonValue } });
+      await this.audit.record(tx, ctx, { action: 'update', entityType: 'payrollStatementApproval', entityId: sheetId, businessId, before: { status: current.status }, after: { status: 'pendingReview' } });
+    });
+    return { sheetId, status: 'pendingReview' as StatementApprovalStatus, history };
   }
 
   /** F-09-100: сотрудник подписывает свою ведомость */

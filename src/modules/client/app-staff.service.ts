@@ -121,27 +121,40 @@ export class AppStaffService {
     const paymentsByBooking = new Map<string, typeof payments>();
     for (const p of payments) paymentsByBooking.set(p.bookingId, [...(paymentsByBooking.get(p.bookingId) ?? []), p]);
 
+    // Ответ 14 (владелец 17.11.2026): «Итого» и сумма по способам сходятся — предоплата переводом и долг отдельными
+    // строками. Было: «Итого» 16 000, а по способам 13 200 (предоплата и неоплаченное в способы не попадали).
+    // Деньги визита: строки оплаты (возвраты вычтены) + предоплата переводом (F-00-097, своя операция кассы);
+    // чего не хватает до суммы визита — «Долг». Визит без оплат — долг целиком (денег не получено).
+    const prepaidOf = (b: (typeof bookings)[number]): number => {
+      const p = (b.prepayment ?? null) as { amount?: number; paid?: boolean; refundedAt?: string } | null;
+      return p?.paid && !p.refundedAt ? Math.max(0, Math.round(Number(p.amount ?? 0))) : 0;
+    };
+    const byMethod: Record<'cash' | 'card' | 'transfer' | 'loyalty' | 'debt', number> = { cash: 0, card: 0, transfer: 0, loyalty: 0, debt: 0 };
     const rows = bookings.map((booking, i) => {
       const client = clientById.get(booking.clientId ?? '');
       const staff = staffById.get(booking.staffId);
       const recorded = paymentsByBooking.get(booking.id) ?? [];
-      const paidTotal = recorded.length ? recorded.reduce((s, p) => s + Number(p.amount) - Number(p.refundedAmount), 0) : Number(booking.total);
-      // Имя гостя — подписью экрана на языке человека (как мок: пустое имя → «Гость»)
-      return { booking: views[i]!, clientName: client?.name ?? booking.visitorName ?? '', staffName: staff?.name ?? '—', total: Number(booking.total), paidTotal };
-    });
-    const byMethod: Record<'cash' | 'card' | 'loyalty', number> = { cash: 0, card: 0, loyalty: 0 };
-    for (const booking of bookings) {
-      const recorded = paymentsByBooking.get(booking.id) ?? [];
-      if (recorded.length) {
-        for (const p of recorded) {
-          const net = Number(p.amount) - Number(p.refundedAmount);
-          if (p.kind !== 'money') byMethod.loyalty += net;
-          else byMethod[methodKind.get(p.methodKey) === 'card' ? 'card' : 'cash'] += net;
+      let paid = 0;
+      for (const p of recorded) {
+        const net = Number(p.amount) - Number(p.refundedAmount);
+        if (p.debt) byMethod.debt += net;
+        else if (p.kind !== 'money') byMethod.loyalty += net;
+        else {
+          // Свои способы — как раньше, к наличным; «Предоплата переводом» — только предоплата по реквизитам
+          byMethod[methodKind.get(p.methodKey) === 'card' ? 'card' : 'cash'] += net;
         }
-      } else {
-        byMethod.cash += Number(booking.total);
+        if (!p.debt) paid += net;
       }
-    }
+      const prepaid = prepaidOf(booking);
+      byMethod.transfer += prepaid;
+      paid += prepaid;
+      const owed = recorded.filter((p) => p.debt).reduce((s, p) => s + Number(p.amount) - Number(p.refundedAmount), 0);
+      // Не оплачено ни деньгами, ни счётом в долг — тоже долг
+      const unpaid = Math.max(0, Number(booking.total) - paid - owed);
+      byMethod.debt += unpaid;
+      // Имя гостя — подписью экрана на языке человека (как мок: пустое имя → «Гость»)
+      return { booking: views[i]!, clientName: client?.name ?? booking.visitorName ?? '', staffName: staff?.name ?? '—', total: Number(booking.total), paidTotal: paid };
+    });
     return {
       rows,
       total: rows.reduce((s, r) => s + Number(r.total), 0),

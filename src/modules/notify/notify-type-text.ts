@@ -23,6 +23,17 @@ export function typePushTemplateOf(db: Db, businessId: string, code: number, loc
   return typeTemplateOf(db, businessId, code, 'push', locale);
 }
 
+/**
+ * Имя мастера клиенту — на языке клиента (владелец 17.11.2026, ответ 8 и уточнение «К 8»: сайт, запись, приложение и
+ * уведомления клиенту — на языке клиента). staff.name_i18n[locale] → имя, как вписали (в кабинете — всегда оно).
+ */
+export function staffNameFor(staff: { name: string; nameI18n?: unknown } | null | undefined, locale: string): string {
+  if (!staff) return '';
+  const i18n = staff.nameI18n && typeof staff.nameI18n === 'object' ? (staff.nameI18n as Record<string, unknown>) : {};
+  const v = i18n[locale];
+  return typeof v === 'string' && v.trim() ? v.trim() : staff.name;
+}
+
 /** Переменные шаблона записи — те же имена, что в редакторе и журнале отправок ({companyName} {service} {date} {time} {staff} {link}) */
 export function bookingTemplateVars(input: { businessName: string; service: string; staff: string; local: string; link: string }): Record<string, string> {
   const date = `${input.local.slice(8, 10)}.${input.local.slice(5, 7)}`;

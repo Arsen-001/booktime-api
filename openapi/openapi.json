@@ -532,6 +532,9 @@
                     },
                     "appleLinked": {
                       "type": "boolean"
+                    },
+                    "needsName": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -7263,6 +7266,7 @@
             "cookie": []
           }
         ],
+        "summary": "Карточка сотрудника: staff.view; свою — каждый (мастер правит свой профиль PATCH-ем, а прочитать его не мог — «Материалы» и «Документы» мастера не открывались, проход 17.11.2026)",
         "tags": [
           "staff"
         ]
@@ -7297,6 +7301,31 @@
                   "name": {
                     "type": "string",
                     "maxLength": 120
+                  },
+                  "nameI18n": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "ru": {
+                            "type": "string",
+                            "maxLength": 120
+                          },
+                          "hy": {
+                            "type": "string",
+                            "maxLength": 120
+                          },
+                          "en": {
+                            "type": "string",
+                            "maxLength": 120
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "phone": {
                     "type": "string",
@@ -11769,6 +11798,62 @@
         ]
       }
     },
+    "/v1/net/{networkId}/branches": {
+      "post": {
+        "operationId": "NetworkController_createBranch",
+        "parameters": [
+          {
+            "name": "networkId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "address": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "district": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Новый филиал» одним шагом внутри сети (ответ 31, 17.11.2026): новый бизнес-филиал сразу в сети",
+        "tags": [
+          "network"
+        ]
+      }
+    },
     "/v1/net/{networkId}/businesses/{businessId}": {
       "delete": {
         "operationId": "NetworkController_remove",
@@ -14077,6 +14162,304 @@
                     "version"
                   ],
                   "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "services"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/services/from-templates": {
+      "post": {
+        "operationId": "ServicesController_createFromTemplates",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sphereId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "items": {
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "categoryId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32
+                        },
+                        "categoryName": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "name": {
+                          "type": "object",
+                          "properties": {
+                            "ru": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "hy": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "en": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "ru"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        "kind": {
+                          "default": "individual",
+                          "type": "string",
+                          "enum": [
+                            "individual",
+                            "group"
+                          ]
+                        },
+                        "durationMin": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1440
+                        },
+                        "priceMin": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000000000
+                        },
+                        "staffIds": {
+                          "default": [],
+                          "maxItems": 200,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 32
+                          }
+                        }
+                      },
+                      "required": [
+                        "categoryName",
+                        "name",
+                        "durationMin",
+                        "priceMin"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "sphereId",
+                  "items"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "categoryId": {
+                            "type": "string"
+                          },
+                          "sphereId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "object",
+                            "properties": {
+                              "ru": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "hy": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "en": {
+                                "type": "string",
+                                "maxLength": 4000
+                              }
+                            },
+                            "required": [
+                              "ru"
+                            ],
+                            "additionalProperties": {}
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "individual",
+                              "group",
+                              "intake",
+                              "pickup"
+                            ]
+                          },
+                          "durationMin": {
+                            "type": "number"
+                          },
+                          "priceMin": {
+                            "type": "number"
+                          },
+                          "photos": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "staffIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "onlineBookable": {
+                            "type": "boolean"
+                          },
+                          "active": {
+                            "type": "boolean"
+                          },
+                          "order": {
+                            "type": "number"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "categoryId",
+                          "sphereId",
+                          "name",
+                          "kind",
+                          "durationMin",
+                          "priceMin",
+                          "photos",
+                          "staffIds",
+                          "onlineBookable",
+                          "active",
+                          "order",
+                          "version"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "businessId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "object",
+                            "properties": {
+                              "ru": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "hy": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "en": {
+                                "type": "string",
+                                "maxLength": 4000
+                              }
+                            },
+                            "required": [
+                              "ru"
+                            ],
+                            "additionalProperties": {}
+                          },
+                          "order": {
+                            "type": "number"
+                          },
+                          "version": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "businessId",
+                          "name",
+                          "order",
+                          "version"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "services",
+                    "categories"
+                  ]
                 }
               }
             }
@@ -28922,7 +29305,7 @@
             "cookie": []
           }
         ],
-        "summary": "История правок графика и правил окон (F-02-102)",
+        "summary": "История правок графика и правил окон (F-02-102): staff.view — всех; без него — только свою (мастер, «История правок» в его меню)",
         "tags": [
           "schedule"
         ]
@@ -29666,6 +30049,64 @@
           }
         ],
         "summary": "«Убрать из графика» (F-02-020): будущие записи без force — ok=false и их число",
+        "tags": [
+          "schedule"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff/{staffId}/open-until": {
+      "put": {
+        "operationId": "ScheduleController_setOpenUntil",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "openUntil": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "openUntil"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Открыть окна до …» (17.11.2026): до какой даты клиенты видят окна мастера; null — без срока",
         "tags": [
           "schedule"
         ]
@@ -37487,6 +37928,58 @@
         ]
       }
     },
+    "/v1/biz/{businessId}/finance/bookings/payment-briefs": {
+      "post": {
+        "operationId": "FinanceExtController_paymentBriefs",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "maxItems": 2000,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/v1/biz/{businessId}/finance/settings/{key}": {
       "get": {
         "operationId": "FinanceExtController_getSetting",
@@ -44746,7 +45239,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": ""
           }
         },
@@ -47258,7 +47751,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": ""
           }
         },
@@ -47933,6 +48426,14 @@
       "get": {
         "operationId": "ClientsController_getFineRights",
         "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "staffId",
             "required": true,
@@ -49410,6 +49911,51 @@
           }
         ],
         "summary": "Незакрытые визиты: прошедшие без «Пришёл»/«Не пришёл» и «Пришёл» без оплаты (мастер — свои)",
+        "tags": [
+          "journal"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/journal/workday/received": {
+      "get": {
+        "operationId": "WorkdayController_received",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Пульс дня»: деньги, полученные в этот день (как в отчётах с 01.10); мастеру — свои",
         "tags": [
           "journal"
         ]
@@ -60418,6 +60964,74 @@
         ]
       }
     },
+    "/v1/public/masters/{staffId}/trust": {
+      "get": {
+        "operationId": "PublicCatalogController_masterTrust",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "«Документы проверены» и «Стерилизация» на карточке мастера (F-00-088, F-00-090) — публично",
+        "tags": [
+          "client"
+        ]
+      }
+    },
+    "/v1/public/masters/{staffId}/report": {
+      "post": {
+        "operationId": "PublicCatalogController_report",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 600
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "«Пожаловаться» на карточку мастера (F-00-091) — в очередь проверки платформы; клиенту и гостю",
+        "tags": [
+          "client"
+        ]
+      }
+    },
     "/v1/public/masters/{staffId}/days": {
       "get": {
         "operationId": "PublicCatalogController_days",
@@ -63785,7 +64399,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": ""
           }
         },
@@ -65713,7 +66327,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": ""
           }
         },
@@ -66103,7 +66717,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": ""
           }
         },
@@ -66713,6 +67327,78 @@
                         "required": [
                           "mode",
                           "applyClientDiscount"
+                        ]
+                      },
+                      "assistRates": {
+                        "type": "object",
+                        "properties": {
+                          "withoutAssistant": {
+                            "type": "object",
+                            "properties": {
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "percent",
+                                  "amount"
+                                ]
+                              },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            },
+                            "required": [
+                              "unit",
+                              "value"
+                            ]
+                          },
+                          "withAssistant": {
+                            "type": "object",
+                            "properties": {
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "percent",
+                                  "amount"
+                                ]
+                              },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            },
+                            "required": [
+                              "unit",
+                              "value"
+                            ]
+                          },
+                          "asAssistant": {
+                            "type": "object",
+                            "properties": {
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "percent",
+                                  "amount"
+                                ]
+                              },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            },
+                            "required": [
+                              "unit",
+                              "value"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "withoutAssistant",
+                          "asAssistant"
                         ]
                       },
                       "loyaltyAdjustment": {
@@ -67500,6 +68186,78 @@
                         "required": [
                           "mode",
                           "applyClientDiscount"
+                        ]
+                      },
+                      "assistRates": {
+                        "type": "object",
+                        "properties": {
+                          "withoutAssistant": {
+                            "type": "object",
+                            "properties": {
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "percent",
+                                  "amount"
+                                ]
+                              },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            },
+                            "required": [
+                              "unit",
+                              "value"
+                            ]
+                          },
+                          "withAssistant": {
+                            "type": "object",
+                            "properties": {
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "percent",
+                                  "amount"
+                                ]
+                              },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            },
+                            "required": [
+                              "unit",
+                              "value"
+                            ]
+                          },
+                          "asAssistant": {
+                            "type": "object",
+                            "properties": {
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "percent",
+                                  "amount"
+                                ]
+                              },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            },
+                            "required": [
+                              "unit",
+                              "value"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "withoutAssistant",
+                          "asAssistant"
                         ]
                       },
                       "loyaltyAdjustment": {
@@ -69500,6 +70258,23 @@
                   "comment": {
                     "type": "string",
                     "maxLength": 400
+                  },
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "cash",
+                      "card",
+                      "transfer",
+                      "other"
+                    ]
+                  },
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$"
+                  },
+                  "sheetId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
@@ -69578,6 +70353,35 @@
             "cookie": []
           }
         ],
+        "tags": [
+          "payroll"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/payroll/statements/{sheetId}/approval/reopen": {
+      "post": {
+        "operationId": "PayrollController_reopenApproval",
+        "parameters": [
+          {
+            "name": "sheetId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Вернуть на проверку» (ответ 26, 17.11.2026): одобренная ведомость снова открыта для правок",
         "tags": [
           "payroll"
         ]
@@ -69752,6 +70556,78 @@
                         "required": [
                           "mode",
                           "applyClientDiscount"
+                        ]
+                      },
+                      "assistRates": {
+                        "type": "object",
+                        "properties": {
+                          "withoutAssistant": {
+                            "type": "object",
+                            "properties": {
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "percent",
+                                  "amount"
+                                ]
+                              },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            },
+                            "required": [
+                              "unit",
+                              "value"
+                            ]
+                          },
+                          "withAssistant": {
+                            "type": "object",
+                            "properties": {
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "percent",
+                                  "amount"
+                                ]
+                              },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            },
+                            "required": [
+                              "unit",
+                              "value"
+                            ]
+                          },
+                          "asAssistant": {
+                            "type": "object",
+                            "properties": {
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "percent",
+                                  "amount"
+                                ]
+                              },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            },
+                            "required": [
+                              "unit",
+                              "value"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "withoutAssistant",
+                          "asAssistant"
                         ]
                       },
                       "loyaltyAdjustment": {
@@ -70423,6 +71299,42 @@
         ],
         "responses": {
           "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "payroll"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/staff/{staffId}/statements/{sheetId}/sign": {
+      "post": {
+        "operationId": "PayrollStaffController_signOwnStatement",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sheetId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
             "description": ""
           }
         },
@@ -78271,7 +79183,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": ""
           }
         },
@@ -78962,7 +79874,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": ""
           }
         },
@@ -79855,6 +80767,55 @@
           }
         ],
         "summary": "Бесплатные дни бизнесу (F-00-019: подключили на визите; первому — first)",
+        "tags": [
+          "platform-billing"
+        ]
+      }
+    },
+    "/v1/platform/businesses/{id}/grace": {
+      "post": {
+        "operationId": "BillingPlatformController_grace",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 60
+                  }
+                },
+                "required": [
+                  "days"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Отсрочка N дней» салону, замороженному за неуплату (ответ 30, 17.11.2026): кабинет работает до даты",
         "tags": [
           "platform-billing"
         ]
@@ -87425,6 +88386,11 @@
                     "minimum": 0,
                     "maximum": 1000000000
                   },
+                  "prepaidMethod": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
                   "comment": {
                     "anyOf": [
                       {
@@ -88296,6 +89262,11 @@
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 1000000000
+                  },
+                  "prepaidMethod": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
                   },
                   "comment": {
                     "anyOf": [
@@ -89956,6 +90927,11 @@
                     "minimum": 0,
                     "maximum": 1000000000
                   },
+                  "prepaidMethod": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
                   "comment": {
                     "anyOf": [
                       {
@@ -90821,6 +91797,11 @@
                     "minimum": 0,
                     "maximum": 1000000000
                   },
+                  "prepaidMethod": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
                   "comment": {
                     "anyOf": [
                       {
@@ -91235,6 +92216,25 @@
                       "issued",
                       "cancelled"
                     ]
+                  },
+                  "payment": {
+                    "type": "object",
+                    "properties": {
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000000000
+                      },
+                      "methodKey": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      }
+                    },
+                    "required": [
+                      "amount",
+                      "methodKey"
+                    ]
                   }
                 },
                 "required": [
@@ -91630,6 +92630,25 @@
                       "ready",
                       "issued",
                       "cancelled"
+                    ]
+                  },
+                  "payment": {
+                    "type": "object",
+                    "properties": {
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000000000
+                      },
+                      "methodKey": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      }
+                    },
+                    "required": [
+                      "amount",
+                      "methodKey"
                     ]
                   }
                 },
@@ -95300,7 +96319,28 @@
                           "type": "string"
                         },
                         "address": {
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "ru": {
+                                  "type": "string"
+                                },
+                                "hy": {
+                                  "type": "string"
+                                },
+                                "en": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "ru"
+                              ]
+                            }
+                          ]
                         },
                         "slug": {
                           "type": "string"
@@ -95595,7 +96635,28 @@
                           "type": "string"
                         },
                         "address": {
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "ru": {
+                                  "type": "string"
+                                },
+                                "hy": {
+                                  "type": "string"
+                                },
+                                "en": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "ru"
+                              ]
+                            }
+                          ]
                         },
                         "slug": {
                           "type": "string"
@@ -95931,7 +96992,28 @@
                           "type": "string"
                         },
                         "address": {
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "ru": {
+                                  "type": "string"
+                                },
+                                "hy": {
+                                  "type": "string"
+                                },
+                                "en": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "ru"
+                              ]
+                            }
+                          ]
                         },
                         "slug": {
                           "type": "string"
@@ -96185,7 +97267,28 @@
                           "type": "string"
                         },
                         "address": {
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "ru": {
+                                  "type": "string"
+                                },
+                                "hy": {
+                                  "type": "string"
+                                },
+                                "en": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "ru"
+                              ]
+                            }
+                          ]
                         },
                         "slug": {
                           "type": "string"

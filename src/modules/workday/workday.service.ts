@@ -9,7 +9,6 @@ import { bookingView } from '../journal/journal.views.js';
 import { extrasOf } from '../journal/rules.js';
 import { dayMoneyOf } from './day-money.js';
 import { locationsOf } from '../reports/reports-common.js';
-import { receivedMoney, sumMoney } from '../reports/reports-money.js';
 
 /**
  * Рабочий день журнала (⭐ 01.10.2026, пункты 5–7 владельца) — то же, что считает мок фронта
@@ -242,18 +241,30 @@ export class WorkdayService {
     };
   }
 
-  // ─────────── «Пульс дня»: получено (владелец 17.11.2026, DESIGN.md №18) ───────────
+  // ─────────── «Пульс дня»: получено (владелец 17.11.2026, DESIGN.md №18 и уточнение «К 18») ───────────
 
   /**
-   * «Получено 5 000 ֏ из 36 000»: деньги, которые правда получены в этот день, — то же правило, что во всех отчётах
-   * с 01.10 (receivedMoney: оплаты услуг минус возвраты по визиту, оплаченные товары; без абонементов, сертификатов,
-   * пополнений и оплат лояльностью). Мастеру — только своё (его визиты и его продажи).
+   * «Получено 5 000 ֏ из 36 000»: деньги ЗА ВИЗИТЫ ЭТОГО ДНЯ, когда бы они ни пришли (уточнение «К 18»): предоплата
+   * вчера за сегодняшний визит — в X; предоплата сегодня за завтрашний — завтра. Числитель и знаменатель — один набор
+   * визитов (знаменатель экрана — сумма живых записей дня: не отменённые, не удалённые). Деньги — как в отчётах:
+   * оплаты деньгами (наличные, карта, свои способы) за вычетом возвратов, предоплата переводом; без скидок, личного
+   * счёта, сертификатов и абонементов (это не деньги в кассе за визит). Мастеру — только свои визиты.
    */
   async received(businessId: string, staffId: string | undefined, date: string, locationIds: string[] | undefined) {
     const locations = await locationsOf(this.prisma, businessId, locationIds);
-    const money = await receivedMoney(this.prisma, businessId, locations, { from: date, to: date });
-    const mine = staffId ? money.filter((m) => m.staffId === staffId) : money;
-    return { date, received: sumMoney(mine) };
+    const { from, to } = localDayRangeUtc(date, locations[0]?.tz || DEFAULT_TZ);
+    const bookings = await this.prisma.booking.findMany({
+      where: { businessId, deletedAt: null, status: { notIn: CANCELLED }, startAt: { gte: from, lt: to }, locationId: { in: locations.map((l) => l.id) }, ...(staffId ? { staffId } : {}) },
+      select: { id: true, prepayment: true },
+    });
+    if (!bookings.length) return { date, received: 0 };
+    const payments = await this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: { in: bookings.map((b) => b.id) }, kind: 'money', cancelled: false }, select: { amount: true, refundedAmount: true } });
+    const paid = payments.reduce((s, p) => s + Number(p.amount) - Number(p.refundedAmount), 0);
+    const prepaid = bookings.reduce((s, b) => {
+      const p = (b.prepayment ?? null) as { amount?: number; paid?: boolean; refundedAt?: string } | null;
+      return s + (p?.paid && !p.refundedAt ? Math.max(0, Math.round(Number(p.amount ?? 0))) : 0);
+    }, 0);
+    return { date, received: paid + prepaid };
   }
 
   // ─────────── Итоги дня ───────────

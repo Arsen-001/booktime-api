@@ -7,7 +7,17 @@ import type { Prices } from './billing-prices.js';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
-export type SeatReason = 'individual' | 'ownerAsMaster' | 'ownerFree' | 'adminFirstFree' | 'adminExtra' | 'master' | 'assistantFree';
+export type SeatReason =
+  | 'individual'
+  | 'ownerAsMaster'
+  | 'ownerFree'
+  | 'adminFirstFree'
+  | 'adminExtra'
+  | 'master'
+  | 'assistantFree'
+  | 'assistantWorks'
+  | 'invitedPending'
+  | 'invitedLong';
 export type BreakdownKey = 'billing.breakdown.individual' | 'billing.breakdown.masters' | 'billing.breakdown.minimum' | 'billing.breakdown.admins';
 
 export interface SeatLine {
@@ -33,10 +43,19 @@ export interface SeatsResult {
   paidAdmins: number;
 }
 
+/** Сколько дней приглашённый, ещё не вошедший мастер не занимает платное место (владелец 17.11.2026, ответ 19) */
+export const INVITED_FREE_DAYS = 14;
+
+const CANCELLED = ['cancelled_by_client', 'cancelled_by_master'];
+
 /**
  * Кто занимает платные места (06 §3.1, F-00-013/014/016, В-11, В-12) — та же формула, что `computeSeats` фронта:
  * - индивидуал — одна цена;
- * - мастер салона — платный, кроме «только ассистента» (F-09-044);
+ * - мастер салона — платный. Бесплатно (владелец 17.11.2026, ответ 19 — одно правило для сайта и сервера, считает сервер):
+ *   · ассистент по галочке «Ассистент» (assistantOnly), у которого нет своих услуг, графика и своих записей в этом месяце;
+ *     ассистент со своей услугой, графиком или записями — платный мастер (иначе салон назовёт мастеров ассистентами);
+ *     должность «Ассистент…» места не освобождает — только галочка;
+ *   · приглашённый, ещё не вошедший — до первого входа, но не дольше INVITED_FREE_DAYS дней с приглашения;
  * - владелец/администратор платный как мастер, если у него есть услуга И график в этом месяце (В-11: «не блокируем,
  *   досчитываем»);
  * - первый администратор бесплатно (В-12 — на каждый салон, филиал сети = свой бизнес), остальные +adminExtraSeat;
@@ -48,7 +67,7 @@ export async function computeSeats(db: Db, businessId: string, prices: Prices): 
   if (!biz) throw new ApiError('not_found', 'Business not found');
   const staff = await db.staff.findMany({
     where: { businessId, deletedAt: null, status: { notIn: ['fired', 'disabled'] } },
-    select: { id: true, name: true, role: true, assistantOnly: true, serviceIds: true, hiredAt: true },
+    select: { id: true, name: true, role: true, status: true, userId: true, assistantOnly: true, serviceIds: true, hiredAt: true },
     orderBy: [{ hiredAt: 'asc' }, { id: 'asc' }],
   });
 
@@ -73,7 +92,32 @@ export async function computeSeats(db: Db, businessId: string, prices: Prices): 
       })
     ).map((w) => w.staffId),
   );
-  const billable = (s: (typeof staff)[number]) => Array.isArray(s.serviceIds) && s.serviceIds.length > 0 && withSchedule.has(s.id);
+  const hasServices = (s: (typeof staff)[number]) => Array.isArray(s.serviceIds) && s.serviceIds.length > 0;
+  const billable = (s: (typeof staff)[number]) => hasServices(s) && withSchedule.has(s.id);
+
+  // Ассистент со своими записями в этом месяце — работает мастером (ответ 19)
+  const assistantIds = staff.filter((s) => s.role === 'master' && s.assistantOnly).map((s) => s.id);
+  const monthStartUtc = dayjs().tz(DEFAULT_TZ).startOf('month').toDate();
+  const withBookings = new Set(
+    assistantIds.length
+      ? (
+          await db.booking.groupBy({
+            by: ['staffId'],
+            where: { businessId, staffId: { in: assistantIds }, deletedAt: null, status: { notIn: CANCELLED }, startAt: { gte: monthStartUtc } },
+            _count: { _all: true },
+          })
+        ).map((r) => r.staffId)
+      : [],
+  );
+  // Приглашённый, ещё не вошедший: срок — с первого приглашения (нет строки приглашения — с даты добавления)
+  const invitedIds = staff.filter((s) => s.role === 'master' && s.status === 'invited' && !s.userId).map((s) => s.id);
+  const firstInvite = new Map(
+    invitedIds.length
+      ? (await db.staffInvite.groupBy({ by: ['staffId'], where: { staffId: { in: invitedIds } }, _min: { createdAt: true } })).map((r) => [r.staffId, r._min.createdAt])
+      : [],
+  );
+  const invitedSince = (s: (typeof staff)[number]): Date => firstInvite.get(s.id) ?? dayjs.tz(s.hiredAt, 'YYYY-MM-DD', DEFAULT_TZ).toDate();
+  const now = Date.now();
 
   const seats: SeatLine[] = [];
   let masters = 0;
@@ -86,8 +130,16 @@ export async function computeSeats(db: Db, businessId: string, prices: Prices): 
     } else if (s.role === 'admin') {
       const first = admins[0]?.id === s.id;
       seats.push({ staffId: s.id, name: s.name, role: 'admin', paid: !first, price: first ? 0 : prices.adminExtraSeat, reasonKey: first ? 'adminFirstFree' : 'adminExtra' });
-    } else if (s.assistantOnly) {
+    } else if (s.assistantOnly && !hasServices(s) && !withSchedule.has(s.id) && !withBookings.has(s.id)) {
       seats.push({ staffId: s.id, name: s.name, role: 'master', paid: false, price: 0, reasonKey: 'assistantFree' });
+    } else if (s.assistantOnly) {
+      masters++;
+      seats.push({ staffId: s.id, name: s.name, role: 'master', paid: true, price: prices.masterSeat, reasonKey: 'assistantWorks' });
+    } else if (invitedIds.includes(s.id) && now - invitedSince(s).getTime() < INVITED_FREE_DAYS * 86_400_000) {
+      seats.push({ staffId: s.id, name: s.name, role: 'master', paid: false, price: 0, reasonKey: 'invitedPending' });
+    } else if (invitedIds.includes(s.id)) {
+      masters++;
+      seats.push({ staffId: s.id, name: s.name, role: 'master', paid: true, price: prices.masterSeat, reasonKey: 'invitedLong' });
     } else {
       masters++;
       seats.push({ staffId: s.id, name: s.name, role: 'master', paid: true, price: prices.masterSeat, reasonKey: 'master' });

@@ -712,6 +712,9 @@ model Service {
   workplaces         Json
   onlineBookable     Boolean  @default(true) @map("online_bookable")
   active             Boolean  @default(true)
+  /// В архиве (владелец 17.11.2026, ответ 33): услуга с прошлыми визитами не стирается — «Удалить» убирает её в архив
+  /// (не видна в списках, записи и онлайн, active = false), история и отчёты сохраняют название. Без визитов — удаляется.
+  archivedAt         DateTime? @map("archived_at") @db.DateTime(3)
   /// Порядок в категории; у пакета — Date.now() при создании (как во фронте), поэтому bigint
   order              BigInt   @default(0)
   /// required | preferred — выбор оттенка при записи (F-00-094…096); нет поля — шага нет

@@ -116,7 +116,7 @@ export class ServicesService {
   }
 
   async categoryDeleteImpact(businessId: string, id: string) {
-    const serviceCount = await this.prisma.service.count({ where: { businessId, categoryId: id } });
+    const serviceCount = await this.prisma.service.count({ where: { businessId, categoryId: id, archivedAt: null } });
     return { serviceCount };
   }
 
@@ -134,14 +134,14 @@ export class ServicesService {
 
   async listServices(businessId: string, kind?: 'individual' | 'group') {
     const rows = await this.prisma.service.findMany({
-      where: { businessId, kind: kind ?? undefined, servicePackage: { equals: Prisma.DbNull } },
+      where: { businessId, kind: kind ?? undefined, archivedAt: null, servicePackage: { equals: Prisma.DbNull } },
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
     });
     return rows.map(serviceView);
   }
 
   async listServiceRows(businessId: string) {
-    const rows = await this.prisma.service.findMany({ where: { businessId, servicePackage: { equals: Prisma.DbNull } }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
+    const rows = await this.prisma.service.findMany({ where: { businessId, archivedAt: null, servicePackage: { equals: Prisma.DbNull } }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
     const terms = await this.prisma.staffServiceTerm.findMany({ where: { serviceId: { in: rows.map((r) => r.id) } } });
     return rows.map((s) => ({
       service: serviceView(s),
@@ -411,11 +411,22 @@ export class ServicesService {
     return { staffCount, futureBookings, futureEvents, packagesUsing };
   }
 
-  /** Удаляет сразу (F-16-170); «Отменить» — экран хранит снимок и зовёт restoreService в те же 5 с */
+  /**
+   * Удаляет сразу (F-16-170); «Отменить» — экран хранит снимок и зовёт restoreService в те же 5 с.
+   * Ответ 33 (владелец 17.11.2026): услуга с визитами (любая запись или групповое событие с ней) не стирается, а уходит
+   * в архив — не видна в списках, записи и онлайн, у мастеров снята; история и отчёты сохраняют название.
+   */
   async deleteService(ctx: RequestContext, businessId: string, id: string) {
     const service = await this.prisma.service.findFirst({ where: { id, businessId } });
     if (!service) throw new ApiError('not_found', 'Service not found');
     const view = serviceView(service);
+    if (await serviceHasHistory(this.prisma, businessId, id)) {
+      await this.prisma.$transaction(async (tx) => {
+        await archiveServiceTx(tx, id);
+        await this.audit.record(tx, ctx, { action: 'archive', entityType: 'service', entityId: id, businessId, before: { name: service.name }, after: { archived: true } });
+      });
+      return { ...view, archivedAt: new Date().toISOString() };
+    }
     await this.prisma.$transaction(async (tx) => {
       // Снять услугу у мастеров, которые её делают, и удалить сроки (staff_service_terms) — как в моке
       const staffIds = Array.isArray(service.staffIds) ? (service.staffIds as string[]) : [];
@@ -436,6 +447,23 @@ export class ServicesService {
   /** Восстановить тем же id (снимок держит экран, F-00-061) */
   async restoreService(ctx: RequestContext, businessId: string, input: RestoreServiceBody) {
     const exists = await this.prisma.service.findUnique({ where: { id: input.id } });
+    // Ответ 33: «Отменить» после архива — услуга снова в работе, как была (мастера, онлайн, включена)
+    if (exists && exists.businessId === businessId && exists.archivedAt) {
+      const rec = input as unknown as Record<string, unknown>;
+      const staffIds = Array.isArray(rec.staffIds) ? (rec.staffIds as string[]) : [];
+      await this.prisma.$transaction(async (tx) => {
+        await tx.service.update({ where: { id: input.id }, data: { archivedAt: null, active: rec.active !== false, onlineBookable: rec.onlineBookable !== false, staffIds } });
+        for (const staffId of staffIds) {
+          const staff = await tx.staff.findFirst({ where: { id: staffId, businessId }, select: { serviceIds: true } });
+          if (staff) {
+            const ids = Array.isArray(staff.serviceIds) ? (staff.serviceIds as string[]) : [];
+            if (!ids.includes(input.id)) await tx.staff.update({ where: { id: staffId }, data: { serviceIds: [...ids, input.id] } });
+          }
+        }
+        await this.audit.record(tx, ctx, { action: 'restore', entityType: 'service', entityId: input.id, businessId, before: { archived: true }, after: { archived: false } });
+      });
+      return this.getService(businessId, input.id);
+    }
     if (exists) throw new ApiError('conflict', 'Already exists');
     // Категория могла исчезнуть за 5 с окна «Отменить» — снимаем её, а не падаем на внешнем ключе (F-16-171)
     const category = await this.prisma.serviceCategory.findFirst({ where: { id: input.categoryId, businessId } });
@@ -576,7 +604,7 @@ export class ServicesService {
   async listAssignableServices(businessId: string, staffId: string) {
     const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
     const serviceIds = new Set(staff && Array.isArray(staff.serviceIds) ? (staff.serviceIds as string[]) : []);
-    const rows = await this.prisma.service.findMany({ where: { businessId, servicePackage: { equals: Prisma.DbNull } } });
+    const rows = await this.prisma.service.findMany({ where: { businessId, archivedAt: null, servicePackage: { equals: Prisma.DbNull } } });
     return rows.filter((s) => !serviceIds.has(s.id)).map(serviceView);
   }
 
@@ -914,4 +942,26 @@ function opt<T>(v: T | null | undefined): T | undefined {
 function termView(t: { serviceId: string; staffId: string; price: bigint | null; durationMin: number | null } | undefined) {
   if (!t) return undefined;
   return { serviceId: t.serviceId, staffId: t.staffId, price: t.price != null ? moneyToJson(t.price) : undefined, durationMin: opt(t.durationMin) };
+}
+
+/**
+ * Ответ 33 (владелец 17.11.2026): у услуги есть история — запись (любая, и удалённая: её видно в журнале изменений и
+ * отчётах) или групповое событие с ней. Такую услугу «Удалить» не стирает, а убирает в архив.
+ */
+export async function serviceHasHistory(db: PrismaService | Prisma.TransactionClient, businessId: string, serviceId: string): Promise<boolean> {
+  const rows = await db.$queryRaw<{ n: bigint }[]>`SELECT COUNT(*) AS n FROM bookings WHERE business_id = ${businessId} AND JSON_CONTAINS(services, JSON_ARRAY(JSON_OBJECT('serviceId', ${serviceId})))`;
+  if (Number(rows[0]?.n ?? 0) > 0) return true;
+  return (await db.groupEvent.count({ where: { businessId, serviceId } })) > 0;
+}
+
+/** В архив: выключена, не онлайн, снята у мастеров (и сроки мастеров), строка и название остаются */
+export async function archiveServiceTx(tx: Prisma.TransactionClient, serviceId: string): Promise<void> {
+  const service = await tx.service.findUniqueOrThrow({ where: { id: serviceId } });
+  const staffIds = Array.isArray(service.staffIds) ? (service.staffIds as string[]) : [];
+  for (const staffId of staffIds) {
+    const staff = await tx.staff.findUnique({ where: { id: staffId }, select: { serviceIds: true } });
+    if (staff) await tx.staff.update({ where: { id: staffId }, data: { serviceIds: (Array.isArray(staff.serviceIds) ? (staff.serviceIds as string[]) : []).filter((x) => x !== serviceId) } });
+  }
+  await tx.staffServiceTerm.deleteMany({ where: { serviceId } });
+  await tx.service.update({ where: { id: serviceId }, data: { archivedAt: new Date(), active: false, onlineBookable: false, staffIds: [] } });
 }

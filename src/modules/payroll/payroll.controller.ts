@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
@@ -361,6 +361,13 @@ export class PayrollController {
   @Biz('payroll.manage')
   advanceApproval(@Ctx() ctx: RequestContext, @Param('sheetId') sheetId: string) {
     return this.settlements.advanceApproval(ctx, sheetId);
+  }
+
+  @Post('statements/:sheetId/approval/reopen')
+  @Biz('payroll.manage')
+  @ApiOperation({ summary: '«Вернуть на проверку» (ответ 26, 17.11.2026): одобренная ведомость снова открыта для правок' })
+  reopenApproval(@Ctx() ctx: RequestContext, @Param('sheetId') sheetId: string) {
+    return this.settlements.reopenApproval(ctx, sheetId);
   }
 
   @Post('statements/:sheetId/approval/sign')

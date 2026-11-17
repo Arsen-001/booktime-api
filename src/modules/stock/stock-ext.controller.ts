@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from '@nestj
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { RequestContext } from '../../common/http/context.js';
-import { Biz, Ctx } from '../../common/http/guards.js';
+import { Biz, BizAny, Ctx } from '../../common/http/guards.js';
 import { ZodBody } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { StockExtService } from './stock-ext.service.js';
@@ -48,38 +48,39 @@ const orderSupplierBody = z.object({ counterpartyId: id32.optional(), name: z.st
 export class StockExtController {
   constructor(private readonly ext: StockExtService) {}
 
+  // Ответ 17 (17.11.2026): с одним «смотреть склад» (мастер) — только товары и остатки; отчёты, журнал, покупки клиентов — со stock.edit
   @Get('journal')
-  @Biz('stock.view')
+  @Biz('stock.edit')
   journal(@Param('businessId') businessId: string, @Query() q: Record<string, string | undefined>) {
     return this.ext.listOperationRows(businessId, q.locationId ?? '', q);
   }
 
   @Get('reports/movement')
-  @Biz('stock.view')
+  @Biz('stock.edit')
   movement(@Param('businessId') businessId: string, @Query() q: Record<string, string | undefined>) {
     return this.ext.movementReport(businessId, q.locationId ?? '', q.dateFrom ?? '', q.dateTo ?? '', q.warehouseId || undefined);
   }
 
   @Get('reports/consumables')
-  @Biz('stock.view')
+  @Biz('stock.edit')
   consumables(@Param('businessId') businessId: string, @Query() q: Record<string, string | undefined>) {
     return this.ext.consumablesAnalysis(businessId, q.locationId ?? '', q.dateFrom ?? '', q.dateTo ?? '');
   }
 
   @Get('cost-price-at')
-  @Biz('stock.view')
+  @BizAny('stock.edit', 'reports.view')
   costPriceAt(@Param('businessId') businessId: string, @Query('goodId') goodId: string, @Query('at') at: string) {
     return this.ext.costPriceAt(businessId, goodId, at);
   }
 
   @Get('clients/search')
-  @Biz('stock.view')
+  @Biz('stock.edit')
   searchClients(@Param('businessId') businessId: string, @Query('q') q: string) {
     return this.ext.searchClients(businessId, q ?? '');
   }
 
   @Get('clients/:clientId/purchases')
-  @Biz('stock.view')
+  @Biz('stock.edit')
   purchases(@Param('businessId') businessId: string, @Param('clientId') clientId: string) {
     return this.ext.clientPurchaseSummary(businessId, clientId);
   }

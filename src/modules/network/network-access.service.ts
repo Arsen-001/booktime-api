@@ -43,6 +43,16 @@ export class NetworkAccessService {
     throw new ApiError('forbidden', 'Network is not accessible');
   }
 
+  /**
+   * Замороженные за неуплату филиалы (владелец 17.11.2026, ответ 32): действия сети (раздача и миграция услуг,
+   * товаров, сотрудников, ведомость) их не меняют — ни добавляют, ни удаляют. Экран показывает их неактивными.
+   */
+  async frozenIds(businessIds: readonly string[]): Promise<Set<string>> {
+    if (!businessIds.length) return new Set();
+    const rows = await this.prisma.business.findMany({ where: { id: { in: [...businessIds] }, status: 'frozen' }, select: { id: true } });
+    return new Set(rows.map((r) => r.id));
+  }
+
   /** Филиалы сети, где человек работает сам (живая строка staff) — для чтения справочников своего филиала без прав сети */
   async ownBranches(userId: string, networkId: string): Promise<string[]> {
     const network = await this.loadNetwork(networkId);

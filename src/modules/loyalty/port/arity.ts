@@ -732,6 +732,9 @@ export const REQUIRED_ARGS: Record<string, readonly ('string' | 'number' | 'bool
   "appListLoyaltyCards": [
     "string"
   ],
+  "appListAccounts": [
+    "string"
+  ],
   "appGetCashbackForBusiness": [
     "string",
     "string"

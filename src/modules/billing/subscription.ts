@@ -223,6 +223,23 @@ async function publish(tx: Db, businessId: string, visible: boolean) {
   if (b.status !== next) await tx.business.update({ where: { id: businessId }, data: { status: next, version: { increment: 1 } } });
 }
 
+// ─────────── отсрочка из панели (владелец 17.11.2026, ответ 30) ───────────
+
+/**
+ * «Отсрочка N дней» салону, замороженному за неуплату: подписка снова «отсрочка» (grace) до даты — кабинет работает,
+ * салон снова виден клиентам; не оплатят до даты — воркер заморозит его снова (billingTick, ветка grace). Ручную
+ * приостановку панели («Приостановить») это не снимает — для неё «Вернуть в работу».
+ */
+export async function grantGrace(tx: Tx, input: { businessId: string; days: number; by: string }) {
+  if (!Number.isInteger(input.days) || input.days < 1 || input.days > 60) throw new ApiError('validation', 'days 1…60', { days: 'range' });
+  const sub = await ensureSubscription(tx, input.businessId);
+  if (sub.status !== 'frozen' && sub.status !== 'grace') throw new ApiError('conflict', 'Subscription is not frozen for non-payment');
+  const graceUntil = addLocal(new Date(), input.days, 'day');
+  await tx.subscription.update({ where: { businessId: input.businessId }, data: { status: 'grace', graceUntil, retryAt: null, updatedBy: input.by, version: { increment: 1 } } });
+  await publish(tx, input.businessId, true);
+  return { graceUntil };
+}
+
 // ─────────── бесплатные дни (06 §5) ───────────
 
 export async function grantFreeDays(tx: Tx, input: { businessId: string; days: number; reason: 'visit' | 'first' | 'promo' | 'manual'; by: string; note?: string }) {

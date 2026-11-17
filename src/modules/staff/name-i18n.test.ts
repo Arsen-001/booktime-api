@@ -25,3 +25,13 @@ test('вид мастера: nameI18n есть — отдаём, нет — по
   assert.deepEqual(staffView({ ...row, nameI18n: { hy: 'Անի Սարգսյան' } } as never).nameI18n, { hy: 'Անի Սարգսյան' });
   assert.equal(staffView({ ...row, nameI18n: null } as never).nameI18n, undefined);
 });
+
+test('уведомления клиенту (уточнение «К 8», 17.11): имя мастера на языке клиента, нет перевода — как вписали', async () => {
+  const { staffNameFor } = await import('../notify/notify-type-text.js');
+  const ani = { name: 'Ани Саргсян', nameI18n: { hy: 'Անի Սարգսյան', en: 'Ani Sargsyan' } };
+  assert.equal(staffNameFor(ani, 'hy'), 'Անի Սարգսյան');
+  assert.equal(staffNameFor(ani, 'en'), 'Ani Sargsyan');
+  assert.equal(staffNameFor(ani, 'ru'), 'Ани Саргсян');
+  assert.equal(staffNameFor({ name: 'Ани Саргсян', nameI18n: null }, 'en'), 'Ани Саргсян');
+  assert.equal(staffNameFor(null, 'en'), '');
+});

@@ -124,7 +124,7 @@ export class OrdersController {
   @ZodOk(orderOut)
   @ApiOperation({ summary: 'Сменить статус; недопустимый переход — 422 invalid_order_transition; ready — уведомление клиенту' })
   async status(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('orderId') orderId: string, @Body(new Zod(orderStatusBody)) body: z.infer<typeof orderStatusBody>) {
-    const order = await this.svc.setStatus(ctx, businessId, orderId, body.status);
+    const order = await this.svc.setStatus(ctx, businessId, orderId, body.status, body.payment);
     // ⭐ Выдали заказ, на который клиент записался по времени, — запись на выдачу «Пришёл» (best-effort)
     if (body.status === 'issued' && order.pickupBookingId) await this.intake.markArrived(ctx, businessId, order.pickupBookingId);
     return order;

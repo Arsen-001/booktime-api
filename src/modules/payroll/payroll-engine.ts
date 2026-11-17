@@ -739,6 +739,38 @@ export function nextApprovalStatus(current: StatementApprovalStatus): StatementA
   return idx >= 0 && idx < STATEMENT_APPROVAL_ORDER.length - 1 ? STATEMENT_APPROVAL_ORDER[idx + 1] : undefined;
 }
 
+/**
+ * Ответ 26 (владелец 17.11.2026): одобренная ведомость закрыта для правок — премия, штраф, удаление, пересчёт; менять —
+ * через «Вернуть на проверку» (статус снова pendingReview).
+ */
+export const LOCKED_APPROVAL_STATUSES: readonly StatementApprovalStatus[] = ['approved', 'sentToStaff', 'signed', 'paid'];
+
+export function isStatementLocked(status: StatementApprovalStatus | string | null | undefined): boolean {
+  return Boolean(status && (LOCKED_APPROVAL_STATUSES as readonly string[]).includes(status));
+}
+
+const addDay = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * Ответ 27 (владелец 17.11.2026): ведомость не создаётся на уже начисленные дни. Дни [from, to] ('YYYY-MM-DD'), которых
+ * нет ни в одной ведомости `sheets`; если их несколько кусков — последний (новые дни после уже начисленных). null —
+ * начислять нечего, всё уже в ведомостях. Пересечения нет — вернёт [from, to] как есть.
+ */
+export function newDaysRange(sheets: readonly { from: string; to: string }[], from: string, to: string): { from: string; to: string } | null {
+  const covered = (d: string) => sheets.some((s) => s.from <= d && d <= s.to);
+  let end: string | null = null;
+  for (let d = to; d >= from; d = addDay(d, -1)) {
+    if (!covered(d)) {
+      end = d;
+      break;
+    }
+  }
+  if (!end) return null;
+  let start = end;
+  while (addDay(start, -1) >= from && !covered(addDay(start, -1))) start = addDay(start, -1);
+  return { from: start, to: end };
+}
+
 export function canMarkPaid(status: StatementApprovalStatus, approvalEnabled: boolean): boolean {
   if (!approvalEnabled) return true;
   return status === 'signed';

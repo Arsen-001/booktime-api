@@ -1,3 +1,4 @@
+import { archiveServiceTx, serviceHasHistory } from '../services/services.service.js';
 import { Body, Controller, Delete, Get, Injectable, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
@@ -56,6 +57,12 @@ const nameKeyOf = (name: unknown) => norm((name as LocalizedText | null)?.ru ?? 
  * запрет цены/описания). Должности — Position.networkId, уже заведён этапом 3. Поля — своя таблица NetworkField.
  * Слияние дублей (F-11-093/119), Excel/CSV, «панель расходников» — не строены (см. docs/PROGRESS.md).
  */
+/** «Удалить из филиала» (ответ 33): с историей — в архив, без — стереть, как раньше */
+async function removeServiceTx(tx: Prisma.TransactionClient, businessId: string, serviceId: string): Promise<void> {
+  if (await serviceHasHistory(tx, businessId, serviceId)) await archiveServiceTx(tx, serviceId);
+  else await tx.service.delete({ where: { id: serviceId } });
+}
+
 @Injectable()
 export class NetworkCatalogService {
   constructor(
@@ -80,7 +87,7 @@ export class NetworkCatalogService {
     const rows = await this.prisma.serviceCategory.findMany({ where: { businessId: { in: network.businessIds } } });
     const links = await this.prisma.networkServiceCategoryLink.findMany({ where: { networkId } });
     const linkByKey = new Map(links.map((l) => [l.key, l]));
-    const services = await this.prisma.service.findMany({ where: { categoryId: { in: rows.map((r) => r.id) } }, select: { categoryId: true } });
+    const services = await this.prisma.service.findMany({ where: { categoryId: { in: rows.map((r) => r.id) }, archivedAt: null }, select: { categoryId: true } });
     const servicesByCategory = new Map<string, number>();
     for (const s of services) if (s.categoryId) servicesByCategory.set(s.categoryId, (servicesByCategory.get(s.categoryId) ?? 0) + 1);
     const byKey = new Map<string, { key: string; category: (typeof rows)[number]; servicesCount: number; businessCount: number }>();
@@ -121,7 +128,9 @@ export class NetworkCatalogService {
     const { network } = await this.access.require(ctx, networkId, 'services');
     const name = input.name.ru?.trim();
     if (!name) throw new ApiError('bad_name', 'Name required');
-    const scope = input.businessIds.filter((id) => network.businessIds.includes(id));
+    // Ответ 32: замороженный филиал действия сети не трогают
+    const frozen = await this.access.frozenIds(network.businessIds);
+    const scope = input.businessIds.filter((id) => network.businessIds.includes(id) && !frozen.has(id));
     if (!scope.length) throw new ApiError('validation', 'no locations');
     const all = await this.prisma.serviceCategory.findMany({ where: { businessId: { in: network.businessIds } } });
     const existing = input.key ? all.filter((c) => nameKeyOf(c.name) === input.key) : [];
@@ -137,7 +146,7 @@ export class NetworkCatalogService {
           await tx.serviceCategory.create({ data: { id: newId('serviceCategory'), businessId, name: J(input.name), sortOrder: count, createdBy: ctx.session!.userId, updatedBy: ctx.session!.userId } });
         }
       }
-      for (const c of existing) if (!scope.includes(c.businessId)) await tx.serviceCategory.delete({ where: { id: c.id } });
+      for (const c of existing) if (!scope.includes(c.businessId) && !frozen.has(c.businessId)) await tx.serviceCategory.delete({ where: { id: c.id } });
       newKey = nameKeyOf(input.name);
       await tx.networkServiceCategoryLink.upsert({
         where: { networkId_key: { networkId, key: newKey } },
@@ -152,7 +161,7 @@ export class NetworkCatalogService {
   async getService(ctx: RequestContext, networkId: string, key: string) {
     key = norm(key); // ключ — имя в нижнем регистре; экран присылает имя как есть («Мужская стрижка»), хвосты 17.11
     const { network } = await this.access.require(ctx, networkId, 'services');
-    const rows = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds } } });
+    const rows = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds }, archivedAt: null } });
     const matching = rows.filter((r) => nameKeyOf(r.name) === key);
     if (!matching.length) throw new ApiError('not_found', 'Service not found');
     const lock = await this.prisma.networkServiceLock.findUnique({ where: { networkId_key: { networkId, key } } });
@@ -177,9 +186,11 @@ export class NetworkCatalogService {
     const name = input.name.ru?.trim();
     if (!name) throw new ApiError('bad_name', 'Name required');
     if (input.priceMax != null && input.priceMax < input.priceMin) throw new ApiError('validation', 'price range');
-    const scope = input.businessIds.filter((id) => network.businessIds.includes(id));
+    // Ответ 32: замороженный филиал действия сети не трогают
+    const frozen = await this.access.frozenIds(network.businessIds);
+    const scope = input.businessIds.filter((id) => network.businessIds.includes(id) && !frozen.has(id));
     if (!scope.length) throw new ApiError('validation', 'no locations');
-    const allServices = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds } } });
+    const allServices = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds }, archivedAt: null } });
     const existing = input.key ? allServices.filter((s) => nameKeyOf(s.name) === input.key) : [];
     const existingByBiz = new Map(existing.map((s) => [s.businessId, s]));
     const allCategories = await this.prisma.serviceCategory.findMany({ where: { businessId: { in: network.businessIds } } });
@@ -214,7 +225,8 @@ export class NetworkCatalogService {
           });
         }
       }
-      for (const s of existing) if (!scope.includes(s.businessId)) await tx.service.delete({ where: { id: s.id } });
+      // Ответ 33: услуга с визитами не стирается — уходит в архив филиала, история сохраняет название
+      for (const s of existing) if (!scope.includes(s.businessId) && !frozen.has(s.businessId)) await removeServiceTx(tx, s.businessId, s.id);
       newKey = nameKeyOf(input.name);
       await tx.networkServiceLock.upsert({
         where: { networkId_key: { networkId, key: newKey } },
@@ -230,8 +242,10 @@ export class NetworkCatalogService {
   async syncServiceToLocations(ctx: RequestContext, networkId: string, key: string, businessIds: string[]) {
     key = norm(key);
     const { network } = await this.access.require(ctx, networkId, 'services');
-    const scope = businessIds.filter((id) => network.businessIds.includes(id));
-    const rows = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds } } });
+    // Ответ 32: замороженный филиал действия сети не трогают
+    const frozen = await this.access.frozenIds(network.businessIds);
+    const scope = businessIds.filter((id) => network.businessIds.includes(id) && !frozen.has(id));
+    const rows = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds }, archivedAt: null } });
     const matching = rows.filter((r) => nameKeyOf(r.name) === key);
     if (!matching.length) throw new ApiError('not_found', 'Service not found');
     const source = matching[0]!;
@@ -239,7 +253,8 @@ export class NetworkCatalogService {
     const removedFrom: string[] = [];
     const addedTo: string[] = [];
     await this.prisma.$transaction(async (tx) => {
-      for (const r of matching) if (!scope.includes(r.businessId)) { await tx.service.delete({ where: { id: r.id } }); removedFrom.push(r.businessId); }
+      // Ответ 33: услуга с визитами не стирается — уходит в архив филиала, история сохраняет название
+      for (const r of matching) if (!scope.includes(r.businessId) && !frozen.has(r.businessId)) { await removeServiceTx(tx, r.businessId, r.id); removedFrom.push(r.businessId); }
       const sourceCategoryKey = sourceCategory ? nameKeyOf(sourceCategory.name) : '';
       for (const businessId of scope) {
         if (matching.some((r) => r.businessId === businessId)) continue;
@@ -274,7 +289,7 @@ export class NetworkCatalogService {
   async previewServiceSave(ctx: RequestContext, networkId: string, input: z.infer<typeof networkServicePreviewBody>) {
     if (input.key) input = { ...input, key: norm(input.key) };
     const { network } = await this.access.require(ctx, networkId, 'services');
-    const allServices = input.key ? await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds } } }) : [];
+    const allServices = input.key ? await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds }, archivedAt: null } }) : [];
     const existing = input.key ? allServices.filter((s) => nameKeyOf(s.name) === input.key) : [];
     const businesses = await this.prisma.business.findMany({ where: { id: { in: [...new Set([...network.businessIds, ...input.businessIds])] } }, select: { id: true, name: true } });
     const nameOf = (id: string) => businesses.find((b) => b.id === id)?.name ?? id;
@@ -314,7 +329,7 @@ export class NetworkCatalogService {
     const name = input.name.ru?.trim();
     if (!name) throw new ApiError('bad_name', 'Name required');
     const newKey = nameKeyOf(input.name);
-    const allServices = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds } } });
+    const allServices = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds }, archivedAt: null } });
     const matching = allServices.filter((s) => input.keys.includes(nameKeyOf(s.name)));
     if (!matching.length) throw new ApiError('not_found', 'Service not found');
     const locks = await this.prisma.networkServiceLock.findMany({ where: { networkId, key: { in: [...input.keys, newKey] } } });
@@ -357,7 +372,9 @@ export class NetworkCatalogService {
     const { network } = await this.access.require(ctx, networkId, 'goods');
     const name = input.name.trim();
     if (!name) throw new ApiError('bad_name', 'Name required');
-    const scope = input.businessIds.filter((id) => network.businessIds.includes(id));
+    // Ответ 32: замороженный филиал действия сети не трогают
+    const frozen = await this.access.frozenIds(network.businessIds);
+    const scope = input.businessIds.filter((id) => network.businessIds.includes(id) && !frozen.has(id));
     const saved = await this.prisma.$transaction(async (tx) => {
       const row = input.id
         ? await tx.networkGoodsCategoryLink.update({ where: { id: input.id }, data: { name, parentId: input.parentId } })
@@ -410,7 +427,9 @@ export class NetworkCatalogService {
     const { network } = await this.access.require(ctx, networkId, 'goods');
     const name = input.name.trim();
     if (!name) throw new ApiError('bad_name', 'Name required');
-    const scope = input.businessIds.filter((id) => network.businessIds.includes(id));
+    // Ответ 32: замороженный филиал действия сети не трогают
+    const frozen = await this.access.frozenIds(network.businessIds);
+    const scope = input.businessIds.filter((id) => network.businessIds.includes(id) && !frozen.has(id));
     if (!scope.length) throw new ApiError('validation', 'no locations');
     if (input.groupId) {
       const existing = await this.prisma.product.findUnique({ where: { id: input.groupId } });
@@ -457,7 +476,9 @@ export class NetworkCatalogService {
   async migrateGoodsToNetwork(ctx: RequestContext, networkId: string, input: z.infer<typeof migrateGoodsBody>) {
     const { network } = await this.access.require(ctx, networkId, 'migrations');
     if (!network.businessIds.includes(input.fromBusinessId)) throw new ApiError('validation', 'business not in network');
-    const targets = network.businessIds.filter((id) => id !== input.fromBusinessId);
+    const frozen = await this.access.frozenIds(network.businessIds);
+    if (frozen.has(input.fromBusinessId)) throw new ApiError('frozen', 'Branch is frozen', { businessId: input.fromBusinessId });
+    const targets = network.businessIds.filter((id) => id !== input.fromBusinessId && !frozen.has(id));
     const source = await this.prisma.product.findMany({ where: { businessId: input.fromBusinessId, archived: false, ...(input.goodIds === 'all' ? {} : { id: { in: input.goodIds } }) } });
     let moved = 0;
     for (const g of source) {
@@ -479,6 +500,7 @@ export class NetworkCatalogService {
   async addAllGoodsToLocation(ctx: RequestContext, networkId: string, targetBusinessId: string) {
     const { network } = await this.access.require(ctx, networkId, 'goods');
     if (!network.businessIds.includes(targetBusinessId)) throw new ApiError('validation', 'business not in network');
+    if ((await this.access.frozenIds([targetBusinessId])).has(targetBusinessId)) throw new ApiError('frozen', 'Branch is frozen', { businessId: targetBusinessId });
     const sourceGoods = await this.prisma.product.findMany({ where: { businessId: { in: network.businessIds.filter((id) => id !== targetBusinessId) }, isNetworkSource: true, archived: false } });
     const existing = await this.prisma.product.findMany({ where: { businessId: targetBusinessId }, select: { networkGroupId: true } });
     const existingGroups = new Set(existing.map((e) => e.networkGroupId).filter((v): v is string => Boolean(v)));
@@ -641,7 +663,9 @@ export class NetworkCatalogService {
   async migrateStaff(ctx: RequestContext, networkId: string, input: z.infer<typeof staffMigrateBody>) {
     const { network } = await this.access.require(ctx, networkId, 'migrations');
     if (!network.businessIds.includes(input.fromBusinessId)) throw new ApiError('validation', 'business not in network');
-    const targets = network.businessIds.filter((id) => id !== input.fromBusinessId);
+    const frozen = await this.access.frozenIds(network.businessIds);
+    if (frozen.has(input.fromBusinessId)) throw new ApiError('frozen', 'Branch is frozen', { businessId: input.fromBusinessId });
+    const targets = network.businessIds.filter((id) => id !== input.fromBusinessId && !frozen.has(id));
     if (!targets.length) return { moved: 0 };
     const source = await this.prisma.staff.findMany({ where: { businessId: input.fromBusinessId, deletedAt: null, status: { not: 'disabled' }, ...(input.staffIds === 'all' ? {} : { id: { in: input.staffIds } }) } });
     if (!source.length) return { moved: 0 };
@@ -1083,9 +1107,11 @@ export class NetworkCatalogService {
   async createPackage(ctx: RequestContext, networkId: string, input: z.infer<typeof networkPackageBody>) {
     const { network } = await this.access.require(ctx, networkId, 'services');
     if (!input.name.ru?.trim()) throw new ApiError('validation', 'name required');
-    const scope = input.businessIds.filter((id) => network.businessIds.includes(id));
+    // Ответ 32: замороженный филиал действия сети не трогают
+    const frozen = await this.access.frozenIds(network.businessIds);
+    const scope = input.businessIds.filter((id) => network.businessIds.includes(id) && !frozen.has(id));
     if (!scope.length) throw new ApiError('validation', 'no locations');
-    const services = await this.prisma.service.findMany({ where: { businessId: { in: scope }, servicePackage: { equals: Prisma.DbNull } } });
+    const services = await this.prisma.service.findMany({ where: { businessId: { in: scope }, archivedAt: null, servicePackage: { equals: Prisma.DbNull } } });
     let newKey = '';
     await this.prisma.$transaction(async (tx) => {
       for (const businessId of scope) {
@@ -1156,7 +1182,7 @@ export class NetworkCatalogService {
     let servicesCopied = 0;
     let goodsCopied = 0;
     if (input.services) {
-      const source = await this.prisma.service.findMany({ where: { businessId: input.fromBusinessId }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
+      const source = await this.prisma.service.findMany({ where: { businessId: input.fromBusinessId, archivedAt: null }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
       const sourceCategories = await this.prisma.serviceCategory.findMany({ where: { businessId: input.fromBusinessId } });
       const ordered = [...source.filter((s) => s.servicePackage == null), ...source.filter((s) => s.servicePackage != null)];
       await this.prisma.$transaction(async (tx) => {

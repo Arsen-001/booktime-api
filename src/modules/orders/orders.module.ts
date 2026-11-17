@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FinanceModule } from '../finance/finance.module.js';
 import { JournalModule } from '../journal/journal.module.js';
 import { ScheduleModule } from '../schedule/schedule.module.js';
 import { OrdersController, PublicOrdersController } from './orders.controller.js';
@@ -10,7 +11,8 @@ import { OrdersService } from './orders.service.js';
 // JournalModule — ⭐ запись на сдачу (05.10.2026): принятый по записи заказ отмечает запись «Пришёл» (BookingsService);
 // ScheduleModule — ⭐ выдача по времени (06.10.2026): окна выдачи (AvailabilityService)
 @Module({
-  imports: [JournalModule, ScheduleModule],
+  // FinanceModule — ответ 12 (17.11.2026): деньги заказа операцией в кассе
+  imports: [JournalModule, ScheduleModule, FinanceModule],
   controllers: [OrdersController, PublicOrdersController],
   providers: [OrdersService, OrderIntakeService, OrderPickupService],
   exports: [OrdersService, OrderIntakeService, OrderPickupService],

@@ -211,6 +211,11 @@ export interface Staff {
   /** В каких филиалах работает */
   locationIds: Id[];
   name: string;
+  /**
+   * Имя на трёх языках для клиентов (владелец 17.11.2026): клиент видит имя на языке страницы; нет перевода на
+   * язык — перевод букв на лету (`localizedName` из `@/lib/translit`). `name` — как вписали: кабинет и поиск.
+   */
+  nameI18n?: { ru?: string; hy?: string; en?: string };
   phone: string;
   /** Почта сотрудника (F-01-008: имя и email внизу панели; F-10-* карточка); пишет staff. Нет — строку не показывать */
   email?: string;
@@ -366,6 +371,11 @@ export interface Service {
   workplaces: Workplace[];
   onlineBookable: boolean;
   active: boolean;
+  /**
+   * В архиве (владелец 17.11.2026, ответ 33): услуга с визитами при «Удалить» не стирается — не видна в списках, записи
+   * и онлайн (active = false), история и отчёты сохраняют её название. Нет поля — обычная услуга.
+   */
+  archivedAt?: ISODateTime;
   order: number;
   /** Выбор оттенка/варианта при записи (F-00-094…096): обязательно / желательно; нет поля — шага выбора нет */
   shadeChoice?: 'required' | 'preferred';

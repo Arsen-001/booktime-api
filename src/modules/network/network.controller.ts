@@ -11,11 +11,14 @@ import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { networkOut } from '../businesses/business.schemas.js';
+import { BusinessService } from '../businesses/business.service.js';
 import { networkView } from '../businesses/views.js';
 
 const createBody = z.object({ name: z.string().max(160), businessIds: z.array(z.string().max(32)).min(1).max(50), mainBusinessId: z.string().max(32).optional() });
 const patchBody = z.object({ name: z.string().max(160).optional(), mainBusinessId: z.string().max(32).optional() });
 const addBody = z.object({ businessId: z.string().max(32) });
+/** «Новый филиал» одним шагом внутри сети (ответ 31): название филиала и адрес — остальное как у главного */
+const branchBody = z.object({ name: z.string().max(120), address: z.string().max(300).optional(), district: z.string().max(40).optional() });
 
 /**
  * Сеть и её филиалы (docs/backend/02 §15, F-11-001…023; этап 3 — устройство сети, остальное — этап 15).
@@ -26,6 +29,7 @@ export class NetworkService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly businesses: BusinessService,
   ) {}
 
   /** Бизнес, в котором вошедший — владелец (строка staff role=owner) */
@@ -114,6 +118,31 @@ export class NetworkService {
     return this.view(networkId);
   }
 
+  /**
+   * «Новый филиал» одним шагом внутри сети (владелец 17.11.2026, ответ 31) — без повторной анкеты регистрации и без
+   * второго шага «Уже ваш салон»: сферы и телефон — как у главного филиала, имя — «Сеть · Филиал», как у остальных.
+   * Новый филиал — свой бизнес со своей подпиской (каждый филиал платит сам, F-00-049/050), сессия остаётся в сети.
+   */
+  async createBranch(ctx: RequestContext, networkId: string, input: z.infer<typeof branchBody>) {
+    const n = await this.own(ctx, networkId);
+    const branch = input.name.trim();
+    if (!branch) throw new ApiError('bad_name', 'Name required');
+    const mainId = n.mainBusinessId ?? n.businesses[0]?.id;
+    const main = mainId ? await this.prisma.business.findUnique({ where: { id: mainId }, select: { sphereIds: true, phone: true } }) : null;
+    if (!main) throw new ApiError('validation', 'Network has no locations');
+    const name = branch.startsWith(n.name) ? branch : `${n.name} · ${branch}`;
+    const created = await this.businesses.register(
+      ctx,
+      { kind: 'salon', name, sphereIds: main.sphereIds as string[], phone: main.phone, address: input.address, district: input.district },
+      { keepActiveBusiness: true },
+    );
+    await this.prisma.$transaction(async (tx) => {
+      await tx.business.update({ where: { id: created.businessId }, data: { networkId, version: { increment: 1 } } });
+      await this.audit.record(tx, ctx, { action: 'locationAdded', entityType: 'network', entityId: networkId, networkId, businessId: created.businessId, after: { businessId: created.businessId, created: true } });
+    });
+    return { network: await this.view(networkId), businessId: created.businessId };
+  }
+
   /** Выход филиала из сети (F-11-013): счета клиентов и история остаются в бизнесе */
   async removeBusiness(ctx: RequestContext, networkId: string, businessId: string) {
     const n = await this.own(ctx, networkId);
@@ -175,6 +204,13 @@ export class NetworkController {
   @ZodOk(netOut)
   add(@Ctx() ctx: RequestContext, @Param('networkId') id: string, @Body(new Zod(addBody)) body: z.infer<typeof addBody>) {
     return this.net.addBusiness(ctx, id, body.businessId);
+  }
+
+  @Post(':networkId/branches')
+  @ApiOperation({ summary: '«Новый филиал» одним шагом внутри сети (ответ 31, 17.11.2026): новый бизнес-филиал сразу в сети' })
+  @ZodBody(branchBody)
+  createBranch(@Ctx() ctx: RequestContext, @Param('networkId') id: string, @Body(new Zod(branchBody)) body: z.infer<typeof branchBody>) {
+    return this.net.createBranch(ctx, id, body);
   }
 
   @Delete(':networkId/businesses/:businessId')
