@@ -107,6 +107,7 @@ export class NetworkCatalogService {
   }
 
   async getServiceCategory(ctx: RequestContext, networkId: string, key: string) {
+    key = norm(key); // ключ — имя в нижнем регистре; экран присылает имя как есть («Мужская стрижка»), хвосты 17.11
     const { network } = await this.access.require(ctx, networkId, 'services');
     const rows = await this.prisma.serviceCategory.findMany({ where: { businessId: { in: network.businessIds } } });
     const matching = rows.filter((r) => nameKeyOf(r.name) === key);
@@ -116,6 +117,7 @@ export class NetworkCatalogService {
   }
 
   async saveServiceCategory(ctx: RequestContext, networkId: string, input: z.infer<typeof networkServiceCategoryBody>) {
+    if (input.key) input = { ...input, key: norm(input.key) };
     const { network } = await this.access.require(ctx, networkId, 'services');
     const name = input.name.ru?.trim();
     if (!name) throw new ApiError('bad_name', 'Name required');
@@ -148,6 +150,7 @@ export class NetworkCatalogService {
   }
 
   async getService(ctx: RequestContext, networkId: string, key: string) {
+    key = norm(key); // ключ — имя в нижнем регистре; экран присылает имя как есть («Мужская стрижка»), хвосты 17.11
     const { network } = await this.access.require(ctx, networkId, 'services');
     const rows = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds } } });
     const matching = rows.filter((r) => nameKeyOf(r.name) === key);
@@ -169,6 +172,7 @@ export class NetworkCatalogService {
   }
 
   async saveService(ctx: RequestContext, networkId: string, input: z.infer<typeof networkServiceBody>) {
+    if (input.key) input = { ...input, key: norm(input.key) };
     const { network } = await this.access.require(ctx, networkId, 'services');
     const name = input.name.ru?.trim();
     if (!name) throw new ApiError('bad_name', 'Name required');
@@ -224,6 +228,7 @@ export class NetworkCatalogService {
 
   /** F-11-090: состав филиалов услуги становится РОВНО businessIds — где нет, копия; где есть, но не отмечено, удаление */
   async syncServiceToLocations(ctx: RequestContext, networkId: string, key: string, businessIds: string[]) {
+    key = norm(key);
     const { network } = await this.access.require(ctx, networkId, 'services');
     const scope = businessIds.filter((id) => network.businessIds.includes(id));
     const rows = await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds } } });
@@ -267,6 +272,7 @@ export class NetworkCatalogService {
    * что и `getNetworkFinanceSummary`, НЕ `CANCELLED_LIKE` соседнего файла).
    */
   async previewServiceSave(ctx: RequestContext, networkId: string, input: z.infer<typeof networkServicePreviewBody>) {
+    if (input.key) input = { ...input, key: norm(input.key) };
     const { network } = await this.access.require(ctx, networkId, 'services');
     const allServices = input.key ? await this.prisma.service.findMany({ where: { businessId: { in: network.businessIds } } }) : [];
     const existing = input.key ? allServices.filter((s) => nameKeyOf(s.name) === input.key) : [];
@@ -303,6 +309,7 @@ export class NetworkCatalogService {
    * побеждает» у `saveServiceCategory` рядом.
    */
   async mergeServices(ctx: RequestContext, networkId: string, input: z.infer<typeof networkServiceMergeBody>) {
+    input = { ...input, keys: input.keys.map(norm) };
     const { network } = await this.access.require(ctx, networkId, 'services');
     const name = input.name.ru?.trim();
     if (!name) throw new ApiError('bad_name', 'Name required');
