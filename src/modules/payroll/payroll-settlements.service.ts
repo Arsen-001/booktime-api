@@ -90,7 +90,8 @@ export class PayrollSettlementsService {
     const businessId = ctx.member!.businessId;
     const staff = await this.prisma.staff.findFirst({ where: { id: body.staffId, businessId } });
     if (!staff) throw new ApiError('not_found', 'Staff not found');
-    const statement = await this.compute.computeStatement(businessId, body.locationId, body.staffId, body.periodFrom, body.periodTo);
+    const locationId = await this.sheetLocation(businessId, body.staffId, body.locationId);
+    const statement = await this.compute.computeStatement(businessId, locationId, body.staffId, body.periodFrom, body.periodTo);
     const id = newId('payrollSettlementEntry');
     const from = new Date(`${body.periodFrom}T00:00:00.000Z`);
     const to = new Date(`${body.periodTo}T00:00:00.000Z`);
@@ -98,11 +99,25 @@ export class PayrollSettlementsService {
     const label = `${body.periodFrom.split('-').reverse().join('.')}–${body.periodTo.split('-').reverse().join('.')}`;
     await this.prisma.$transaction(async (tx) => {
       await tx.payrollSettlementEntry.create({
-        data: { id, businessId, locationId: body.locationId, staffId: body.staffId, kind: 'sheet', amount: BigInt(Math.round(statement.total)), label, comment: body.comment, periodFrom: from, periodTo: to, status: body.draft ? 'draft' : 'accrued', createdBy: ctx.member!.staffId },
+        data: { id, businessId, locationId, staffId: body.staffId, kind: 'sheet', amount: BigInt(Math.round(statement.total)), label, comment: body.comment, periodFrom: from, periodTo: to, status: body.draft ? 'draft' : 'accrued', createdBy: ctx.member!.staffId },
       });
       await this.audit.record(tx, ctx, { action: 'create', entityType: 'payrollSettlementSheet', entityId: id, businessId, after: { staffId: body.staffId, amount: statement.total, draft: Boolean(body.draft) } });
     });
     return entryView(await this.prisma.payrollSettlementEntry.findUniqueOrThrow({ where: { id } }));
+  }
+
+  /**
+   * Филиал ведомости: присланный, если он этого салона; иначе — филиал самого сотрудника, иначе — первый филиал салона.
+   * Хвосты 17.11: «Расчёт зарплат сети» для другого филиала присылал филиал открытого кабинета (сотрудника не было в
+   * зеркале браузера) — ведомость Астхик (Шенгавит) отвечала 404 «Location not found» и молча пропускалась.
+   */
+  private async sheetLocation(businessId: string, staffId: string, locationId: string): Promise<string> {
+    if (await this.prisma.location.findFirst({ where: { id: locationId, businessId, deletedAt: null }, select: { id: true } })) return locationId;
+    const own = await this.prisma.staffLocation.findFirst({ where: { staffId, location: { businessId, deletedAt: null } }, select: { locationId: true } });
+    if (own) return own.locationId;
+    const first = await this.prisma.location.findFirst({ where: { businessId, deletedAt: null }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], select: { id: true } });
+    if (!first) throw new ApiError('not_found', 'Location not found');
+    return first.id;
   }
 
   /** F-09-069: черновик ведомости → начисленная (входит в баланс с этого момента) */
