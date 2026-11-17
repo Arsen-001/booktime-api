@@ -156,7 +156,8 @@ export class FinOpsService {
     if (f?.partyType) where.partyType = f.partyType;
     if (f?.partyId) where.partyId = f.partyId;
     if (f?.cancelled !== undefined) where.cancelled = f.cancelled;
-    if (f?.dateFrom || f?.dateTo) where.date = { ...(f.dateFrom ? { gte: localToUtc(f.dateFrom) } : {}), ...(f.dateTo ? { lte: localToUtc(f.dateTo) } : {}) };
+    // «по 23:59» — до конца этой минуты: оплата в 23:59:30 тоже в отборе (сайт сравнивает время до минуты)
+    if (f?.dateFrom || f?.dateTo) where.date = { ...(f.dateFrom ? { gte: localToUtc(f.dateFrom) } : {}), ...(f.dateTo ? { lt: new Date(localToUtc(f.dateTo).getTime() + 60_000) } : {}) };
     if (f?.search) where.OR = [{ partyName: { contains: f.search } }, { comment: { contains: f.search } }];
     return where;
   }
