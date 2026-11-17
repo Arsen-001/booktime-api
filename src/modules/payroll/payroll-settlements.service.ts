@@ -62,7 +62,12 @@ export class PayrollSettlementsService {
       where: { businessId, staffId, ...(periodFrom && periodTo ? { createdAt: { gte: localBound(periodFrom, 'from'), lte: localBound(periodTo, 'to') } } : {}) },
       orderBy: { createdAt: 'asc' },
     });
-    return rows.map(entryView);
+    // Статус согласования ведомости (F-09-100) — сотруднику в «Моя зарплата → Выплаты»: «Подписать» у своей
+    // ведомости, отправленной ему (без payroll.view он не открывает экран ведомости — проход 17.11)
+    const sheetIds = rows.filter((r) => r.kind === 'sheet').map((r) => r.id);
+    const approvals = sheetIds.length ? await this.prisma.payrollStatementApproval.findMany({ where: { sheetId: { in: sheetIds } }, select: { sheetId: true, status: true } }) : [];
+    const statusOf = new Map(approvals.map((a) => [a.sheetId, a.status]));
+    return rows.map((r) => ({ ...entryView(r), ...(statusOf.has(r.id) ? { approvalStatus: statusOf.get(r.id) as StatementApprovalStatus } : {}) }));
   }
 
   async balance(businessId: string, staffId: string) {
@@ -229,6 +234,10 @@ export class PayrollSettlementsService {
 
   /** F-09-100: сотрудник подписывает свою ведомость */
   async signApproval(businessId: string, sheetId: string, staffId: string) {
+    // Подписывает только сам сотрудник — свою ведомость (раньше подписать мог любой с payroll.view)
+    const sheet = await this.prisma.payrollSettlementEntry.findFirst({ where: { id: sheetId, businessId, kind: 'sheet' }, select: { staffId: true } });
+    if (!sheet) throw new ApiError('not_found', 'Sheet not found');
+    if (sheet.staffId !== staffId) throw new ApiError('forbidden', 'Only the employee signs own statement');
     const current = await this.getApproval(businessId, sheetId);
     if (!current || current.status !== 'sentToStaff') throw new ApiError('validation', 'Statement not ready to sign');
     const history = [...current.history, { status: 'signed' as StatementApprovalStatus, at: new Date().toISOString(), by: staffId }];

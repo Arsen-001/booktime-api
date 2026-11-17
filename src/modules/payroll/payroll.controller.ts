@@ -410,6 +410,14 @@ export class PayrollStaffController {
     return this.catalog.getStaffRights(ctx.member!.businessId, staffId);
   }
 
+  /** F-09-100: сотрудник подписывает свою ведомость из «Моя зарплата» — без payroll.view (проход 17.11) */
+  @Post('statements/:sheetId/sign')
+  @Biz()
+  signOwnStatement(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Param('sheetId') sheetId: string) {
+    if (ctx.member!.staffId !== staffId) throw new ApiError('forbidden', 'Only the employee signs own statement');
+    return this.settlements.signApproval(ctx.member!.businessId, sheetId, staffId);
+  }
+
   @Get('settlements')
   // Свои взаиморасчёты видит любой сотрудник («Моя зарплата» → «Выплаты»; у мастера с 01.10 нет payroll.view),
   // чужие — только с payroll.manage (assertOwnOrManage)
