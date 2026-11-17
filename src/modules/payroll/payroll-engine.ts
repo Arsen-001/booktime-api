@@ -4,9 +4,9 @@
  * разойтись между демо и живым сервером), адаптирован только источник входных данных (Prisma-строки вместо
  * `readCore()`/`readArea()`).
  *
+ * Ассистенты услуги (F-09-046/047) — перенесены 17.11.2026: кто ассистировал в строке визита, окно записи пишет в
+ * bookings.extras.serviceLineExtras[i].assistants (resources-events.service setBookingAssistants), доли — computeAssistSplit.
  * Честно НЕ портировано (см. docs/PROGRESS.md «Этап 14», раздел «Не строил»):
- * — ассистенты услуги (F-09-046/047): нет таблицы «кто ассистировал» ни в одном из построенных разделов
- *   (bookingAssistants мока живёт только в браузере, resources.ts backend его не пишет);
  * — деление комиссии эквайринга (F-09-007/107): по умолчанию `businessOnly` = 0 влияния на сотрудника, всегда;
  * Оплата за продажу товаров (F-09-031…034, З9) — перенесена: продавец строки/документа склада, см.
  * PayrollComputeService.productSalesPay (как productSalesPay мока).
@@ -83,6 +83,60 @@ export interface AssistRates {
 
 export function defaultAssistRates(): AssistRates {
   return { withoutAssistant: { ...DEFAULT_PAYOUT }, asAssistant: { ...DEFAULT_PAYOUT } };
+}
+
+// ─────────────────────────── F-09-047: доли мастера и ассистентов (computeAssistSplit сайта) ───────────────────────────
+
+export interface AssistantShare {
+  staffId: string;
+  /** Доля 0–100 (F-09-009: при «делится» — считается сама, при «полной каждому» — по умолчанию 100) */
+  sharePct: number;
+}
+
+export interface AssistSplitResult {
+  masterAmount: number;
+  assistants: { staffId: string; amount: number }[];
+}
+
+/**
+ * F-09-047 — как мок буквально. Ассистент = ставка «как ассистент» × доля. Мастер: если задана ставка «с ассистентом» —
+ * берёт её целиком; иначе — «без ассистента» минус сумма выплат ассистентам (не ниже нуля, F-09-026).
+ * Пример ТЗ: услуга 10 000, без ассистента 50 %, как ассистент 10 % → ассистент 1 000, мастер 5 000 − 1 000 = 4 000.
+ */
+export function computeAssistSplit(serviceTotal: number, rates: AssistRates, assistants: AssistantShare[]): AssistSplitResult {
+  const assistantAmounts = assistants.map((a) => ({ staffId: a.staffId, amount: roundMoney((applyPayout(serviceTotal, rates.asAssistant) * a.sharePct) / 100) }));
+  const assistantsSum = roundMoney(assistantAmounts.reduce((sum, a) => sum + a.amount, 0));
+  const masterAmount = rates.withAssistant
+    ? applyPayout(serviceTotal, rates.withAssistant)
+    : roundMoney(Math.max(0, applyPayout(serviceTotal, rates.withoutAssistant) - assistantsSum));
+  return { masterAmount, assistants: assistantAmounts };
+}
+
+/** Ассистенты строк визита из bookings.extras.serviceLineExtras[i].assistants (пишет окно записи) */
+export function lineAssistantsOf(extras: unknown): AssistantShare[][] {
+  const lines = (extras as { serviceLineExtras?: { assistants?: { staffId?: unknown; sharePct?: unknown }[] }[] } | null)?.serviceLineExtras;
+  if (!Array.isArray(lines)) return [];
+  return lines.map((l) =>
+    (Array.isArray(l?.assistants) ? l.assistants : [])
+      .filter((a) => typeof a?.staffId === 'string')
+      .map((a) => ({ staffId: a.staffId as string, sharePct: Number(a.sharePct ?? 0) })),
+  );
+}
+
+/**
+ * Сотрудники + мастера, у которых они ассистировали в этих визитах: доля ассистента считается по схеме мастера строки
+ * (как мок), поэтому в ведомость ассистента нужна и схема мастера. Ани ассистировала Мариам → [Ани, Мариам].
+ */
+export function withAssistedMasters(staffIds: readonly string[], bookings: readonly Pick<EngineBooking, 'services' | 'lineAssistants'>[]): string[] {
+  const mine = new Set(staffIds);
+  const out = new Set(staffIds);
+  for (const b of bookings) {
+    b.lineAssistants?.forEach((list, i) => {
+      const master = b.services[i]?.staffId;
+      if (master && list.some((a) => mine.has(a.staffId))) out.add(master);
+    });
+  }
+  return [...out];
 }
 
 export interface PersonalServicesBlock {
@@ -356,6 +410,8 @@ export interface EngineBooking {
   total: number;
   groupEventId: string | null;
   services: EngineServiceLine[];
+  /** F-09-046/047: ассистенты по индексу строки услуги (bookings.extras.serviceLineExtras[i].assistants) */
+  lineAssistants?: AssistantShare[][];
 }
 
 export interface EngineGroupEvent {
@@ -404,6 +460,14 @@ export interface ComputeDayInput {
    * (последняя оплата визита / полученная предоплата). Не передано или undefined — дата визита (по умолчанию).
    */
   accrualDateForBooking?: (bookingId: string) => string | undefined;
+  /** F-09-046/047: ассистенты строки услуги и их доли (как мок: api/payroll.ts assistantsForLineLookup) */
+  assistantsForLine?: (bookingId: string, serviceIndex: number) => AssistantShare[];
+}
+
+/** Ассистенты строки визита — из уже загруженных визитов (EngineBooking.lineAssistants) */
+export function assistantsLookup(bookings: readonly Pick<EngineBooking, 'id' | 'lineAssistants'>[]): (bookingId: string, serviceIndex: number) => AssistantShare[] {
+  const byId = new Map(bookings.map((b) => [b.id, b.lineAssistants]));
+  return (bookingId, serviceIndex) => byId.get(bookingId)?.[serviceIndex] ?? [];
 }
 
 /** День начисления визита: групповые события — всегда по дате события, остальное — accrualDateForBooking или визит */
@@ -412,8 +476,8 @@ export function accrualDateOf(b: Pick<EngineBooking, 'id' | 'groupEventId' | 'st
 }
 
 /**
- * F-09-058/059/017/026/112. Порт computeServicesForDay мока — БЕЗ ассистентов (F-09-046/047, нет данных) и без
- * комиссии эквайринга (F-09-007/107, businessOnly = 0 влияния по умолчанию, честный гэп при других вариантах).
+ * F-09-058/059/017/026/112, F-09-046/047. Порт computeServicesForDay мока — с ассистентами, без комиссии эквайринга
+ * (F-09-007/107, businessOnly = 0 влияния по умолчанию, честный гэп при других вариантах).
  */
 export function computeServicesForDay(input: ComputeDayInput): Map<string, DayOperation[]> {
   const byService = new Map(input.services.map((s) => [s.id, s]));
@@ -427,7 +491,9 @@ export function computeServicesForDay(input: ComputeDayInput): Map<string, DayOp
     const byStaff = new Map<string, { lines: PayoutLine[]; sum: number; revenueSum: number }>();
     const loyaltyPaid = input.loyaltyPaidForBooking?.(booking.id);
     const bookingLineTotal = roundMoney(booking.services.reduce((s, l) => s + l.price * l.qty, 0)) || 1;
+    let serviceIndex = -1;
     for (const line of booking.services) {
+      serviceIndex++;
       const scheme = input.schemes.get(line.staffId);
       const service = byService.get(line.serviceId);
       const lineTotal = roundMoney(line.price * line.qty);
@@ -462,6 +528,21 @@ export function computeServicesForDay(input: ComputeDayInput): Map<string, DayOp
         if (amount < 0) {
           amount = 0;
           clippedByConsumables = true;
+        }
+        // F-09-046/047 (как мок): ассистенты этой строки делят выплату по своей доле; мастер получает остаток (или
+        // ставку «с ассистентом», если задана). Расходники — только у мастера, не ниже 0
+        const assistantsOfLine = input.assistantsForLine?.(booking.id, serviceIndex) ?? [];
+        if (assistantsOfLine.length > 0) {
+          const split = computeAssistSplit(base, scheme.personalServices.assistRates ?? defaultAssistRates(), assistantsOfLine);
+          amount = Math.max(0, roundMoney(split.masterAmount - consumables));
+          clippedByConsumables = consumables > 0 && split.masterAmount - consumables < 0;
+          for (const a of split.assistants) {
+            if (a.amount <= 0) continue;
+            const assistBucket = byStaff.get(a.staffId) ?? { lines: [], sum: 0, revenueSum: 0 };
+            assistBucket.lines.push({ kind: 'service', refId: `assist:${line.serviceId}`, label: lineLabel(service, line), amount: a.amount, revenue: 0 });
+            assistBucket.sum = roundMoney(assistBucket.sum + a.amount);
+            byStaff.set(a.staffId, assistBucket);
+          }
         }
       }
       const bucket = byStaff.get(line.staffId) ?? { lines: [], sum: 0, revenueSum: 0 };

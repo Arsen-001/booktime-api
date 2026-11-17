@@ -9,7 +9,10 @@ import {
   applyDailyGuaranteedMinimum,
   applyMonthlyGuaranteedMinimum,
   accrualDateOf,
+  assistantsLookup,
   computeServicesForDay,
+  lineAssistantsOf,
+  withAssistedMasters,
   evaluateCriterionForStaff,
   extraRevenueAmount,
   locationServicesTurnover,
@@ -77,7 +80,8 @@ interface ProductSaleDoc {
   lines: { goodId: string; qty: number; unitPrice: number; discountPct: number; cost: number; sellerId: string | null }[];
 }
 
-function engineBookingOf(b: { id: string; locationId: string; status: string; deletedAt: Date | null; startAt: Date; total: bigint; groupEventId: string | null; services: unknown }): EngineBooking {
+function engineBookingOf(b: { id: string; locationId: string; status: string; deletedAt: Date | null; startAt: Date; total: bigint; groupEventId: string | null; services: unknown; extras?: unknown }): EngineBooking {
+  const lineAssistants = lineAssistantsOf(b.extras);
   return {
     id: b.id,
     locationId: b.locationId,
@@ -87,6 +91,8 @@ function engineBookingOf(b: { id: string; locationId: string; status: string; de
     total: Number(b.total),
     groupEventId: b.groupEventId,
     services: (b.services as unknown as EngineBooking['services']) ?? [],
+    // F-09-046/047: кто ассистировал в строке (окно записи → extras.serviceLineExtras[i].assistants)
+    ...(lineAssistants.some((l) => l.length) ? { lineAssistants } : {}),
   };
 }
 
@@ -381,16 +387,18 @@ export class PayrollComputeService {
     const staffIds = this.filterOwn(staffRows.map((s) => s.id), ownOnlyStaffId);
     const monthStart = monthStartOf(date);
     const [bookings, groupEvents, services] = await Promise.all([this.loadBookings(businessId, locationId, monthStart, date), this.loadGroupEvents(businessId, locationId, date, date), this.loadServices(businessId)]);
-    const schemes = await this.resolveEffectiveSchemes(businessId, locationId, staffIds, date, bookings);
+    // Доля ассистента — по схеме мастера строки (F-09-047): в набор схем — и мастера, кому эти сотрудники ассистировали
+    const schemes = await this.resolveEffectiveSchemes(businessId, locationId, withAssistedMasters(staffIds, bookings), date, bookings);
     const accrual = await this.accrualLookup(businessId, locationId, date, date, bookings);
     bookings.push(...accrual.extra);
+    const assistantsForLine = assistantsLookup(bookings);
     const dayBookings = bookings.filter((b) => accrualDateOf(b, accrual.lookup) === date);
     const bookingIds = dayBookings.map((b) => b.id);
     const paidAmounts = new Map((await this.prisma.booking.findMany({ where: { id: { in: bookingIds } }, select: { id: true, paidAmount: true } })).map((b) => [b.id, Number(b.paidAmount)]));
     const [loyaltyPaidForBooking, techCardCost] = await Promise.all([this.loyaltyPaidLookup(businessId, bookingIds), this.techCardCostLookup(businessId, locationId)]);
     const unpaidForBooking = this.unpaidForBookingLookup(dayBookings, paidAmounts);
 
-    const opsByStaff = computeServicesForDay({ date, locationId, staffIds, bookings, groupEvents, services, schemes, loyaltyPaidForBooking, techCardCost, unpaidForBooking, accrualDateForBooking: accrual.lookup });
+    const opsByStaff = computeServicesForDay({ date, locationId, staffIds, bookings, groupEvents, services, schemes, loyaltyPaidForBooking, techCardCost, unpaidForBooking, accrualDateForBooking: accrual.lookup, assistantsForLine });
     const turnover = locationServicesTurnover(bookings, locationId, date);
 
     const events = await this.loadBookingEventsForRewards(businessId, date, date);
@@ -425,7 +433,7 @@ export class PayrollComputeService {
     }
     staffResults.sort((a, b) => b.total - a.total);
 
-    return { date, anyConfigured: schemes.size > 0, staff: staffResults, locationServicesTurnover: turnover };
+    return { date, anyConfigured: staffIds.some((id) => schemes.has(id)), staff: staffResults, locationServicesTurnover: turnover };
   }
 
   private async loadBookingsWithMeta(businessId: string, locationId: string, from: string, to: string) {
@@ -462,9 +470,11 @@ export class PayrollComputeService {
     const monthStart = monthStartOf(to);
     const loadFrom = from < monthStart ? from : monthStart;
     const [bookings, groupEvents, services] = await Promise.all([this.loadBookings(businessId, locationId, loadFrom, to), this.loadGroupEvents(businessId, locationId, from, to), this.loadServices(businessId)]);
-    const schemes = await this.resolveEffectiveSchemes(businessId, locationId, staffIds, to, bookings);
+    // Доля ассистента — по схеме мастера строки (F-09-047): в набор схем — и мастера, кому эти сотрудники ассистировали
+    const schemes = await this.resolveEffectiveSchemes(businessId, locationId, withAssistedMasters(staffIds, bookings), to, bookings);
     const accrual = await this.accrualLookup(businessId, locationId, from, to, bookings);
     bookings.push(...accrual.extra);
+    const assistantsForLine = assistantsLookup(bookings);
     const bookingIds = bookings.filter((b) => b.status === 'arrived' && !b.deletedAt).map((b) => b.id);
     const paidRows = await this.prisma.booking.findMany({ where: { id: { in: bookingIds } }, select: { id: true, paidAmount: true } });
     const paidAmounts = new Map(paidRows.map((b) => [b.id, Number(b.paidAmount)]));
@@ -499,7 +509,7 @@ export class PayrollComputeService {
       let unpaidAmount = 0;
       const unpaidSeen = new Set<string>();
       for (const date of dates) {
-        const opsByStaff = computeServicesForDay({ date, locationId, staffIds: [staffId], bookings, groupEvents, services, schemes, loyaltyPaidForBooking, techCardCost, unpaidForBooking, accrualDateForBooking: accrual.lookup });
+        const opsByStaff = computeServicesForDay({ date, locationId, staffIds: [staffId], bookings, groupEvents, services, schemes, loyaltyPaidForBooking, techCardCost, unpaidForBooking, accrualDateForBooking: accrual.lookup, assistantsForLine });
         const ops = opsByStaff.get(staffId) ?? [];
         servicesCount += ops.reduce((n, op) => n + op.lines.length, 0);
         servicesRevenue = roundMoney(servicesRevenue + ops.reduce((sum, op) => sum + op.revenue, 0));
@@ -593,7 +603,7 @@ export class PayrollComputeService {
       rows.push({ staffId, workDays: hoursResult.workDays, workHours: hoursResult.totalHours, scheduledAheadDays: hoursResult.aheadDays, scheduledAheadHours: hoursResult.aheadHours, servicesCount, servicesAmount: servicesRevenue, productsCount: products.count, productsAmount: products.revenue, totalAmount, paidAmount: roundMoney(Math.max(0, totalAmount - unpaidAmount)), salary, breakdown });
     }
     rows.sort((a, b) => b.salary - a.salary);
-    return { from, to, anyConfigured: schemes.size > 0, rows };
+    return { from, to, anyConfigured: staffIds.some((id) => schemes.has(id)), rows };
   }
 
   /** F-09-036: часы графика в этот день (не часы с клиентами) — тот же источник, что колонка «Рабочее время»
@@ -635,9 +645,11 @@ export class PayrollComputeService {
     const monthStart = monthStartOf(to);
     const loadFrom = from < monthStart ? from : monthStart;
     const [bookings, groupEvents, services] = await Promise.all([this.loadBookings(businessId, locationId, loadFrom, to), this.loadGroupEvents(businessId, locationId, from, to), this.loadServices(businessId)]);
-    const schemes = await this.resolveEffectiveSchemes(businessId, locationId, [staffId], to, bookings);
+    // Доля ассистента — по схеме мастера строки (F-09-047): ведомость Ани-ассистента читает и схему Мариам
+    const schemes = await this.resolveEffectiveSchemes(businessId, locationId, withAssistedMasters([staffId], bookings), to, bookings);
     const accrual = await this.accrualLookup(businessId, locationId, from, to, bookings);
     bookings.push(...accrual.extra);
+    const assistantsForLine = assistantsLookup(bookings);
     const bookingIds = bookings.filter((b) => b.status === 'arrived' && !b.deletedAt).map((b) => b.id);
     const paidRows = await this.prisma.booking.findMany({ where: { id: { in: bookingIds } }, select: { id: true, paidAmount: true } });
     const paidAmounts = new Map(paidRows.map((b) => [b.id, Number(b.paidAmount)]));
@@ -645,7 +657,7 @@ export class PayrollComputeService {
     const unpaidForBooking = this.unpaidForBookingLookup(bookings, paidAmounts);
     const operations: StatementOperationRow[] = [];
     for (const date of eachDay(from, to)) {
-      const opsByStaff = computeServicesForDay({ date, locationId, staffIds: [staffId], bookings, groupEvents, services, schemes, loyaltyPaidForBooking, techCardCost, unpaidForBooking, accrualDateForBooking: accrual.lookup });
+      const opsByStaff = computeServicesForDay({ date, locationId, staffIds: [staffId], bookings, groupEvents, services, schemes, loyaltyPaidForBooking, techCardCost, unpaidForBooking, accrualDateForBooking: accrual.lookup, assistantsForLine });
       for (const op of opsByStaff.get(staffId) ?? []) operations.push({ ...op, date });
     }
     const total = roundMoney(operations.reduce((sum, op) => sum + op.amount, 0));
