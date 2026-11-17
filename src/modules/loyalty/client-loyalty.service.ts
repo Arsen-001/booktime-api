@@ -88,6 +88,8 @@ export class ClientLoyaltyService {
       }
       case 'listLoyaltyCards':
         return run('appListLoyaltyCards', [userId]);
+      case 'listAccounts':
+        return run('appListAccounts', [userId]);
       case 'getCashbackForBusiness':
         return run('appGetCashbackForBusiness', [userId, str(args[0])]);
       case 'getBookingMembershipOption':

@@ -198,3 +198,20 @@ test('профиль: Google, привязанный к другому чело�
   const authed = { ...ctx, session: { sessionId: 'ses_2', userId: bob.user.id, app: 'client', staffLoginId: null, platformMemberId: null } } as unknown as RequestContext;
   await rejects(auth.linkGoogle(authed, { idToken: 'anna' }), 'google_taken');
 });
+
+// Владелец 17.11.2026 (DESIGN.md «Ответы…» №23): имя спрашиваем только у нового номера и только после кода
+test('вход по коду без имени: новый номер → needsName; с именем или из Google — нет; у знакомого — нет', async () => {
+  const { auth, ctx, res, db } = setup();
+  const fresh = await auth.verifyCode(ctx, res, { phone: PHONE, code: CODE, app: 'client', consent: true });
+  assert.equal(fresh.needsName, true);
+  assert.equal(db.users[0]?.name, PHONE);
+  // Не ввёл имя и вышел — при следующем входе спросим снова
+  assert.equal((await auth.verifyCode(ctx, res, { phone: PHONE, code: CODE, app: 'client' })).needsName, true);
+  db.users[0]!.name = 'Ани';
+  assert.equal((await auth.verifyCode(ctx, res, { phone: PHONE, code: CODE, app: 'client' })).needsName, undefined);
+  const named = await auth.verifyCode(ctx, res, { phone: '+37499000001', code: CODE, app: 'client', consent: true, name: 'Арам' });
+  assert.equal(named.needsName, undefined);
+  const r = await auth.googleLogin(ctx, res, { idToken: 'eve', app: 'client', consent: true });
+  const viaGoogle = await auth.verifyCode(ctx, res, { phone: '+37499000002', code: CODE, app: 'client', consent: true, pendingGoogle: r.pendingGoogle!.token });
+  assert.equal(viaGoogle.needsName, undefined);
+});

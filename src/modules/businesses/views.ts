@@ -79,6 +79,8 @@ export function staffView(s: Staff & { locations?: { locationId: string }[] }) {
     businessId: s.businessId,
     locationIds: (s.locations ?? []).map((l) => l.locationId),
     name: s.name,
+    /** Имя на трёх языках для клиентов (17.11.2026); нет — сайт показывает перевод букв на лету */
+    nameI18n: opt(s.nameI18n as { ru?: string; hy?: string; en?: string } | null),
     phone: s.phone,
     email: opt(s.email),
     role: s.role as 'owner' | 'admin' | 'master',

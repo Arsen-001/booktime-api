@@ -74,6 +74,9 @@ export interface AppCashbackCard {
   spendLimitPercent?: number;
   earnRules: { kind: EarnKind; rate: number; isPercent: boolean; toNextLevel?: number; limitedToServiceNames?: string[] }[];
   discountText?: string;
+  /** Скидка карты числом — «карта −5 %» в «Картах и абонементах» (17.11.2026) */
+  discountValue?: number;
+  discountIsPercent?: boolean;
 }
 
 interface NetworkLocationsInfo {
@@ -315,7 +318,7 @@ function cashbackView(core: CoreData, s: LoyaltyState, card: LoyaltyCard, appUse
     ...(type?.paymentLimitFixed ? { spendLimitMoney: type.paymentLimitFixed } : {}),
     ...(type?.paymentLimitPercent && !type.paymentLimitFixed ? { spendLimitPercent: type.paymentLimitPercent } : {}),
     earnRules,
-    ...(discount ? { discountText: `${discount.name}: ${discount.value}${discount.valueType === 'percent' ? '%' : ' ֏'}` } : {}),
+    ...(discount ? { discountText: `${discount.name}: ${discount.value}${discount.valueType === 'percent' ? '%' : ' ֏'}`, discountValue: discount.value, discountIsPercent: discount.valueType === 'percent' } : {}),
   };
 }
 
@@ -401,6 +404,27 @@ export async function appGetCertificate(appUserId: Id, id: Id, pending: PendingR
 export async function appListLoyaltyCards(appUserId: Id): Promise<WithBusiness<AppCashbackCard>[]> {
   const core = readCore();
   return myCards(appUserId).map((c) => attachBusiness(core, c));
+}
+
+/**
+ * Личные счета клиента в салонах (F-06-136…140) — страница «Карты и абонементы» приложения (владелец 17.11.2026,
+ * DESIGN.md №4): «счёт 3 000 ֏» в строке салона. Только свои (Client.appUserId), название — тип счёта.
+ */
+export interface AppAccount {
+  id: Id;
+  appUserId: Id;
+  businessId: Id;
+  name: string;
+  balance: number;
+}
+
+export async function appListAccounts(appUserId: Id): Promise<WithBusiness<AppAccount>[]> {
+  const core = readCore();
+  const s = area();
+  const mine = myClientIds(core, appUserId);
+  return s.accounts
+    .filter((a) => mine.get(a.clientId) === a.businessId)
+    .map((a) => attachBusiness(core, { id: a.id, appUserId, businessId: a.businessId, name: s.accountTypes.find((t) => t.id === a.accountTypeId)?.name ?? '', balance: a.balance }));
 }
 
 /** F-14-048…053: видимая карта с бонусной программой, наибольший баланс; равенство — последняя выданная */

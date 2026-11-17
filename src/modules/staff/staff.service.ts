@@ -183,6 +183,11 @@ export class StaffService {
       if (!input.name.trim()) throw new ApiError('invalid_field', 'name required', { name: 'required' });
       data.name = input.name.trim();
     }
+    if (input.nameI18n !== undefined) {
+      // Пустые языки не храним: их сайт покажет переводом букв на лету
+      const tidy = Object.fromEntries(Object.entries(input.nameI18n ?? {}).map(([k, v]) => [k, (v ?? '').trim()]).filter(([, v]) => v));
+      data.nameI18n = Object.keys(tidy).length ? tidy : null;
+    }
     if (input.phone !== undefined) {
       if (input.phone.trim()) {
         const p = normalizePhone(input.phone);
@@ -728,7 +733,7 @@ export class StaffService {
 
 /** SQL NULL в JSON-колонке («нет поля» у экрана) */
 const DbNull = Prisma.DbNull;
-const JSON_COLUMNS = new Set(['specialty', 'bio', 'sphereIds', 'photos', 'materials', 'workplaces', 'visitDistricts', 'callHours', 'prepayment', 'bookingRules', 'contacts', 'serviceIds', 'position']);
+const JSON_COLUMNS = new Set(['nameI18n', 'specialty', 'bio', 'sphereIds', 'photos', 'materials', 'workplaces', 'visitDistricts', 'callHours', 'prepayment', 'bookingRules', 'contacts', 'serviceIds', 'position']);
 function isJsonField(k: string) {
   return JSON_COLUMNS.has(k);
 }

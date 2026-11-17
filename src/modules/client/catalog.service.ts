@@ -14,6 +14,11 @@ import { INTAKE_KIND, ORDER_SPHERES, ordersEnabledOf } from '../orders/order-rul
 import { sanitizePublicStaff } from '../online/online.service.js';
 import { categoryView, serviceView } from '../services/services.views.js';
 
+/** Адрес филиала заполнен хоть на одном языке (без него район — не факт: при регистрации он «Кентрон» по умолчанию) */
+function hasAddress(address: unknown): boolean {
+  return Object.values((address ?? {}) as Record<string, unknown>).some((v) => typeof v === 'string' && v.trim().length > 0);
+}
+
 const arr = <T = string>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const norm = (s: string): string => s.trim().toLowerCase();
 
@@ -160,7 +165,8 @@ export class CatalogService {
 
     const businessIds = [...new Set(rows.map((r) => r.businessId))];
     const locations = await this.prisma.location.findMany({ where: { businessId: { in: businessIds }, deletedAt: null } });
-    if (q.district) rows = rows.filter((s) => locations.some((l) => l.businessId === s.businessId && l.district === q.district));
+    // Владелец 17.11.2026 (DESIGN.md №24): район без адреса — не факт (по умолчанию «Кентрон»), в фильтр района не входит
+    if (q.district) rows = rows.filter((s) => locations.some((l) => l.businessId === s.businessId && l.district === q.district && hasAddress(l.address)));
 
     const serviceIds = [...new Set(rows.flatMap((s) => arr(s.serviceIds)))];
     const services = await this.prisma.service.findMany({ where: { id: { in: serviceIds }, active: true, onlineBookable: true, kind: { not: INTAKE_KIND } } });
@@ -283,7 +289,7 @@ export class CatalogService {
         const hit = norm(business.brandName || business.name).includes(search) || bizLocs.some((l) => norm((l.name as Record<string, string>).ru ?? '').includes(search));
         if (!hit) continue;
       }
-      if (q.district && !bizLocs.some((l) => l.district === q.district)) continue;
+      if (q.district && !bizLocs.some((l) => l.district === q.district && hasAddress(l.address))) continue;
       const owner = staffRows.find((s) => s.id === business.ownerStaffId) ?? staffRows.find((s) => s.businessId === business.id);
       if (!owner) continue;
       const location = (q.district ? bizLocs.find((l) => l.district === q.district) : undefined) ?? bizLocs[0];
