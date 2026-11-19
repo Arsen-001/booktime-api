@@ -1,19 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { DEFAULT_TZ, localDayRangeUtc } from '../../common/time/time.js';
-import { emptySchemeBlocks, evaluateCriterion, pickRuleForChart, resolveActiveChartAssignment, roundMoney, type PayrollChartAssignmentData, type SchemeBlocks } from './payroll-engine.js';
-import type { AssignmentBody, BonusPenaltyTypeBody, ChartBody, CriterionBody, GeneralSettingsBody, PayrollStaffRightsBody, RuleBody, SchemeBlocksBody } from './payroll.schemas.js';
+import { applySchemeVersion, defaultAssistRates, emptySchemeBlocks, evaluateCriterion, pickRuleForChart, resolveActiveChartAssignment, roundMoney, schemeBlocksOf, type PayrollChartAssignmentData, type SchemeBlocks, type SchemeVersion, type VersionedScheme } from './payroll-engine.js';
+import type { AssignmentBody, BonusPenaltyTypeBody, ChartBody, CriterionBody, GeneralSettingsBody, PayrollStaffRightsBody, RuleBody, SchemeSaveBody } from './payroll.schemas.js';
 
 function jsonOf<T>(v: T): Prisma.InputJsonValue {
   return v as unknown as Prisma.InputJsonValue;
 }
 
-function settingsView(r: { locationId: string; businessId: string; accrualDateBasis: string; bankCommissionSplit: string; assistCompensationEnabled: boolean; multipleAssistantsAllowed: boolean; assistantSplitRule: string; payrollModel: string; statementApprovalEnabled: boolean; payrollFundTargetPct: number; payrollFundWarnPct: number; version: number; updatedAt: Date }) {
+function settingsView(r: { locationId: string; businessId: string; accrualDateBasis: string; bankCommissionSplit: string; assistCompensationEnabled: boolean; multipleAssistantsAllowed: boolean; assistantSplitRule: string; payrollModel: string; statementApprovalEnabled: boolean; payrollFundTargetPct: number; payrollFundWarnPct: number; closedThrough: string | null; version: number; updatedAt: Date }) {
   return {
     locationId: r.locationId,
     accrualDateBasis: r.accrualDateBasis as GeneralSettingsBody['accrualDateBasis'],
@@ -25,13 +25,53 @@ function settingsView(r: { locationId: string; businessId: string; accrualDateBa
     statementApprovalEnabled: r.statementApprovalEnabled,
     payrollFundTargetPct: r.payrollFundTargetPct,
     payrollFundWarnPct: r.payrollFundWarnPct,
+    // З11: «Период закрыт по» — экран расчёта и ведомости показывают его, редактор схемы не даёт дату раньше
+    ...(r.closedThrough ? { closedThrough: r.closedThrough } : {}),
     version: r.version,
     updatedAt: r.updatedAt.toISOString(),
   };
 }
 
-function schemeView(r: { staffId: string; data: unknown; createdAt: Date; updatedAt: Date; version: number }) {
-  return { staffId: r.staffId, ...(r.data as SchemeBlocks), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), version: r.version };
+/** Схемы до 17.11 сохранены без ставок ассистента (тело их отбрасывало) — в полной форме, как у новой схемы */
+function withAssistRates<T extends SchemeBlocks>(data: T): T {
+  const ps = data.personalServices && !data.personalServices.assistRates ? { ...data.personalServices, assistRates: defaultAssistRates() } : data.personalServices;
+  return { ...data, personalServices: ps };
+}
+
+type SchemeRow = { staffId: string; data: unknown; effectiveFrom: string | null; history: unknown; createdAt: Date; updatedAt: Date; version: number };
+
+/** Прежние версии из колонки history (NULL — версий не было) */
+function historyOf(r: Pick<SchemeRow, 'history'>): SchemeVersion[] {
+  return Array.isArray(r.history) ? (r.history as SchemeVersion[]) : [];
+}
+
+/**
+ * З6: строка схемы → схема с версиями в форме мока (PayrollScheme: текущая версия + history) — вход applySchemeVersion и
+ * schemeAtDate. Нет «Действует с» — версия действует с самого начала (так перенесены схемы, сохранённые до 17.11).
+ */
+export function versionedSchemeOf(r: SchemeRow): VersionedScheme {
+  const history = historyOf(r).map((v) => ({ ...withAssistRates(schemeBlocksOf(v)), ...(v.effectiveFrom ? { effectiveFrom: v.effectiveFrom } : {}), ...(v.updatedAt ? { updatedAt: v.updatedAt } : {}) }));
+  return {
+    ...withAssistRates(schemeBlocksOf(r.data as SchemeBlocks)),
+    ...(r.effectiveFrom ? { effectiveFrom: r.effectiveFrom } : {}),
+    updatedAt: r.updatedAt.toISOString(),
+    ...(history.length ? { history } : {}),
+  };
+}
+
+/** Схема для сайта — PayrollScheme мока: текущая версия с «Действует с» и прежние версии (history) той же формы */
+function schemeView(r: SchemeRow) {
+  const data = withAssistRates(r.data as SchemeBlocks);
+  const createdAt = r.createdAt.toISOString();
+  const updatedAt = r.updatedAt.toISOString();
+  const history = historyOf(r).map((v) => ({
+    staffId: r.staffId,
+    ...withAssistRates(schemeBlocksOf(v)),
+    ...(v.effectiveFrom ? { effectiveFrom: v.effectiveFrom } : {}),
+    createdAt,
+    updatedAt: v.updatedAt ?? updatedAt,
+  }));
+  return { staffId: r.staffId, ...data, ...(r.effectiveFrom ? { effectiveFrom: r.effectiveFrom } : {}), ...(history.length ? { history } : {}), createdAt, updatedAt, version: r.version };
 }
 
 function ruleView(r: { id: string; businessId: string; name: string; data: unknown; createdAt: Date; updatedAt: Date; version: number }) {
@@ -99,6 +139,31 @@ export class PayrollCatalogService {
     return settingsView(await this.ensureSettings(locationId, businessId));
   }
 
+  /**
+   * З11: «Закрыть период» по этот день включительно — как closePayrollPeriod мока: дата двигается только вперёд (уже
+   * закрыто по эту дату или позже — ничего не меняем), в журнал изменений — «periodClosed».
+   */
+  async closePeriod(ctx: RequestContext, locationId: string, through: string) {
+    const businessId = ctx.member!.businessId;
+    const location = await this.prisma.location.findFirst({ where: { id: locationId, businessId } });
+    if (!location) throw new ApiError('not_found', 'Location not found');
+    const current = await this.ensureSettings(locationId, businessId);
+    if (current.closedThrough && current.closedThrough >= through) return settingsView(current);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payrollSettings.update({ where: { locationId }, data: { closedThrough: through, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
+      await this.audit.record(tx, ctx, { action: 'periodClosed', entityType: 'payrollSettings', entityId: locationId, businessId, before: { closedThrough: current.closedThrough }, after: { closedThrough: through } });
+    });
+    return settingsView(await this.prisma.payrollSettings.findUniqueOrThrow({ where: { locationId } }));
+  }
+
+  /** З11: самый поздний «закрыто по» среди филиалов сотрудника (как saveScheme мока); нет — undefined */
+  private async closedThroughForStaff(staffId: string): Promise<string | undefined> {
+    const links = await this.prisma.staffLocation.findMany({ where: { staffId }, select: { locationId: true } });
+    if (!links.length) return undefined;
+    const rows = await this.prisma.payrollSettings.findMany({ where: { locationId: { in: links.map((l) => l.locationId) } }, select: { closedThrough: true } });
+    return rows.map((r) => r.closedThrough ?? '').reduce((a, b) => (b > a ? b : a), '') || undefined;
+  }
+
   async saveSettings(ctx: RequestContext, locationId: string, body: GeneralSettingsBody) {
     const businessId = ctx.member!.businessId;
     const location = await this.prisma.location.findFirst({ where: { id: locationId, businessId } });
@@ -129,20 +194,66 @@ export class PayrollCatalogService {
     return out;
   }
 
-  async saveScheme(ctx: RequestContext, staffId: string, body: SchemeBlocksBody) {
+  /**
+   * З6/З11: какой станет схема сотрудника после сохранения `next` — applySchemeVersion мока. Без даты или с той же датой —
+   * правка текущей версии; с более поздней — новая версия, прежняя уходит в history и действует до этой даты; дата раньше
+   * текущей версии — scheme_overlap; изменённые ставки с датой в закрытом периоде филиалов сотрудника — scheme_closed.
+   * Ничего не пишет: запись — writeScheme (так «Применить к…» сначала проверяет всех, потом пишет одной транзакцией).
+   */
+  private async planSchemeWrite(staffId: string, next: VersionedScheme) {
+    const existing = await this.prisma.payrollScheme.findUnique({ where: { staffId } });
+    const versioned = applySchemeVersion(existing ? versionedSchemeOf(existing) : undefined, next, await this.closedThroughForStaff(staffId));
+    if ('error' in versioned) throw new ApiError(versioned.error === 'closed' ? 'scheme_closed' : 'scheme_overlap', versioned.error === 'closed' ? 'Effective date is in a closed payroll period' : 'Effective date overlaps the previous version');
+    const v = versioned.scheme;
+    const history = v.history?.map((h) => ({ ...schemeBlocksOf(h), ...(h.effectiveFrom ? { effectiveFrom: h.effectiveFrom } : {}), ...(h.updatedAt ? { updatedAt: h.updatedAt } : {}) }));
+    return {
+      staffId,
+      exists: Boolean(existing),
+      effectiveFrom: v.effectiveFrom ?? null,
+      versions: (history?.length ?? 0) + 1,
+      row: { data: jsonOf(schemeBlocksOf(v)), effectiveFrom: v.effectiveFrom ?? null, history: history?.length ? jsonOf(history) : Prisma.DbNull },
+    };
+  }
+
+  private async writeScheme(tx: Prisma.TransactionClient, ctx: RequestContext, businessId: string, plan: Awaited<ReturnType<PayrollCatalogService['planSchemeWrite']>>) {
+    const { staffId, row } = plan;
+    if (plan.exists) {
+      await tx.payrollScheme.update({ where: { staffId }, data: { ...row, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
+    } else {
+      await tx.payrollScheme.create({ data: { staffId, businessId, ...row, createdBy: ctx.member!.staffId, updatedBy: ctx.member!.staffId } });
+    }
+    await this.audit.record(tx, ctx, { action: plan.exists ? 'update' : 'create', entityType: 'payrollScheme', entityId: staffId, businessId, after: { staffId, effectiveFrom: plan.effectiveFrom, versions: plan.versions } });
+  }
+
+  /** З6/З11: сохранить схему сотрудника версией (planSchemeWrite) */
+  async saveScheme(ctx: RequestContext, staffId: string, body: SchemeSaveBody) {
     const businessId = ctx.member!.businessId;
     const staff = await this.prisma.staff.findFirst({ where: { id: staffId, businessId } });
     if (!staff) throw new ApiError('not_found', 'Staff not found');
-    const existing = await this.prisma.payrollScheme.findUnique({ where: { staffId } });
-    await this.prisma.$transaction(async (tx) => {
-      if (existing) {
-        await tx.payrollScheme.update({ where: { staffId }, data: { data: jsonOf(body), updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
-      } else {
-        await tx.payrollScheme.create({ data: { staffId, businessId, data: jsonOf(body), createdBy: ctx.member!.staffId, updatedBy: ctx.member!.staffId } });
-      }
-      await this.audit.record(tx, ctx, { action: existing ? 'update' : 'create', entityType: 'payrollScheme', entityId: staffId, businessId, after: { staffId } });
-    });
+    const plan = await this.planSchemeWrite(staffId, { ...schemeBlocksOf(body), ...(body.effectiveFrom ? { effectiveFrom: body.effectiveFrom } : {}) });
+    await this.prisma.$transaction((tx) => this.writeScheme(tx, ctx, businessId, plan));
     return schemeView(await this.prisma.payrollScheme.findUniqueOrThrow({ where: { staffId } }));
+  }
+
+  /**
+   * З12 «Применить к…» — applySchemeToStaff мока: текущая версия схемы образца становится новой версией схемы каждого
+   * выбранного сотрудника с даты `effectiveFrom` (прошлое у них — по прежним версиям). Одна операция: отказ на любом
+   * сотруднике (закрытый период, пересечение, чужой сотрудник) — не сохраняется ни у кого. Ответ — сколько применено.
+   */
+  async applySchemeToStaff(ctx: RequestContext, sourceStaffId: string, staffIds: string[], effectiveFrom: string) {
+    const businessId = ctx.member!.businessId;
+    const source = await this.prisma.payrollScheme.findFirst({ where: { staffId: sourceStaffId, businessId } });
+    if (!source) throw new ApiError('not_found', 'Source scheme not found');
+    const targets = [...new Set(staffIds)].filter((id) => id !== sourceStaffId);
+    const found = await this.prisma.staff.count({ where: { id: { in: targets }, businessId } });
+    if (found !== targets.length) throw new ApiError('not_found', 'Staff not found');
+    const blocks = schemeBlocksOf(versionedSchemeOf(source));
+    const plans: Awaited<ReturnType<PayrollCatalogService['planSchemeWrite']>>[] = [];
+    for (const staffId of targets) plans.push(await this.planSchemeWrite(staffId, { ...blocks, effectiveFrom }));
+    await this.prisma.$transaction(async (tx) => {
+      for (const plan of plans) await this.writeScheme(tx, ctx, businessId, plan);
+    });
+    return plans.length;
   }
 
   async copyScheme(ctx: RequestContext, staffId: string, fromStaffId: string) {
@@ -153,7 +264,8 @@ export class PayrollCatalogService {
     ]);
     if (!staff) throw new ApiError('not_found', 'Staff not found');
     if (!source) throw new ApiError('not_found', 'Source scheme not found');
-    return this.saveScheme(ctx, staffId, source.data as unknown as SchemeBlocksBody);
+    // Блоки образца — в текущую версию получателя (без даты: его «Действует с» и прежние версии остаются)
+    return this.saveScheme(ctx, staffId, schemeBlocksOf(source.data as unknown as SchemeBlocks) as SchemeSaveBody);
   }
 
   async listSetupTargets(businessId: string) {

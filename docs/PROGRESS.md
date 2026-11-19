@@ -7965,3 +7965,23 @@ integrations 57, notify 7) → после **0**. Остаток скрипта �
   частоты маршрута). На временной базе `booktime_check_import` (migrate deploy + seed, удалена): пачка 1000 строк —
   dryRun 17 мс, запись 412 мс, повтор — 1000 × skipped, существующая карточка — имя сохранено, пустая почта дописана.
   `openapi/openapi.json` не перегенерирован (`npm run openapi`).
+
+### Хвосты сервера из журнала доделок 01.10 — сверка (16.11.2026)
+
+`booking-platform/qa/full-test-0930/MY-TODO.md`, раздел «Из отчёта backend-2» и «Из client-2-fix». Сделано раньше (коммит
+`44ecb85`, 02.10): проверка аргументов `…/loyalty/x/{op}` (`port/runner.service.ts` checkArgs + TypeError → 400), зарплата
+по товарам, день поступления, прибыль за период и «только своя» в расчёте (`payroll-compute.service.ts`,
+`payroll.controller.ts` calcScope), права экранов `/biz/apps` и личное сообщение `kind: 'direct'`
+(`app-staff`, `visit-cash`, `client-promo`, `settings` branded-app), сторис мастера без `billing.manage` (`client-promo`).
+- Дописано: `…/loyalty/app/{op}` — операции, которые ищут строку сами (покупка, «Я оплатил», подтвердить/отклонить
+  заявку), без id отвечали 404/403, теперь 400 `validation` с полем `args.0`; «кэшбэк в приложении» с не-булевым
+  значением молча выключался — теперь 400. Тест — `loyalty/loyalty-args.test.ts` (x/* и app/*, без базы).
+- «Приложение» кабинета (`client/app-staff.service.ts`): «Расчёт» зарплаты (`…/app-staff/:staffId/payroll-calculation`,
+  и «Выплаты» через него) берёт дни периода по Еревану (`localDayRangeUtc`), а не от полуночи UTC — визиты 00:00–04:00
+  первого дня больше не выпадают, ранние визиты дня после периода не попадают. «Отправить сообщение»
+  (`POST …/app-staff/messages`) — только клиенту этого бизнеса (карточка с этим appUserId или он сам записан на эту
+  запись) и только по записи этого бизнеса, иначе 404. Тест — `client/app-staff.test.ts`.
+- Проверка «кому бизнес пишет в ленту» вынесена в `client/app-recipient.ts` (`assertBusinessAppRecipient`); ей же
+  теперь проверяется чек визита (`POST …/visit-cash/:bookingId/receipt`) — чужому человеку 404. «Расчёт» зарплаты в
+  приложении не считает удалённые записи со статусом «Пришёл». Общий расчёт зарплаты (`payroll-compute.service.ts`,
+  `payroll-engine.ts`) удалённые уже отсеивал — без правок. Тесты — в `client/app-staff.test.ts`.

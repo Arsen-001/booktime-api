@@ -54,7 +54,7 @@ const staff = (id: string, businessId: string, sphereIds: string[], serviceIds: 
 });
 
 /** Барбершоп с мастером и окнами (завтра 10:00 или сегодня 18:00), ателье, химчистка с выключенными «Заказами», ремонт без мастеров */
-function makeService(opts: { slotDay?: string; tailorBookable?: boolean; tailorNoSlots?: boolean } = {}) {
+function makeService(opts: { slotDay?: string; tailorBookable?: boolean; tailorNoSlots?: boolean; noAddress?: string[] } = {}) {
   const tables: Record<string, Row[]> = {
     business: [
       business('barber1', 'Игла Барбер', ['barber']),
@@ -73,6 +73,7 @@ function makeService(opts: { slotDay?: string; tailorBookable?: boolean; tailorN
     tables.staff![1]!.serviceIds = ['svc1'];
     tables.workSchedule!.push({ staffId: 'tailor1-owner' });
   }
+  for (const l of tables.location!) if (opts.noAddress?.includes(l.businessId as string)) l.address = { ru: '' };
   const day = opts.slotDay ?? tomorrow;
   const availability = {
     nearestSlots: async (businessId: string) =>
@@ -142,4 +143,12 @@ test('обычные сферы — как раньше: мастер с окн�
   const svc = makeService();
   assert.deepEqual(kinds(await svc.catalog({ sphereId: 'barber' })), ['master:barber1']);
   assert.deepEqual(kinds(await svc.catalog({ sphereId: 'nails' })), []);
+});
+
+// Владелец 17.11.2026 (DESIGN.md «Ответы…» №24): район без адреса — не факт (по умолчанию «Кентрон»), в фильтр не входит
+test('фильтр района: место без адреса не попадает в «Кентрон», с адресом — попадает', async () => {
+  assert.deepEqual(kinds(await makeService().catalog({ sphereId: 'barber', district: 'kentron' })), ['master:barber1']);
+  assert.deepEqual(kinds(await makeService({ noAddress: ['barber1'] }).catalog({ sphereId: 'barber', district: 'kentron' })), []);
+  assert.deepEqual(kinds(await makeService({ noAddress: ['barber1'] }).catalog({ sphereId: 'barber' })), ['master:barber1']);
+  assert.deepEqual(kinds(await makeService({ noAddress: ['tailor1'] }).catalog({ sphereId: 'tailor', district: 'kentron' })), []);
 });

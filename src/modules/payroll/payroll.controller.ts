@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
@@ -9,7 +9,7 @@ import { Zod } from '../../common/http/validation.js';
 import { PayrollCatalogService } from './payroll-catalog.service.js';
 import { PayrollComputeService } from './payroll-compute.service.js';
 import { PayrollSettlementsService } from './payroll-settlements.service.js';
-import { assignmentBody, bonusPenaltyTypeBody, bulkApplySchemeBody, chartBody, criterionBody, generalSettingsBody, payoutBody, payrollStaffRightsBatchBody, payrollStaffRightsBody, ruleBody, schemeBlocksBody, settlementEntryBody, settlementSheetBody, type PayrollStaffRightsBatchBody, type PayrollStaffRightsBody } from './payroll.schemas.js';
+import { applySchemeBody, assignmentBody, bonusPenaltyTypeBody, bulkApplySchemeBody, chartBody, closePeriodBody, criterionBody, generalSettingsBody, payoutBody, payrollStaffRightsBatchBody, payrollStaffRightsBody, ruleBody, schemeSaveBody, settlementEntryBody, settlementSheetBody, type PayrollStaffRightsBatchBody, type PayrollStaffRightsBody } from './payroll.schemas.js';
 
 /**
  * Чьи строки видит сотрудник в расчёте (день/период/ведомость) — как мок (ownOnlyStaffIdForActor, решение владельца
@@ -52,6 +52,24 @@ export class PayrollController {
   @ZodBody(generalSettingsBody)
   saveSettings(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Body(new Zod(generalSettingsBody)) body: z.infer<typeof generalSettingsBody>) {
     return this.catalog.saveSettings(ctx, requireLocationId(locationId), body);
+  }
+
+  /** З11: «Закрыть период» по этот день включительно — версии схем с этой датой и раньше больше не меняются */
+  @Post('settings/close-period')
+  @Biz('payroll.manage')
+  @HttpCode(200)
+  @ZodBody(closePeriodBody)
+  closePeriod(@Ctx() ctx: RequestContext, @Query('locationId') locationId: string | undefined, @Body(new Zod(closePeriodBody)) body: z.infer<typeof closePeriodBody>) {
+    return this.catalog.closePeriod(ctx, requireLocationId(locationId), body.through);
+  }
+
+  /** З12 «Применить к…»: схема образца — новой версией выбранным сотрудникам с даты; отказ на одном — ни у кого */
+  @Post('schemes/apply')
+  @Biz('payroll.manage')
+  @HttpCode(200)
+  @ZodBody(applySchemeBody)
+  async applyScheme(@Ctx() ctx: RequestContext, @Body(new Zod(applySchemeBody)) body: z.infer<typeof applySchemeBody>) {
+    return { applied: await this.catalog.applySchemeToStaff(ctx, body.sourceStaffId, body.staffIds, body.effectiveFrom) };
   }
 
   // ─────────────────────────── Расчёт (F-09-058…065) ───────────────────────────
@@ -363,6 +381,13 @@ export class PayrollController {
     return this.settlements.advanceApproval(ctx, sheetId);
   }
 
+  @Post('statements/:sheetId/approval/reopen')
+  @Biz('payroll.manage')
+  @ApiOperation({ summary: '«Вернуть на проверку» (ответ 26, 17.11.2026): одобренная ведомость снова открыта для правок' })
+  reopenApproval(@Ctx() ctx: RequestContext, @Param('sheetId') sheetId: string) {
+    return this.settlements.reopenApproval(ctx, sheetId);
+  }
+
   @Post('statements/:sheetId/approval/sign')
   @Biz('payroll.view')
   signApproval(@Ctx() ctx: RequestContext, @Param('sheetId') sheetId: string) {
@@ -392,8 +417,8 @@ export class PayrollStaffController {
 
   @Patch('payroll-scheme')
   @Biz('payroll.manage')
-  @ZodBody(schemeBlocksBody)
-  saveScheme(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Body(new Zod(schemeBlocksBody)) body: z.infer<typeof schemeBlocksBody>) {
+  @ZodBody(schemeSaveBody)
+  saveScheme(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Body(new Zod(schemeSaveBody)) body: z.infer<typeof schemeSaveBody>) {
     return this.catalog.saveScheme(ctx, staffId, body);
   }
 
@@ -408,6 +433,14 @@ export class PayrollStaffController {
   @Biz('staff.manage')
   getRights(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string) {
     return this.catalog.getStaffRights(ctx.member!.businessId, staffId);
+  }
+
+  /** F-09-100: сотрудник подписывает свою ведомость из «Моя зарплата» — без payroll.view (проход 17.11) */
+  @Post('statements/:sheetId/sign')
+  @Biz()
+  signOwnStatement(@Ctx() ctx: RequestContext, @Param('staffId') staffId: string, @Param('sheetId') sheetId: string) {
+    if (ctx.member!.staffId !== staffId) throw new ApiError('forbidden', 'Only the employee signs own statement');
+    return this.settlements.signApproval(ctx.member!.businessId, sheetId, staffId);
   }
 
   @Get('settlements')

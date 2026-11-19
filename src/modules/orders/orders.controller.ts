@@ -116,19 +116,22 @@ export class OrdersController {
     return this.svc.patch(ctx, businessId, orderId, body);
   }
 
+  // Смена статуса, «сообщить ещё раз» и смета ничего не создают — 200, а не 201 Nest по умолчанию (проход 17.11)
   @Post(':orderId/status')
+  @HttpCode(200)
   @Biz('journal.edit')
   @ZodBody(orderStatusBody)
   @ZodOk(orderOut)
   @ApiOperation({ summary: 'Сменить статус; недопустимый переход — 422 invalid_order_transition; ready — уведомление клиенту' })
   async status(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('orderId') orderId: string, @Body(new Zod(orderStatusBody)) body: z.infer<typeof orderStatusBody>) {
-    const order = await this.svc.setStatus(ctx, businessId, orderId, body.status);
+    const order = await this.svc.setStatus(ctx, businessId, orderId, body.status, body.payment);
     // ⭐ Выдали заказ, на который клиент записался по времени, — запись на выдачу «Пришёл» (best-effort)
     if (body.status === 'issued' && order.pickupBookingId) await this.intake.markArrived(ctx, businessId, order.pickupBookingId);
     return order;
   }
 
   @Post(':orderId/notify')
+  @HttpCode(200)
   @Biz('journal.edit')
   @ZodOk(orderOut)
   @ApiOperation({ summary: 'Ещё раз сообщить клиенту, что заказ готов (только status=ready, иначе 422 order_not_ready)' })
@@ -139,6 +142,7 @@ export class OrdersController {
   // ─────────── ⭐ смета (05.10.2026) ───────────
 
   @Post(':orderId/estimate')
+  @HttpCode(200)
   @Biz('journal.edit')
   @ZodBody(sendEstimateBody)
   @ZodOk(orderOut)
@@ -148,6 +152,7 @@ export class OrdersController {
   }
 
   @Post(':orderId/estimate/notify')
+  @HttpCode(200)
   @Biz('journal.edit')
   @ZodOk(orderOut)
   @ApiOperation({ summary: 'Ещё раз отправить клиенту смету, которая ждёт ответа (иначе 409 estimate_not_pending)' })
@@ -156,6 +161,7 @@ export class OrdersController {
   }
 
   @Post(':orderId/estimate/decision')
+  @HttpCode(200)
   @Biz('journal.edit')
   @ZodBody(staffEstimateDecisionBody)
   @ZodOk(orderOut)

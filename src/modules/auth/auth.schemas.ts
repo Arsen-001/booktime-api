@@ -103,7 +103,7 @@ export const sessionOrGuest = z.object({ session: sessionView.nullable() });
  * Ответ verify: с pendingGoogle — привязался ли Google, с pendingApple — Apple
  * (false — токен истёк или этот аккаунт уже у другого человека)
  */
-export const verifyView = sessionView.extend({ googleLinked: z.boolean().optional(), appleLinked: z.boolean().optional() });
+export const verifyView = sessionView.extend({ googleLinked: z.boolean().optional(), appleLinked: z.boolean().optional(), needsName: z.boolean().optional() });
 
 export const googleLogin = z.object({
   /** Google привязан — сессия открыта (cookie поставлена) */

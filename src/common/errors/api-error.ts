@@ -172,6 +172,12 @@ export const ERROR_STATUS = {
   // зарплата (этап 14) — как в моке фронта (src/api/finance.ts, src/domain/payroll.ts)
   sheet_not_draft: HttpStatus.CONFLICT,
   cannot_pay: HttpStatus.CONFLICT,
+  // Ответы владельца 17.11 (26, 27): ведомость одобрена — правки закрыты; ведомость на уже начисленные дни
+  statement_locked: HttpStatus.CONFLICT,
+  period_overlaps: HttpStatus.CONFLICT,
+  // З6/З11 — версии схемы зарплаты (как мок saveScheme): дата раньше текущей версии / дата в закрытом периоде
+  scheme_overlap: HttpStatus.CONFLICT,
+  scheme_closed: HttpStatus.CONFLICT,
   // интеграции (этап 17) — как в моке фронта (src/api/integrations.ts)
   builtin_locked: HttpStatus.CONFLICT,
   // ревью 27.09, этап 21 — И2/И13 (src/api/integrations.ts: sendInstallTest/addWebhookAddress)
@@ -205,6 +211,8 @@ export const ERROR_STATUS = {
   discount_not_refundable: HttpStatus.UNPROCESSABLE_ENTITY,
   payment_setup_incomplete: HttpStatus.UNPROCESSABLE_ENTITY,
   insufficient_cash: HttpStatus.UNPROCESSABLE_ENTITY,
+  // Выплата зарплаты больше, чем в наличном ящике (ответ 28) — message = сколько наличных есть, как мок payoutSalary
+  insufficient_funds: HttpStatus.UNPROCESSABLE_ENTITY,
   not_cash_account: HttpStatus.UNPROCESSABLE_ENTITY,
   shift_already_open: HttpStatus.CONFLICT,
   shift_not_open: HttpStatus.CONFLICT,

@@ -44,6 +44,24 @@ export class NetworkAccessService {
   }
 
   /**
+   * Замороженные за неуплату филиалы (владелец 17.11.2026, ответ 32): действия сети (раздача и миграция услуг,
+   * товаров, сотрудников, ведомость) их не меняют — ни добавляют, ни удаляют. Экран показывает их неактивными.
+   */
+  async frozenIds(businessIds: readonly string[]): Promise<Set<string>> {
+    if (!businessIds.length) return new Set();
+    const rows = await this.prisma.business.findMany({ where: { id: { in: [...businessIds] }, status: 'frozen' }, select: { id: true } });
+    return new Set(rows.map((r) => r.id));
+  }
+
+  /** Филиалы сети, где человек работает сам (живая строка staff) — для чтения справочников своего филиала без прав сети */
+  async ownBranches(userId: string, networkId: string): Promise<string[]> {
+    const network = await this.loadNetwork(networkId);
+    if (!network || network.deletedAt) return [];
+    const own = await this.prisma.staff.findMany({ where: { userId, businessId: { in: network.businessIds }, deletedAt: null, firedAt: null }, select: { businessId: true } });
+    return [...new Set(own.map((s) => s.businessId))];
+  }
+
+  /**
    * Сеть7 (как мок `canSeeNetworkClientData`): пользователь сети с ограничением по филиалам, который сам работает
    * в филиале ВНЕ своего списка, сеть не видит. Без ограничения (null) или без своей строки staff в сети
    * (вход логином+паролем, F-11-026) — проходит.

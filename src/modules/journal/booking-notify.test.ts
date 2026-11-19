@@ -32,7 +32,7 @@ function matches(r: Row, where: Row = {}): boolean {
 }
 
 function memory(seed: Record<string, Row[]>) {
-  const tables: Record<string, Row[]> = { notifyOutbox: [], inboxItem: [], businessSetting: [], staffNotifyPref: [], ...seed };
+  const tables: Record<string, Row[]> = { notifyOutbox: [], inboxItem: [], businessSetting: [], staffNotifyPref: [], notifyTypeOverride: [], ...seed };
   const table = (name: string) => ({
     findMany: async ({ where }: { where?: Row } = {}) => (tables[name] ?? []).filter((r) => matches(r, where)),
     findUnique: async ({ where }: { where: Row }) => (tables[name] ?? []).find((r) => matches(r, where)) ?? null,
@@ -45,7 +45,7 @@ function memory(seed: Record<string, Row[]>) {
       return { count: data.length };
     },
   });
-  const names = ['notifyOutbox', 'inboxItem', 'businessSetting', 'staffNotifyPref', 'staff', 'client', 'service', 'user', 'business'];
+  const names = ['notifyOutbox', 'inboxItem', 'businessSetting', 'staffNotifyPref', 'notifyTypeOverride', 'staff', 'client', 'service', 'user', 'business'];
   return { tables, db: Object.fromEntries(names.map((n) => [n, table(n)])) as unknown as Tx };
 }
 
@@ -56,7 +56,7 @@ function world() {
   return memory({
     business: [{ id: 'biz_1', name: 'Салон Лилит' }],
     staff: [
-      { id: 'st_master', businessId: 'biz_1', userId: 'us_master', role: 'master', status: 'active' },
+      { id: 'st_master', businessId: 'biz_1', userId: 'us_master', role: 'master', status: 'active', name: 'Ани Саргсян' },
       { id: 'st_owner', businessId: 'biz_1', userId: 'us_owner', role: 'owner', status: 'active' },
     ],
     client: [{ id: 'cl_1', name: 'Мариам' }],
@@ -151,6 +151,40 @@ test('клиенту: запись сегодня — только время; �
   const deleted = tables.notifyOutbox![2]!;
   assert.equal(deleted.kind, 'salon_deleted');
   assert.equal(deleted.url, undefined);
+});
+
+test('клиенту: свой шаблон «Администратор записал клиента» (тип 8, канал «Пуш») — уходит он, с переменными', async () => {
+  const { db, tables } = world();
+  tables.notifyTypeOverride!.push({
+    businessId: 'biz_1',
+    code: 8,
+    templates: { push: { ru: '{companyName}: вас записали — {service}, {date} в {time}. Мастер: {staff}. Ждём вас!' } },
+  });
+  const b = booking(TOMORROW_12);
+  await notifyClientOfBooking(db, db as never, { next: b, events: [event(b, 'created', { startLocal: '2026-10-16T12:00' })] as never, appUserId: 'us_client', by: 'st_owner', tz: TZ, now: NOW });
+  assert.equal(tables.notifyOutbox![0]!.body, 'Салон Лилит: вас записали — Маникюр, 16.10 в 12:00. Мастер: Ани Саргсян. Ждём вас!');
+});
+
+test('клиенту: свой шаблон «Запись подтверждена» (тип 9) — уходит он, а typeCode в meta не ставится (уходит и при выключенном типе)', async () => {
+  const { db, tables } = world();
+  tables.notifyTypeOverride!.push({ businessId: 'biz_1', code: 9, templates: { push: { ru: '{companyName}: ждём вас {date} в {time}, мастер {staff}.' } } });
+  const b = booking(TOMORROW_12);
+  const ev = event(b, 'status', { startLocal: '2026-10-16T12:00', fromStatus: 'awaiting_confirmation', toStatus: 'scheduled' });
+  await notifyClientOfBooking(db, db as never, { next: b, events: [ev] as never, appUserId: 'us_client', by: 'st_owner', tz: TZ, now: NOW });
+  const row = tables.notifyOutbox![0]!;
+  assert.equal(row.kind, 'salon_confirmed');
+  assert.equal(row.body, 'Салон Лилит: ждём вас 16.10 в 12:00, мастер Ани Саргсян.');
+  assert.equal((row.meta as { typeCode?: number }).typeCode, undefined);
+});
+
+test('персоналу: свой шаблон «Клиент записался к вам» (тип 11, канал «Приложение администратора») — мастеру; владельцу без правки — наш текст', async () => {
+  const { db, tables } = world();
+  tables.notifyTypeOverride!.push({ businessId: 'biz_1', code: 11, templates: { adminApp: { ru: 'Новый клиент: {clientName}, {service}, {date} {time}.' } } });
+  const b = booking(TOMORROW_12, { source: 'app' });
+  await notifyStaffOfClientAction(db, db as never, { next: b, events: [event(b, 'created')] as never, by: 'client', tz: TZ, now: NOW });
+  const rows = tables.notifyOutbox!;
+  assert.equal(rows.find((r) => r.recipientUserId === 'us_master')!.body, 'Новый клиент: Мариам, Маникюр, 16.10 12:00.');
+  assert.equal(rows.find((r) => r.recipientUserId === 'us_owner')!.body, 'Мариам booked Маникюр tomorrow at 12:00.');
 });
 
 test('клиенту: своё действие клиента (создал/перенёс сам) — без пуша', async () => {

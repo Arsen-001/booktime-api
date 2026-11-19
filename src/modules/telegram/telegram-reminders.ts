@@ -1,6 +1,9 @@
 import { t } from '../../common/i18n/i18n.js';
 import { normalizePhone } from '../../common/phone.js';
 import type { PrismaService } from '../../common/prisma.service.js';
+import { env } from '../../common/config/env.js';
+import { fillTemplate } from '../notify/notify-log-derive.js';
+import { bookingTemplateVars, typeTemplateOf } from '../notify/notify-type-text.js';
 import { enqueueOutbox } from '../notify/outbox.js';
 import { tgLocale } from './telegram-links.js';
 import { bookingCard, bookingKeyboard, cardText } from './telegram-texts.js';
@@ -80,7 +83,13 @@ export async function enqueueTelegramReminders(prisma: PrismaService, kind: 'rem
     for (const link of links) {
       const locale = tgLocale(link.languageCode);
       const card = await bookingCard(prisma, b, locale);
-      const body = `${t(locale, kind === 'reminder24h' ? 'tg.reminder24h' : 'tg.reminder2h')}\n\n${cardText(card)}`;
+      // Шапка: свой текст салона типа 1 (канал «Telegram») вместо нашей фразы; карточка записи и кнопки — всегда,
+      // как у «Просим подтвердить визит» (хвосты 17.11: правка шаблона в Telegram не доходила)
+      const own = await typeTemplateOf(prisma, b.businessId, REMINDER_TYPE_CODE, 'telegram', locale);
+      const head = own
+        ? fillTemplate(own, bookingTemplateVars({ businessName: card.businessName, service: card.service, staff: card.master, local: card.local, link: `${env.PUBLIC_SITE_URL}/bookings/${b.id}` }))
+        : t(locale, kind === 'reminder24h' ? 'tg.reminder24h' : 'tg.reminder2h');
+      const body = `${head}\n\n${cardText(card)}`;
       const created = await enqueueOutbox(prisma, {
         businessId: b.businessId,
         app: 'telegram',

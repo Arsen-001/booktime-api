@@ -34,6 +34,14 @@ export class WorkdayController {
     return this.svc.unclosed(businessId, ownStaffOf(ctx.member!), Number(days) || UNCLOSED_DAYS);
   }
 
+  @Get('received')
+  @Biz('journal.stats')
+  @ApiOperation({ summary: '«Пульс дня»: деньги, полученные в этот день (как в отчётах с 01.10); мастеру — свои' })
+  received(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Query('date') d?: string, @Query('locationIds') loc?: string) {
+    const locationIds = loc ? loc.split(',').filter(Boolean).slice(0, 50) : undefined;
+    return this.svc.received(businessId, ownStaffOf(ctx.member!), date(d, 'date'), locationIds);
+  }
+
   @Get('day-close')
   @Biz('journal.stats')
   @ApiOperation({ summary: 'Итоги дня: записи, «не пришёл», отмены, выручка, деньги кассы по способам' })

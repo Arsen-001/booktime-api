@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client.js';
 import { BUSINESS_MESSENGER } from '../../adapters/adapters.js';
 import type { BusinessMessenger } from '../../adapters/business-sms/business-sms.js';
@@ -10,6 +10,7 @@ import { newId } from '../../common/ids/ids.js';
 import { logger } from '../../common/logging/logger.js';
 import { maskPhone, normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
+import { FinanceCatalogService } from '../finance/finance-catalog.service.js';
 import { assertIntakeAcceptable } from './order-intake.service.js';
 import { pickupPublicInfo, pickupSetupOf } from './order-pickup.service.js';
 import { notifyOrderEstimate, notifyOrderReady } from './order-notify.js';
@@ -84,7 +85,62 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     @Inject(BUSINESS_MESSENGER) private readonly messenger: BusinessMessenger,
+    @Optional() private readonly financeCatalog?: FinanceCatalogService,
   ) {}
+
+  /**
+   * Ответ 12 (владелец 17.11.2026): деньги заказа — сразу операцией в кассе со способом оплаты, как у записи. Пример:
+   * ателье, пальто 12 000 ֏ — при приёме предоплата 3 000 наличными, при выдаче доплата 9 000 картой: две операции
+   * «Оплата услуги» с подписью «Заказ №1001», видны в «Финансах», смене и Z-отчёте кассы. `amount` < 0 — возврат
+   * (предоплату уменьшили правкой заказа).
+   */
+  private async orderMoneyTx(
+    tx: Prisma.TransactionClient,
+    ctx: RequestContext,
+    order: { id: string; businessId: string; locationId: string | null; number: number; clientId: string | null; clientName: string },
+    amount: number,
+    methodKey: string,
+    stage: 'prepaid' | 'issue' | 'prepaidChange',
+  ): Promise<void> {
+    if (!amount) return;
+    if (!this.financeCatalog) throw new ApiError('validation', 'Finance is not available');
+    await this.financeCatalog.ensureDefaults(order.businessId);
+    const method = await tx.paymentMethod.findFirst({ where: { businessId: order.businessId, key: methodKey, active: true } });
+    if (!method) throw new ApiError('not_found', 'Payment method not found');
+    const account = method.accountId ? await tx.cashRegister.findFirst({ where: { id: method.accountId, businessId: order.businessId } }) : null;
+    if (!account) throw new ApiError('validation', 'Payment method has no cash register');
+    const income = amount > 0;
+    const itemId = await this.financeCatalog.systemItemId(order.businessId, income ? 'servicePayment' : 'refund');
+    const by = ctx.member?.staffId ?? 'system';
+    const at = new Date();
+    const id = newId('finOp');
+    const docNumber = this.financeCatalog.docNumber();
+    const what = stage === 'prepaid' ? 'предоплата' : stage === 'issue' ? 'оплата при выдаче' : income ? 'доплата предоплаты' : 'возврат предоплаты';
+    await tx.finOp.create({
+      data: {
+        id,
+        businessId: order.businessId,
+        locationId: order.locationId ?? account.locationId,
+        accountId: account.id,
+        itemId,
+        kind: income ? 'income' : 'expense',
+        amount: BigInt(Math.abs(amount)),
+        date: at,
+        method: method.kind === 'cash' ? 'cash' : method.kind === 'card' ? 'card' : method.key === 'transfer' ? 'transfer' : 'other',
+        partyType: order.clientId ? 'client' : 'none',
+        partyId: order.clientId ?? undefined,
+        partyName: order.clientName,
+        source: 'order',
+        refId: order.id,
+        docNumber,
+        lineLabel: `Заказ №${order.number} · ${what}`.slice(0, 160),
+        history: [{ at: at.toISOString(), by, action: 'created' }] as Prisma.InputJsonValue,
+        createdBy: by,
+        updatedBy: by,
+      },
+    });
+    await tx.financeDocument.create({ data: { id: newId('financeDocument'), businessId: order.businessId, number: docNumber, date: at, type: income ? 'payment' : 'refund', amount: BigInt(Math.abs(amount)), refOperationId: id, createdBy: by, updatedBy: by } });
+  }
 
   private out(ctx: RequestContext, row: OrderRow): OrderView {
     const v = orderView(row);
@@ -199,6 +255,8 @@ export class OrdersService {
         createdAt: now,
       });
       await this.audit.record(tx, ctx, { action: 'created', entityType: 'order', entityId: created.id, businessId, after: auditOf(created) });
+      // Ответ 12: предоплата при приёме — сразу в кассу выбранным способом
+      if (prepaid > 0 && body.prepaidMethod) await this.orderMoneyTx(tx, ctx, created, prepaid, body.prepaidMethod, 'prepaid');
       return created;
     })
       .catch((err: unknown) => {
@@ -240,6 +298,8 @@ export class OrdersService {
     const row = await this.prisma.$transaction(async (tx) => {
       const after = (await tx.order.update({ where: { id: before.id }, data })) as OrderRow;
       await this.audit.record(tx, ctx, { action: 'update', entityType: 'order', entityId: before.id, businessId, before: auditOf(before), after: auditOf(after) });
+      // Ответ 12: предоплату поменяли — разница сразу в кассу (больше — приход, меньше — возврат)
+      if (body.prepaid !== undefined && body.prepaid !== before.prepaid && body.prepaidMethod) await this.orderMoneyTx(tx, ctx, after, body.prepaid - before.prepaid, body.prepaidMethod, 'prepaidChange');
       return after;
     });
     return this.out(ctx, row);
@@ -247,7 +307,7 @@ export class OrdersService {
 
   // ─────────── статус и «готов» ───────────
 
-  async setStatus(ctx: RequestContext, businessId: string, orderId: string, to: OrderStatus): Promise<OrderView> {
+  async setStatus(ctx: RequestContext, businessId: string, orderId: string, to: OrderStatus, payment?: { amount: number; methodKey: string }): Promise<OrderView> {
     const before = await this.find(businessId, orderId);
     if (!canTransition(before.status, to, before.estimateStatus)) throw new ApiError('invalid_order_transition', `Cannot move order from ${before.status} to ${to}`);
     const now = new Date();
@@ -266,6 +326,8 @@ export class OrdersService {
       if (res.count !== 1) throw new ApiError('invalid_order_transition', 'Order status changed concurrently');
       const after = (await tx.order.findUniqueOrThrow({ where: { id: before.id } })) as OrderRow;
       await this.audit.record(tx, ctx, { action: 'update', entityType: 'order', entityId: before.id, businessId, before: { status: before.status }, after: { status: to } });
+      // Ответ 12: «Выдать клиенту» — доплата сразу в кассу выбранным способом
+      if (to === 'issued' && payment && payment.amount > 0) await this.orderMoneyTx(tx, ctx, after, payment.amount, payment.methodKey, 'issue');
       return after;
     });
     if (to === 'ready') await this.notifyReady(row, now);
@@ -435,7 +497,10 @@ export class OrdersService {
       : await this.prisma.location.findFirst({ where: { businessId: row.businessId, deletedAt: null }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], select: { address: true, phone: true } });
     const address = (loc?.address as { ru?: string; hy?: string; en?: string } | null) ?? null;
     const pickup = await pickupPublicInfo(this.prisma, row);
-    return publicOrderView(row, { name: biz.name, phone: loc?.phone || biz.phone, address: address?.ru || address?.hy || address?.en || '', slug: biz.slug }, pickup);
+    // Адрес целиком на трёх языках: страница клиента выбирает свой язык (было только ru — на hy/en «ул. Туманяна», проход 17.11)
+    const ru = address?.ru || address?.hy || address?.en || '';
+    const addressText = ru ? { ru, ...(address?.hy ? { hy: address.hy } : {}), ...(address?.en ? { en: address.en } : {}) } : '';
+    return publicOrderView(row, { name: biz.name, phone: loc?.phone || biz.phone, address: addressText, slug: biz.slug }, pickup);
   }
 }
 

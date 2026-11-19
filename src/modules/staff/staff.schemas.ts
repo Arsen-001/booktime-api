@@ -21,6 +21,8 @@ export type AddStaffBody = z.infer<typeof addStaffBody>;
 export const patchStaffBody = z
   .object({
     name: z.string().max(120),
+    /** Имя на трёх языках для клиентов (17.11.2026); null — снять переводы */
+    nameI18n: z.object({ ru: z.string().max(120).optional(), hy: z.string().max(120).optional(), en: z.string().max(120).optional() }).strict().nullable(),
     phone: z.string().max(40),
     email: z.string().max(160).nullable(),
     /** Название должности; нет в каталоге — создаётся (F-10-048); '' — снять */

@@ -2,17 +2,19 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req } fr
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { RequestContext, RequestWithContext } from '../../common/http/context.js';
-import { Biz, Ctx } from '../../common/http/guards.js';
+import { Biz, BizAny, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { ifMatch } from '../../common/http/version.js';
 import {
   activeBody,
+  onlineBookableBody,
   categoryBody,
   categoryDeleteImpactOut,
   categoryOut,
   createServiceBody,
   deleteImpactOut,
+  fromTemplatesBody,
   materialsProfileBody,
   orderBody,
   packageCreateBody,
@@ -183,6 +185,14 @@ export class ServicesController {
     return this.svc.createService(ctx, businessId, body);
   }
 
+  @Post('services/from-templates')
+  @Biz('services.edit')
+  @ZodBody(fromTemplatesBody)
+  @ZodOk(z.object({ services: z.array(serviceOut), categories: z.array(categoryOut) }))
+  createFromTemplates(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(fromTemplatesBody)) body: z.infer<typeof fromTemplatesBody>) {
+    return this.svc.createFromTemplates(ctx, businessId, body);
+  }
+
   @Patch('services/:id')
   @Biz('services.edit')
   @ZodBody(serviceBody)
@@ -203,6 +213,18 @@ export class ServicesController {
   @ZodOk(serviceOut)
   setActive(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(activeBody)) body: z.infer<typeof activeBody>) {
     return this.svc.setActive(ctx, businessId, id, body.active);
+  }
+
+  /**
+   * «Онлайн-запись услуги» во вкладке «Онлайн-запись» карточки услуги (F-03-129): одно поле, без полной формы.
+   * Право — как у самой вкладки (online.manage) или редактирование услуг (17.11: переключатель писал только в браузер)
+   */
+  @Put('services/:id/online-bookable')
+  @BizAny('services.edit', 'online.manage')
+  @ZodBody(onlineBookableBody)
+  @ZodOk(serviceOut)
+  setOnlineBookable(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(onlineBookableBody)) body: z.infer<typeof onlineBookableBody>) {
+    return this.svc.setOnlineBookable(ctx, businessId, id, body.onlineBookable);
   }
 
   @Put('services/:id/tech-break')

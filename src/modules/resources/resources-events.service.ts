@@ -902,7 +902,9 @@ export class ResourcesEventsService {
 
   async getBookingAssistants(businessId: string, bookingId: string, serviceIndex: number) {
     const b = await this.prisma.booking.findFirst({ where: { id: bookingId, businessId }, select: { extras: true } });
-    return bookingExtrasOf(b?.extras).serviceLineExtras?.[serviceIndex]?.assistants ?? [];
+    // Хранится как доля строки зарплаты { staffId, sharePct }, сайт ждёт { staffId, sharePercent } — как ответ PUT
+    // (было: отдавали sharePct, и окно записи показывало «undefined%», а повторное сохранение теряло долю)
+    return (bookingExtrasOf(b?.extras).serviceLineExtras?.[serviceIndex]?.assistants ?? []).map((a) => ({ staffId: a.staffId, sharePercent: a.sharePct }));
   }
 
   async setBookingAssistants(businessId: string, bookingId: string, serviceIndex: number, assistants: { staffId: string; sharePercent: number }[], shareRule: 'full' | 'split') {

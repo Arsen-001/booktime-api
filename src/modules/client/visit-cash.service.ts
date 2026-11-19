@@ -7,6 +7,7 @@ import { PrismaService } from '../../common/prisma.service.js';
 import { localDayRangeUtc, utcToLocal, utcToLocalDate } from '../../common/time/time.js';
 import { BookingsService } from '../journal/bookings.service.js';
 import { waLink } from '../notify/wa-link.js';
+import { assertBusinessAppRecipient } from './app-recipient.js';
 
 /**
  * «Визит-микрокасса» (F-14-092…098), стадия 21 (лейн client+online, попытка 4): `src/api/client.ts::
@@ -214,7 +215,9 @@ export class VisitCashService {
   }
 
   /** Отправить клиенту квитанцию об оплате визита — пушем в ленту (F-14-095) */
+  /** Чек визита в ленту клиента (F-14-095) — только клиенту этого бизнеса (assertBusinessAppRecipient), иначе 404 */
   async sendVisitReceipt(businessId: string, bookingId: string, input: { appUserId: string; total: number }) {
+    await assertBusinessAppRecipient(this.prisma, businessId, input.appUserId, bookingId);
     const row = await this.prisma.inboxItem.create({
       data: { id: newId('inboxItem'), appUserId: input.appUserId, businessId, bookingId, kind: 'receipt', params: { amount: input.total } as Prisma.InputJsonValue },
     });

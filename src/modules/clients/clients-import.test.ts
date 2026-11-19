@@ -243,3 +243,16 @@ test('fillEmptyPatch: пол «не указан» заполняется, ук�
   const ex = { lastName: null, email: null, note: null, birthday: null, gender: 'female', tags: ['VIP'], additionalPhone: null, discountPercent: 5, cardNumber: null, importedSold: 0n, paidAmount: 0n };
   assert.deepEqual(fillEmptyPatch(ex, { rowIndex: 0, name: 'A', phone: '+37493000001', gender: 'male', tags: ['New'], discountPercent: 10, lastName: 'Б' }), { lastName: 'Б' });
 });
+
+test('тонкие права клиентской базы: свои читает сам сотрудник, чужие — только со staff.manage, чужой бизнес — пусто (проход 17.11)', async () => {
+  const rows = [{ staffId: 'st_admin', businessId: 'biz_1', rights: { exportList: false } }, { staffId: 'st_other', businessId: 'biz_2', rights: { exportList: true } }];
+  const prisma = { clientFineRights: { findUnique: async ({ where }: { where: { staffId: string } }) => rows.find((r) => r.staffId === where.staffId) ?? null } };
+  const { ClientsExtrasService } = await import('./clients-extras.service.js');
+  const extras = new ClientsExtrasService(prisma as never, {} as never);
+  const controller = new ClientsController({} as never, extras, {} as never, {} as never);
+  const ctx = (staffId: string, perms: string[]) => ({ member: { staffId, permissions: new Set(perms) } }) as never;
+  assert.deepEqual(await controller.getFineRights(ctx('st_admin', []), 'biz_1', 'st_admin'), { exportList: false });
+  assert.throws(() => controller.getFineRights(ctx('st_master', []), 'biz_1', 'st_admin'), (e: unknown) => e instanceof ApiError && e.code === 'forbidden');
+  assert.deepEqual(await controller.getFineRights(ctx('st_owner', ['staff.manage']), 'biz_1', 'st_admin'), { exportList: false });
+  assert.equal(await controller.getFineRights(ctx('st_owner', ['staff.manage']), 'biz_1', 'st_other'), undefined);
+});

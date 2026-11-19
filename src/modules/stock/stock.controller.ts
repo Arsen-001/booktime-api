@@ -39,6 +39,24 @@ import { TechCardsService } from './tech-cards.service.js';
  * Склад (docs/backend/02-api.md §13, PLAN §6 №13). Владелец данных — сам бизнес (как финансы, этап 12),
  * не сеть — сетевое копирование товаров (F-08-130/135) не строим в этом проходе (см. PROGRESS.md «Не строил»).
  */
+/**
+ * Ответ 17 (владелец 17.11.2026): с одним «смотреть склад» (без stock.edit, обычно мастер) — товары и остатки без сумм
+ * салона: себестоимость отдаём нулём (цена продажи остаётся — мастер продаёт товар в визите).
+ */
+function hideCost<T>(ctx: RequestContext, value: T): T {
+  if (ctx.member?.permissions.has('stock.edit')) return value;
+  const strip = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(strip);
+    if (v && typeof v === 'object') {
+      const o = v as Record<string, unknown>;
+      if (Array.isArray(o.items)) return { ...o, items: o.items.map(strip) };
+      if ('costPrice' in o) return { ...o, costPrice: 0 };
+    }
+    return v;
+  };
+  return strip(value) as T;
+}
+
 @ApiTags('stock')
 @Controller('v1/biz/:businessId/stock')
 export class StockController {
@@ -157,20 +175,20 @@ export class StockController {
 
   @Get('products')
   @Biz('stock.view')
-  listGoods(@Param('businessId') businessId: string, @Query() q: Record<string, string | undefined>) {
-    return this.catalog.listGoods(businessId, q.locationId!, { categoryId: q.categoryId, search: q.search, includeArchived: q.includeArchived === '1' || q.includeArchived === 'true', page: q.page ? Number(q.page) : undefined, pageSize: q.pageSize ? Number(q.pageSize) : undefined });
+  async listGoods(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Query() q: Record<string, string | undefined>) {
+    return hideCost(ctx, await this.catalog.listGoods(businessId, q.locationId!, { categoryId: q.categoryId, search: q.search, includeArchived: q.includeArchived === '1' || q.includeArchived === 'true', page: q.page ? Number(q.page) : undefined, pageSize: q.pageSize ? Number(q.pageSize) : undefined }));
   }
 
   @Get('products/search')
   @Biz('stock.view')
-  searchGoods(@Param('businessId') businessId: string, @Query('locationId') locationId: string, @Query('q') query = '', @Query('limit') limit?: string) {
-    return this.catalog.searchGoods(businessId, locationId, query, limit ? Number(limit) : undefined);
+  async searchGoods(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Query('locationId') locationId: string, @Query('q') query = '', @Query('limit') limit?: string) {
+    return hideCost(ctx, await this.catalog.searchGoods(businessId, locationId, query, limit ? Number(limit) : undefined));
   }
 
   @Get('products/:id')
   @Biz('stock.view')
-  getGood(@Param('businessId') businessId: string, @Param('id') id: string) {
-    return this.catalog.getGood(businessId, id);
+  async getGood(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('id') id: string) {
+    return hideCost(ctx, await this.catalog.getGood(businessId, id));
   }
 
   @Get('products/:id/history')
@@ -267,20 +285,21 @@ export class StockController {
 
   // ─────────────────────────── Операции: приход/списание/перемещение/продажа (F-08-046…078) ───────────────────────────
 
+  // Ответ 17 (17.11.2026): с одним «смотреть склад» (мастер) — только товары и остатки; операции и инвентаризации (суммы салона) — со stock.edit
   @Get('stock-ops')
-  @Biz('stock.view')
+  @Biz('stock.edit')
   listOps(@Param('businessId') businessId: string, @Query() q: Record<string, string | undefined>) {
     return this.ops.listOps(businessId, { type: q.type, warehouseId: q.warehouseId, goodId: q.goodId, dateFrom: q.dateFrom, dateTo: q.dateTo, search: q.search, page: q.page ? Number(q.page) : undefined, pageSize: q.pageSize ? Number(q.pageSize) : undefined });
   }
 
   @Get('stock-ops/:id')
-  @Biz('stock.view')
+  @Biz('stock.edit')
   getOp(@Param('businessId') businessId: string, @Param('id') id: string) {
     return this.ops.getDoc(businessId, id);
   }
 
   @Get('stock-ops/:id/history')
-  @Biz('stock.view')
+  @Biz('stock.edit')
   getOpHistory(@Param('businessId') businessId: string, @Param('id') id: string) {
     return this.catalog.listEntityHistory(businessId, 'stockOperation', id);
   }
@@ -394,13 +413,13 @@ export class StockController {
   // ─────────────────────────── Инвентаризация (F-08-079…089) ───────────────────────────
 
   @Get('inventories')
-  @Biz('stock.view')
+  @Biz('stock.edit')
   listInventories(@Param('businessId') businessId: string, @Query('locationId') locationId: string) {
     return this.inventories.list(businessId, locationId);
   }
 
   @Get('inventories/:id')
-  @Biz('stock.view')
+  @Biz('stock.edit')
   getInventory(@Param('businessId') businessId: string, @Param('id') id: string) {
     return this.inventories.get(businessId, id);
   }

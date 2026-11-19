@@ -28,12 +28,16 @@ export const groupEventsBody = z.object({
   threshold: z.number().min(0),
 });
 
+/** F-09-008/015: три ставки за личные услуги при ассистировании (как AssistRates сайта); до 17.11 сервер их отбрасывал */
+export const assistRatesBody = z.object({ withoutAssistant: payoutValueBody, withAssistant: payoutValueBody.optional(), asAssistant: payoutValueBody });
+
 export const personalServicesBlockBody = z.object({
   enabled: z.boolean(),
   defaultPayout: payoutValueBody,
   overrides: z.array(payoutOverrideBody),
   demoConsumablesPercent: z.number().min(0).max(100).optional(),
   consumables: consumablesSettingsBody,
+  assistRates: assistRatesBody.optional(),
   loyaltyAdjustment: loyaltyAdjustmentBody,
   groupEvents: groupEventsBody,
 });
@@ -76,6 +80,24 @@ export const schemeBlocksBody = z.object({
   extraProductRevenue: extraRevenueBlockBody,
 });
 export type SchemeBlocksBody = z.infer<typeof schemeBlocksBody>;
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * Сохранение схемы сотрудника (З6): шесть блоков + «Действует с». Нет даты — правка текущей версии (её дата не
+ * меняется), та же дата — тоже правка, более поздняя — новая версия, прежняя действует до неё. Историю версий ведёт
+ * сервер: `history` из тела не принимается (снимается, как любое лишнее поле).
+ */
+export const schemeSaveBody = schemeBlocksBody.extend({ effectiveFrom: isoDate.nullable().optional() });
+export type SchemeSaveBody = z.infer<typeof schemeSaveBody>;
+
+/** З12 «Применить к…»: схема образца — новой версией выбранным сотрудникам с этой даты, всем или никому */
+export const applySchemeBody = z.object({ sourceStaffId: z.string().min(1), staffIds: z.array(z.string().min(1)).min(1).max(500), effectiveFrom: isoDate });
+export type ApplySchemeBody = z.infer<typeof applySchemeBody>;
+
+/** З11: «Закрыть период» — по этот день включительно версии схем не меняются; дата двигается только вперёд */
+export const closePeriodBody = z.object({ through: isoDate });
+export type ClosePeriodBody = z.infer<typeof closePeriodBody>;
 
 export const generalSettingsBody = z.object({
   accrualDateBasis: z.enum(['visit', 'received']),
@@ -149,6 +171,12 @@ export const payoutBody = z.object({
   accountId: z.string().min(1),
   amount: z.number().min(1),
   comment: z.string().max(400).optional(),
+  /** Способ выплаты (ответ 28, 17.11.2026): наличными из кассы или переводом с карты — по умолчанию наличные */
+  method: z.enum(['cash', 'card', 'transfer', 'other']).optional(),
+  /** Момент выплаты 'YYYY-MM-DDTHH:mm' по Еревану (окно «Выплатить»); нет — сейчас */
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional(),
+  /** Ведомость, по которой платим («Отметить выплаченным», ответ 28): подписанная — станет «Выплачено» */
+  sheetId: z.string().min(1).optional(),
 });
 export type PayoutBody = z.infer<typeof payoutBody>;
 

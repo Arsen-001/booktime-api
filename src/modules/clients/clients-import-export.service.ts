@@ -5,7 +5,6 @@ import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { clientRowView } from './clients.views.js';
 import { cleanImportRow, fillEmptyPatch, IMPORT_BATCH_MAX, type ImportRowInput } from './clients-import.rules.js';
 import { recordDataOp } from '../staff/data-ops.js';
 
@@ -188,9 +187,8 @@ export class ClientsImportExportService {
 
   // ─────────── выгрузка (F-04-130, P4: закрыта по умолчанию, право clients.export) ───────────
 
-  async exportClients(ctx: RequestContext, businessId: string, ids: string[], authorName: string, fileName: string) {
-    const rows = await this.prisma.client.findMany({ where: { id: { in: ids }, businessId, deletedAt: null } });
-    const view = rows.map(clientRowView);
+  /** Журнал выгрузки; сами строки (с визитами и деньгами, как в списке) собирает ClientsService.exportRows */
+  async exportClients<T>(ctx: RequestContext, businessId: string, view: T[], authorName: string, fileName: string): Promise<T[]> {
     await this.prisma.$transaction(async (tx) => {
       await tx.dataExport.create({ data: { id: newId('dataExport'), businessId, area: 'clients', authorId: ctx.member!.staffId, authorName, count: view.length, fileName } });
       await this.audit.record(tx, ctx, { action: 'export', entityType: 'clientExport', entityId: businessId, businessId, after: { count: view.length, fileName } });

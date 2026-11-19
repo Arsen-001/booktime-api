@@ -34,6 +34,9 @@ export const promoCreateBody = z.object({
   issuedTo: z.object({ name: z.string().min(1).max(160), phone: z.string().max(20).optional(), visitId: z.string().max(32).optional(), businessId: z.string().max(32).optional() }).optional(),
 });
 export const promoCheckQuery = z.object({ code: z.string().min(1).max(40), businessId: z.string().max(32).optional() });
+/** «Отсрочка N дней» из панели (ответ 30, 17.11.2026) */
+export const graceBody = z.object({ days: z.number().int().min(1).max(60) });
+
 export const freeMonthsBody = z.object({
   businessId: z.string().min(1).max(32),
   days: z.number().int().min(1).max(366),

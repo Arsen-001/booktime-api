@@ -145,8 +145,11 @@ export class FinanceController {
 
   // ─────────────────────────── Методы оплаты (упрощённо) ───────────────────────────
 
+  // Способы оплаты нужны всем, кто принимает деньги: оплата визита (journal.edit), продажа абонемента и сертификата
+  // (loyalty.manage), продажа товара (stock.edit), кассовая смена (finance.shift). Сумм здесь нет — только названия и
+  // кассы (проход 17.11: администратор не мог продать сертификат — пустой выбор способа, 403)
   @Get('payment-methods')
-  @Biz('finance.view')
+  @BizAny('finance.view', 'journal.edit', 'loyalty.manage', 'stock.edit', 'finance.shift')
   listMethods(@Param('businessId') businessId: string) {
     return this.catalog.listMethods(businessId);
   }
@@ -176,14 +179,16 @@ export class FinanceController {
 
   // ─────────────────────────── Контрагенты ───────────────────────────
 
+  // Поставщики нужны и складу: приход и заказ поставщику ведёт администратор (stock.edit, владелец 01.10.2026) без права
+  // на финансы — в справочнике только контакты, без денег (проход 17.11: администратор получал 403 в «Приходе»)
   @Get('counterparties')
-  @Biz('finance.view')
+  @BizAny('finance.view', 'stock.edit')
   listCounterparties(@Param('businessId') businessId: string) {
     return this.catalog.listCounterparties(businessId);
   }
 
   @Post('counterparties')
-  @Biz('finance.edit')
+  @BizAny('finance.edit', 'stock.edit')
   @ZodBody(counterpartyBody)
   createCounterparty(@Ctx() ctx: RequestContext, @Body(new Zod(counterpartyBody)) body: z.infer<typeof counterpartyBody>) {
     return this.catalog.createCounterparty(ctx, body);
@@ -252,6 +257,31 @@ export class FinanceController {
       search: q.search,
     };
     return this.ops.list(businessId, filter);
+  }
+
+  /** Список «Финансы → Операции» страницей: фильтры, итоги и «Остаток в кассе» считает сервер (17.11.2026) */
+  @Get('fin-ops/page')
+  @Biz('finance.view')
+  pageOps(@Param('businessId') businessId: string, @Query() q: Record<string, string | undefined>) {
+    const num = (v: string | undefined, d: number) => (v && /^\d+$/.test(v) ? Number(v) : d);
+    return this.ops.page(businessId, {
+      locationIds: splitCsv(q.locationIds),
+      accountId: q.accountId,
+      accountIds: q.accountIds === undefined ? undefined : splitCsv(q.accountIds) ?? [],
+      itemId: q.itemId,
+      kind: q.kind,
+      transfer: q.transfer === 'true' || q.transfer === '1',
+      method: q.method,
+      partyType: q.partyType,
+      partyId: q.partyId,
+      cancelled: q.cancelled === undefined ? undefined : q.cancelled === 'true',
+      dateFrom: q.dateFrom,
+      dateTo: q.dateTo,
+      search: q.search,
+      page: num(q.page, 1),
+      pageSize: num(q.pageSize, 20),
+      withBalance: q.withBalance === 'true' || q.withBalance === '1',
+    });
   }
 
   @Get('fin-ops/:id')

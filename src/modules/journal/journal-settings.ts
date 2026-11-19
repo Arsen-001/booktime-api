@@ -87,6 +87,13 @@ export interface JournalArea {
   /** Статусы, скрытые фильтром воронки (F-01-014) — только индивидуальные записи */
   hiddenStatuses: string[];
   // === /stage 21 ===
+  /**
+   * «Мои наборы» мастеров (⭐ 29.09.2026) — личные: id сотрудника → наборы. Отдаём и меняем только свои
+   * (journal.service: ownJournalPrefs, patchConfig). До 17.11 жили только в браузере — на другом устройстве пропадали
+   */
+  staffSets: Record<string, { id: string; name: string; staffIds: string[] }[]>;
+  /** Вид дня сотрудника (⭐ 29.09.2026) — личный, как наборы: id сотрудника → columns | overview | timeline | list */
+  dayLayouts: Record<string, string>;
 }
 
 export function defaultJournalArea(): JournalArea {
@@ -105,6 +112,8 @@ export function defaultJournalArea(): JournalArea {
     hotDiscountPct: {},
     zoomMin: 15,
     hiddenStatuses: [],
+    staffSets: {},
+    dayLayouts: {},
   };
 }
 

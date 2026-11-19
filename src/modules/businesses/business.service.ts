@@ -51,7 +51,8 @@ export class BusinessService {
 
   // ─────────── регистрация (F-00-035, F-00-052, В-02) ───────────
 
-  async register(ctx: RequestContext, input: RegisterBusinessBody) {
+  /** `keepActiveBusiness` — сессия остаётся в текущем кабинете («Новый филиал» внутри сети, ответ 31) */
+  async register(ctx: RequestContext, input: RegisterBusinessBody, opts: { keepActiveBusiness?: boolean } = {}) {
     const session = ctx.session!;
     if (session.staffLoginId) throw new ApiError('forbidden', 'Admin login cannot register a business');
     const phone = normalizePhone(input.phone);
@@ -126,7 +127,7 @@ export class BusinessService {
         businessId,
         after: { name, kind: input.kind, sphereIds: input.sphereIds, slug },
       });
-      await tx.session.update({ where: { id: session.sessionId }, data: { mode: 'business', activeBusinessId: businessId } });
+      if (!opts.keepActiveBusiness) await tx.session.update({ where: { id: session.sessionId }, data: { mode: 'business', activeBusinessId: businessId } });
       // Этап 18: подписка (В-02: unpaid до оплаты) и промокод регистрации (В-13) — в той же транзакции
       const promoApplied = await onBusinessRegistered(tx, businessId, input.promoCode, session.userId);
       return { businessId, promoApplied };

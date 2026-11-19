@@ -4,13 +4,15 @@
  * разойтись между демо и живым сервером), адаптирован только источник входных данных (Prisma-строки вместо
  * `readCore()`/`readArea()`).
  *
+ * Ассистенты услуги (F-09-046/047) — перенесены 17.11.2026: кто ассистировал в строке визита, окно записи пишет в
+ * bookings.extras.serviceLineExtras[i].assistants (resources-events.service setBookingAssistants), доли — computeAssistSplit.
  * Честно НЕ портировано (см. docs/PROGRESS.md «Этап 14», раздел «Не строил»):
- * — ассистенты услуги (F-09-046/047): нет таблицы «кто ассистировал» ни в одном из построенных разделов
- *   (bookingAssistants мока живёт только в браузере, resources.ts backend его не пишет);
  * — деление комиссии эквайринга (F-09-007/107): по умолчанию `businessOnly` = 0 влияния на сотрудника, всегда;
  * Оплата за продажу товаров (F-09-031…034, З9) — перенесена: продавец строки/документа склада, см.
  * PayrollComputeService.productSalesPay (как productSalesPay мока).
  */
+
+import { utcToLocal, utcToLocalDate } from '../../common/time/time.js';
 
 // ─────────────────────────── Ставка (% или сумма) ───────────────────────────
 
@@ -72,12 +74,79 @@ export interface GroupEventsBlock {
   threshold: number;
 }
 
+/** F-09-008/015: ставки за личные услуги при ассистировании (AssistRates сайта) */
+export interface AssistRates {
+  withoutAssistant: PayoutValue;
+  withAssistant?: PayoutValue;
+  asAssistant: PayoutValue;
+}
+
+export function defaultAssistRates(): AssistRates {
+  return { withoutAssistant: { ...DEFAULT_PAYOUT }, asAssistant: { ...DEFAULT_PAYOUT } };
+}
+
+// ─────────────────────────── F-09-047: доли мастера и ассистентов (computeAssistSplit сайта) ───────────────────────────
+
+export interface AssistantShare {
+  staffId: string;
+  /** Доля 0–100 (F-09-009: при «делится» — считается сама, при «полной каждому» — по умолчанию 100) */
+  sharePct: number;
+}
+
+export interface AssistSplitResult {
+  masterAmount: number;
+  assistants: { staffId: string; amount: number }[];
+}
+
+/**
+ * F-09-047 — как мок буквально. Ассистент = ставка «как ассистент» × доля. Мастер: если задана ставка «с ассистентом» —
+ * берёт её целиком; иначе — «без ассистента» минус сумма выплат ассистентам (не ниже нуля, F-09-026).
+ * Пример ТЗ: услуга 10 000, без ассистента 50 %, как ассистент 10 % → ассистент 1 000, мастер 5 000 − 1 000 = 4 000.
+ */
+export function computeAssistSplit(serviceTotal: number, rates: AssistRates, assistants: AssistantShare[]): AssistSplitResult {
+  const assistantAmounts = assistants.map((a) => ({ staffId: a.staffId, amount: roundMoney((applyPayout(serviceTotal, rates.asAssistant) * a.sharePct) / 100) }));
+  const assistantsSum = roundMoney(assistantAmounts.reduce((sum, a) => sum + a.amount, 0));
+  const masterAmount = rates.withAssistant
+    ? applyPayout(serviceTotal, rates.withAssistant)
+    : roundMoney(Math.max(0, applyPayout(serviceTotal, rates.withoutAssistant) - assistantsSum));
+  return { masterAmount, assistants: assistantAmounts };
+}
+
+/** Ассистенты строк визита из bookings.extras.serviceLineExtras[i].assistants (пишет окно записи) */
+export function lineAssistantsOf(extras: unknown): AssistantShare[][] {
+  const lines = (extras as { serviceLineExtras?: { assistants?: { staffId?: unknown; sharePct?: unknown }[] }[] } | null)?.serviceLineExtras;
+  if (!Array.isArray(lines)) return [];
+  return lines.map((l) =>
+    (Array.isArray(l?.assistants) ? l.assistants : [])
+      .filter((a) => typeof a?.staffId === 'string')
+      .map((a) => ({ staffId: a.staffId as string, sharePct: Number(a.sharePct ?? 0) })),
+  );
+}
+
+/**
+ * Сотрудники + мастера, у которых они ассистировали в этих визитах: доля ассистента считается по схеме мастера строки
+ * (как мок), поэтому в ведомость ассистента нужна и схема мастера. Ани ассистировала Мариам → [Ани, Мариам].
+ */
+export function withAssistedMasters(staffIds: readonly string[], bookings: readonly Pick<EngineBooking, 'services' | 'lineAssistants'>[]): string[] {
+  const mine = new Set(staffIds);
+  const out = new Set(staffIds);
+  for (const b of bookings) {
+    b.lineAssistants?.forEach((list, i) => {
+      const master = b.services[i]?.staffId;
+      if (master && list.some((a) => mine.has(a.staffId))) out.add(master);
+    });
+  }
+  return [...out];
+}
+
 export interface PersonalServicesBlock {
   enabled: boolean;
   defaultPayout: PayoutValue;
   overrides: PayoutOverride[];
   demoConsumablesPercent?: number;
   consumables: ConsumablesSettings;
+  /** Схемы до 17.11 — без поля (сервер его отбрасывал); отдаём с ставками по умолчанию (schemeView) */
+  assistRates?: AssistRates;
   loyaltyAdjustment: LoyaltyAdjustmentBlock;
   groupEvents: GroupEventsBlock;
 }
@@ -185,6 +254,7 @@ export function emptySchemeBlocks(): SchemeBlocks {
       overrides: [],
       demoConsumablesPercent: 0,
       consumables: defaultConsumablesSettings(),
+      assistRates: defaultAssistRates(),
       loyaltyAdjustment: defaultLoyaltyAdjustment(),
       groupEvents: defaultGroupEvents(),
     },
@@ -219,6 +289,91 @@ export function isSchemeBlank(scheme: SchemeBlocks): boolean {
     !scheme.extraServiceRevenue.enabled &&
     !scheme.extraProductRevenue.enabled
   );
+}
+
+// ─────────────────────────── З6: версии схемы («Действует с») — порт мока ───────────────────────────
+
+/** Одна версия схемы: шесть блоков + «Действует с» ('YYYY-MM-DD'; нет — действует с самого начала) */
+export type SchemeVersion = SchemeBlocks & { effectiveFrom?: string; updatedAt?: string };
+
+/** Схема с историей — текущая версия и прежние от старой к новой (PayrollScheme мока) */
+export type VersionedScheme = SchemeVersion & { history?: SchemeVersion[] };
+
+export type SchemeVersionErrorKey = 'overlap' | 'closed';
+
+/** Только шесть блоков схемы (без дат, истории и служебных полей) — то, что лежит в PayrollScheme.data */
+export function schemeBlocksOf(s: SchemeBlocks): SchemeBlocks {
+  return {
+    personalServices: s.personalServices,
+    productSales: s.productSales,
+    workday: s.workday,
+    records: s.records,
+    extraServiceRevenue: s.extraServiceRevenue,
+    extraProductRevenue: s.extraProductRevenue,
+  };
+}
+
+function stripHistory<T extends VersionedScheme>(scheme: T): Omit<T, 'history'> {
+  const { history: _history, ...rest } = scheme;
+  void _history;
+  return rest;
+}
+
+/** Все версии схемы от старой к новой (последняя — текущая) */
+export function schemeVersions<T extends VersionedScheme>(scheme: T): SchemeVersion[] {
+  return [...(scheme.history ?? []), stripHistory(scheme)];
+}
+
+/**
+ * З6: версия схемы, действующая на дату — с наибольшей «Действует с» ≤ date. Дата раньше всех версий — самая старая
+ * версия (так схемы, сохранённые до появления «Действует с», считают прошлое как раньше). Буквально schemeAtDate мока.
+ */
+export function schemeAtDate<T extends VersionedScheme>(scheme: T, date: string): SchemeVersion {
+  if (!scheme.history?.length) return scheme;
+  const versions = schemeVersions(scheme);
+  let best: SchemeVersion | undefined;
+  for (const v of versions) {
+    const from = v.effectiveFrom ?? '';
+    if (from <= date && (!best || from >= (best.effectiveFrom ?? ''))) best = v;
+  }
+  return best ?? versions[0]!;
+}
+
+/** Ключи объектов по алфавиту: MySQL хранит JSON со своим порядком ключей, а тело запроса — в порядке схемы zod */
+function canonicalJson(v: unknown): string {
+  const norm = (x: unknown): unknown =>
+    Array.isArray(x) ? x.map(norm) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, norm((x as Record<string, unknown>)[k])])) : x;
+  return JSON.stringify(norm(v));
+}
+
+/** Блоки двух версий совпадают (даты и история не в счёт) — schemeBlocksEqual мока, без зависимости от порядка ключей */
+export function schemeBlocksEqual(a: SchemeBlocks, b: SchemeBlocks): boolean {
+  return canonicalJson(schemeBlocksOf(a)) === canonicalJson(schemeBlocksOf(b));
+}
+
+/**
+ * З6/З11: сохранить новую версию — буквально applySchemeVersion мока. Та же дата «Действует с» — правка текущей версии;
+ * более поздняя — прежняя уходит в историю; более ранняя, чем у текущей версии, — пересечение (отказ); дата в закрытом
+ * периоде при изменённых ставках — отказ (правка задним числом идёт корректировкой в следующий период).
+ */
+export function applySchemeVersion<T extends VersionedScheme>(existing: T | undefined, next: T, closedThrough?: string): { scheme: VersionedScheme } | { error: SchemeVersionErrorKey } {
+  const nextVersion: SchemeVersion = stripHistory(next);
+  if (!existing) {
+    if (closedThrough && nextVersion.effectiveFrom && nextVersion.effectiveFrom <= closedThrough) return { error: 'closed' };
+    return { scheme: nextVersion };
+  }
+  const history = existing.history ?? [];
+  const changed = !schemeBlocksEqual(existing, nextVersion);
+  const from = nextVersion.effectiveFrom ?? existing.effectiveFrom;
+  if (changed && closedThrough && (from ?? '') <= closedThrough) return { error: 'closed' };
+  const prevFrom = history.length ? (history[history.length - 1]!.effectiveFrom ?? '') : undefined;
+  if (!changed || from === existing.effectiveFrom) {
+    // Правка текущей версии: дата не может уйти раньше предыдущей версии
+    if (prevFrom !== undefined && (from ?? '') <= prevFrom) return { error: 'overlap' };
+    return { scheme: { ...nextVersion, effectiveFrom: from, history: history.length ? history : undefined } };
+  }
+  if ((from ?? '') < (existing.effectiveFrom ?? '')) return { error: 'overlap' };
+  return { scheme: { ...nextVersion, effectiveFrom: from, history: [...history, stripHistory(existing)] } };
 }
 
 // ─────────────────────────── Движок: расчёт за день ───────────────────────────
@@ -340,6 +495,8 @@ export interface EngineBooking {
   total: number;
   groupEventId: string | null;
   services: EngineServiceLine[];
+  /** F-09-046/047: ассистенты по индексу строки услуги (bookings.extras.serviceLineExtras[i].assistants) */
+  lineAssistants?: AssistantShare[][];
 }
 
 export interface EngineGroupEvent {
@@ -362,12 +519,14 @@ function lineLabel(service: EngineService | undefined, line: EngineServiceLine):
   return service ? service.name : line.serviceId;
 }
 
+// День и время визита — по Еревану, как booking.start мока (было по UTC: в «Расчёте за день» визит 10:00 стоял как
+// 06:00, а визиты 00:00–04:00 уходили во вчерашний день и выпадали из расчёта; проход 17.11)
 function localDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return utcToLocalDate(d);
 }
 
 function localTime(d: Date): string {
-  return d.toISOString().slice(11, 16);
+  return utcToLocal(d).slice(11, 16);
 }
 
 export interface ComputeDayInput {
@@ -386,6 +545,14 @@ export interface ComputeDayInput {
    * (последняя оплата визита / полученная предоплата). Не передано или undefined — дата визита (по умолчанию).
    */
   accrualDateForBooking?: (bookingId: string) => string | undefined;
+  /** F-09-046/047: ассистенты строки услуги и их доли (как мок: api/payroll.ts assistantsForLineLookup) */
+  assistantsForLine?: (bookingId: string, serviceIndex: number) => AssistantShare[];
+}
+
+/** Ассистенты строки визита — из уже загруженных визитов (EngineBooking.lineAssistants) */
+export function assistantsLookup(bookings: readonly Pick<EngineBooking, 'id' | 'lineAssistants'>[]): (bookingId: string, serviceIndex: number) => AssistantShare[] {
+  const byId = new Map(bookings.map((b) => [b.id, b.lineAssistants]));
+  return (bookingId, serviceIndex) => byId.get(bookingId)?.[serviceIndex] ?? [];
 }
 
 /** День начисления визита: групповые события — всегда по дате события, остальное — accrualDateForBooking или визит */
@@ -394,8 +561,8 @@ export function accrualDateOf(b: Pick<EngineBooking, 'id' | 'groupEventId' | 'st
 }
 
 /**
- * F-09-058/059/017/026/112. Порт computeServicesForDay мока — БЕЗ ассистентов (F-09-046/047, нет данных) и без
- * комиссии эквайринга (F-09-007/107, businessOnly = 0 влияния по умолчанию, честный гэп при других вариантах).
+ * F-09-058/059/017/026/112, F-09-046/047. Порт computeServicesForDay мока — с ассистентами, без комиссии эквайринга
+ * (F-09-007/107, businessOnly = 0 влияния по умолчанию, честный гэп при других вариантах).
  */
 export function computeServicesForDay(input: ComputeDayInput): Map<string, DayOperation[]> {
   const byService = new Map(input.services.map((s) => [s.id, s]));
@@ -409,7 +576,9 @@ export function computeServicesForDay(input: ComputeDayInput): Map<string, DayOp
     const byStaff = new Map<string, { lines: PayoutLine[]; sum: number; revenueSum: number }>();
     const loyaltyPaid = input.loyaltyPaidForBooking?.(booking.id);
     const bookingLineTotal = roundMoney(booking.services.reduce((s, l) => s + l.price * l.qty, 0)) || 1;
+    let serviceIndex = -1;
     for (const line of booking.services) {
+      serviceIndex++;
       const scheme = input.schemes.get(line.staffId);
       const service = byService.get(line.serviceId);
       const lineTotal = roundMoney(line.price * line.qty);
@@ -444,6 +613,21 @@ export function computeServicesForDay(input: ComputeDayInput): Map<string, DayOp
         if (amount < 0) {
           amount = 0;
           clippedByConsumables = true;
+        }
+        // F-09-046/047 (как мок): ассистенты этой строки делят выплату по своей доле; мастер получает остаток (или
+        // ставку «с ассистентом», если задана). Расходники — только у мастера, не ниже 0
+        const assistantsOfLine = input.assistantsForLine?.(booking.id, serviceIndex) ?? [];
+        if (assistantsOfLine.length > 0) {
+          const split = computeAssistSplit(base, scheme.personalServices.assistRates ?? defaultAssistRates(), assistantsOfLine);
+          amount = Math.max(0, roundMoney(split.masterAmount - consumables));
+          clippedByConsumables = consumables > 0 && split.masterAmount - consumables < 0;
+          for (const a of split.assistants) {
+            if (a.amount <= 0) continue;
+            const assistBucket = byStaff.get(a.staffId) ?? { lines: [], sum: 0, revenueSum: 0 };
+            assistBucket.lines.push({ kind: 'service', refId: `assist:${line.serviceId}`, label: lineLabel(service, line), amount: a.amount, revenue: 0 });
+            assistBucket.sum = roundMoney(assistBucket.sum + a.amount);
+            byStaff.set(a.staffId, assistBucket);
+          }
         }
       }
       const bucket = byStaff.get(line.staffId) ?? { lines: [], sum: 0, revenueSum: 0 };
@@ -696,8 +880,12 @@ export function resolveActiveChartAssignment(assignments: readonly PayrollChartA
   return forStaff.reduce((best, a) => (a.startDate > best.startDate ? a : best));
 }
 
-/** F-09-002/054/099: приводит правило классической модели к форме эффективной схемы — тот же движок расчёта */
-export function ruleAsScheme(rule: SchemeBlocks & { createdAt: string }, staffId: string): EffectiveScheme {
+/**
+ * F-09-002/054/099: приводит правило классической модели к форме эффективной схемы — тот же движок расчёта.
+ * `rule.createdAt` — время по Еревану ('YYYY-MM-DDTHH:mm', как у мока); createdAt схемы — день, с которого правило
+ * действует для сотрудника (F-09-037 условие 3, classicSchemeStart).
+ */
+export function ruleAsScheme(rule: SchemeBlocks & { createdAt: string }, staffId: string, assignmentStartDate: string): EffectiveScheme {
   return {
     staffId,
     personalServices: rule.personalServices,
@@ -706,8 +894,18 @@ export function ruleAsScheme(rule: SchemeBlocks & { createdAt: string }, staffId
     records: rule.records,
     extraServiceRevenue: rule.extraServiceRevenue,
     extraProductRevenue: rule.extraProductRevenue,
-    createdAt: rule.createdAt,
+    createdAt: classicSchemeStart(rule.createdAt, assignmentStartDate),
   };
+}
+
+/**
+ * F-09-037 условие 3 в классической модели (решение 17.11.2026) — classicSchemeStart мока: правило действует для
+ * сотрудника с более поздней из двух дат — создание правила и назначение схемы сотруднику. Пример: правило создано
+ * 01.09, Ани назначена 10.10, оклад 200 000 → за октябрь оклад не начисляется, за ноябрь — да.
+ */
+export function classicSchemeStart(ruleCreatedAt: string, assignmentStartDate: string): string {
+  const created = ruleCreatedAt.slice(0, 10);
+  return created > assignmentStartDate ? created : assignmentStartDate;
 }
 
 // ─────────────────────────── Согласование ведомости (F-09-100) ───────────────────────────
@@ -719,6 +917,38 @@ export const STATEMENT_APPROVAL_ORDER: StatementApprovalStatus[] = ['pendingRevi
 export function nextApprovalStatus(current: StatementApprovalStatus): StatementApprovalStatus | undefined {
   const idx = STATEMENT_APPROVAL_ORDER.indexOf(current);
   return idx >= 0 && idx < STATEMENT_APPROVAL_ORDER.length - 1 ? STATEMENT_APPROVAL_ORDER[idx + 1] : undefined;
+}
+
+/**
+ * Ответ 26 (владелец 17.11.2026): одобренная ведомость закрыта для правок — премия, штраф, удаление, пересчёт; менять —
+ * через «Вернуть на проверку» (статус снова pendingReview).
+ */
+export const LOCKED_APPROVAL_STATUSES: readonly StatementApprovalStatus[] = ['approved', 'sentToStaff', 'signed', 'paid'];
+
+export function isStatementLocked(status: StatementApprovalStatus | string | null | undefined): boolean {
+  return Boolean(status && (LOCKED_APPROVAL_STATUSES as readonly string[]).includes(status));
+}
+
+const addDay = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * Ответ 27 (владелец 17.11.2026): ведомость не создаётся на уже начисленные дни. Дни [from, to] ('YYYY-MM-DD'), которых
+ * нет ни в одной ведомости `sheets`; если их несколько кусков — последний (новые дни после уже начисленных). null —
+ * начислять нечего, всё уже в ведомостях. Пересечения нет — вернёт [from, to] как есть.
+ */
+export function newDaysRange(sheets: readonly { from: string; to: string }[], from: string, to: string): { from: string; to: string } | null {
+  const covered = (d: string) => sheets.some((s) => s.from <= d && d <= s.to);
+  let end: string | null = null;
+  for (let d = to; d >= from; d = addDay(d, -1)) {
+    if (!covered(d)) {
+      end = d;
+      break;
+    }
+  }
+  if (!end) return null;
+  let start = end;
+  while (addDay(start, -1) >= from && !covered(addDay(start, -1))) start = addDay(start, -1);
+  return { from: start, to: end };
 }
 
 export function canMarkPaid(status: StatementApprovalStatus, approvalEnabled: boolean): boolean {

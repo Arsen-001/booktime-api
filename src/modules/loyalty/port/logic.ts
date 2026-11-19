@@ -7,7 +7,7 @@ import { portNowDate } from './shim.js';
  * сущности ядра — только чтение через readCore() (изменения ядра — через src/api/core.ts, здесь не нужны).
  */
 import { ApiError, request } from './shim.js';
-import { mutateArea, readArea, readCore } from './shim.js';
+import { mutateArea, readArea, readCore, readCoreMirror } from './shim.js';
 import { cancelBookingPayment, cancelPaymentLine, getBookingExtras, payBookingLines } from './stubs.js';
 import { addBookingPromoDiscount, cancelLoyaltySaleSync, getBookingPaymentSummary, recordLoyaltySaleSync, refundLoyaltySaleSync, removeBookingPaymentLine, type LoyaltySaleInput } from './stubs.js';
 import type { CoreData, Id } from './core-types.js';
@@ -430,7 +430,8 @@ export interface ServiceScopeOptions {
 export function listServiceScopeOptions(businessId: Id, locale = 'ru'): Promise<ServiceScopeOptions> {
   return request(() => {
     const core = readCore();
-    const services = core.services.filter((s) => s.businessId === businessId && s.active);
+    // Скрытые «Приём / Выдача заказа» (kind intake/pickup) — не услуги каталога, программам лояльности их не выбрать (проход 17.11)
+    const services = core.services.filter((s) => s.businessId === businessId && s.active && s.kind !== 'intake' && s.kind !== 'pickup');
     const categories = core.serviceCategories
       .filter((c) => c.businessId === businessId && services.some((s) => s.categoryId === c.id))
       .map((c) => ({
@@ -3126,7 +3127,8 @@ export async function payVisitWithLoyalty({ businessId, locationId, bookingId, c
     for (const c of committed) await reverseLoyaltyLine(businessId, bookingId, c.txId);
     throw error;
   }
-  await mirrorToFinance(businessId, bookingId, committed.map((c, i) => ({ txId: c.txId, amount: c.amount, label: financeLabelOf(c, i) })));
+  // Живой сервер сам кладёт строки лояльности в оплату визита (`/bookings/:id/payments`, та же строка во вкладке
+  // «Оплата»): вторая строка-скидка отвечала 422 nothing_to_discount (проход 17.11) — зеркало нужно только моку
   await syncBookingCashback(businessId, locationId, clientId, bookingId, await visitPaymentsForCashback(businessId, bookingId, extras.payments ?? []), visit);
   return extras;
 }
@@ -3138,6 +3140,8 @@ export async function payVisitWithLoyalty({ businessId, locationId, bookingId, c
  * Строки подрезаются по порядку; если оплачивать нечего — отказ `nothing_due`.
  */
 async function capLinesToDue(businessId: Id, bookingId: Id, lines: LoyaltyPaymentLineInput[]): Promise<LoyaltyPaymentLineInput[]> {
+  // Вне request() (async между запросами): в режиме api — зеркало журнала служебным чтением, без «[mock-db] вне
+  // request()» в консоли оплаты лояльностью (хвосты 17.11); в демо — та же база
   const booking = readCore().bookings.find((b) => b.id === bookingId);
   if (!booking) return lines;
   const extras = await getBookingExtras(bookingId).catch(() => undefined);

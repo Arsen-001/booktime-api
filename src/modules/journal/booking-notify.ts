@@ -7,6 +7,9 @@ import { utcToLocal } from '../../common/time/time.js';
 import { notifyKindOf } from '../notify/kinds.js';
 import { isStaffEventEnabled } from '../notify/notify-staff-prefs.service.js';
 import { customTemplateOf } from '../notify/notify-types.service.js';
+import { fillTemplate } from '../notify/notify-log-derive.js';
+import { bookingTemplateVars, staffNameFor, typePushTemplateOf, typeTemplateOf } from '../notify/notify-type-text.js';
+import { env } from '../../common/config/env.js';
 import { enqueueClientNotification, enqueueOutbox } from '../notify/outbox.js';
 import { journalUrl } from '../notify/staff-notices.js';
 import { isCancelled, isOnlineSource, type ServiceLine } from './rules.js';
@@ -30,6 +33,11 @@ const renderTemplate = (template: string, params: Record<string, string>): strin
 
 /** Пуш клиенту → тип каталога (журнал отправок, выключатель): 8 — записан салоном, 74 — перенесён, 4 — отменён/удалён */
 const CLIENT_KIND_TYPE: Record<string, number | undefined> = { booking_created: 8, salon_moved: 74, salon_deleted: 4, cancelled_by_master: 4 };
+/**
+ * Чей шаблон «Шаблонов уведомлений» берёт текст: те же типы и «Запись подтверждена» (9). У 9 typeCode в meta не ставим —
+ * он уходит и при выключенном типе (F-05-026 п. 2, catalog-gate.ts), а свой текст салона — уважаем (хвосты 17.11)
+ */
+const CLIENT_KIND_TEXT_TYPE: Record<string, number | undefined> = { ...CLIENT_KIND_TYPE, salon_confirmed: 9 };
 
 /** Пуш сотруднику о действии клиента → тип каталога: 10/11 — новая онлайн-запись, 12 — отмена, 41 — перенос */
 function staffKindType(eventKey: 'new_booking' | 'client_cancelled' | 'client_rescheduled', isOwnMaster: boolean): number | undefined {
@@ -93,9 +101,18 @@ export async function notifyClientOfBooking(
     if (!def) continue;
     const time = p.startLocal.slice(11, 16);
     const params = { service: serviceName, time, when: whenPhrase(locale, p.startLocal, today), date: `${p.startLocal.slice(8, 10)}.${p.startLocal.slice(5, 7)}`, place: businessName };
+    // Текст: шаблон типа из «Шаблонов уведомлений» (каталог, канал «Пуш») → старые «Тексты» вида → наш текст.
     // Свой текст салона пишет «{time}» сам (с предлогом) — ему остаётся время; {when} и {date} тоже доступны
-    const custom = await customTemplateOf(prisma, next.businessId, p.kind, locale);
-    const body = custom ? renderTemplate(custom, params) : t(locale, def.messageKey, params);
+    const code = CLIENT_KIND_TEXT_TYPE[p.kind];
+    const typeText = code ? await typePushTemplateOf(tx, next.businessId, code, locale) : undefined;
+    const custom = typeText ? undefined : await customTemplateOf(prisma, next.businessId, p.kind, locale);
+    // Имя мастера — на языке клиента (ответ 8)
+    const staffName = typeText ? staffNameFor(await tx.staff.findUnique({ where: { id: next.staffId }, select: { name: true, nameI18n: true } }), locale) : '';
+    const body = typeText
+      ? fillTemplate(typeText, bookingTemplateVars({ businessName, service: serviceName, staff: staffName, local: p.startLocal, link: `${env.PUBLIC_SITE_URL}${clientBookingUrl(next.id)}` }))
+      : custom
+        ? renderTemplate(custom, params)
+        : t(locale, def.messageKey, params);
     await enqueueClientNotification(tx, {
       businessId: next.businessId,
       kind: p.kind,
@@ -138,7 +155,7 @@ export async function notifyStaffOfClientAction(
   }
   if (!eventKey || !eventId) return;
   const [staff, admins, client, business] = await Promise.all([
-    tx.staff.findUnique({ where: { id: next.staffId }, select: { id: true, userId: true } }),
+    tx.staff.findUnique({ where: { id: next.staffId }, select: { id: true, userId: true, name: true } }),
     tx.staff.findMany({ where: { businessId: next.businessId, role: { in: ['owner', 'admin'] }, status: 'active', userId: { not: null } }, select: { id: true, userId: true } }),
     next.clientId ? tx.client.findUnique({ where: { id: next.clientId }, select: { name: true } }) : Promise.resolve(null),
     tx.business.findUnique({ where: { id: next.businessId }, select: { name: true } }),
@@ -162,18 +179,27 @@ export async function notifyStaffOfClientAction(
     if (!(await isStaffEventEnabled(prisma, staffId, eventKey))) continue;
     const locale = localeByUser.get(userId) ?? 'ru';
     const params = { client: client?.name ?? 'Client', service: pickRu(service?.name) ?? '', time: startLocal.slice(11, 16), when: whenPhrase(locale, startLocal, today) };
+    const typeCode = staffKindType(eventKey, staffId === next.staffId);
+    // Текст: шаблон типа (канал «Приложение администратора») → наш текст (хвосты 17.11: правка не доходила до мастера)
+    const typeText = typeCode ? await typeTemplateOf(tx, next.businessId, typeCode, 'adminApp', locale) : undefined;
+    const body = typeText
+      ? fillTemplate(typeText, {
+          ...bookingTemplateVars({ businessName: business?.name ?? 'BookTime', service: params.service, staff: staff?.name ?? '', local: startLocal, link: '' }),
+          clientName: client?.name ?? '',
+        })
+      : t(locale, def.messageKey, params);
     await enqueueOutbox(tx, {
       businessId: next.businessId,
       app: 'business',
       kind: def.kind,
       recipientUserId: userId,
       title: business?.name || 'BookTime',
-      body: t(locale, def.messageKey, params),
+      body,
       url,
       dedupeKey: `staff:${def.kind}:${eventId}:${userId}`,
       // Тип каталога: «Клиент записался онлайн» администратору (10) / «Клиент записался к вам» мастеру (11), отмена (12)
       // и перенос (41) онлайн-записи — выключатель и канал adminApp проверяет отправитель очереди (catalog-gate.ts)
-      meta: { bookingId: next.id, staffId, typeCode: staffKindType(eventKey, staffId === next.staffId) },
+      meta: { bookingId: next.id, staffId, typeCode },
     });
   }
 }

@@ -29,9 +29,13 @@ let logic = read('src/api/loyalty.ts');
 logic = logic
   .split('\n')
   .filter((l) => !/^\s*if \(isApiMode\(\)\) return /.test(l))
+  // Сервер — это «режим api» навсегда: строка только для мока (`if (!isApiMode()) …` в одну строку) не нужна
+  .filter((l) => !/^\s*if \(!isApiMode\(\)\) .*;$/.test(l))
   .filter((l) => !/^import .* from '@\/api\/(http|mode|loyalty\.server)';$/.test(l))
   .join('\n');
 logic = logic
+  // Зеркало ядра браузера на сервере — само ядро (shim): `(isApiMode() ? readCoreMirror() : readCore())` → readCore()
+  .replace(/\(isApiMode\(\) \? readCoreMirror\(\) : readCore\(\)\)/g, 'readCore()')
   .replace(/from '@\/api\/request'/g, "from './shim.js'")
   .replace(/from '@\/api\/area'/g, "from './shim.js'")
   .replace(/from '@\/api\/journal'/g, "from './stubs.js'")

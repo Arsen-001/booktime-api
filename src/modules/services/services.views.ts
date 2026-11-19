@@ -57,6 +57,8 @@ export function serviceView(s: Service) {
     workplaces: arr<string>(s.workplaces),
     onlineBookable: s.onlineBookable,
     active: s.active,
+    // Ответ 33: в архиве — услуга с историей, убранная «Удалить»; экраны её не предлагают, история показывает имя
+    ...(s.archivedAt ? { archivedAt: s.archivedAt.toISOString() } : {}),
     order: Number(s.order),
     shadeChoice: opt(s.shadeChoice as 'required' | 'preferred' | null),
     servicePackage: opt(s.servicePackage as ServicePackageComposition | null),

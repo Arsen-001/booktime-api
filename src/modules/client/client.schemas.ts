@@ -144,3 +144,6 @@ export const addVisitPaymentBody = z.object({
 });
 
 export const sendVisitReceiptBody = z.object({ appUserId: id32, total: z.number().int().min(0) });
+
+/** «Пожаловаться» на карточку мастера (F-00-091): причина + текст человека, одной строкой */
+export const masterReportBody = z.object({ reason: z.string().trim().min(1).max(600) });

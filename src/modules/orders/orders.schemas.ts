@@ -24,6 +24,8 @@ export const createOrderBody = z.object({
   dueDate: ymd.nullable().optional(),
   price: amd,
   prepaid: amd.optional(),
+  /** Ответ 12 (17.11.2026): способ оплаты предоплаты (ключ «Способов оплаты») — сумма сразу операцией в кассе */
+  prepaidMethod: z.string().min(1).max(32).optional(),
   comment: z.string().max(2000).nullable().optional(),
   locationId: id32.nullable().optional(),
   /** ⭐ Принять заказ по записи на сдачу (05.10.2026): запись «Приём заказа» этого бизнеса; по одной записи — один заказ */
@@ -42,12 +44,18 @@ export const patchOrderBody = z.object({
   dueDate: ymd.nullable().optional(),
   price: amd.optional(),
   prepaid: amd.optional(),
+  /** Ответ 12: предоплату поменяли — разница операцией в кассе этим способом (больше — приход, меньше — возврат) */
+  prepaidMethod: z.string().min(1).max(32).optional(),
   comment: z.string().max(2000).nullable().optional(),
   locationId: id32.nullable().optional(),
 });
 export type PatchOrderBody = z.infer<typeof patchOrderBody>;
 
-export const orderStatusBody = z.object({ status: z.enum(ORDER_STATUSES) });
+/** «Выдать клиенту» (ответ 12): доплата при выдаче — сумма и способ оплаты, сразу операцией в кассе */
+export const orderStatusBody = z.object({
+  status: z.enum(ORDER_STATUSES),
+  payment: z.object({ amount: amd, methodKey: z.string().min(1).max(32) }).optional(),
+});
 
 // ─────────── ⭐ смета (05.10.2026) ───────────
 
@@ -191,7 +199,8 @@ export const publicOrderOut = z.object({
   price: z.number().int(),
   prepaid: z.number().int(),
   estimate: estimateOut.omit({ remindedAt: true, decidedBy: true }).nullable(),
-  business: z.object({ name: z.string(), phone: z.string(), address: z.string(), slug: z.string() }),
+  // Адрес — на трёх языках (сайт выбирает язык страницы), пусто — ''
+  business: z.object({ name: z.string(), phone: z.string(), address: z.union([z.string(), z.object({ ru: z.string(), hy: z.string().optional(), en: z.string().optional() })]), slug: z.string() }),
   /** ⭐ Выдача по времени (06.10.2026): null — выбирать нечего (не готов или мастерская не принимает по времени) */
   pickup: z.object({ enabled: z.boolean(), slotMin: z.number().int(), booking: z.object({ start: z.string(), status: z.string() }).nullable() }).nullable(),
 });

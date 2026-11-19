@@ -14,6 +14,7 @@ import {
   getClientsBizSettings,
   patchClientsBizSettings,
 } from './clients-settings.helper.js';
+import { utcToLocalDate } from '../../common/time/time.js';
 
 const CLIENT_FILE_EXTENSIONS = ['jpeg', 'jpg', 'png', 'gif', 'doc', 'docx', 'pdf', 'xls', 'xlsx', 'txt'];
 const CLIENT_FILE_MAX_MB = 12;
@@ -280,7 +281,7 @@ export class ClientsExtrasService {
       const row = map.get(key) ?? { key, name, forWhom: b.forWhom, visits: 0, lastVisit: undefined };
       if (!b.deletedAt && b.status === 'arrived') row.visits += 1;
       if (!b.deletedAt) {
-        const d = b.startAt.toISOString().slice(0, 10);
+        const d = utcToLocalDate(b.startAt); // день визита по Еревану (проход 17.11)
         if (!row.lastVisit || d > row.lastVisit) row.lastVisit = d;
       }
       map.set(key, row);
@@ -307,8 +308,8 @@ export class ClientsExtrasService {
         name: c.type.name,
         total: Number(c.total),
         balance: Number(c.balance),
-        soldAt: c.soldAt.toISOString().slice(0, 10),
-        expiresAt: c.expiresAt.toISOString().slice(0, 10),
+        soldAt: utcToLocalDate(c.soldAt),
+        expiresAt: utcToLocalDate(c.expiresAt),
         code: c.code,
       })),
       subscriptions: subs.map((s) => ({
@@ -443,9 +444,11 @@ export class ClientsExtrasService {
 
   // ─────────── тонкие права «Клиентская база» (F-04-194…204) ───────────
 
-  async getFineRights(staffId: string): Promise<Record<string, boolean> | undefined> {
+  /** Права сотрудника этого бизнеса (чужой бизнес — как «не заданы») */
+  async getFineRights(businessId: string, staffId: string): Promise<Record<string, boolean> | undefined> {
     const row = await this.prisma.clientFineRights.findUnique({ where: { staffId } });
-    return (row?.rights as Record<string, boolean> | undefined) ?? undefined;
+    if (!row || row.businessId !== businessId) return undefined;
+    return (row.rights as Record<string, boolean> | undefined) ?? undefined;
   }
 
   async setFineRights(businessId: string, staffId: string, rights: Record<string, boolean>): Promise<Record<string, boolean>> {

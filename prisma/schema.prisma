@@ -485,6 +485,9 @@ model Staff {
   /// Пусто — сотрудник без входа (F-15-032) или приглашён и не принял
   userId               String?   @map("user_id") @db.VarChar(32)
   name                 String    @db.VarChar(120)
+  /// Имя на трёх языках для клиентов ({ ru?, hy?, en? }, владелец 17.11.2026): клиент видит имя на языке страницы;
+  /// нет перевода — перевод букв на лету (сайт). `name` — как вписали, им пользуется кабинет и поиск.
+  nameI18n             Json?     @map("name_i18n")
   /// '+374…' или '' (администратор без телефона)
   phone                String    @default("") @db.VarChar(16)
   email                String?   @db.VarChar(160)
@@ -709,6 +712,9 @@ model Service {
   workplaces         Json
   onlineBookable     Boolean  @default(true) @map("online_bookable")
   active             Boolean  @default(true)
+  /// В архиве (владелец 17.11.2026, ответ 33): услуга с прошлыми визитами не стирается — «Удалить» убирает её в архив
+  /// (не видна в списках, записи и онлайн, active = false), история и отчёты сохраняют название. Без визитов — удаляется.
+  archivedAt         DateTime? @map("archived_at") @db.DateTime(3)
   /// Порядок в категории; у пакета — Date.now() при создании (как во фронте), поэтому bigint
   order              BigInt   @default(0)
   /// required | preferred — выбор оттенка при записи (F-00-094…096); нет поля — шага нет
@@ -2741,6 +2747,9 @@ model PayrollSettings {
   statementApprovalEnabled  Boolean  @default(false) @map("statement_approval_enabled")
   payrollFundTargetPct      Int      @default(30) @map("payroll_fund_target_pct")
   payrollFundWarnPct        Int      @default(40) @map("payroll_fund_warn_pct")
+  /// З11: период закрыт по этот день включительно ('YYYY-MM-DD'): версии схем с этой датой и раньше не меняются.
+  /// Двигается только вперёд («Закрыть период»), PATCH настроек его не трогает.
+  closedThrough             String?  @map("closed_through") @db.VarChar(10)
   updatedAt                 DateTime @updatedAt @map("updated_at") @db.DateTime(3)
   updatedBy                 String?  @map("updated_by") @db.VarChar(32)
   version                   Int      @default(1)
@@ -2751,16 +2760,22 @@ model PayrollSettings {
 
 /// Упрощённая схема сотрудника (F-09-002/010…048) — шесть блоков как JSON, форма PayrollScheme мока минус
 /// staffId/createdAt/updatedAt (те — колонки строки: createdAt не трогается правкой, F-09-037 условие 3).
+/// З6 (версии по датам, как мок): `data` + `effectiveFrom` — текущая версия, `history` — прежние версии от старой к
+/// новой; расчёт берёт на каждый день версию с наибольшей «Действует с» ≤ дня (schemeAtDate движка).
 model PayrollScheme {
-  staffId    String   @id @map("staff_id") @db.VarChar(32)
-  businessId String   @map("business_id") @db.VarChar(32)
+  staffId       String   @id @map("staff_id") @db.VarChar(32)
+  businessId    String   @map("business_id") @db.VarChar(32)
   /// { personalServices, productSales, workday, records, extraServiceRevenue, extraProductRevenue }
-  data       Json
-  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy  String?  @map("created_by") @db.VarChar(32)
-  updatedBy  String?  @map("updated_by") @db.VarChar(32)
-  version    Int      @default(1)
+  data          Json
+  /// З6: «Действует с» текущей версии ('YYYY-MM-DD'); NULL — действует с самого начала
+  effectiveFrom String?  @map("effective_from") @db.VarChar(10)
+  /// З6: прежние версии [{ ...шесть блоков, effectiveFrom?, updatedAt }] от старой к новой; NULL — версий не было
+  history       Json?
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy     String?  @map("created_by") @db.VarChar(32)
+  updatedBy     String?  @map("updated_by") @db.VarChar(32)
+  version       Int      @default(1)
 
   @@index([businessId])
   @@map("payroll_schemes")

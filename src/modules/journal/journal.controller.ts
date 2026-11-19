@@ -68,8 +68,8 @@ export class JournalController {
   @Get('journal/config')
   @Biz('journal.view')
   @ApiOperation({ summary: 'Настройки «Цифрового журнала», категории, свои поля, шаблоны повтора, права блоков, разметка' })
-  config(@Param() p: B) {
-    return this.journal.config(p.businessId);
+  config(@Ctx() ctx: RequestContext, @Param() p: B) {
+    return this.journal.config(ctx, p.businessId);
   }
 
   @Patch('journal/config')
@@ -323,7 +323,7 @@ export class JournalController {
   @Biz('journal.view')
   async listEvents(@Ctx() ctx: RequestContext, @Query() q: Record<string, string | undefined>) {
     const businessIds = await this.access.businessIds(ctx, q['businessIds']);
-    return this.events.list({ businessIds, locationId: q['locationId'], staffId: q['staffId'], serviceId: q['serviceId'], from: q['from'], to: q['to'], statuses: csv(q['statuses']) });
+    return this.events.list({ businessIds, locationId: q['locationId'], staffId: q['staffId'], serviceId: q['serviceId'], from: q['from'], to: q['to'], statuses: csv(q['statuses']), ids: q['ids'] === undefined ? undefined : csv(q['ids']) });
   }
 
   @Post('events')

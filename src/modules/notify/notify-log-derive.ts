@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import '../../common/time/time.js';
 import { t } from '../../common/i18n/i18n.js';
+import { staffNameFor } from './notify-type-text.js';
 import type { NotificationTypeOut, RichLocalizedText } from './notify-rich-types.service.js';
 import type { NotifyChannel } from './notify-type-registry.js';
 
@@ -80,6 +81,8 @@ export interface DEvent {
 export interface DStaff {
   id: string;
   name: string;
+  /** Имя на трёх языках (staff.name_i18n) — клиенту имя мастера на его языке (ответ 8) */
+  nameI18n?: unknown;
   phone: string;
   role: string;
   locationIds: string[];
@@ -330,7 +333,8 @@ function bookingVarsFor(ctx: DeriveContext, booking: DBooking, client: DClient |
     time,
     dateTime,
     timeLeft: minutesLeft >= 60 ? `${Math.round(minutesLeft / 60)} ${unitH[lang]}` : `${minutesLeft} ${unitM[lang]}`,
-    staff: staff?.name ?? '',
+    // Имя мастера клиенту — на языке отправки (ответ 8, «К 8»): вписанный перевод или перевод букв, как сайт
+    staff: staffNameFor(staff, lang),
     service: names[0] ?? '',
     visitServices: names.join(', '),
     link: base,

@@ -16,6 +16,7 @@ import type {
   WarehouseBody,
   WarehousePatchBody,
 } from './stock.schemas.js';
+import { utcToLocalDate } from '../../common/time/time.js';
 
 const toDate = (d: string) => new Date(`${d}T00:00:00.000Z`);
 const toDateOpt = (d: string | null | undefined) => (d === undefined ? undefined : d === null ? null : toDate(d));
@@ -429,7 +430,7 @@ export class StockCatalogService {
     const page = params.page ?? 1;
     const pageSize = params.pageSize ?? 25;
     const slice = filtered.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = utcToLocalDate(new Date()); // «сегодня» по Еревану, не по UTC (проход 17.11)
     const items = await Promise.all(
       slice.map(async (g) => {
         const stock = await this.totalStock(businessId, g.id);
@@ -448,7 +449,7 @@ export class StockCatalogService {
     });
     const categories = await this.prisma.stockCategory.findMany({ where: { businessId, locationId } });
     const settings = await this.ensureSettings(businessId);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = utcToLocalDate(new Date()); // «сегодня» по Еревану, не по UTC (проход 17.11)
     return Promise.all(
       rows.map(async (g) => {
         const stock = await this.totalStock(businessId, g.id);
@@ -466,7 +467,7 @@ export class StockCatalogService {
     const stock = await this.totalStock(businessId, id);
     const levels = await this.computeLevels(businessId, id);
     const view = goodView(g);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = utcToLocalDate(new Date()); // «сегодня» по Еревану, не по UTC (проход 17.11)
     return { ...view, categoryName: categories.find((c) => c.id === g.categoryId)?.name ?? '', totalStock: stock, belowCritical: g.criticalStock > 0 && stock <= g.criticalStock, expiry: expiryFlag(view.expiryDate, today, settings.expiryWarningDays), levels };
   }
 

@@ -42,12 +42,12 @@ export type SphereId =
   | 'dental'
   | 'fitness'
   | 'carwash'
-  // сферы заказов (03.10.2026): ателье, ремонт телефонов и техники, химчистка, детейлинг
+  | 'general'
+  // ⭐ Сферы «заказов» (владелец, 03.10.2026): клиент сдаёт вещь или технику и забирает, когда готово
   | 'tailor'
   | 'repair'
   | 'drycleaning'
-  | 'detailing'
-  | 'general';
+  | 'detailing';
 
 /** Районы Еревана (административные) */
 export type DistrictId =
@@ -211,6 +211,11 @@ export interface Staff {
   /** В каких филиалах работает */
   locationIds: Id[];
   name: string;
+  /**
+   * Имя на трёх языках для клиентов (владелец 17.11.2026): клиент видит имя на языке страницы; нет перевода на
+   * язык — перевод букв на лету (`localizedName` из `@/lib/translit`). `name` — как вписали: кабинет и поиск.
+   */
+  nameI18n?: { ru?: string; hy?: string; en?: string };
   phone: string;
   /** Почта сотрудника (F-01-008: имя и email внизу панели; F-10-* карточка); пишет staff. Нет — строку не показывать */
   email?: string;
@@ -325,7 +330,14 @@ export interface ServiceCategory {
   order: number;
 }
 
-export type ServiceKind = 'individual' | 'group';
+/**
+ * 'intake' — ⭐ «Приём заказа» мастерской (запись на сдачу по времени, 05.10.2026; хозяин — orders): скрытая услуга, которой
+ * клиент записывается принести вещь; в каталоге, поиске, выборе услуг журнала и в услугах кабинета её нет
+ * (isIntakeService). Ведёт себя как индивидуальная: окна, запись, напоминания — общий движок.
+ * 'pickup' — ⭐ «Выдача заказа» (выдача по времени, 06.10.2026; хозяин — orders): вторая скрытая услуга — клиент по ссылке
+ * готового заказа /o/<код> выбирает, когда заберёт; не онлайн (onlineBookable = false), записывает только api заказов.
+ */
+export type ServiceKind = 'individual' | 'group' | 'intake' | 'pickup';
 
 export interface Service {
   id: Id;
@@ -359,6 +371,11 @@ export interface Service {
   workplaces: Workplace[];
   onlineBookable: boolean;
   active: boolean;
+  /**
+   * В архиве (владелец 17.11.2026, ответ 33): услуга с визитами при «Удалить» не стирается — не видна в списках, записи
+   * и онлайн (active = false), история и отчёты сохраняют её название. Нет поля — обычная услуга.
+   */
+  archivedAt?: ISODateTime;
   order: number;
   /** Выбор оттенка/варианта при записи (F-00-094…096): обязательно / желательно; нет поля — шага выбора нет */
   shadeChoice?: 'required' | 'preferred';

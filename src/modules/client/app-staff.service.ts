@@ -3,12 +3,13 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { newId } from '../../common/ids/ids.js';
 import { PrismaService } from '../../common/prisma.service.js';
-import { utcToLocalDate } from '../../common/time/time.js';
+import { localDayRangeUtc, utcToLocalDate } from '../../common/time/time.js';
 import { staffView } from '../businesses/views.js';
 import { BookingsService } from '../journal/bookings.service.js';
 import { roundMoney } from '../payroll/payroll-engine.js';
 import { ScheduleService } from '../schedule/schedule.service.js';
 import { serviceView } from '../services/services.views.js';
+import { assertBusinessAppRecipient } from './app-recipient.js';
 
 /**
  * Раздел «Приложение» (F-14-116…129), стадия 21 (лейн client+online, попытка 2): своя таблица сотрудников
@@ -99,16 +100,20 @@ export class AppStaffService {
   /** Z-отчёт (закрытие смены), F-14-122: визиты «пришёл» дня + разбивка по способу оплаты (кабинет уже пишет
    *  оплату визита в BookingPayment — этап 12; методы группируем через PaymentMethod.kind, custom → cash). */
   async getDayZReport(businessId: string, date: string, staffId?: string) {
-    const from = new Date(`${date}T00:00:00.000Z`);
-    const to = new Date(from.getTime() + 86_400_000);
+    // День — по Еревану, как весь сервер (было от полуночи UTC: визиты 00:00–04:00 уходили во вчерашний отчёт);
+    // удалённая запись не считается и со статусом «Пришёл» (как расчёт зарплаты и мок, проход 17.11)
+    const { from, to } = localDayRangeUtc(date);
     const bookings = await this.prisma.booking.findMany({
-      where: { businessId, status: ARRIVED, startAt: { gte: from, lt: to }, ...(staffId ? { staffId } : {}) },
+      where: { businessId, status: ARRIVED, deletedAt: null, startAt: { gte: from, lt: to }, ...(staffId ? { staffId } : {}) },
+      orderBy: { startAt: 'asc' },
     });
-    const [clients, staffRows, methods, payments] = await Promise.all([
-      this.prisma.client.findMany({ where: { businessId } }),
-      this.prisma.staff.findMany({ where: { businessId } }),
+    const clientIds = [...new Set(bookings.map((b) => b.clientId).filter((x): x is string => Boolean(x)))];
+    const [clients, staffRows, methods, payments, views] = await Promise.all([
+      clientIds.length ? this.prisma.client.findMany({ where: { businessId, id: { in: clientIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
+      this.prisma.staff.findMany({ where: { businessId, id: { in: [...new Set(bookings.map((b) => b.staffId))] } }, select: { id: true, name: true } }),
       this.prisma.paymentMethod.findMany({ where: { businessId } }),
       this.prisma.bookingPayment.findMany({ where: { businessId, bookingId: { in: bookings.map((b) => b.id) }, cancelled: false } }),
+      this.bookings.views(this.prisma, bookings),
     ]);
     const clientById = new Map(clients.map((c) => [c.id, c]));
     const staffById = new Map(staffRows.map((s) => [s.id, s]));
@@ -116,41 +121,87 @@ export class AppStaffService {
     const paymentsByBooking = new Map<string, typeof payments>();
     for (const p of payments) paymentsByBooking.set(p.bookingId, [...(paymentsByBooking.get(p.bookingId) ?? []), p]);
 
-    const rows = await Promise.all(
-      bookings.map(async (booking) => {
-        const client = clientById.get(booking.clientId ?? '');
-        const staff = staffById.get(booking.staffId);
-        const recorded = paymentsByBooking.get(booking.id) ?? [];
-        const paidTotal = recorded.length ? recorded.reduce((s, p) => s + Number(p.amount) - Number(p.refundedAmount), 0) : Number(booking.total);
-        const view = await this.bookings.view(this.prisma, booking);
-        return { booking: view, clientName: client?.name ?? booking.visitorName ?? 'Гость', staffName: staff?.name ?? '—', total: Number(booking.total), paidTotal };
-      }),
-    );
-    const byMethod: Record<'cash' | 'card' | 'loyalty', number> = { cash: 0, card: 0, loyalty: 0 };
-    for (const booking of bookings) {
+    // Ответ 14 (владелец 17.11.2026): «Итого» и сумма по способам сходятся — предоплата переводом и долг отдельными
+    // строками. Было: «Итого» 16 000, а по способам 13 200 (предоплата и неоплаченное в способы не попадали).
+    // Деньги визита: строки оплаты (возвраты вычтены) + предоплата переводом (F-00-097, своя операция кассы);
+    // чего не хватает до суммы визита — «Долг». Визит без оплат — долг целиком (денег не получено).
+    const prepaidOf = (b: (typeof bookings)[number]): number => {
+      const p = (b.prepayment ?? null) as { amount?: number; paid?: boolean; refundedAt?: string } | null;
+      return p?.paid && !p.refundedAt ? Math.max(0, Math.round(Number(p.amount ?? 0))) : 0;
+    };
+    const byMethod: Record<'cash' | 'card' | 'transfer' | 'loyalty' | 'debt', number> = { cash: 0, card: 0, transfer: 0, loyalty: 0, debt: 0 };
+    const rows = bookings.map((booking, i) => {
+      const client = clientById.get(booking.clientId ?? '');
+      const staff = staffById.get(booking.staffId);
       const recorded = paymentsByBooking.get(booking.id) ?? [];
-      if (recorded.length) {
-        for (const p of recorded) {
-          const net = Number(p.amount) - Number(p.refundedAmount);
-          if (p.kind !== 'money') byMethod.loyalty += net;
-          else byMethod[methodKind.get(p.methodKey) === 'card' ? 'card' : 'cash'] += net;
+      let paid = 0;
+      for (const p of recorded) {
+        const net = Number(p.amount) - Number(p.refundedAmount);
+        if (p.debt) byMethod.debt += net;
+        else if (p.kind !== 'money') byMethod.loyalty += net;
+        else {
+          // Свои способы — как раньше, к наличным; «Предоплата переводом» — только предоплата по реквизитам
+          byMethod[methodKind.get(p.methodKey) === 'card' ? 'card' : 'cash'] += net;
         }
-      } else {
-        byMethod.cash += Number(booking.total);
+        if (!p.debt) paid += net;
       }
-    }
+      const prepaid = prepaidOf(booking);
+      byMethod.transfer += prepaid;
+      paid += prepaid;
+      const owed = recorded.filter((p) => p.debt).reduce((s, p) => s + Number(p.amount) - Number(p.refundedAmount), 0);
+      // Не оплачено ни деньгами, ни счётом в долг — тоже долг
+      const unpaid = Math.max(0, Number(booking.total) - paid - owed);
+      byMethod.debt += unpaid;
+      // Имя гостя — подписью экрана на языке человека (как мок: пустое имя → «Гость»)
+      return { booking: views[i]!, clientName: client?.name ?? booking.visitorName ?? '', staffName: staff?.name ?? '—', total: Number(booking.total), paidTotal: paid };
+    });
+    const orders = await this.orderMoneyOfDay(businessId, from, to, staffId);
+    for (const o of orders) byMethod[o.method] += o.amount;
     return {
       rows,
-      total: rows.reduce((s, r) => s + Number(r.total), 0),
+      orders,
+      // «Итого» = визиты + деньги заказов = сумма по способам
+      total: rows.reduce((s, r) => s + Number(r.total), 0) + orders.reduce((s, o) => s + o.amount, 0),
       byMethod,
     };
   }
 
+  /**
+   * Деньги заказов дня в Z-отчёте (ответ 12, 17.11.2026): операции кассы «Заказ №1004 · предоплата» (orders.service
+   * orderMoneyTx) — те же, что в смене кассы; без них Z-отчёт дня со сменой не сходился. Пальто 12 000 ֏: в день приёма —
+   * 3 000 наличными, в день выдачи — 9 000 картой. Возврат предоплаты — с минусом; отменённая операция не считается.
+   * Способ — как у визита: карта, перевод, остальное к наличным. Фильтр по мастеру — мастер заказа.
+   */
+  private async orderMoneyOfDay(businessId: string, from: Date, to: Date, staffId?: string) {
+    const ops = await this.prisma.finOp.findMany({
+      where: { businessId, source: 'order', cancelled: false, date: { gte: from, lt: to } },
+      select: { id: true, refId: true, kind: true, amount: true, method: true, lineLabel: true },
+      orderBy: { date: 'asc' },
+    });
+    const orderIds = [...new Set(ops.map((o) => o.refId).filter((x): x is string => Boolean(x)))];
+    const orders = orderIds.length
+      ? await this.prisma.order.findMany({ where: { businessId, id: { in: orderIds } }, select: { id: true, number: true, clientName: true, staffId: true } })
+      : [];
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    return ops.flatMap((op) => {
+      const order = op.refId ? orderById.get(op.refId) : undefined;
+      if (!order || (staffId && order.staffId !== staffId)) return [];
+      const income = op.kind === 'income';
+      const method: 'cash' | 'card' | 'transfer' = op.method === 'card' ? 'card' : op.method === 'transfer' ? 'transfer' : 'cash';
+      // Этап — по подписи операции, которую пишет orderMoneyTx («Заказ №1004 · оплата при выдаче»), как мок
+      const stage = !income ? 'refund' : op.lineLabel?.includes('оплата при выдаче') ? 'issue' : op.lineLabel?.includes('· доплата') ? 'prepaidChange' : 'prepaid';
+      const amount = Number(op.amount);
+      return [{ operationId: op.id, orderId: order.id, number: order.number, clientName: order.clientName, stage, method, amount: income ? amount : -amount }];
+    });
+  }
+
   /** F-14-127 «Calculation»: отработано, оказанные услуги, товары визита (BookingPayment.goods=true строки) */
   async getPayrollCalculation(businessId: string, staffId: string, from: string, to: string) {
-    const fromAt = new Date(`${from}T00:00:00.000Z`);
-    const toAt = new Date(`${to}T23:59:59.999Z`);
-    const bookings = await this.prisma.booking.findMany({ where: { businessId, staffId, status: ARRIVED, startAt: { gte: fromAt, lte: toAt } }, select: { id: true, startAt: true, durationMin: true, total: true } });
+    // Дни периода — по Еревану, как весь сервер (было от полуночи UTC: визиты 00:00–04:00 первого дня выпадали, а ранние
+    // визиты дня после периода попадали в него). Удалённая запись не считается и со статусом «Пришёл» (как payroll-engine)
+    const { from: fromAt } = localDayRangeUtc(from);
+    const { to: toAt } = localDayRangeUtc(to);
+    const bookings = await this.prisma.booking.findMany({ where: { businessId, staffId, status: ARRIVED, deletedAt: null, startAt: { gte: fromAt, lt: toAt } }, select: { id: true, startAt: true, durationMin: true, total: true } });
     // «Отработано» — то же правило, что «Расчёт» и «Моя зарплата» в вебе: дни и часы графика за период (final-fix 01.10)
     // Только по сегодняшний день включительно; дни графика после сегодня — отдельной подписью (решение 01.10)
     const scheduled = await this.schedule.hours(businessId, staffId, from, to);
@@ -206,10 +257,12 @@ export class AppStaffService {
   }
 
   /** F-14-074: «Отправить сообщение» из окна записи — свободный текст в ленту клиента. client-2-fix: kind 'direct' —
-   *  личное сообщение, его не глушит «выключить новости» мастера/салона (в отличие от рассылки 'broadcast') */
+   *  личное сообщение, его не глушит «выключить новости» мастера/салона (в отличие от рассылки 'broadcast').
+   *  Получатель — только клиент этого бизнеса, запись — только этого бизнеса (assertBusinessAppRecipient), иначе 404. */
   async sendOneOffPush(businessId: string, input: { appUserId: string; bookingId?: string; text: string }) {
     const text = input.text.trim();
     if (!text) throw new ApiError('validation', 'Text is required');
+    await assertBusinessAppRecipient(this.prisma, businessId, input.appUserId, input.bookingId);
     const row = await this.prisma.inboxItem.create({
       data: { id: newId('inboxItem'), appUserId: input.appUserId, businessId, bookingId: input.bookingId, kind: 'direct', params: { text } as Prisma.InputJsonValue },
     });

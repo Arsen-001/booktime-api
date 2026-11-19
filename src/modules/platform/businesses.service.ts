@@ -25,11 +25,13 @@ export class PlatformBusinessesService {
   async overview() {
     const businesses = await this.prisma.business.findMany({ select: { id: true, name: true, kind: true, sphereIds: true, status: true, leftAt: true } });
     const bizIds = businesses.map((b) => b.id);
-    const [locations, staffCounts, metas] = await Promise.all([
+    const [locations, staffCounts, metas, subs] = await Promise.all([
       this.prisma.location.findMany({ where: { businessId: { in: bizIds }, deletedAt: null }, select: { businessId: true, district: true }, orderBy: { sortOrder: 'asc' } }),
       this.prisma.staff.groupBy({ by: ['businessId'], where: { businessId: { in: bizIds }, deletedAt: null, status: { not: 'fired' } }, _count: { _all: true } }),
       this.prisma.bizMeta.findMany({ where: { businessId: { in: bizIds } } }),
+      this.prisma.subscription.findMany({ where: { businessId: { in: bizIds } }, select: { businessId: true, status: true, graceUntil: true } }),
     ]);
+    const subOf = new Map(subs.map((x) => [x.businessId, x]));
     const districtOf = new Map(locations.map((l) => [l.businessId, l.district]));
     const staffCountOf = new Map(staffCounts.map((s) => [s.businessId, s._count._all]));
     const metaOf = new Map(metas.map((m) => [m.businessId, m]));
@@ -42,7 +44,11 @@ export class PlatformBusinessesService {
           kind: b.kind as 'individual' | 'salon',
           sphereIds: Array.isArray(b.sphereIds) ? (b.sphereIds as string[]) : [],
           district: districtOf.get(b.id),
-          status: (b.leftAt ? 'left' : b.status === 'frozen' ? 'frozen' : 'active') as 'active' | 'frozen' | 'left',
+          status: (b.leftAt ? 'left' : b.status === 'frozen' || subOf.get(b.id)?.status === 'frozen' ? 'frozen' : 'active') as 'active' | 'frozen' | 'left',
+          // Ответ 30 (17.11.2026): за что заморожен — неуплата (подписка frozen → «Отсрочка N дней») или вручную панелью
+          // («Приостановить» → «Вернуть в работу»); отсрочка — до какого дня кабинет работает
+          frozenReason: b.leftAt ? undefined : subOf.get(b.id)?.status === 'frozen' ? ('payment' as const) : b.status === 'frozen' ? ('manual' as const) : undefined,
+          graceUntil: subOf.get(b.id)?.status === 'grace' && subOf.get(b.id)?.graceUntil ? utcToLocalDate(subOf.get(b.id)!.graceUntil!) : undefined,
           staffCount: staffCountOf.get(b.id) ?? 0,
           meta: meta
             ? {

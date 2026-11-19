@@ -129,9 +129,11 @@ export class StaffController {
   // ─────────── карточка ───────────
 
   @Get('staff/:staffId')
-  @Biz('staff.view')
+  @Biz()
+  @ApiOperation({ summary: 'Карточка сотрудника: staff.view; свою — каждый (мастер правит свой профиль PATCH-ем, а прочитать его не мог — «Материалы» и «Документы» мастера не открывались, проход 17.11.2026)' })
   @ZodOk(staffOut)
-  get(@Param('businessId') b: string, @Param('staffId') s: string) {
+  get(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Param('staffId') s: string) {
+    if (s !== ctx.member!.staffId && !ctx.member!.permissions.has('staff.view')) throw new ApiError('forbidden', 'Missing permission: staff.view');
     return this.staff.get(b, s);
   }
 

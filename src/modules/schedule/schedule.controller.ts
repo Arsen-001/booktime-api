@@ -18,6 +18,7 @@ import {
   journalViewBody,
   moveCandidatesBody,
   oneDateBody,
+  openUntilBody,
   removeFromScheduleBody,
   restoreAfterRemoveBody,
   restoreCellsBody,
@@ -185,10 +186,16 @@ export class ScheduleController {
   }
 
   @Get('schedule/history')
-  @Biz('staff.view')
-  @ApiOperation({ summary: 'История правок графика и правил окон (F-02-102)' })
-  history(@Param('businessId') businessId: string, @Query('staffIds') staffIds?: string) {
-    return this.svc.history(businessId, staffIds ? staffIds.split(',').filter(Boolean) : undefined);
+  @Biz()
+  @ApiOperation({ summary: 'История правок графика и правил окон (F-02-102): staff.view — всех; без него — только свою (мастер, «История правок» в его меню)' })
+  history(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Query('staffIds') staffIds?: string) {
+    const ids = staffIds ? staffIds.split(',').filter(Boolean) : undefined;
+    if (!ctx.member!.permissions.has('staff.view')) {
+      const own = ctx.member!.staffId;
+      if (!own || (ids && ids.some((id) => id !== own))) throw new ApiError('forbidden', 'Missing permission: staff.view');
+      return this.svc.history(businessId, [own]);
+    }
+    return this.svc.history(businessId, ids);
   }
 
   @Get('schedule/view-config')
@@ -287,6 +294,14 @@ export class ScheduleController {
   @ZodBody(removeFromScheduleBody)
   remove(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('staffId') staffId: string, @Body(new Zod(removeFromScheduleBody)) body: z.infer<typeof removeFromScheduleBody>) {
     return this.svc.removeFromSchedule(ctx, businessId, staffId, body.force);
+  }
+
+  @Put('staff/:staffId/open-until')
+  @Biz('schedule.edit')
+  @ApiOperation({ summary: '«Открыть окна до …» (17.11.2026): до какой даты клиенты видят окна мастера; null — без срока' })
+  @ZodBody(openUntilBody)
+  setOpenUntil(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('staffId') staffId: string, @Body(new Zod(openUntilBody)) body: z.infer<typeof openUntilBody>) {
+    return this.svc.setOpenUntil(ctx, businessId, staffId, body.openUntil);
   }
 
   @Post('staff/:staffId/remove-from-schedule/restore')

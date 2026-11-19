@@ -86,6 +86,54 @@ export interface FinOpFilter {
   search?: string;
 }
 
+export interface FinOpPageQuery extends FinOpFilter {
+  /** Только переводы между кассами (обе половины) — фильтр «Переводы» списка */
+  transfer?: boolean;
+  /** Кассы, доступные сотруднику (F-07-166 «только выбранные кассы»); нет — все */
+  accountIds?: string[];
+  page: number;
+  pageSize: number;
+  /** Остаток кассы после каждой строки (колонка «Остаток в кассе») */
+  withBalance?: boolean;
+}
+
+/** Больше строк за раз не отдаём: выгрузка собирает список страницами */
+const PAGE_MAX = 1000;
+
+const LIGHT = { id: true, accountId: true, kind: true, amount: true, cancelled: true, date: true, createdAt: true, feeOfOperationId: true } as const;
+export type LightOp = { id: string; accountId: string; kind: string; amount: bigint; cancelled: boolean; date: Date; createdAt: Date; feeOfOperationId: string | null };
+
+function signOf(kind: string): bigint {
+  return kind === 'income' || kind === 'transfer_in' ? 1n : -1n;
+}
+
+function minuteStart(d: Date): Date {
+  return new Date(Math.floor(d.getTime() / 60_000) * 60_000);
+}
+
+/** Минута мгновения: фронт сравнивает время операции строками до минуты (Ереван — без перехода на летнее время) */
+function minuteKey(d: Date): string {
+  return d.toISOString().slice(0, 16);
+}
+
+/**
+ * compareOperationsAsc фронта (src/domain/finance.ts, fin-review Ф18): по минуте операции; комиссия — после своей оплаты;
+ * в одной минуте приход и перевод в кассу раньше расхода, комиссия последней; дальше — минута создания и id.
+ */
+export function compareLightAsc(a: LightOp, b: LightOp): number {
+  const da = minuteKey(a.date);
+  const db = minuteKey(b.date);
+  if (da !== db) return da < db ? -1 : 1;
+  if (a.feeOfOperationId === b.id) return 1;
+  if (b.feeOfOperationId === a.id) return -1;
+  const rank = (op: LightOp) => (op.feeOfOperationId ? 2 : op.kind === 'income' || op.kind === 'transfer_in' ? 0 : 1);
+  if (rank(a) !== rank(b)) return rank(a) - rank(b);
+  const ca = minuteKey(a.createdAt);
+  const cb = minuteKey(b.createdAt);
+  if (ca !== cb) return ca < cb ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 /**
  * Операции — движение по кассам (F-07-010…018, 02-api.md §12). Возвраты и штрафы (F-07-066…075) живут здесь же:
  * оба — частные случаи операции (расход-возврат / доход-штраф), не отдельная таблица.
@@ -108,7 +156,8 @@ export class FinOpsService {
     if (f?.partyType) where.partyType = f.partyType;
     if (f?.partyId) where.partyId = f.partyId;
     if (f?.cancelled !== undefined) where.cancelled = f.cancelled;
-    if (f?.dateFrom || f?.dateTo) where.date = { ...(f.dateFrom ? { gte: localToUtc(f.dateFrom) } : {}), ...(f.dateTo ? { lte: localToUtc(f.dateTo) } : {}) };
+    // «по 23:59» — до конца этой минуты: оплата в 23:59:30 тоже в отборе (сайт сравнивает время до минуты)
+    if (f?.dateFrom || f?.dateTo) where.date = { ...(f.dateFrom ? { gte: localToUtc(f.dateFrom) } : {}), ...(f.dateTo ? { lt: new Date(localToUtc(f.dateTo).getTime() + 60_000) } : {}) };
     if (f?.search) where.OR = [{ partyName: { contains: f.search } }, { comment: { contains: f.search } }];
     return where;
   }
@@ -117,6 +166,76 @@ export class FinOpsService {
     await this.catalog.ensureDefaults(businessId);
     const rows = await this.prisma.finOp.findMany({ where: this.whereOf(businessId, filter), orderBy: { date: 'desc' } });
     return rows.map(finOpView);
+  }
+
+  /**
+   * «Финансы → Операции» страницей (скорость, 17.11.2026: все операции разом — 235 КБ у Nuri на каждое открытие).
+   * Фильтры, итоги «приход / расход» за весь отобранный список и остаток кассы после каждой строки — здесь, а не в
+   * браузере. Порядок — compareOperationsAsc фронта наоборот (новые сверху; в одной минуте приход раньше расхода,
+   * комиссия после своей оплаты): тот же порядок, по которому считается «Остаток в кассе».
+   */
+  async page(businessId: string, q: FinOpPageQuery) {
+    await this.catalog.ensureDefaults(businessId);
+    const where = this.whereOf(businessId, q);
+    if (q.transfer) where.kind = { in: ['transfer_in', 'transfer_out'] };
+    if (q.accountIds) where.accountId = q.accountId ? (q.accountIds.includes(q.accountId) ? q.accountId : { in: [] }) : { in: q.accountIds };
+    const light = await this.prisma.finOp.findMany({ where, select: LIGHT });
+    light.sort((a, b) => compareLightAsc(b, a));
+    // Итоги (fin-review Ф17): отменённые не считаются; переводы — только когда выбрана одна касса
+    let income = 0n;
+    let expense = 0n;
+    for (const op of light) {
+      if (op.cancelled) continue;
+      if (op.kind === 'income' || (q.accountId && op.kind === 'transfer_in')) income += op.amount;
+      else if (op.kind === 'expense' || (q.accountId && op.kind === 'transfer_out')) expense += op.amount;
+    }
+    const pageSize = Math.min(Math.max(1, q.pageSize), PAGE_MAX);
+    const pageCount = Math.max(1, Math.ceil(light.length / pageSize));
+    // Страница за пределами (после смены фильтра) прижимается к последней — как Ф17 на экране
+    const page = Math.min(Math.max(1, q.page), pageCount);
+    const ids = light.slice((page - 1) * pageSize, page * pageSize).map((x) => x.id);
+    const rows = ids.length ? await this.prisma.finOp.findMany({ where: { id: { in: ids } } }) : [];
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const items = ids.map((id) => byId.get(id)).filter((r): r is NonNullable<typeof r> => Boolean(r));
+    const balances = q.withBalance ? await this.balancesAfter(items) : undefined;
+    return {
+      items: items.map((r) => ({ ...finOpView(r), ...(balances ? { balanceAfter: moneyToJson(balances.get(r.id) ?? 0n) } : {}) })),
+      total: light.length,
+      page,
+      pageSize,
+      totals: { income: moneyToJson(income), expense: moneyToJson(expense) },
+    };
+  }
+
+  /**
+   * «Остаток в кассе» после каждой операции страницы (F-07-011) — accountRunningBalances фронта: начальный остаток кассы
+   * плюс все её не отменённые операции по порядку compareOperationsAsc до этой включительно (фильтры списка не влияют).
+   * Всё, что раньше первой минуты страницы, — одной суммой в базе; минуты самой страницы — по порядку здесь.
+   */
+  private async balancesAfter(items: { id: string; accountId: string; date: Date }[]): Promise<Map<string, bigint>> {
+    const out = new Map<string, bigint>();
+    const byAccount = new Map<string, Date[]>();
+    for (const r of items) (byAccount.get(r.accountId) ?? byAccount.set(r.accountId, []).get(r.accountId)!).push(r.date);
+    const accounts = await this.prisma.cashRegister.findMany({ where: { id: { in: [...byAccount.keys()] } }, select: { id: true, openingBalance: true } });
+    const opening = new Map(accounts.map((a) => [a.id, a.openingBalance]));
+    await Promise.all(
+      [...byAccount].map(async ([accountId, dates]) => {
+        const from = minuteStart(new Date(Math.min(...dates.map((d) => d.getTime()))));
+        const to = new Date(minuteStart(new Date(Math.max(...dates.map((d) => d.getTime())))).getTime() + 60_000);
+        const [before, window] = await Promise.all([
+          this.prisma.finOp.groupBy({ by: ['kind'], where: { accountId, cancelled: false, date: { lt: from } }, _sum: { amount: true } }),
+          this.prisma.finOp.findMany({ where: { accountId, date: { gte: from, lt: to } }, select: LIGHT }),
+        ]);
+        let balance = opening.get(accountId) ?? 0n;
+        for (const g of before) balance += signOf(g.kind) * (g._sum.amount ?? 0n);
+        window.sort(compareLightAsc);
+        for (const op of window) {
+          if (!op.cancelled) balance += signOf(op.kind) * op.amount;
+          out.set(op.id, balance);
+        }
+      }),
+    );
+    return out;
   }
 
   async get(businessId: string, id: string) {

@@ -111,7 +111,10 @@ export class PublicOnlineController {
 
   @Post('b/:slug/code')
   @HttpCode(200)
-  @RateLimit({ bucket: 'public-booking-code', limit: 5, windowSec: 3600, by: 'ip' })
+  // 16.11.2026: было 5 в час с адреса — тот же код, что у входа (/v1/auth/code: 30 за 10 мин). Мобильные операторы
+  // выводят многих людей через общий адрес: шестой человек за час не мог записаться. Защита номера — в OtpService
+  // (повтор через 60 с, SMS не больше 3 в сутки на номер).
+  @RateLimit({ bucket: 'public-booking-code', limit: 30, windowSec: 600, by: 'ip' })
   @ApiOperation({ summary: 'Код перед записью без входа (F-00-007, B2) — тот же канал, что вход' })
   @ZodBody(sendBookingCodeBody)
   @ZodOk(codeSentOut)

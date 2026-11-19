@@ -86,6 +86,9 @@ export function readCore(): CoreData {
   return current().core;
 }
 
+/** Зеркало ядра браузера — на сервере то же ядро (фронт читает его вне request(); здесь всегда внутри запроса) */
+export const readCoreMirror = readCore;
+
 /** Коды ошибок мока — те же коды сервера (common/errors/api-error.ts) */
 export class ApiError extends ServerApiError {
   constructor(code: string, message?: string) {

@@ -4,6 +4,7 @@ import { env } from '../../common/config/env.js';
 import { t, type Locale } from '../../common/i18n/i18n.js';
 import type { PrismaService } from '../../common/prisma.service.js';
 import { DEFAULT_TZ, utcToLocal } from '../../common/time/time.js';
+import { staffNameFor } from '../notify/notify-type-text.js';
 
 /** Сообщения бота о записи: карточка (бизнес, дата/время по поясу филиала, услуга, мастер) и кнопки под ней */
 
@@ -32,6 +33,8 @@ export interface BookingCard {
   businessName: string;
   slug?: string;
   when: string;
+  /** Местное время начала 'YYYY-MM-DDTHH:mm' — для своего текста салона ({date} {time}) */
+  local: string;
   service: string;
   master: string;
   /** Кому звонить, если бот не может отменить: мастер → филиал → бизнес */
@@ -43,16 +46,19 @@ export async function bookingCard(prisma: PrismaService, b: BookingRow, locale: 
   const [business, location, staff, service] = await Promise.all([
     prisma.business.findUnique({ where: { id: b.businessId }, select: { name: true, brandName: true, slug: true, phone: true } }),
     prisma.location.findUnique({ where: { id: b.locationId }, select: { tz: true, phone: true } }),
-    prisma.staff.findUnique({ where: { id: b.staffId }, select: { name: true, phone: true } }),
+    prisma.staff.findUnique({ where: { id: b.staffId }, select: { name: true, nameI18n: true, phone: true } }),
     serviceId ? prisma.service.findUnique({ where: { id: serviceId }, select: { name: true } }) : Promise.resolve(null),
   ]);
   const tz = location?.tz || DEFAULT_TZ;
+  const local = utcToLocal(b.startAt, tz);
   return {
     businessName: business?.brandName || business?.name || 'BookTime',
     slug: business?.slug || undefined,
-    when: formatWhen(utcToLocal(b.startAt, tz), locale),
+    when: formatWhen(local, locale),
+    local,
     service: pickText(service?.name, locale) ?? '',
-    master: staff?.name ?? '',
+    // Имя мастера — на языке клиента (ответ 8)
+    master: staffNameFor(staff, locale),
     phone: staff?.phone || location?.phone || business?.phone || undefined,
   };
 }

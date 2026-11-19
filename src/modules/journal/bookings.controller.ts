@@ -68,6 +68,8 @@ export class BookingsController {
       groupEventId: q['groupEventId'],
       seriesId: q['seriesId'],
       visitId: q['visitId'],
+      // Записи по id (ведомость — подсветка правленых визитов, окно записи по ссылке): не держать в браузере всё
+      ids: q['ids'] === undefined ? undefined : csv(q['ids']),
     });
   }
 
@@ -122,6 +124,8 @@ export class BookingsController {
   @Biz('journal.view')
   @ApiOperation({ summary: 'Готовый текст + wa.me для клиента без приложения (F-00-121, 05 §1 «мастер напоминает сам»)' })
   async remindText(@Ctx() ctx: RequestContext, @Param('id') id: string): Promise<{ phone: string; text: string; whatsappUrl: string }> {
+    // Ответ 29 (17.11.2026): без права «Просматривать телефоны клиентов» номера нет и в ссылке WhatsApp
+    if (!ctx.member!.permissions.has('clients.phones')) throw new ApiError('forbidden', 'Missing permission: clients.phones');
     const b = await this.svc.find(this.svc.prisma, [ctx.member!.businessId], id);
     const client = b.clientId ? await this.svc.prisma.client.findUnique({ where: { id: b.clientId } }) : null;
     if (!client || !client.phone) throw new ApiError('not_found', 'No client phone for this booking');

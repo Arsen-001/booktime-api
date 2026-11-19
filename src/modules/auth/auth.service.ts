@@ -171,7 +171,7 @@ export class AuthService {
     ctx: RequestContext,
     res: Response,
     input: { phone: string; code: string; app: PhoneApp; name?: string; consent?: boolean; locale?: Locale; pendingGoogle?: string; pendingApple?: string },
-  ): Promise<SessionView & { googleLinked?: boolean; appleLinked?: boolean }> {
+  ): Promise<SessionView & { googleLinked?: boolean; appleLinked?: boolean; needsName?: boolean }> {
     const phone = normalizePhone(input.phone);
     if (!phone) throw new ApiError('invalid_phone', 'Phone must be +374XXXXXXXX');
     const existing = await this.prisma.user.findUnique({ where: { phone }, include: { appProfile: { select: { consentAt: true } } } });
@@ -199,11 +199,15 @@ export class AuthService {
     const now = new Date();
     let googleLinked = false;
     let appleLinked = false;
+    // Владелец 17.11.2026 (DESIGN.md №23): имя спрашиваем только у нового номера и только после кода — сайт шлёт код
+    // без имени, а на «нет имени» (новый человек или старый, у кого вместо имени номер) спросит его следующим шагом
+    let needsName = Boolean(existing && existing.name === phone && !input.name?.trim());
     const userId = await this.prisma.$transaction(async (tx) => {
       let id = existing?.id;
       if (!id) {
         id = newId('user');
         const name = input.name?.trim().slice(0, 120) || google?.name || apple?.name || phone;
+        needsName = name === phone;
         await tx.user.create({ data: { id, phone, name, locale: input.locale ?? 'ru', createdBy: id, updatedBy: id } });
         await this.audit.record(tx, ctx, { action: 'create', entityType: 'user', entityId: id, after: { phone, name } });
       }
@@ -214,7 +218,7 @@ export class AuthService {
     });
 
     const sessionId = await this.openPhoneSession(ctx, res, userId, input.app, 'code', channel);
-    const linked: { googleLinked?: boolean; appleLinked?: boolean } = {};
+    const linked: { googleLinked?: boolean; appleLinked?: boolean; needsName?: boolean } = needsName ? { needsName } : {};
     if (input.pendingGoogle) {
       await this.logEvent(ctx, {
         userId,

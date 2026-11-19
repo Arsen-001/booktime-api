@@ -7,7 +7,8 @@ import { attachmentDisposition, MAX_DOCUMENT_BYTES } from '../uploads/document.j
 import { requestBase } from '../uploads/uploads.controller.js';
 import { z } from 'zod';
 import type { RequestContext, RequestWithContext } from '../../common/http/context.js';
-import { Biz, Ctx } from '../../common/http/guards.js';
+import { Biz, BizAny, Ctx } from '../../common/http/guards.js';
+import { ApiError } from '../../common/errors/api-error.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { Zod } from '../../common/http/validation.js';
 import { ifMatch } from '../../common/http/version.js';
@@ -56,6 +57,7 @@ import { ClientsBroadcastService } from './clients-broadcast.service.js';
 import { ReadOnly } from '../../common/http/read-only.js';
 
 const noteBody = z.object({ note: z.string().max(2000) });
+const blockedBody = z.object({ blocked: z.boolean() });
 
 /** Клиенты / CRM — /v1/biz (docs/backend/01 §5, 02 §6, PLAN §6 №5) */
 @ApiTags('clients')
@@ -168,8 +170,10 @@ export class ClientsController {
     return this.extras.getSettings(businessId);
   }
 
+  // Журнал загрузок видит тот, кто может загружать (clients.edit, как POST clients/import); было settings.manage —
+  // администратор загружал базу, но не видел, как она загрузилась (проход 17.11)
   @Get('clients/import-runs')
-  @Biz('settings.manage')
+  @Biz('clients.edit')
   @ZodOk(z.array(importRunOut))
   listImportRuns(@Param('businessId') businessId: string) {
     return this.importExport.listImportRuns(businessId);
@@ -217,6 +221,18 @@ export class ClientsController {
     @Body(new Zod(updateClientBody)) body: z.infer<typeof updateClientBody>,
   ) {
     return this.svc.updateClient(ctx, businessId, id, body, ifMatch(req));
+  }
+
+  /**
+   * «Запретить онлайн-запись» во вкладке «Онлайн-запись» карточки клиента (F-03-135): одно поле, без полной формы
+   * карточки. Право — правка клиента или настройка онлайн-записи (17.11: переключатель писал только в браузер)
+   */
+  @Put('clients/:id/blocked')
+  @BizAny('clients.edit', 'online.manage')
+  @ZodBody(blockedBody)
+  @ZodOk(clientRowOut)
+  setBlocked(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(blockedBody)) body: z.infer<typeof blockedBody>) {
+    return this.svc.setBlocked(ctx, businessId, id, body.blocked);
   }
 
   @Patch('clients/:id/note')
@@ -541,10 +557,15 @@ export class ClientsController {
 
   // ─────────── тонкие права «Клиентская база» (F-04-194…204) ───────────
 
+  /**
+   * Свои тонкие права читает сам сотрудник (кабинет администратора сужает по ним экраны клиентов), чужие — `staff.manage`
+   * (проход 17.11: администратор получал 403, и сайт молча подставлял права роли по умолчанию вместо заданных владельцем)
+   */
   @Get('staff/:staffId/client-fine-rights')
-  @Biz('staff.manage')
-  getFineRights(@Param('staffId') staffId: string) {
-    return this.extras.getFineRights(staffId);
+  @Biz()
+  getFineRights(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('staffId') staffId: string) {
+    if (staffId !== ctx.member!.staffId && !ctx.member!.permissions.has('staff.manage')) throw new ApiError('forbidden', 'Missing permission: staff.manage');
+    return this.extras.getFineRights(businessId, staffId);
   }
 
   @Put('staff/:staffId/client-fine-rights')
@@ -577,7 +598,8 @@ export class ClientsController {
   @Biz('clients.export')
   @ZodBody(exportClientsBody)
   @ZodOk(z.array(clientRowOut))
-  exportClients(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(exportClientsBody)) body: z.infer<typeof exportClientsBody>) {
-    return this.importExport.exportClients(ctx, businessId, body.ids, body.authorName, body.fileName);
+  async exportClients(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(exportClientsBody)) body: z.infer<typeof exportClientsBody>) {
+    const rows = await this.svc.exportRows(ctx, businessId, body.ids, body.locationIds);
+    return this.importExport.exportClients(ctx, businessId, rows, body.authorName, body.fileName);
   }
 }

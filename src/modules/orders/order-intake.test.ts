@@ -132,6 +132,15 @@ test('настройка: правка и выключение — та же у�
   assert.equal(svc.onlineBookable, false);
 });
 
+test('настройка: выключено и ни разу не включали — услуги «Приём / Выдача заказа» не заводятся (проход 17.11)', async () => {
+  const { intake, tables } = world();
+  const s = await intake.setSettings(ctx, 'biz_1', { enabled: false, slotMin: 15 });
+  assert.equal(s.enabled, false);
+  assert.equal(s.serviceId, null);
+  assert.equal((tables.service ?? []).filter((x) => x.kind === 'intake' || x.kind === 'pickup').length, 0);
+  assert.deepEqual(tables.staff!.find((x) => x.id === 'st_2')!.serviceIds, ['svc_other']);
+});
+
 test('настройка: только чужие/уволенные сотрудники — отказ; включить некому — intake_no_staff', async () => {
   const { intake } = world();
   await assert.rejects(intake.setSettings(ctx, 'biz_1', { enabled: true, slotMin: 15, staffIds: ['st_3', 'st_x'] }), (e: unknown) => e instanceof ApiError && e.code === 'validation');

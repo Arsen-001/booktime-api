@@ -10,9 +10,9 @@ import { PrismaService } from '../../common/prisma.service.js';
 import { DEFAULT_PRICES, loadPrices, PRICE_NOTES, type PriceKey } from './billing-prices.js';
 import { calculateForPlan } from './billing-seats.js';
 import { BillingService } from './billing.service.js';
-import { freeMonthsBody, grantCoinsBody, planQuery, pricesBody, promoCheckQuery, promoCreateBody } from './billing.schemas.js';
+import { freeMonthsBody, graceBody, grantCoinsBody, planQuery, pricesBody, promoCheckQuery, promoCreateBody } from './billing.schemas.js';
 import { checkPromo, createPromo, promoViews } from './promo.js';
-import { grantFreeDays, markInvoicePaid } from './subscription.js';
+import { grantFreeDays, grantGrace, markInvoicePaid } from './subscription.js';
 
 /**
  * Наша панель: промокоды, бесплатные месяцы, цены, монеты-подарки, оплата счёта для фирмы (02 §19 — часть,
@@ -74,6 +74,18 @@ export class BillingPlatformController {
     if (!biz) throw new ApiError('not_found', 'Business not found');
     await this.prisma.$transaction((tx) => grantFreeDays(tx, { ...body, by: ctx.session!.userId }));
     return this.billing.view(body.businessId);
+  }
+
+  @Post('businesses/:id/grace')
+  @Platform()
+  @ApiOperation({ summary: '«Отсрочка N дней» салону, замороженному за неуплату (ответ 30, 17.11.2026): кабинет работает до даты' })
+  @ZodBody(graceBody)
+  async grace(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new Zod(graceBody)) body: z.infer<typeof graceBody>) {
+    const biz = await this.prisma.business.findUnique({ where: { id }, select: { id: true, leftAt: true } });
+    if (!biz) throw new ApiError('not_found', 'Business not found');
+    if (biz.leftAt) throw new ApiError('conflict', 'Business has left the platform');
+    await this.prisma.$transaction((tx) => grantGrace(tx, { businessId: id, days: body.days, by: ctx.session!.userId }));
+    return this.billing.view(id);
   }
 
   @Post('coins/grant')

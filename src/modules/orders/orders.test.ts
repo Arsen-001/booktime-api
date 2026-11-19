@@ -252,7 +252,7 @@ test('публичный вид: ни телефона клиента, ни ко
   assert.deepEqual(Object.keys(pub).sort(), ['business', 'dueDate', 'estimate', 'items', 'number', 'pickup', 'prepaid', 'price', 'readyAt', 'status']);
   assert.equal(pub.estimate, null);
   assert.deepEqual(pub.items, [{ title: 'Платье', qty: 1 }], 'заметка к вещи — внутренняя');
-  assert.deepEqual(pub.business, { name: 'Ателье Нарине', phone: '+37410111111', address: 'Ереван, Абовяна 1', slug: 'narine' });
+  assert.deepEqual(pub.business, { name: 'Ателье Нарине', phone: '+37410111111', address: { ru: 'Ереван, Абовяна 1' }, slug: 'narine' });
   const json = JSON.stringify(pub);
   for (const secret of ['160001', 'ткань тонкая', 'st_1', 'cl_1', o.id, 'укоротить']) assert.ok(!json.includes(secret), `не утекает: ${secret}`);
   assert.equal(pub.readyAt, null);

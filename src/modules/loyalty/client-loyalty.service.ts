@@ -19,6 +19,25 @@ const PAYMENT_SENT = 'paymentSent';
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const optStr = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
 
+/**
+ * Обязательный аргумент операции, которая ищет строку сама (не через порт): не той формы — 400 `validation` с полем
+ * `args.<i>`, как checkArgs порта (port/runner.service.ts). Без этого пустой id давал 404 «не найдено» или 403
+ * «не ваша покупка», а «показывать кэшбэк» молча выключался на любом не-булевом значении.
+ */
+function invalidArg(op: string, i: number, kind: string): ApiError {
+  return new ApiError('validation', `loyalty app op ${op}: invalid arguments`, { [`args.${i}`]: kind });
+}
+function argStr(op: string, args: unknown[], i: number): string {
+  const v = args[i];
+  if (typeof v !== 'string' || !v) throw invalidArg(op, i, 'string');
+  return v;
+}
+function argBool(op: string, args: unknown[], i: number): boolean {
+  const v = args[i];
+  if (typeof v !== 'boolean') throw invalidArg(op, i, 'boolean');
+  return v;
+}
+
 const MANAGE: Permission[] = ['loyalty.manage'];
 const SELL: Permission[] = ['loyalty.manage', 'finance.edit'];
 
@@ -69,6 +88,8 @@ export class ClientLoyaltyService {
       }
       case 'listLoyaltyCards':
         return run('appListLoyaltyCards', [userId]);
+      case 'listAccounts':
+        return run('appListAccounts', [userId]);
       case 'getCashbackForBusiness':
         return run('appGetCashbackForBusiness', [userId, str(args[0])]);
       case 'getBookingMembershipOption':
@@ -79,13 +100,13 @@ export class ClientLoyaltyService {
         await run('appMarkMembershipReminderSeen', [userId, str(args[0])]);
         return null;
       case 'purchaseMembership':
-        return this.purchase(userId, 'membership', str(args[0]));
+        return this.purchase(userId, 'membership', argStr(op, args, 0));
       case 'purchaseCertificate':
-        return this.purchase(userId, 'certificate', str(args[0]));
+        return this.purchase(userId, 'certificate', argStr(op, args, 0));
       case 'markMembershipPaymentSent':
-        return this.markPaymentSent(userId, 'membership', str(args[0]));
+        return this.markPaymentSent(userId, 'membership', argStr(op, args, 0));
       case 'markCertificatePaymentSent':
-        return this.markPaymentSent(userId, 'certificate', str(args[0]));
+        return this.markPaymentSent(userId, 'certificate', argStr(op, args, 0));
       default:
         throw new ApiError('not_found', `Unknown op ${op}`);
     }
@@ -141,7 +162,7 @@ export class ClientLoyaltyService {
       case 'confirmCertificatePurchase': {
         requireAny(ctx, SELL);
         const kind: Kind = op === 'confirmMembershipPurchase' ? 'membership' : 'certificate';
-        const row = await this.ownRequest(kind, businessId, str(args[0]));
+        const row = await this.ownRequest(kind, businessId, argStr(op, args, 0));
         const clientId = await this.linkClient(businessId, row.appUserId!);
         await this.decide(ctx, kind, row, 'confirm', clientId);
         return run(kind === 'membership' ? 'appGetMembership' : 'appGetCertificate', [row.appUserId, row.id]);
@@ -150,7 +171,7 @@ export class ClientLoyaltyService {
       case 'rejectCertificatePurchase': {
         requireAny(ctx, SELL);
         const kind: Kind = op === 'rejectMembershipPurchase' ? 'membership' : 'certificate';
-        const row = await this.ownRequest(kind, businessId, str(args[0]));
+        const row = await this.ownRequest(kind, businessId, argStr(op, args, 0));
         await this.decide(ctx, kind, row, 'reject');
         const [pending] = await this.pendingRows({ appUserId: row.appUserId!, kind, id: row.id });
         return run('appPendingView', [pending]);
@@ -167,7 +188,7 @@ export class ClientLoyaltyService {
       case 'setCashbackVisibleForBusiness':
         // client-2-fix (как мок): «кэшбэк в приложении» — loyalty.rules; loyalty.manage тоже достаточно
         requireAny(ctx, ['loyalty.rules', ...MANAGE]);
-        await run('appSetCashbackVisibleForBusiness', [businessId, args[0] === true]);
+        await run('appSetCashbackVisibleForBusiness', [businessId, argBool(op, args, 0)]);
         return null;
       default:
         throw new ApiError('not_found', `Unknown op ${op}`);
