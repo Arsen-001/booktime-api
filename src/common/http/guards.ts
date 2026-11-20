@@ -36,6 +36,8 @@ const REQUIRED_ANY = 'bt:required-any-permission';
 /**
  * Кабинет бизнеса: `businessId` из пути сверяется с членством вошедшего (арендатор, PLAN.md §5), затем права.
  * Чужой бизнес и «нет права» отвечают одинаково — 403 forbidden, без подсказки, существует ли бизнес.
+ * Свой бизнес, но «Вход только с IP салона» и адрес не салона (ответ 22) — 403 ip_not_allowed с адресом в fields.ip:
+ * сайт показывает «Вход закрыт: адрес не салона», владелец видит попытку и добавляет адрес одной кнопкой.
  */
 @Injectable()
 export class BizGuard implements CanActivate {
@@ -50,8 +52,12 @@ export class BizGuard implements CanActivate {
     if (!session) throw new ApiError('unauthorized', 'Session required');
     const businessId = req.params['businessId'];
     if (typeof businessId !== 'string' || !businessId) throw new ApiError('forbidden', 'Business is not accessible');
-    const member = await this.memberships.resolve(session, businessId);
-    if (!member) throw new ApiError('forbidden', 'Business is not accessible');
+    const member = await this.memberships.resolve(session, businessId, req.ctx.ip);
+    if (!member) {
+      const ip = await this.memberships.ipRefusal?.(session, businessId, req.ctx.ip);
+      if (ip) throw new ApiError('ip_not_allowed', 'Sign-in to this business is allowed only from the salon addresses', { ip });
+      throw new ApiError('forbidden', 'Business is not accessible');
+    }
     const required = this.reflector.getAllAndOverride<Permission[]>(REQUIRED, [host.getHandler(), host.getClass()]) ?? [];
     const missing = required.filter((p) => !member.permissions.has(p));
     if (missing.length) throw new ApiError('forbidden', `Missing permission: ${missing.join(', ')}`);

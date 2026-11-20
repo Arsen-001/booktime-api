@@ -252,6 +252,8 @@ export const ID_PREFIX = {
   upload: 'upl',
   // «Найти окно → предложить» на сервере (06.10.2026), как мок newId('so')
   slotOffer: 'so',
+  // «Вход только с IP салона» (20.11.2026): попытка не с адреса салона
+  salonIpAttempt: 'sipa',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIX;

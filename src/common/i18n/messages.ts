@@ -44,6 +44,7 @@ const en = {
   'billing.frozen': 'Your page is hidden from clients: the subscription was not paid. Pay to restore it — all data is kept.',
   // ошибки API с текстом на языке запроса (common/errors/error.filter.ts): ключ error.<код>
   'error.frozen': 'Subscription is frozen: the account is read-only until paid.',
+  'error.ip_not_allowed': 'Sign-in is closed: this is not a salon address. The owner can add this address with one button.',
   // Telegram-бот напоминаний (30.09.2026) — src/modules/telegram
   'tg.linked': "Done — booking reminders will arrive here.",
   'tg.nextBooking': 'Your next booking:',
@@ -128,6 +129,7 @@ const ru: Record<MessageKey, string> = {
   'billing.paymentFailed': 'Не удалось списать оплату BookTime. Повторим завтра — или оплатите сейчас в разделе «Подписка».',
   'billing.frozen': 'Страница скрыта от клиентов: подписка не оплачена. Оплатите — все данные на месте.',
   'error.frozen': 'Подписка заморожена: кабинет только для просмотра, пока она не оплачена.',
+  'error.ip_not_allowed': 'Вход закрыт: адрес не салона. Владелец может добавить этот адрес одной кнопкой.',
   'tg.linked': 'Готово — напоминания о записях будут приходить сюда.',
   'tg.nextBooking': 'Ближайшая запись:',
   'tg.reminder24h': '🔔 Напоминаем: завтра у вас запись',
@@ -209,6 +211,7 @@ const hy: Record<MessageKey, string> = {
   'billing.paymentFailed': 'Չհաջողվեց գանձել BookTime-ի վճարը։ Կփորձենք վաղը, կամ վճարեք հիմա «Բաժանորդագրություն» բաժնում։',
   'billing.frozen': 'Էջը թաքցված է հաճախորդներից՝ բաժանորդագրությունը վճարված չէ։ Վճարեք՝ բոլոր տվյալները պահպանված են։',
   'error.frozen': 'Բաժանորդագրությունը սառեցված է՝ մինչև վճարումը հաշիվը հասանելի է միայն դիտման համար։',
+  'error.ip_not_allowed': 'Մուտքը փակ է՝ հասցեն սրահինը չէ։ Սեփականատերը կարող է ավելացնել այս հասցեն մեկ կոճակով։',
   'tg.linked': 'Պատրաստ է․ գրանցումների հիշեցումները կգան այստեղ։',
   'tg.nextBooking': 'Մոտակա գրանցումը՝',
   'tg.reminder24h': '🔔 Հիշեցում՝ վաղը գրանցում ունեք',

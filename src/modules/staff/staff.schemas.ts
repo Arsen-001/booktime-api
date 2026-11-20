@@ -62,7 +62,11 @@ export const dismissBody = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}
 export const accessBody = z.object({ enabled: z.boolean() });
 export const accessInfoBody = z.object({ info: z.string().max(500) });
 export const roleTemplateBody = z.object({ roleTemplateId: z.enum(['systemManager', 'viewer', 'specialist', 'admin', 'callCenter', 'accountant', 'manager', 'owner']) });
-export const ipBody = z.object({ enabled: z.boolean(), ranges: z.array(z.string().max(64)).max(50) });
+/** «Вход только с IP салона» (ответ 22): галочка сотрудника; адреса — у салона (salonIpsBody) */
+export const salonIpOnlyBody = z.object({ enabled: z.boolean() });
+export const salonIpsBody = z.object({ ips: z.array(z.string().max(64)).max(50) });
+/** «Добавить этот адрес»: адрес попытки или свой текущий; IPv6 — добавится его сеть /64 */
+export const salonIpAddBody = z.object({ ip: z.string().max(64) });
 export const loginBody = z.object({ login: z.string().max(64), password: z.string().max(128) });
 export const transferAccessBody = z.object({ fromStaffId: z.string().max(32), toStaffId: z.string().max(32), deleteSource: z.boolean().default(false) });
 export const transferOwnerBody = z.object({ toStaffId: z.string().max(32) });
@@ -90,13 +94,30 @@ export const inviteOut = z.object({
   createdAt: z.string(),
 });
 export const accessOut = z.object({
-  access: z.object({ enabled: z.boolean(), info: z.string().optional(), roleTemplateId: z.string(), ipRestriction: ipBody.optional() }),
+  access: z.object({ enabled: z.boolean(), info: z.string().optional(), roleTemplateId: z.string(), salonIpOnly: z.boolean() }),
   invite: inviteOut.optional(),
   staff: staffOut,
   /** Вход по логину администратора (F-00-034/038): пароль не отдаётся; mustChangePassword — выданный ещё не сменён */
   passwordLogin: z.object({ login: z.string(), mustChangePassword: z.boolean(), changedAt: z.string().optional(), issuedAt: z.string() }).optional(),
 });
 export const addStaffOut = z.object({ staff: staffOut, inviteLink: z.string().nullable() });
+/** Адреса салона, текущий адрес смотрящего и попытки не с адреса салона за 30 дней (ещё закрытые) */
+export const salonIpsOut = z.object({
+  ips: z.array(z.string()),
+  currentIp: z.string(),
+  attempts: z.array(
+    z.object({
+      id: z.string(),
+      staffId: z.string(),
+      staffName: z.string(),
+      ip: z.string(),
+      /** Сколько раз (не чаще раза в минуту) */
+      attempts: z.number(),
+      firstAt: z.string(),
+      lastAt: z.string(),
+    }),
+  ),
+});
 export const reissueOut = z.object({ invite: inviteOut, link: z.string() });
 export const dismissalOut = z
   .object({

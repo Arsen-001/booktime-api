@@ -158,7 +158,8 @@ export function accessView(s: Staff) {
     enabled: s.role === 'owner' ? true : s.accessEnabled,
     info: opt(s.accessInfo),
     roleTemplateId: (s.roleTemplateId ?? defaultRoleTemplate(s.role)) as string,
-    ipRestriction: opt(s.ipRestriction as { enabled: boolean; ranges: string[] } | null),
+    /** «Вход только с IP салона» (ответ 22): у владельца не бывает */
+    salonIpOnly: s.role !== 'owner' && s.salonIpOnly,
   };
 }
 
