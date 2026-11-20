@@ -37,6 +37,15 @@ export function localeFromAcceptLanguage(header: string | string[] | undefined):
 }
 
 /**
+ * Язык текста, который сервер кладёт в ответ (подпись ссылки без названия, 20.11.2026): как у ошибок (error.filter) —
+ * Accept-Language (язык приложения: BookTime Business шлёт его в каждом запросе), иначе язык человека в сессии, иначе ru.
+ */
+export function requestLocale(req: { headers?: Record<string, string | string[] | undefined>; ctx?: { session?: { locale?: unknown } | null } } | undefined): Locale {
+  const session = req?.ctx?.session?.locale;
+  return localeFromAcceptLanguage(req?.headers?.['accept-language']) ?? (isLocale(session) ? session : 'ru');
+}
+
+/**
  * Текст ошибки API на языке запроса (QA 15.10.2026): экран по-прежнему переводит `code`, но для кодов со словарным
  * ключом `error.<code>` (сейчас — frozen) и `message` приходит на языке человека. Ключа нет — undefined
  * (остаётся английский текст ошибки).

@@ -54555,6 +54555,9 @@
                       "name": {
                         "type": "string"
                       },
+                      "nameDefault": {
+                        "type": "boolean"
+                      },
                       "kind": {
                         "type": "string",
                         "enum": [
@@ -54593,6 +54596,7 @@
                       "id",
                       "businessId",
                       "name",
+                      "nameDefault",
                       "kind",
                       "bookingType",
                       "defaultLocale",
@@ -54715,6 +54719,9 @@
                     "name": {
                       "type": "string"
                     },
+                    "nameDefault": {
+                      "type": "boolean"
+                    },
                     "kind": {
                       "type": "string",
                       "enum": [
@@ -54753,6 +54760,7 @@
                     "id",
                     "businessId",
                     "name",
+                    "nameDefault",
                     "kind",
                     "bookingType",
                     "defaultLocale",
@@ -54822,6 +54830,9 @@
                     "name": {
                       "type": "string"
                     },
+                    "nameDefault": {
+                      "type": "boolean"
+                    },
                     "kind": {
                       "type": "string",
                       "enum": [
@@ -54860,6 +54871,7 @@
                     "id",
                     "businessId",
                     "name",
+                    "nameDefault",
                     "kind",
                     "bookingType",
                     "defaultLocale",
@@ -55025,6 +55037,9 @@
                     "name": {
                       "type": "string"
                     },
+                    "nameDefault": {
+                      "type": "boolean"
+                    },
                     "kind": {
                       "type": "string",
                       "enum": [
@@ -55063,6 +55078,7 @@
                     "id",
                     "businessId",
                     "name",
+                    "nameDefault",
                     "kind",
                     "bookingType",
                     "defaultLocale",
@@ -55165,6 +55181,9 @@
                     "name": {
                       "type": "string"
                     },
+                    "nameDefault": {
+                      "type": "boolean"
+                    },
                     "kind": {
                       "type": "string",
                       "enum": [
@@ -55203,6 +55222,7 @@
                     "id",
                     "businessId",
                     "name",
+                    "nameDefault",
                     "kind",
                     "bookingType",
                     "defaultLocale",

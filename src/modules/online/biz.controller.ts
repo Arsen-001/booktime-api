@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req } fr
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { ApiError } from '../../common/errors/api-error.js';
+import { requestLocale } from '../../common/i18n/i18n.js';
 import type { RequestContext, RequestWithContext } from '../../common/http/context.js';
 import { Biz, Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
@@ -64,15 +65,15 @@ export class BizOnlineController {
   @Get('links')
   @Biz()
   @ZodOk(z.array(bookingLinkOut))
-  list(@Param('businessId') businessId: string) {
-    return this.svc.listLinks(businessId);
+  list(@Req() req: RequestWithContext, @Param('businessId') businessId: string) {
+    return this.svc.listLinks(businessId, requestLocale(req));
   }
 
   @Get('links/:id')
   @Biz()
   @ZodOk(bookingLinkOut)
-  get(@Param('businessId') businessId: string, @Param('id') id: string) {
-    return this.svc.getLink(businessId, id);
+  get(@Req() req: RequestWithContext, @Param('businessId') businessId: string, @Param('id') id: string) {
+    return this.svc.getLink(businessId, id, requestLocale(req));
   }
 
   @Post('links')
@@ -80,8 +81,8 @@ export class BizOnlineController {
   @ApiOperation({ summary: '«Новая ссылка» (F-03-005, F-03-006)' })
   @ZodBody(createLinkBody)
   @ZodOk(bookingLinkOut)
-  create(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Body(new Zod(createLinkBody)) body: z.infer<typeof createLinkBody>) {
-    return this.svc.createLink(ctx, businessId, body);
+  create(@Ctx() ctx: RequestContext, @Req() req: RequestWithContext, @Param('businessId') businessId: string, @Body(new Zod(createLinkBody)) body: z.infer<typeof createLinkBody>) {
+    return this.svc.createLink(ctx, businessId, body, requestLocale(req));
   }
 
   @Patch('links/:id')
@@ -89,7 +90,7 @@ export class BizOnlineController {
   @ZodBody(updateLinkBody)
   @ZodOk(bookingLinkOut)
   update(@Ctx() ctx: RequestContext, @Req() req: RequestWithContext, @Param('businessId') businessId: string, @Param('id') id: string, @Body(new Zod(updateLinkBody)) body: z.infer<typeof updateLinkBody>) {
-    return this.svc.updateLink(ctx, businessId, id, body, ifMatch(req));
+    return this.svc.updateLink(ctx, businessId, id, body, ifMatch(req), requestLocale(req));
   }
 
   @Delete('links/:id')
@@ -102,8 +103,8 @@ export class BizOnlineController {
   @Post('links/:id/primary')
   @Biz('online.manage')
   @ZodOk(bookingLinkOut)
-  setPrimary(@Ctx() ctx: RequestContext, @Param('businessId') businessId: string, @Param('id') id: string) {
-    return this.svc.setPrimaryLink(ctx, businessId, id);
+  setPrimary(@Ctx() ctx: RequestContext, @Req() req: RequestWithContext, @Param('businessId') businessId: string, @Param('id') id: string) {
+    return this.svc.setPrimaryLink(ctx, businessId, id, requestLocale(req));
   }
 
   // ── правила мастера для клиента (F-00-066) ──

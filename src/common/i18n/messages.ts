@@ -90,6 +90,9 @@ const en = {
   'client.birthday': 'Happy birthday, {clientName}! Come see us: {bookingLink}. {companyName}',
   'client.onlineBooked': '{companyName}: you are booked for {service} on {date} at {time}. Details: {link}',
   'client.repeatInvite': '{companyName}: it is time for “{service}” again. Book a convenient time: {bookingLink}',
+  // ссылка онлайн-записи без своего названия (20.11.2026, глоссарий сайта docs/TEXT-STYLE.md): основная — «main link», другая — «booking link»
+  'link.primaryName': 'Main link',
+  'link.unnamedName': 'Booking link',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -174,6 +177,8 @@ const ru: Record<MessageKey, string> = {
   'client.birthday': 'С днём рождения, {clientName}! Ждём в гости: {bookingLink}. {companyName}',
   'client.onlineBooked': '{companyName}: вы записаны на {service} {date} в {time}. Подробности: {link}',
   'client.repeatInvite': '{companyName}: пора снова на «{service}». Запишитесь на удобное время: {bookingLink}',
+  'link.primaryName': 'Основная ссылка',
+  'link.unnamedName': 'Ссылка на запись',
 };
 
 const hy: Record<MessageKey, string> = {
@@ -256,6 +261,8 @@ const hy: Record<MessageKey, string> = {
   'client.birthday': '{clientName}, շնորհավորում ենք ձեր ծննդյան օրվա առթիվ։ Սպասում ենք ձեզ՝ {bookingLink}։ {companyName}',
   'client.onlineBooked': '{companyName}․ դուք գրանցված եք {service}-ի՝ {date}, ժամը {time}։ Մանրամասներ՝ {link}',
   'client.repeatInvite': '{companyName}․ ժամանակն է կրկին «{service}»-ի։ Գրանցվեք ձեզ հարմար ժամի՝ {bookingLink}',
+  'link.primaryName': 'Հիմնական հղում',
+  'link.unnamedName': 'Գրանցման հղում',
 };
 
 export const messages: Record<'ru' | 'hy' | 'en', Record<MessageKey, string>> = { en, ru, hy };
