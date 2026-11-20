@@ -166,6 +166,9 @@
                                   },
                                   "role": {
                                     "type": "string"
+                                  },
+                                  "blockedIp": {
+                                    "type": "string"
                                   }
                                 },
                                 "required": [
@@ -503,6 +506,9 @@
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "blockedIp": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -682,6 +688,9 @@
                                     "type": "string"
                                   },
                                   "role": {
+                                    "type": "string"
+                                  },
+                                  "blockedIp": {
                                     "type": "string"
                                   }
                                 },
@@ -906,6 +915,9 @@
                                     "type": "string"
                                   },
                                   "role": {
+                                    "type": "string"
+                                  },
+                                  "blockedIp": {
                                     "type": "string"
                                   }
                                 },
@@ -1305,6 +1317,9 @@
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "blockedIp": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -1508,6 +1523,9 @@
                             "type": "string"
                           },
                           "role": {
+                            "type": "string"
+                          },
+                          "blockedIp": {
                             "type": "string"
                           }
                         },
@@ -8341,30 +8359,14 @@
                         "roleTemplateId": {
                           "type": "string"
                         },
-                        "ipRestriction": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "ranges": {
-                              "maxItems": 50,
-                              "type": "array",
-                              "items": {
-                                "type": "string",
-                                "maxLength": 64
-                              }
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "ranges"
-                          ]
+                        "salonIpOnly": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
                         "enabled",
-                        "roleTemplateId"
+                        "roleTemplateId",
+                        "salonIpOnly"
                       ]
                     },
                     "invite": {
@@ -8591,30 +8593,14 @@
                         "roleTemplateId": {
                           "type": "string"
                         },
-                        "ipRestriction": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "ranges": {
-                              "maxItems": 50,
-                              "type": "array",
-                              "items": {
-                                "type": "string",
-                                "maxLength": 64
-                              }
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "ranges"
-                          ]
+                        "salonIpOnly": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
                         "enabled",
-                        "roleTemplateId"
+                        "roleTemplateId",
+                        "salonIpOnly"
                       ]
                     },
                     "invite": {
@@ -8826,30 +8812,14 @@
                         "roleTemplateId": {
                           "type": "string"
                         },
-                        "ipRestriction": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "ranges": {
-                              "maxItems": 50,
-                              "type": "array",
-                              "items": {
-                                "type": "string",
-                                "maxLength": 64
-                              }
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "ranges"
-                          ]
+                        "salonIpOnly": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
                         "enabled",
-                        "roleTemplateId"
+                        "roleTemplateId",
+                        "salonIpOnly"
                       ]
                     },
                     "invite": {
@@ -9080,30 +9050,14 @@
                         "roleTemplateId": {
                           "type": "string"
                         },
-                        "ipRestriction": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "ranges": {
-                              "maxItems": 50,
-                              "type": "array",
-                              "items": {
-                                "type": "string",
-                                "maxLength": 64
-                              }
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "ranges"
-                          ]
+                        "salonIpOnly": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
                         "enabled",
-                        "roleTemplateId"
+                        "roleTemplateId",
+                        "salonIpOnly"
                       ]
                     },
                     "invite": {
@@ -9342,30 +9296,14 @@
                         "roleTemplateId": {
                           "type": "string"
                         },
-                        "ipRestriction": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "ranges": {
-                              "maxItems": 50,
-                              "type": "array",
-                              "items": {
-                                "type": "string",
-                                "maxLength": 64
-                              }
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "ranges"
-                          ]
+                        "salonIpOnly": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
                         "enabled",
-                        "roleTemplateId"
+                        "roleTemplateId",
+                        "salonIpOnly"
                       ]
                     },
                     "invite": {
@@ -9536,9 +9474,9 @@
         ]
       }
     },
-    "/v1/biz/{businessId}/staff/{staffId}/ip-restriction": {
+    "/v1/biz/{businessId}/staff/{staffId}/salon-ip-only": {
       "put": {
-        "operationId": "StaffController_setIp",
+        "operationId": "StaffController_setSalonIpOnly",
         "parameters": [
           {
             "name": "businessId",
@@ -9566,19 +9504,10 @@
                 "properties": {
                   "enabled": {
                     "type": "boolean"
-                  },
-                  "ranges": {
-                    "maxItems": 50,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "maxLength": 64
-                    }
                   }
                 },
                 "required": [
-                  "enabled",
-                  "ranges"
+                  "enabled"
                 ]
               }
             }
@@ -9592,21 +9521,179 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "enabled": {
-                      "type": "boolean"
+                    "access": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "info": {
+                          "type": "string"
+                        },
+                        "roleTemplateId": {
+                          "type": "string"
+                        },
+                        "salonIpOnly": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "roleTemplateId",
+                        "salonIpOnly"
+                      ]
                     },
-                    "ranges": {
-                      "maxItems": 50,
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "maxLength": 64
-                      }
+                    "invite": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "businessId": {
+                          "type": "string"
+                        },
+                        "staffId": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "admin",
+                            "master"
+                          ]
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "accepted",
+                            "revoked"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "businessId",
+                        "staffId",
+                        "role",
+                        "status",
+                        "createdAt"
+                      ]
+                    },
+                    "staff": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "businessId": {
+                          "type": "string"
+                        },
+                        "locationIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "owner",
+                            "admin",
+                            "master"
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "invited",
+                            "disabled",
+                            "fired"
+                          ]
+                        },
+                        "sphereIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "workplaces": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "serviceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "hiredAt": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "businessId",
+                        "locationIds",
+                        "name",
+                        "phone",
+                        "role",
+                        "status",
+                        "sphereIds",
+                        "workplaces",
+                        "serviceIds",
+                        "hiredAt",
+                        "version"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    "passwordLogin": {
+                      "type": "object",
+                      "properties": {
+                        "login": {
+                          "type": "string"
+                        },
+                        "mustChangePassword": {
+                          "type": "boolean"
+                        },
+                        "changedAt": {
+                          "type": "string"
+                        },
+                        "issuedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "login",
+                        "mustChangePassword",
+                        "issuedAt"
+                      ]
                     }
                   },
                   "required": [
-                    "enabled",
-                    "ranges"
+                    "access",
+                    "staff"
                   ]
                 }
               }
@@ -9618,7 +9705,315 @@
             "cookie": []
           }
         ],
-        "summary": "Вход только с доверенных IP (F-10-091)",
+        "summary": "«Вход только с IP салона»: кабинет — только с адресов салона, проверка на каждом запросе; владельцу нельзя",
+        "tags": [
+          "staff"
+        ]
+      }
+    },
+    "/v1/biz/{businessId}/salon-ips": {
+      "get": {
+        "operationId": "StaffController_salonIps",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ips": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "currentIp": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "staffId": {
+                            "type": "string"
+                          },
+                          "staffName": {
+                            "type": "string"
+                          },
+                          "ip": {
+                            "type": "string"
+                          },
+                          "attempts": {
+                            "type": "number"
+                          },
+                          "firstAt": {
+                            "type": "string"
+                          },
+                          "lastAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "staffId",
+                          "staffName",
+                          "ip",
+                          "attempts",
+                          "firstAt",
+                          "lastAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "ips",
+                    "currentIp",
+                    "attempts"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Адреса салона, текущий адрес и попытки входа не с адреса салона (30 дней, ещё закрытые)",
+        "tags": [
+          "staff"
+        ]
+      },
+      "put": {
+        "operationId": "StaffController_setSalonIps",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ips": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 64
+                    }
+                  }
+                },
+                "required": [
+                  "ips"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ips": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "currentIp": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "staffId": {
+                            "type": "string"
+                          },
+                          "staffName": {
+                            "type": "string"
+                          },
+                          "ip": {
+                            "type": "string"
+                          },
+                          "attempts": {
+                            "type": "number"
+                          },
+                          "firstAt": {
+                            "type": "string"
+                          },
+                          "lastAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "staffId",
+                          "staffName",
+                          "ip",
+                          "attempts",
+                          "firstAt",
+                          "lastAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "ips",
+                    "currentIp",
+                    "attempts"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Адреса салона целиком: адрес или сеть /N, IPv4 или IPv6; ошибка — invalid_ip_range (fields.value)",
+        "tags": [
+          "staff"
+        ]
+      },
+      "post": {
+        "operationId": "StaffController_addSalonIp",
+        "parameters": [
+          {
+            "name": "businessId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ip": {
+                    "type": "string",
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "ip"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ips": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "currentIp": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "staffId": {
+                            "type": "string"
+                          },
+                          "staffName": {
+                            "type": "string"
+                          },
+                          "ip": {
+                            "type": "string"
+                          },
+                          "attempts": {
+                            "type": "number"
+                          },
+                          "firstAt": {
+                            "type": "string"
+                          },
+                          "lastAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "staffId",
+                          "staffName",
+                          "ip",
+                          "attempts",
+                          "firstAt",
+                          "lastAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "ips",
+                    "currentIp",
+                    "attempts"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "«Добавить этот адрес» одной кнопкой: IPv4 — сам адрес, IPv6 — его сеть /64; уже пускает — без изменений",
         "tags": [
           "staff"
         ]
@@ -9689,30 +10084,14 @@
                         "roleTemplateId": {
                           "type": "string"
                         },
-                        "ipRestriction": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "ranges": {
-                              "maxItems": 50,
-                              "type": "array",
-                              "items": {
-                                "type": "string",
-                                "maxLength": 64
-                              }
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "ranges"
-                          ]
+                        "salonIpOnly": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
                         "enabled",
-                        "roleTemplateId"
+                        "roleTemplateId",
+                        "salonIpOnly"
                       ]
                     },
                     "invite": {
