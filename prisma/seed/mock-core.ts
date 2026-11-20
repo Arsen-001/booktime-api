@@ -34,11 +34,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Демо-ядро фронта. Фронт ищется рядом (../booking-platform) или по FRONTEND_DIR. Снимок кладётся в
- * prisma/seed/.cache/core.json — без фронта сид берёт последний снимок.
+ * prisma/seed/.cache/core.json — без фронта сид берёт последний снимок. SEED_LOCALE=hy|en — демо-данные на этом языке
+ * (export-mock.ts), снимок — core-hy.json / core-en.json.
  */
 export function loadMockCore(): MockCore {
   const frontend = path.resolve(process.env.FRONTEND_DIR ?? path.join(here, '../../../booking-platform'));
-  const cache = path.join(here, '.cache/core.json');
+  const locale = process.env.SEED_LOCALE === 'hy' || process.env.SEED_LOCALE === 'en' ? process.env.SEED_LOCALE : '';
+  const cache = path.join(here, `.cache/core${locale ? `-${locale}` : ''}.json`);
   if (fs.existsSync(path.join(frontend, 'src/mock/seed/index.ts'))) {
     // tsx сервера (devDependency), модули мока резолвятся из node_modules фронта (cwd)
     const tsx = path.join(here, '../../node_modules/.bin/tsx');

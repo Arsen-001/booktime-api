@@ -1515,6 +1515,23 @@ await seedClientPromoFromMock(prisma, core);
   console.log(`seed: интеграции — подключений ${connCreated}, демо-вебхук ${webhookSeeded ? 'заведён' : 'уже был'}`);
 }
 
+// ─────────── онлайн-запись: основная ссылка у каждого бизнеса (F-03-004, срез online мока) ───────────
+// Сервер заводит её и сам при первом чтении ссылок (OnlineService.ensurePrimaryLink) — по-русски. Сид кладёт её сразу,
+// с названием на языке демо-данных (SEED_LOCALE, export-mock.ts); у бизнеса уже есть ссылки — не трогаем.
+{
+  const withLinks = new Set((await prisma.bookingLink.findMany({ select: { businessId: true }, distinct: ['businessId'] })).map((l) => l.businessId));
+  const bizIds = new Set(businesses.map((b) => String(b.id)));
+  const rows: Prisma.BookingLinkCreateManyInput[] = [];
+  for (const l of ((core as Rec).areaOnlineLinks ?? []) as Rec[]) {
+    const businessId = String(l.businessId);
+    if (!l.primary || !bizIds.has(businessId) || withLinks.has(businessId)) continue;
+    const { id: _id, businessId: _b, locationId, networkId: _n, staffId: _s, name, description: _d, kind, bookingType, defaultLocale, primary: _p, formId, createdAt: _c, ...config } = l;
+    rows.push({ id: `lnk_seed_${businessId}`.slice(0, 32), businessId, locationId: S(locationId) ?? null, name: String(name), kind: String(kind), bookingType: String(bookingType), defaultLocale: String(defaultLocale), primary: true, formId: String(formId), config: config as Prisma.InputJsonValue, createdBy: 'seed', updatedBy: 'seed' });
+  }
+  await prisma.bookingLink.createMany({ data: rows, skipDuplicates: true });
+  console.log(`seed: онлайн-запись — основных ссылок ${rows.length}`);
+}
+
 console.log(
   `seed: людей ${users.length} (клиентов ${core.appUsers.length}), логинов администраторов ${admins.length}, команда платформы 1; ` +
     `сетей ${networks.length}, бизнесов ${businesses.length}, филиалов ${locations.length}, сотрудников ${core.staff.length}, ` +

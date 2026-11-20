@@ -2,6 +2,9 @@
  * Запускается tsx'ом с tsconfig ФРОНТА (prisma/seed/mock-core.ts): печатает в stdout JSON демо-ядра мока
  * (booking-platform/src/mock/seed) — чтобы сид сервера строил те же бизнесы, людей и записи, что демо фронта.
  * С этапа 6 рядом кладётся срез раздела «schedule» (шаблоны, история, правила слотов, настройки) — `areaSchedule`.
+ * SEED_LOCALE=hy|en (20.11.2026, скриншоты App Store с локального сервера) — демо-данные на этом языке тем же переводом,
+ * что демо сайта (`localizeDemo`, src/mock/seed/demoLocale.ts): имена людей, заметки, комментарии, ссылки, материалы.
+ * Без него (и с ru) — как раньше, по-русски.
  */
 // @ts-expect-error — путь из tsconfig фронта, в сборке сервера не участвует
 import { seedCore } from '@/mock/seed';
@@ -15,6 +18,10 @@ import { financeSlice } from '@/mock/slices/finance';
 import { integrationsSlice } from '@/mock/slices/integrations';
 // @ts-expect-error — путь из tsconfig фронта (этап 21, сдача, попытка 6: сторис, новости, продвижение кабинета)
 import { clientSlice } from '@/mock/slices/client';
+// @ts-expect-error — путь из tsconfig фронта (основная ссылка онлайн-записи «Форма компании» у каждого бизнеса)
+import { onlineSlice } from '@/mock/slices/online';
+// @ts-expect-error — путь из tsconfig фронта (демо-данные на языке интерфейса — как демо сайта)
+import { localizeDemo } from '@/mock/seed/demoLocale';
 
 /** Из среза «client» серверу нужны только сторис/новости/продвижение (остальное сеют свои этапы) */
 function pickClientPromo(state: { stories: unknown[]; newsPosts: unknown[]; promotionSettings: unknown }) {
@@ -23,4 +30,6 @@ function pickClientPromo(state: { stories: unknown[]; newsPosts: unknown[]; prom
 
 const now = process.env.SEED_NOW ? new Date(process.env.SEED_NOW) : new Date();
 const core = seedCore(now);
-process.stdout.write(JSON.stringify({ ...core, areaSchedule: scheduleSlice.seed(core, now), areaLoyalty: loyaltySlice.seed(core, now), areaFinance: financeSlice.seed(core, now), areaIntegrations: integrationsSlice.seed(core, now), areaClientPromo: pickClientPromo(clientSlice.seed(core, now)) }));
+const out = { ...core, areaSchedule: scheduleSlice.seed(core, now), areaLoyalty: loyaltySlice.seed(core, now), areaFinance: financeSlice.seed(core, now), areaIntegrations: integrationsSlice.seed(core, now), areaClientPromo: pickClientPromo(clientSlice.seed(core, now)), areaOnlineLinks: onlineSlice.seed(core, now).links };
+const locale = process.env.SEED_LOCALE;
+process.stdout.write(JSON.stringify(locale === 'hy' || locale === 'en' ? localizeDemo(out, locale, [core.services, core.serviceCategories]) : out));
