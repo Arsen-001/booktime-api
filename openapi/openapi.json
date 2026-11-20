@@ -47020,8 +47020,7 @@
                   }
                 },
                 "required": [
-                  "name",
-                  "phone"
+                  "name"
                 ]
               }
             }
