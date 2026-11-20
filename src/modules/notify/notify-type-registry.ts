@@ -85,7 +85,7 @@ export const TYPE_REGISTRY: TypeDef[] = [
     defaultScenario: CLIENT_DEFAULT,
     templateRu: '{companyName}: вы записаны — {service}, {date} в {time}. Мастер: {staff}. Адрес: {address}. Перенести или отменить: {link}',
     templateEn: '{companyName}: you are booked — {service}, {date} at {time}. Specialist: {staff}. Address: {address}. Reschedule or cancel: {link}',
-    templateHy: '{companyName}․ դուք գրանցված եք՝ {service}, {date}, ժամը {time}։ Վարպետ՝ {staff}։ Հասցե՝ {address}։ Տեղափոխել կամ չեղարկել՝ {link}',
+    templateHy: '{companyName}․ դուք գրանցված եք՝ {service}, {date}, ժամը {time}։ Վարպետ՝ {staff}։ Հասցե՝ {address}։ Փոխել ժամը կամ չեղարկել՝ {link}',
   },
   {
     code: 8,
@@ -102,7 +102,7 @@ export const TYPE_REGISTRY: TypeDef[] = [
     defaultScenario: CLIENT_DEFAULT,
     templateRu: '{companyName}: вас записали — {service}, {date} в {time}. Мастер: {staff}. Подробности, перенос и отмена: {link}',
     templateEn: '{companyName}: you have been booked — {service}, {date} at {time}. Specialist: {staff}. Details, reschedule or cancel: {link}',
-    templateHy: '{companyName}․ ձեզ գրանցել են՝ {service}, {date}, ժամը {time}։ Վարպետ՝ {staff}։ Մանրամասներ, տեղափոխում և չեղարկում՝ {link}',
+    templateHy: '{companyName}․ ձեզ գրանցել են՝ {service}, {date}, ժամը {time}։ Վարպետ՝ {staff}։ Մանրամասներ, ժամի փոփոխություն և չեղարկում՝ {link}',
   },
   {
     code: 9,
@@ -433,16 +433,16 @@ export const TYPE_REGISTRY: TypeDef[] = [
     recipient: 'admin',
     nameRu: 'Онлайн-запись перенесена',
     nameEn: 'Online booking rescheduled',
-    nameHy: 'Առցանց գրանցումը տեղափոխվել է',
+    nameHy: 'Առցանց գրանցման ժամը փոխվել է',
     descriptionRu: 'Онлайн-запись перенесена клиентом или системой.',
     descriptionEn: 'An online booking was rescheduled.',
-    descriptionHy: 'Առցանց գրանցումը տեղափոխել է հաճախորդը կամ համակարգը։',
+    descriptionHy: 'Առցանց գրանցման ժամը փոխել է հաճախորդը կամ համակարգը։',
     enabledDefault: true,
     availableChannels: ['adminApp', 'email', 'sms'],
     defaultScenario: ADMIN_DEFAULT,
     templateRu: 'Онлайн-запись перенесена. Клиент: {clientName}. Новое время: {date} {time}.',
     templateEn: 'Online booking rescheduled. Client: {clientName}. New time: {date} {time}.',
-    templateHy: 'Առցանց գրանցումը տեղափոխվել է։ Հաճախորդ՝ {clientName}։ Նոր ժամ՝ {date} {time}։',
+    templateHy: 'Առցանց գրանցման ժամը փոխվել է։ Հաճախորդ՝ {clientName}։ Նոր ժամ՝ {date} {time}։',
   },
   {
     code: 12,
@@ -514,16 +514,16 @@ export const TYPE_REGISTRY: TypeDef[] = [
     recipient: 'staff',
     nameRu: 'Вашу запись перенесли',
     nameEn: 'Your booking was rescheduled',
-    nameHy: 'Ձեր գրանցումը տեղափոխվել է',
+    nameHy: 'Ձեր գրանցման ժամը փոխվել է',
     descriptionRu: 'Запись к сотруднику перенесена.',
     descriptionEn: 'A booking with the staff member was rescheduled.',
-    descriptionHy: 'Աշխատակցի մոտ գրանցումը տեղափոխվել է։',
+    descriptionHy: 'Աշխատակցի մոտ գրանցման ժամը փոխվել է։',
     enabledDefault: true,
     availableChannels: ['adminApp', 'email', 'sms'],
     defaultScenario: ADMIN_DEFAULT,
     templateRu: 'Ваша запись перенесена. Клиент: {clientName}. Новое время: {date} {time}.',
     templateEn: 'Your booking was rescheduled. Client: {clientName}. New time: {date} {time}.',
-    templateHy: 'Ձեր գրանցումը տեղափոխվել է։ Հաճախորդ՝ {clientName}։ Նոր ժամ՝ {date} {time}։',
+    templateHy: 'Ձեր գրանցման ժամը փոխվել է։ Հաճախորդ՝ {clientName}։ Նոր ժամ՝ {date} {time}։',
   },
   {
     code: 13,
@@ -579,7 +579,7 @@ export const TYPE_REGISTRY: TypeDef[] = [
 /** Служебные типы без страницы настройки (F-05-004: 15, 22) — только имя, для журнала/каталога */
 export const SERVICE_TYPES: { code: number; nameRu: string; nameEn: string; nameHy: string }[] = [
   { code: 15, nameRu: 'Сообщение из карточки клиента', nameEn: 'Message from client card', nameHy: 'Հաղորդագրություն հաճախորդի քարտից' },
-  { code: 22, nameRu: 'Сетевая рассылка', nameEn: 'Network mailing', nameHy: 'Ցանցային առաքում' },
+  { code: 22, nameRu: 'Сетевая рассылка', nameEn: 'Network mailing', nameHy: 'Ցանցային ուղարկում' },
 ];
 
 export function typeDefByCode(code: number): TypeDef | undefined {

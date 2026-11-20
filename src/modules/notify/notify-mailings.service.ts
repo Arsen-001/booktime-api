@@ -16,9 +16,9 @@ const J = (v: unknown) => v as Prisma.InputJsonValue;
 const DAY = 86_400_000;
 /** ⭐ F-00-114 / F-05-095: не больше 3 бесплатных пушей подписчикам в неделю на бизнес (тот же, что фронт) */
 export const WEEKLY_PUSH_LIMIT = 3;
-const MAILING_LABEL: LText = { ru: 'Рассылка', en: 'Mailing', hy: 'Առաքում' };
-const NETWORK_MAILING_LABEL: LText = { ru: 'Сетевая рассылка', en: 'Network mailing', hy: 'Ցանցային առաքում' };
-const TEST_LABEL: LText = { ru: 'Тестовая рассылка', en: 'Test mailing', hy: 'Փորձնական առաքում' };
+const MAILING_LABEL: LText = { ru: 'Рассылка', en: 'Mailing', hy: 'Ուղարկում' };
+const NETWORK_MAILING_LABEL: LText = { ru: 'Сетевая рассылка', en: 'Network mailing', hy: 'Ցանցային ուղարկում' };
+const TEST_LABEL: LText = { ru: 'Тестовая рассылка', en: 'Test mailing', hy: 'Փորձնական ուղարկում' };
 const NETWORK_MAILING_TYPE = 22;
 
 export type MailingChannel = 'sms' | 'pushOwnApp' | 'pushClientApp';
