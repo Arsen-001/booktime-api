@@ -34,7 +34,12 @@ export const clientFormBody = z.object({
 export type ClientFormBody = z.infer<typeof clientFormBody>;
 
 export const createClientBody = clientFormBody;
-export const updateClientBody = clientFormBody;
+/**
+ * Правка клиента: без права «Просматривать телефоны клиентов» (ответ 29) форма получает номер маской «+374•••••01» —
+ * номер можно не присылать или прислать маской: остаётся прежний (clients.service phoneForUpdate).
+ */
+export const updateClientBody = clientFormBody.extend({ phone: z.string().min(1).max(32).optional() });
+export type UpdateClientBody = z.infer<typeof updateClientBody>;
 
 // ─────────── список / поиск (F-04-001…035, K8: фильтр и подсчёт — на сервере) ───────────
 

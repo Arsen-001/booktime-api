@@ -84,6 +84,8 @@ const membership = z.object({
   networkId: z.string().nullable(),
   staffId: z.string(),
   role: z.string(),
+  /** «Вход только с IP салона» (ответ 22): кабинет этого бизнеса закрыт для адреса запроса — сам адрес */
+  blockedIp: z.string().optional(),
 });
 
 export const sessionView = z.object({

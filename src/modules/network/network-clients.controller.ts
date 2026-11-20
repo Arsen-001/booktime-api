@@ -238,7 +238,7 @@ export class NetworkClientsService {
         createdAt: utcToLocal(r.sentAt),
         typeLabel:
           r.source === 'bookingWindow'
-            ? { ru: 'Сообщение из записи', hy: 'Հաղորդագրություն ամրագրումից', en: 'Booking window message' }
+            ? { ru: 'Сообщение из записи', hy: 'Հաղորդագրություն գրանցումից', en: 'Booking window message' }
             : { ru: 'Рассылка', hy: 'Ուղարկում', en: 'Broadcast' },
         channel: r.channel as 'sms' | 'push' | 'whatsapp',
         status: 'sent' as const,

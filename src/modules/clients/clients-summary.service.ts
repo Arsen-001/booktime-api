@@ -113,7 +113,7 @@ export class ClientsSummaryService {
         let allowed = Boolean(ctx.session);
         for (const id of peers) {
           if (!allowed) break;
-          const m = await this.memberships.resolve(ctx.session!, id);
+          const m = await this.memberships.resolve(ctx.session!, id, ctx.ip);
           allowed = Boolean(m?.permissions.has('clients.view') && m.permissions.has('journal.view'));
         }
         if (allowed) {

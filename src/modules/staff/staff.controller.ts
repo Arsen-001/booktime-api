@@ -19,7 +19,6 @@ import {
   dismissalOut,
   dismissBody,
   inviteOut,
-  ipBody,
   jsonBody,
   loginBody,
   orderBody,
@@ -31,6 +30,10 @@ import {
   rightsBody,
   rightsOut,
   roleTemplateBody,
+  salonIpAddBody,
+  salonIpOnlyBody,
+  salonIpsBody,
+  salonIpsOut,
   scopesBody,
   staffRowOut,
   transferAccessBody,
@@ -232,13 +235,42 @@ export class StaffController {
     return this.staff.setRoleTemplate(ctx, b, s, body.roleTemplateId);
   }
 
-  @Put('staff/:staffId/ip-restriction')
+  // ─────────── «Вход только с IP салона» (F-10-091, ответ 22, 20.11.2026) ───────────
+
+  @Put('staff/:staffId/salon-ip-only')
   @Biz('staff.manage')
-  @ApiOperation({ summary: 'Вход только с доверенных IP (F-10-091)' })
-  @ZodBody(ipBody)
-  @ZodOk(ipBody)
-  setIp(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Param('staffId') s: string, @Body(new Zod(ipBody)) body: B<typeof ipBody>) {
-    return this.staff.setIpRestriction(ctx, b, s, body);
+  @ApiOperation({ summary: '«Вход только с IP салона»: кабинет — только с адресов салона, проверка на каждом запросе; владельцу нельзя' })
+  @ZodBody(salonIpOnlyBody)
+  @ZodOk(accessOut)
+  setSalonIpOnly(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Param('staffId') s: string, @Body(new Zod(salonIpOnlyBody)) body: B<typeof salonIpOnlyBody>) {
+    return this.staff.setSalonIpOnly(ctx, b, s, body.enabled);
+  }
+
+  @Get('salon-ips')
+  @Biz('staff.manage')
+  @ApiOperation({ summary: 'Адреса салона, текущий адрес и попытки входа не с адреса салона (30 дней, ещё закрытые)' })
+  @ZodOk(salonIpsOut)
+  salonIps(@Ctx() ctx: RequestContext, @Param('businessId') b: string) {
+    return this.staff.salonIps(ctx, b);
+  }
+
+  @Put('salon-ips')
+  @Biz('staff.manage')
+  @ApiOperation({ summary: 'Адреса салона целиком: адрес или сеть /N, IPv4 или IPv6; ошибка — invalid_ip_range (fields.value)' })
+  @ZodBody(salonIpsBody)
+  @ZodOk(salonIpsOut)
+  setSalonIps(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(salonIpsBody)) body: B<typeof salonIpsBody>) {
+    return this.staff.setSalonIps(ctx, b, body.ips);
+  }
+
+  @Post('salon-ips')
+  @Biz('staff.manage')
+  @HttpCode(200)
+  @ApiOperation({ summary: '«Добавить этот адрес» одной кнопкой: IPv4 — сам адрес, IPv6 — его сеть /64; уже пускает — без изменений' })
+  @ZodBody(salonIpAddBody)
+  @ZodOk(salonIpsOut)
+  addSalonIp(@Ctx() ctx: RequestContext, @Param('businessId') b: string, @Body(new Zod(salonIpAddBody)) body: B<typeof salonIpAddBody>) {
+    return this.staff.addSalonIp(ctx, b, body.ip);
   }
 
   @Put('staff/:staffId/login')

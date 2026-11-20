@@ -42,7 +42,7 @@ export class AuthController {
   @ZodOk(sessionOrGuest)
   async session(@Ctx() ctx: RequestContext) {
     if (!ctx.session) return { session: null };
-    return { session: await this.auth.view(ctx.session.sessionId) };
+    return { session: await this.auth.view(ctx.session.sessionId, ctx.ip) };
   }
 
   @Get('channels')

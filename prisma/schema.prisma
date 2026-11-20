@@ -267,6 +267,23 @@ model LoginEvent {
   @@map("login_events")
 }
 
+/// Попытка открыть кабинет не с адреса салона (20.11.2026, ответ 22): одна строка на сотрудника и адрес — счётчик и
+/// время последней попытки (чаще раза в минуту не пишется). Владелец видит её в карточке сотрудника → «Доступ» и
+/// одной кнопкой добавляет адрес в businesses.salon_ips
+model SalonIpAttempt {
+  id         String   @id @db.VarChar(32)
+  businessId String   @map("business_id") @db.VarChar(32)
+  staffId    String   @map("staff_id") @db.VarChar(32)
+  ip         String   @db.VarChar(64)
+  attempts   Int      @default(1)
+  firstAt    DateTime @default(now()) @map("first_at") @db.DateTime(3)
+  lastAt     DateTime @default(now()) @map("last_at") @db.DateTime(3)
+
+  @@unique([businessId, staffId, ip])
+  @@index([businessId, lastAt])
+  @@map("salon_ip_attempts")
+}
+
 /// Внешний вход, привязанный к человеку (03.10.2026): «Войти через Google». Номер телефона остаётся главным — Google
 /// привязывается к человеку только после кода на его номер (или из профиля вошедшего), сам номер не подтверждает.
 model UserIdentity {
@@ -385,6 +402,9 @@ model Business {
   leftAt                        DateTime? @map("left_at") @db.DateTime(3)
   /// Запрет домашних записей мастерам в часы смены (F-00-047)
   forbidHomeBookingsDuringShift Boolean   @default(false) @map("forbid_home_bookings_during_shift")
+  /// Адреса салона в интернете (20.11.2026, DESIGN.md ответ 22): '37.252.64.10', '37.252.64.0/24', '2a00:cc0:1:2::/64'.
+  /// Сотрудник с галочкой «Вход только с IP салона» (staff.salon_ip_only) работает в кабинете только с них
+  salonIps                      Json?     @map("salon_ips")
   /// Сайт и соцсети (F-14-028)
   socials                       Json?
   /// Правила отмены/переноса (В-04) — пишет раздел online
@@ -544,8 +564,9 @@ model Staff {
   /// Доступ в кабинет (F-10-031): выключение закрывает вход, карточка остаётся
   accessEnabled        Boolean   @default(true) @map("access_enabled")
   accessInfo           String?   @map("access_info") @db.VarChar(500)
-  /// { enabled, ranges[] } (F-10-091)
-  ipRestriction        Json?     @map("ip_restriction")
+  /// «Вход только с IP салона» (F-10-091, ответ 22): кабинет этого бизнеса открывается только с адресов
+  /// businesses.salon_ips — проверка на каждом запросе (common/http/membership.ts). Владельца не касается никогда
+  salonIpOnly          Boolean   @default(false) @map("salon_ip_only")
   /// Грубые права, заданные владельцем (Permission[]) — у администратора заменяют шаблон (03 §2)
   permissions          Json?
   /// Тонкие права редактора (id строк каталога staff/permissions) и «▾»-ограничения (F-10-071)

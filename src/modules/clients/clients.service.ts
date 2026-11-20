@@ -8,7 +8,7 @@ import { newId } from '../../common/ids/ids.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { PHONE_PREFIX, normalizePhone } from '../../common/phone.js';
-import type { ClientFormBody, FilterState, QuickPick } from './clients.schemas.js';
+import type { ClientFormBody, FilterState, QuickPick, UpdateClientBody } from './clients.schemas.js';
 import { emptyContext, matchesFilters, matchesPick, matchesSearch, sortByDue, sortClientRows } from './clients.filters.js';
 import { clientRowView, maskClientPhones, type ClientRowView } from './clients.views.js';
 import { getClientsBizSettings } from './clients-settings.helper.js';
@@ -54,6 +54,24 @@ export function validateClientPhone(raw: string): string {
   const digitsAfterCode = raw.replace(/^\+\d{1,3}/, '').replace(/\D/g, '');
   if (digitsAfterCode.length < 6) throw new ApiError('invalid_phone', 'Full phone number required');
   return raw;
+}
+
+/** Номер скрыт маской: без права clients.phones сервер отдаёт «+374•••••01» (clients.views, client-phones.interceptor) */
+export const isMaskedPhone = (p: string | null | undefined): boolean => Boolean(p && p.includes('•'));
+
+/**
+ * Номер из формы правки клиента (20.11.2026): не прислан или прислан маской — остаётся прежний и не проверяется.
+ * Без права «Просматривать телефоны клиентов» форма видит только маску — раньше она не проходила проверку номера
+ * (invalid_phone), и такой сотрудник не мог сохранить ни имя, ни заметку клиента.
+ */
+export function phoneForUpdate(input: string | undefined, before: string): string {
+  return input === undefined || isMaskedPhone(input) ? before : validateClientPhone(input);
+}
+
+/** Доп. номер из формы правки: маска — прежний; пусто — стереть; иначе — проверить */
+export function additionalPhoneForUpdate(input: string | undefined, before: string | null): string | null {
+  if (isMaskedPhone(input)) return before;
+  return input ? validateClientPhone(input) : null;
 }
 
 export function validateNationalId(value: string | undefined): string | undefined {
@@ -233,12 +251,13 @@ export class ClientsService {
     return ctx.member!.permissions.has('clients.phones') ? row : maskClientPhones(row);
   }
 
-  async updateClient(ctx: RequestContext, businessId: string, id: string, input: ClientFormBody, version: number | undefined) {
+  async updateClient(ctx: RequestContext, businessId: string, id: string, input: UpdateClientBody, version: number | undefined) {
     const before = await this.prisma.client.findFirst({ where: { id, businessId, deletedAt: null } });
     if (!before) throw new ApiError('not_found', 'Client not found');
     const name = input.name.trim();
     if (!name) throw new ApiError('name_required', 'Name required');
-    const normalized = validateClientPhone(input.phone);
+    const normalized = phoneForUpdate(input.phone, before.phone);
+    const additionalPhone = additionalPhoneForUpdate(input.additionalPhone, before.additionalPhone);
     if (normalized !== before.phone && !ctx.member!.permissions.has('clients.phones')) {
       throw new ApiError('forbidden', 'Missing permission: clients.phones');
     }
@@ -254,7 +273,7 @@ export class ClientsService {
       email: input.email?.trim() || null,
       note: input.note?.trim() || null,
       tags: input.tags ?? [],
-      additionalPhone: input.additionalPhone ? validateClientPhone(input.additionalPhone) : null,
+      additionalPhone,
       avatarUrl: input.avatar ?? before.avatarUrl,
       discountPercent: input.discountPercent ?? before.discountPercent,
       importanceClass: input.importanceClass ?? null,
@@ -299,7 +318,7 @@ export class ClientsService {
         lastName: input.lastName,
         middleName: input.middleName,
         phone: normalized,
-        additionalPhone: input.additionalPhone,
+        additionalPhone: additionalPhone ?? undefined,
         email: input.email,
         birthday: input.birthday,
         gender: input.gender ?? 'unknown',

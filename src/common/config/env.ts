@@ -184,8 +184,9 @@ const schema = z.object({
   SSR_SHARED_SECRET: z.string().optional().transform((s) => s?.trim() || undefined),
   SSR_RATE_MULTIPLIER: z.coerce.number().int().min(1).max(1000).default(20),
   /**
-   * Сколько прокси перед API (Express `trust proxy`): Railway — 1, тогда IP для лимитов — настоящий адрес клиента из
-   * X-Forwarded-For, а не адрес прокси Railway. Пусто — заголовку не верим (локально).
+   * Сколько прокси перед API (Express `trust proxy`): Railway — 1, тогда IP для лимитов и «Вход только с IP салона» —
+   * настоящий адрес клиента: X-Real-IP края Railway (иначе последний адрес X-Forwarded-For), а не адрес прокси Railway
+   * и не присланный клиентом заголовок (common/http/salon-ip.ts clientIp). Пусто — заголовкам не верим (локально).
    */
   TRUST_PROXY: z.coerce.number().int().min(0).max(5).optional(),
   /** Сколько последних ежедневных копий хранить */

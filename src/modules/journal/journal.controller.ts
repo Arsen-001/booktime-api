@@ -452,7 +452,7 @@ export class ClaimsController {
   private async actorFor(ctx: RequestContext, token: string) {
     const claim = await this.bookings.prisma.slotClaim.findUnique({ where: { token } });
     if (!claim || !ctx.session) return { claim: null, member: null };
-    const member = await this.memberships.resolve(ctx.session, claim.businessId);
+    const member = await this.memberships.resolve(ctx.session, claim.businessId, ctx.ip);
     if (!member) return { claim, member: null };
     const c = { ...ctx, member };
     return { claim, member: canJournal(c, 'journal.create', claim.staffId) ? c : null };

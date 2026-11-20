@@ -16,7 +16,7 @@ export class JournalAccess {
     const out = [own];
     for (const id of new Set(list)) {
       if (id === own || !ctx.session) continue;
-      const m = await this.memberships.resolve(ctx.session, id);
+      const m = await this.memberships.resolve(ctx.session, id, ctx.ip);
       if (m?.permissions.has('journal.view')) out.push(id);
     }
     return out;

@@ -131,12 +131,13 @@ export class AuthService {
 
   // ─────────── «кто я» ───────────
 
-  async view(sessionId: string): Promise<SessionView> {
+  /** ip — адрес запроса: салон, закрытый для него «Вход только с IP салона», придёт с blockedIp (экран «Вход закрыт») */
+  async view(sessionId: string, ip?: string): Promise<SessionView> {
     const s = await this.prisma.session.findUniqueOrThrow({
       where: { id: sessionId },
       include: { user: { include: { appProfile: { select: { consentAt: true } } } }, staffLogin: { select: { login: true } } },
     });
-    const memberships = s.app === 'platform' ? [] : await this.memberships.list(s.userId, s.staffLoginId);
+    const memberships = s.app === 'platform' ? [] : await this.memberships.list(s.userId, s.staffLoginId, ip);
     return {
       user: { id: s.user.id, name: s.user.name, phone: s.user.phone, locale: isLocale(s.user.locale) ? s.user.locale : 'ru' },
       app: s.app as SessionApp,
@@ -241,7 +242,7 @@ export class AuthService {
       });
       linked.appleLinked = appleLinked;
     }
-    return { ...(await this.view(sessionId)), ...linked };
+    return { ...(await this.view(sessionId, ctx.ip)), ...linked };
   }
 
   /**
@@ -366,7 +367,7 @@ export class AuthService {
       await this.prepareAppAccess(tx, ctx, { userId: user.id, phone, app: input.app, consentAt, consent: input.consent, now });
     });
     const sessionId = await this.openPhoneSession(ctx, res, user.id, input.app, 'google');
-    return { session: await this.view(sessionId), pendingGoogle: null };
+    return { session: await this.view(sessionId, ctx.ip), pendingGoogle: null };
   }
 
   // ─────────── «Войти через Apple» (03.10.2026) ───────────
@@ -419,7 +420,7 @@ export class AuthService {
       await this.prepareAppAccess(tx, ctx, { userId: user.id, phone, app: input.app, consentAt, consent: input.consent, now });
     });
     const sessionId = await this.openPhoneSession(ctx, res, user.id, input.app, 'apple');
-    return { session: await this.view(sessionId), pendingApple: null };
+    return { session: await this.view(sessionId, ctx.ip), pendingApple: null };
   }
 
   /** authorizationCode → зашифрованный refresh token Apple; нет кода, клиента или настроек — null (вход не зависит) */
@@ -540,7 +541,7 @@ export class AuthService {
       mustChangePassword: sl.mustChangePassword,
     });
     await this.logEvent(ctx, { userId: sl.userId, sessionId, method, app: 'business', result: 'ok' });
-    return this.view(sessionId);
+    return this.view(sessionId, ctx.ip);
   }
 
   async secondFactor(ctx: RequestContext, res: Response, input: { challengeId: string; code: string }): Promise<SessionView> {
@@ -627,7 +628,7 @@ export class AuthService {
       throw new ApiError('forbidden', 'Admin login has no client mode');
     }
     await this.prisma.session.update({ where: { id: session.sessionId }, data: { mode: input.mode, activeBusinessId } });
-    return this.view(session.sessionId);
+    return this.view(session.sessionId, ctx.ip);
   }
 
   // ─────────── выход ───────────

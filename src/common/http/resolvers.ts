@@ -25,17 +25,33 @@ export interface MembershipSummary {
   businessIds: string[];
   /** Итоговые права в этом бизнесе (шаблон роли + галочки владельца, 03 §2) */
   permissions: string[];
+  /**
+   * «Вход только с IP салона» (ответ 22): кабинет этого бизнеса закрыт для адреса, с которого пришёл запрос, — сам адрес.
+   * Есть только в «кто я» (list с ip); сайт показывает экран «Вход закрыт: адрес не салона» вместо кабинета
+   */
+  blockedIp?: string;
 }
 
 /** Все действующие членства человека (этап 3: таблица staff + владение сетью, common/http/membership.ts) */
 export interface MembershipLister {
-  /** staffLoginId — вход логином администратора: он даёт доступ только к своему бизнесу (F-00-034) */
-  list(userId: string, staffLoginId?: string | null): Promise<MembershipSummary[]>;
+  /**
+   * staffLoginId — вход логином администратора: он даёт доступ только к своему бизнесу (F-00-034).
+   * ip — адрес запроса: членство, закрытое «Вход только с IP салона», получает blockedIp, попытка запоминается
+   */
+  list(userId: string, staffLoginId?: string | null, ip?: string): Promise<MembershipSummary[]>;
 }
 
 export interface MembershipResolver {
-  /** Действующее членство вошедшего в бизнесе (status = active) или null */
-  resolve(session: SessionInfo, businessId: string): Promise<MemberInfo | null>;
+  /**
+   * Действующее членство вошедшего в бизнесе (status = active) или null. ip — адрес запроса (ctx.ip): сотрудник с
+   * «Вход только с IP салона» не с адреса салона — тоже null (закрыто для всех, кто спрашивает членство)
+   */
+  resolve(session: SessionInfo, businessId: string, ip: string): Promise<MemberInfo | null>;
+  /**
+   * resolve вернул null — не из-за адреса ли? Да: попытка запомнена (salon_ip_attempts), ответ — адрес для ошибки
+   * ip_not_allowed. Нет (не член бизнеса) — null
+   */
+  ipRefusal?(session: SessionInfo, businessId: string, ip: string): Promise<string | null>;
 }
 
 export const SESSION_RESOLVER = Symbol('SESSION_RESOLVER');

@@ -3,6 +3,7 @@ import type { NextFunction, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { PLATFORM_COOKIE, SESSION_COOKIE, isPlatformPath, type RequestWithContext } from './context.js';
 import { SESSION_RESOLVER, type SessionResolver } from './resolvers.js';
+import { clientIp } from './salon-ip.js';
 
 export function readCookie(header: string | undefined, name: string): string | undefined {
   if (!header) return undefined;
@@ -29,7 +30,8 @@ export class ContextMiddleware implements NestMiddleware {
     const session = resolved && Boolean(resolved.platform) === platform ? resolved : null;
     req.ctx = {
       requestId,
-      ip: req.ip ?? '',
+      // Настоящий адрес: за краем Railway — его X-Real-IP, а не присланный клиентом X-Forwarded-For (salon-ip.ts)
+      ip: clientIp(req),
       device: (req.header('user-agent') ?? '').slice(0, 200),
       session,
       member: null,

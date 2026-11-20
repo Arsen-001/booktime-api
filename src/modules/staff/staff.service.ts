@@ -5,6 +5,8 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { env } from '../../common/config/env.js';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
+import { salonIpList } from '../../common/http/membership.js';
+import { ipAllowedBy, isValidIpRange, normalizeIp, salonAddressFor } from '../../common/http/salon-ip.js';
 import { SessionStore } from '../../common/http/sessions.js';
 import { newId } from '../../common/ids/ids.js';
 import { LiveService } from '../../common/live/live.service.js';
@@ -463,14 +465,87 @@ export class StaffService {
     return this.access(businessId, staffId);
   }
 
-  async setIpRestriction(ctx: RequestContext, businessId: string, staffId: string, r: { enabled: boolean; ranges: string[] }) {
-    await this.find(businessId, staffId);
-    if (r.enabled && r.ranges.some((x) => !isValidIpRange(x))) throw new ApiError('invalid_ip_range', 'Invalid IP range');
-    await this.prisma.$transaction(async (tx) => {
-      await tx.staff.update({ where: { id: staffId }, data: { ipRestriction: r, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
-      await this.audit.record(tx, ctx, { action: 'ipRestrictionChanged', entityType: 'staff', entityId: staffId, businessId, after: r });
+  // ─────────── «Вход только с IP салона» (F-10-091, ответ 22, 20.11.2026) ───────────
+
+  /** Галочка сотрудника. Проверяет её DbMembership на каждом запросе кабинета; владельца не касается никогда */
+  async setSalonIpOnly(ctx: RequestContext, businessId: string, staffId: string, enabled: boolean) {
+    const s = await this.find(businessId, staffId);
+    if (s.role === 'owner') throw new ApiError('forbidden', 'Owner is never restricted by salon addresses');
+    if (s.salonIpOnly !== enabled) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.staff.update({ where: { id: staffId }, data: { salonIpOnly: enabled, updatedBy: ctx.member!.staffId, version: { increment: 1 } } });
+        await this.audit.record(tx, ctx, { action: 'salonIpOnlyChanged', entityType: 'staff', entityId: staffId, businessId, before: { salonIpOnly: s.salonIpOnly }, after: { salonIpOnly: enabled } });
+      });
+    }
+    return this.access(businessId, staffId);
+  }
+
+  /**
+   * Адреса салона + адрес, с которого смотрят сейчас (кнопка «Добавить мой адрес» в салоне) + попытки не с адреса салона
+   * за 30 дней: только те, что всё ещё закрыты, и только сотрудников, у которых галочка стоит сейчас
+   */
+  async salonIps(ctx: RequestContext, businessId: string) {
+    const b = await this.prisma.business.findUniqueOrThrow({ where: { id: businessId }, select: { salonIps: true } });
+    const ips = salonIpList(b.salonIps);
+    const rows = await this.prisma.salonIpAttempt.findMany({
+      where: { businessId, lastAt: { gte: new Date(Date.now() - 30 * 86_400_000) } },
+      orderBy: { lastAt: 'desc' },
+      take: 100,
     });
-    return r;
+    const closed = rows.filter((a) => !ipAllowedBy(ips, a.ip));
+    const staff = closed.length
+      ? await this.prisma.staff.findMany({
+          where: { id: { in: [...new Set(closed.map((a) => a.staffId))] }, businessId, deletedAt: null, salonIpOnly: true, role: { not: 'owner' } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const names = new Map(staff.map((x) => [x.id, x.name]));
+    return {
+      ips,
+      currentIp: normalizeIp(ctx.ip),
+      attempts: closed
+        .filter((a) => names.has(a.staffId))
+        .slice(0, 20)
+        .map((a) => ({ id: a.id, staffId: a.staffId, staffName: names.get(a.staffId)!, ip: a.ip, attempts: a.attempts, firstAt: utcToLocal(a.firstAt), lastAt: utcToLocal(a.lastAt) })),
+    };
+  }
+
+  /** Список адресов салона целиком: без пустых и повторов; ошибка в строке — invalid_ip_range с fields.value */
+  async setSalonIps(ctx: RequestContext, businessId: string, input: string[]) {
+    const next = [...new Set(input.map((x) => normalizeIp(x)).filter(Boolean))];
+    const bad = next.find((x) => !isValidIpRange(x));
+    if (bad) throw new ApiError('invalid_ip_range', 'Invalid IP address or network', { value: bad });
+    await this.writeSalonIps(ctx, businessId, 'salonIpsChanged', () => next);
+    return this.salonIps(ctx, businessId);
+  }
+
+  /** «Добавить этот адрес»: IPv4 — сам адрес, IPv6 — его сеть /64 (salonAddressFor). Уже пускает — ничего не меняем */
+  async addSalonIp(ctx: RequestContext, businessId: string, rawIp: string) {
+    const address = salonAddressFor(rawIp);
+    if (!address) throw new ApiError('invalid_ip_range', 'Invalid IP address', { value: rawIp.trim() });
+    await this.writeSalonIps(ctx, businessId, 'salonIpAdded', (ips) => (ipAllowedBy(ips, rawIp) ? null : [...ips, address]));
+    return this.salonIps(ctx, businessId);
+  }
+
+  /** Запись списка с проверкой версии бизнеса: два «Добавить» одновременно не затирают друг друга (до 3 попыток) */
+  private async writeSalonIps(ctx: RequestContext, businessId: string, action: string, change: (ips: string[]) => string[] | null) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const b = await this.prisma.business.findUniqueOrThrow({ where: { id: businessId }, select: { salonIps: true, version: true } });
+      const before = salonIpList(b.salonIps);
+      const after = change(before);
+      if (!after || (after.length === before.length && after.every((x, i) => x === before[i]))) return;
+      const done = await this.prisma.$transaction(async (tx) => {
+        const r = await tx.business.updateMany({
+          where: { id: businessId, version: b.version },
+          data: { salonIps: after, updatedBy: ctx.member!.staffId, version: { increment: 1 } },
+        });
+        if (!r.count) return false;
+        await this.audit.record(tx, ctx, { action, entityType: 'business', entityId: businessId, businessId, before: { salonIps: before }, after: { salonIps: after } });
+        return true;
+      });
+      if (done) return;
+    }
+    throw new ApiError('conflict', 'Salon addresses were changed at the same time, try again');
   }
 
   /** Логин и пароль администратора от владельца (F-00-034, F-00-038): смена при первом входе */
@@ -751,11 +826,4 @@ export function inviteUrl(token: string): string {
 
 export function inviteTokenHash(token: string): string {
   return tokenHash(token);
-}
-
-function isValidIpRange(range: string): boolean {
-  const ipv4 = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
-  const ipv6 = /^[0-9a-fA-F:]+(\/\d{1,3})?$/;
-  if (ipv4.test(range)) return range.split('/')[0]!.split('.').every((n) => Number(n) <= 255);
-  return ipv6.test(range) && range.includes(':');
 }

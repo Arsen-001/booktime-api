@@ -43,6 +43,8 @@ export const ERROR_STATUS = {
   apple_disabled: HttpStatus.SERVICE_UNAVAILABLE,
   apple_unavailable: HttpStatus.SERVICE_UNAVAILABLE,
   no_business: HttpStatus.FORBIDDEN,
+  /** «Вход только с IP салона» (20.11.2026, ответ 22): адрес запроса не из списка салона — fields.ip = этот адрес */
+  ip_not_allowed: HttpStatus.FORBIDDEN,
   // бизнес и сотрудники (этап 3) — коды как в моке фронта (src/api/staff.ts, client.ts)
   last_owner: HttpStatus.CONFLICT,
   restore_blocked: HttpStatus.CONFLICT,
