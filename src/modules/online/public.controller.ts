@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import type { RequestContext } from '../../common/http/context.js';
+import type { RequestContext, RequestWithContext } from '../../common/http/context.js';
+import { requestLocale } from '../../common/i18n/i18n.js';
 import { Ctx } from '../../common/http/guards.js';
 import { ZodBody, ZodOk } from '../../common/http/openapi.js';
 import { RateLimit } from '../../common/rate-limit/rate-limit.js';
@@ -46,16 +47,16 @@ export class PublicOnlineController {
   @RateLimit({ bucket: 'public-business', limit: 120, windowSec: 60, by: 'ip' })
   @ApiOperation({ summary: 'Публичная страница бизнеса /b/<slug> (F-03-134)' })
   @ZodOk(publicBusinessOut)
-  business(@Param('slug') slug: string, @Query('formId') formId?: string) {
-    return this.svc.publicBusinessData(slug, formId);
+  business(@Req() req: RequestWithContext, @Param('slug') slug: string, @Query('formId') formId?: string) {
+    return this.svc.publicBusinessData(slug, formId, requestLocale(req));
   }
 
   @Get('b/:slug/f/:formId')
   @RateLimit({ bucket: 'public-business', limit: 120, windowSec: 60, by: 'ip' })
   @ApiOperation({ summary: 'Страница формы /b/<slug>/f/<formId> (F-03-009)' })
   @ZodOk(publicBusinessOut)
-  businessForm(@Param('slug') slug: string, @Param('formId') formId: string) {
-    return this.svc.publicBusinessData(slug, formId);
+  businessForm(@Req() req: RequestWithContext, @Param('slug') slug: string, @Param('formId') formId: string) {
+    return this.svc.publicBusinessData(slug, formId, requestLocale(req));
   }
 
   @Get('b/:slug/slots')

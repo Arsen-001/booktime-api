@@ -1516,8 +1516,8 @@ await seedClientPromoFromMock(prisma, core);
 }
 
 // ─────────── онлайн-запись: основная ссылка у каждого бизнеса (F-03-004, срез online мока) ───────────
-// Сервер заводит её и сам при первом чтении ссылок (OnlineService.ensurePrimaryLink) — по-русски. Сид кладёт её сразу,
-// с названием на языке демо-данных (SEED_LOCALE, export-mock.ts); у бизнеса уже есть ссылки — не трогаем.
+// Сервер заводит её и сам при первом чтении ссылок (OnlineService.ensurePrimaryLink). Сид кладёт её сразу, как в моке —
+// без названия (20.11.2026): подпись «Основная ссылка» на языке запроса даёт сервер (linkView); у бизнеса уже есть ссылки — не трогаем.
 {
   const withLinks = new Set((await prisma.bookingLink.findMany({ select: { businessId: true }, distinct: ['businessId'] })).map((l) => l.businessId));
   const bizIds = new Set(businesses.map((b) => String(b.id)));

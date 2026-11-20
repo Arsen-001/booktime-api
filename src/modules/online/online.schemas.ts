@@ -155,7 +155,10 @@ export const bookingLinkOut = z
     businessId: z.string(),
     locationId: z.string().optional(),
     networkId: z.string().optional(),
+    /** Своё название; у ссылки без названия — подпись на языке запроса (Accept-Language): «Основная ссылка» / «Main link» / «Հիմնական հղում» */
     name: z.string(),
+    /** У ссылки нет своего названия — name выше подставлен сервером (кабинет пишет подпись на своём языке) */
+    nameDefault: z.boolean(),
     kind: linkKind,
     bookingType: linkBookingType,
     defaultLocale: z.string(),

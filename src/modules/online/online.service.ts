@@ -5,7 +5,7 @@ import { ApiError } from '../../common/errors/api-error.js';
 import type { RequestContext } from '../../common/http/context.js';
 import { updateVersioned } from '../../common/http/version.js';
 import { newId } from '../../common/ids/ids.js';
-import type { Locale } from '../../common/i18n/i18n.js';
+import { LOCALES, t, type Locale } from '../../common/i18n/i18n.js';
 import { normalizePhone } from '../../common/phone.js';
 import { PrismaService } from '../../common/prisma.service.js';
 import { DEFAULT_TZ, localDayRangeUtc, localToUtc, nowLocal, utcToLocal } from '../../common/time/time.js';
@@ -143,7 +143,7 @@ export class OnlineService {
 
   // ─────────────────────────── публичная страница (F-03-134, F-00-077, В-22) ───────────────────────────
 
-  async publicBusinessData(slug: string, formId?: string) {
+  async publicBusinessData(slug: string, formId?: string, locale: Locale = 'ru') {
     const business = await this.businessBySlug(slug);
     const [locations, staffRows, allServices, categories, links] = await Promise.all([
       this.prisma.location.findMany({ where: { businessId: business.id, deletedAt: null }, orderBy: { sortOrder: 'asc' } }),
@@ -172,7 +172,7 @@ export class OnlineService {
     let link = formId ? links.find((l) => l.formId === formId) : (links.find((l) => l.primary) ?? links[0]);
     if (formId && !link) throw new ApiError('not_found', `Form ${formId} not found`);
     let linkStaffGone = false;
-    let linkOut: Record<string, unknown> | undefined = link ? linkView(link) : undefined;
+    let linkOut: Record<string, unknown> | undefined = link ? linkView(link, locale) : undefined;
     if (link) {
       const config = (link.config as Record<string, unknown>) ?? {};
       const preselected = config.preselectedStaffId !== 'any' ? (config.preselectedStaffId as string | undefined) : undefined;
@@ -548,20 +548,22 @@ export class OnlineService {
 
   // ─────────────────────────── ссылки (F-03-003…037) ───────────────────────────
 
-  async listLinks(businessId: string) {
+  /** Ссылки бизнеса; у ссылки без своего названия в name — подпись на языке запроса (linkView) */
+  async listLinks(businessId: string, locale: Locale = 'ru') {
     let rows = await this.prisma.bookingLink.findMany({ where: { businessId }, orderBy: { createdAt: 'asc' } });
     if (!rows.length) {
       await this.ensurePrimaryLink(businessId);
       rows = await this.prisma.bookingLink.findMany({ where: { businessId }, orderBy: { createdAt: 'asc' } });
     }
-    return rows.map(linkView);
+    return rows.map((row) => linkView(row, locale));
   }
 
   /**
-   * F-03-004: основная ссылка есть у каждого бизнеса сразу — «Форма компании», обычная, все услуги (как в моке,
-   * src/mock/slices/online.ts). Ни регистрация, ни демо-данные её не заводили: «Виджет для сайта» без основной ссылки
-   * показывал «Не удалось загрузить», список ссылок был пуст. Заводим при первом чтении ссылок; строка бизнеса под
-   * блокировкой — два одновременных запроса не заведут две основные.
+   * F-03-004: основная ссылка есть у каждого бизнеса сразу — обычная, все услуги (как в моке, src/mock/slices/online.ts).
+   * Ни регистрация, ни демо-данные её не заводили: «Виджет для сайта» без основной ссылки показывал «Не удалось
+   * загрузить», список ссылок был пуст. Заводим при первом чтении ссылок; строка бизнеса под блокировкой — два
+   * одновременных запроса не заведут две основные. Название пустое (20.11.2026): кабинет и приложения показывают
+   * «Основная ссылка» на языке человека (linkView); раньше здесь писалось «Форма компании» — по-русски и словом Altegio.
    */
   private async ensurePrimaryLink(businessId: string) {
     await this.prisma.$transaction(async (tx) => {
@@ -573,7 +575,7 @@ export class OnlineService {
           id: newId('bookingLink'),
           businessId,
           locationId: location?.id,
-          name: 'Форма компании',
+          name: '',
           kind: 'normal',
           bookingType: 'mixed',
           defaultLocale: 'ru',
@@ -585,13 +587,13 @@ export class OnlineService {
     });
   }
 
-  async getLink(businessId: string, id: string) {
+  async getLink(businessId: string, id: string, locale: Locale = 'ru') {
     const row = await this.prisma.bookingLink.findFirst({ where: { id, businessId } });
     if (!row) throw new ApiError('not_found', 'Link not found');
-    return linkView(row);
+    return linkView(row, locale);
   }
 
-  async createLink(ctx: RequestContext, businessId: string, body: CreateLinkBody) {
+  async createLink(ctx: RequestContext, businessId: string, body: CreateLinkBody, locale: Locale = 'ru') {
     // F-03-008: сетевая ссылка берёт сеть у самого бизнеса — у филиала одна сеть (Business.networkId)
     const business = await this.prisma.business.findUnique({ where: { id: businessId }, select: { networkId: true } });
     if (body.kind === 'network' && !business?.networkId) throw new ApiError('validation', 'This business is not part of a network', { kind: 'no_network' });
@@ -616,24 +618,27 @@ export class OnlineService {
       },
     });
     if (body.primary) await this.setPrimaryLink(ctx, businessId, id);
-    return this.getLink(businessId, id);
+    return this.getLink(businessId, id, locale);
   }
 
-  async updateLink(ctx: RequestContext, businessId: string, id: string, body: UpdateLinkBody, version: number | undefined) {
+  async updateLink(ctx: RequestContext, businessId: string, id: string, body: UpdateLinkBody, version: number | undefined, locale: Locale = 'ru') {
     const before = await this.prisma.bookingLink.findFirst({ where: { id, businessId } });
     if (!before) throw new ApiError('not_found', 'Link not found');
-    const { locationId, name, description, defaultLocale, staffId, ...configPatch } = body;
+    // nameDefault — поле ответа (linkView), не настройка: прислали обратно — в config не пишем
+    const { locationId, name, description, defaultLocale, staffId, nameDefault: _nameDefault, ...configPatch } = body;
     const config: Record<string, unknown> = { ...(before.config as Record<string, unknown>), ...configPatch };
     // Пустой ID счётчика салона — ключ убираем совсем (иначе страница салона попыталась бы его подключить)
     for (const key of ['metaPixelId', 'ga4StreamId'] as const) if (key in configPatch && !configPatch[key]) delete config[key];
     const data: Record<string, unknown> = { updatedBy: ctx.member!.staffId, config };
     if (locationId !== undefined) data.locationId = locationId;
-    if (name !== undefined) data.name = name;
+    // Ссылка без своего названия, а прислали её же подпись (старый кабинет шлёт name целиком при любом сохранении) —
+    // названия по-прежнему нет: иначе подпись одного языка застыла бы на всех
+    if (name !== undefined) data.name = !hasOwnLinkName(before.name) && isDefaultLinkName(name) ? '' : name;
     if (description !== undefined) data.description = description;
     if (defaultLocale !== undefined) data.defaultLocale = defaultLocale;
     if (staffId !== undefined) data.staffId = staffId;
     await updateVersioned(this.prisma.bookingLink, { id, businessId }, version, data);
-    return this.getLink(businessId, id);
+    return this.getLink(businessId, id, locale);
   }
 
   /** F-03-010: основную ссылку нельзя удалить — сначала «Сделать основной» другую */
@@ -644,14 +649,14 @@ export class OnlineService {
     await this.prisma.bookingLink.delete({ where: { id } });
   }
 
-  async setPrimaryLink(ctx: RequestContext, businessId: string, id: string) {
+  async setPrimaryLink(ctx: RequestContext, businessId: string, id: string, locale: Locale = 'ru') {
     const row = await this.prisma.bookingLink.findFirst({ where: { id, businessId } });
     if (!row) throw new ApiError('not_found', 'Link not found');
     await this.prisma.$transaction([
       this.prisma.bookingLink.updateMany({ where: { businessId }, data: { primary: false } }),
       this.prisma.bookingLink.update({ where: { id }, data: { primary: true, updatedBy: ctx.member!.staffId } }),
     ]);
-    return this.getLink(businessId, id);
+    return this.getLink(businessId, id, locale);
   }
 
   // ─────────────────────────── правила мастера для клиента (F-00-066) ───────────────────────────
@@ -1556,13 +1561,40 @@ function hoursOf(rules: Record<string, unknown>, minKey: string, hourKey: string
   return 3;
 }
 
-function linkView(row: BookingLink) {
+/**
+ * Название, которое раньше писали сервер (ensurePrimaryLink) и демо-данные у основной ссылки — по-русски и словом
+ * Altegio (docs/TEXT-STYLE.md сайта). Ровно это значение — «без названия»: старые салоны увидят подпись на своём языке.
+ */
+const LEGACY_DEFAULT_LINK_NAME = 'Форма компании';
+
+/** Своё название ссылки — то, что владелец задал сам: не пусто и не старое «Форма компании» */
+export function hasOwnLinkName(name: string): boolean {
+  const n = name.trim();
+  return n !== '' && n !== LEGACY_DEFAULT_LINK_NAME;
+}
+
+/** Подписи ссылки без названия на всех языках + старое «Форма компании» */
+const DEFAULT_LINK_NAMES = new Set([LEGACY_DEFAULT_LINK_NAME, ...LOCALES.flatMap((l) => [t(l, 'link.primaryName'), t(l, 'link.unnamedName')])]);
+
+/** Прислали подпись по умолчанию (на любом языке), а не своё название */
+export function isDefaultLinkName(name: string): boolean {
+  return DEFAULT_LINK_NAMES.has(name.trim());
+}
+
+/**
+ * Ссылка для ответа. Без своего названия (20.11.2026) — в name подпись на языке запроса: «Основная ссылка» / «Main
+ * link» / «Հիմնական հղում» (не основная — «Ссылка на запись»), и nameDefault: true. Приложения BookTime Business
+ * показывают name как есть — им обновление не нужно; кабинет по nameDefault пишет подпись на своём языке.
+ */
+function linkView(row: BookingLink, locale: Locale = 'ru') {
+  const own = hasOwnLinkName(row.name);
   return {
     id: row.id,
     businessId: row.businessId,
     locationId: opt(row.locationId ?? undefined),
     networkId: opt(row.networkId ?? undefined),
-    name: row.name,
+    name: own ? row.name : t(locale, row.primary ? 'link.primaryName' : 'link.unnamedName'),
+    nameDefault: !own,
     kind: row.kind,
     bookingType: row.bookingType,
     defaultLocale: row.defaultLocale,

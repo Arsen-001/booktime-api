@@ -18,7 +18,7 @@ import { financeSlice } from '@/mock/slices/finance';
 import { integrationsSlice } from '@/mock/slices/integrations';
 // @ts-expect-error — путь из tsconfig фронта (этап 21, сдача, попытка 6: сторис, новости, продвижение кабинета)
 import { clientSlice } from '@/mock/slices/client';
-// @ts-expect-error — путь из tsconfig фронта (основная ссылка онлайн-записи «Форма компании» у каждого бизнеса)
+// @ts-expect-error — путь из tsconfig фронта (основная ссылка онлайн-записи у каждого бизнеса, без названия)
 import { onlineSlice } from '@/mock/slices/online';
 // @ts-expect-error — путь из tsconfig фронта (демо-данные на языке интерфейса — как демо сайта)
 import { localizeDemo } from '@/mock/seed/demoLocale';
